@@ -18,7 +18,7 @@ Architecture:
     ErrorAnalyzer (detects patterns, aggregates, alerts)
 
 Usage:
-    from backend.core.logging.structured_logger import get_structured_logger
+    from backend.core.structured_logging.structured_logger import get_structured_logger
 
     logger = await get_structured_logger("my_module")
 

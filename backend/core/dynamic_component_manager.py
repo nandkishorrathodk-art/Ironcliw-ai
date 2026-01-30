@@ -85,19 +85,50 @@ class ARM64Vectorizer:
         # IDF weights (inverse document frequency)
         self.idf_weights = self.np.ones(self.feature_dim, dtype=self.dtype)
 
-        # Try to load ARM64 NEON assembly extension
+        # Try to load ARM64 NEON assembly extension (OPTIONAL - provides ~33x speedup)
         self.use_neon = False
         self.arm64_simd = None
-        try:
-            import sys
-            sys.path.insert(0, os.path.dirname(__file__))
-            import arm64_simd
-            self.arm64_simd = arm64_simd
-            self.use_neon = True
-            logger.info("✅ ARM64 NEON assembly loaded (33x speedup)")
-        except ImportError as e:
-            logger.warning(f"ARM64 NEON extension not available: {e}")
-            logger.info("Falling back to numpy (slower)")
+        self._neon_init_attempted = False
+        
+        # v148.0: Graceful ARM64 NEON handling - it's optional, not required
+        if platform.processor() == 'arm' or 'Apple' in platform.processor():
+            try:
+                import sys
+                core_dir = os.path.dirname(__file__)
+                if core_dir not in sys.path:
+                    sys.path.insert(0, core_dir)
+                
+                # Check if the .so file exists (indicates it's been built)
+                so_file = os.path.join(core_dir, 'arm64_simd.cpython-*.so')
+                import glob
+                so_files = glob.glob(so_file.replace('*', '*'))
+                
+                if so_files:
+                    import arm64_simd
+                    self.arm64_simd = arm64_simd
+                    self.use_neon = True
+                    logger.info("✅ ARM64 NEON assembly loaded (33x speedup)")
+                else:
+                    # Not built yet - this is fine, just log at DEBUG level
+                    logger.debug(
+                        "[v148.0] ARM64 NEON extension not compiled. "
+                        "To enable 33x speedup, run: "
+                        "cd backend/core && python setup_arm64.py build_ext --inplace"
+                    )
+            except ImportError:
+                # Extension exists but can't be loaded - log at DEBUG since it's optional
+                logger.debug(
+                    "[v148.0] ARM64 NEON extension not available. "
+                    "Using numpy fallback (still performant)."
+                )
+            except Exception as e:
+                # Unexpected error - log but continue
+                logger.debug(f"[v148.0] ARM64 NEON init error (using fallback): {e}")
+        else:
+            # Not on ARM64 - no point trying to load ARM64 extension
+            logger.debug("[v148.0] Not on ARM64 processor - using numpy vectorization")
+        
+        self._neon_init_attempted = True
 
         # Initialize with common patterns
         self._init_default_vocabulary()

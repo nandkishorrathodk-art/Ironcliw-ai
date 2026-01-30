@@ -1171,7 +1171,7 @@ def _safe_read_json(path: Path, default: dict = None) -> dict:
 
 # v10.6: Structured Logging System with Real-Time Monitoring
 try:
-    from core.logging import (
+    from core.structured_logging import (
         configure_structured_logging,
         get_structured_logger,
         get_global_logging_stats,

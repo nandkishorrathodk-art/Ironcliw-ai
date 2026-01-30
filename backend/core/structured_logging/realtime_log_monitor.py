@@ -23,7 +23,7 @@ Architecture:
       └─> Triggers voice narrator for important events
 
 Usage:
-    from backend.core.logging.realtime_log_monitor import (
+    from backend.core.structured_logging.realtime_log_monitor import (
         get_log_monitor,
         LogMonitorConfig,
     )

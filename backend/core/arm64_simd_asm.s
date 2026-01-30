@@ -183,8 +183,11 @@ _arm64_normalize:
     // Result in s0
 
     // Check if norm is too small (avoid division by zero)
-    // Compare with small value (1e-6 is representable as immediate)
-    fmov    s1, #0.0078125  // Closest immediate to small epsilon
+    // Load small epsilon via integer constant (fmov immediate is too restrictive)
+    // 0x3D800000 = 0.0625 in IEEE754 single-precision float
+    mov     w9, #0x3D80
+    lsl     w9, w9, #16
+    fmov    s1, w9
     fcmp    s0, s1
     b.lt    .Lnormalize_done
 
