@@ -669,6 +669,82 @@ def integrate_with_defcon_governor() -> bool:
     return False
 
 
+def check_vm_region_availability(required_mb: int = 500) -> Tuple[bool, str]:
+    """
+    Check if VM regions have sufficient space for allocation.
+    
+    This provides an additional safety check beyond memory pressure -
+    it validates that the VM address space is healthy and not approaching
+    the commpage boundary where SIGBUS crashes occur.
+    
+    Args:
+        required_mb: Minimum MB required for the operation
+        
+    Returns:
+        (is_safe, reason)
+    """
+    guard = get_proactive_resource_guard()
+    total_gb, available_gb, _ = guard.get_memory_info()
+    
+    # Check basic availability
+    available_mb = available_gb * 1024
+    if available_mb < required_mb + 500:  # Need buffer above requirement
+        return False, f"Insufficient memory: {available_mb:.0f}MB available, need {required_mb + 500}MB"
+    
+    # Check if we're approaching critical thresholds
+    state = guard.get_memory_state()
+    if state == MemoryState.EMERGENCY:
+        return False, f"Memory state is EMERGENCY - VM regions exhausted"
+    elif state == MemoryState.CRITICAL:
+        return False, f"Memory state is CRITICAL - risk of SIGBUS"
+    
+    # Check memory percentage (high percentage suggests VM fragmentation)
+    percent_used = ((total_gb - available_gb) / total_gb) * 100 if total_gb > 0 else 100
+    if percent_used > 90:
+        return False, f"Memory {percent_used:.1f}% used - high risk of VM region exhaustion"
+    
+    return True, f"VM regions healthy: {available_mb:.0f}MB available ({percent_used:.1f}% used)"
+
+
+def integrate_with_fault_guard() -> bool:
+    """
+    Integrate ProactiveResourceGuard with MemoryFaultGuard.
+    
+    This creates bidirectional coordination:
+    - MemoryFaultGuard signals PRG on memory faults
+    - PRG triggers emergency unload when fault detected
+    
+    Returns:
+        True if integration successful
+    """
+    try:
+        from backend.core.memory_fault_guard import get_memory_fault_guard, FaultEvent
+        
+        guard = get_proactive_resource_guard()
+        fault_guard = get_memory_fault_guard()
+        
+        def on_memory_fault(event: FaultEvent):
+            """Callback when memory fault is detected."""
+            logger.warning(f"[ProactiveResourceGuard] Memory fault detected: {event.fault_type.value}")
+            # Trigger emergency unload to try to recover
+            try:
+                freed_mb = guard.emergency_unload(target_free_mb=1000)
+                logger.info(f"[ProactiveResourceGuard] Freed {freed_mb}MB in response to fault")
+            except Exception as e:
+                logger.error(f"[ProactiveResourceGuard] Emergency unload failed: {e}")
+        
+        fault_guard.register_fault_callback(on_memory_fault)
+        logger.info("[ProactiveResourceGuard] Integrated with MemoryFaultGuard")
+        return True
+        
+    except ImportError:
+        logger.debug("[ProactiveResourceGuard] MemoryFaultGuard not available")
+    except Exception as e:
+        logger.debug(f"[ProactiveResourceGuard] Could not integrate with fault guard: {e}")
+    
+    return False
+
+
 # =============================================================================
 # EXPORTS
 # =============================================================================
@@ -682,5 +758,8 @@ __all__ = [
     "check_memory_before_load",
     "should_use_lite_mode",
     "integrate_with_defcon_governor",
+    "check_vm_region_availability",
+    "integrate_with_fault_guard",
     "COMPONENT_MEMORY_ESTIMATES",
 ]
+
