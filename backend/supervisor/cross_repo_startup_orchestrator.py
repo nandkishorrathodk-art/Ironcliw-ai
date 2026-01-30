@@ -52,9 +52,16 @@ Architecture:
     └──────────────────────────────────────────────────────────────────┘
 
 Author: JARVIS AI System
-Version: 5.11.0 (v144.0)
+Version: 5.12.0 (v145.0)
 
 Changelog:
+- v145.0 (v5.12): TOTAL VICTORY - Self-Kill Protection Bypass & Final Deadlock Fix
+  - CRITICAL FIX: Port Hygiene now allows killing service's own OLD PID for restart
+  - Added `exclude_service` parameter to `_build_protected_pid_set()`
+  - Added `allow_self_kill` parameter to `_enforce_port_hygiene()`
+  - ROOT CAUSE: Old jarvis-prime PID was protected, preventing port 8000 cleanup
+  - The supervisor was literally protecting the zombie it needed to kill
+  - GAP 14: Self-Kill Protection Bypass solves the restart deadlock
 - v144.0 (v5.11): HOLLOW CLIENT & ACTIVE RESCUE - Nuclear OOM Prevention
   - PART 1 HOLLOW CLIENT: jarvis-prime now uses strict lazy imports (torch/transformers)
     - Startup RAM reduced from ~4GB to ~300MB
@@ -9213,15 +9220,35 @@ class ProcessOrchestrator:
 
         return self._service_spawn_locks[service_name]
 
-    def _build_protected_pid_set(self) -> Set[int]:
+    def _build_protected_pid_set(
+        self,
+        exclude_service: Optional[str] = None,
+    ) -> Set[int]:
         """
         v140.0: Build set of PIDs that must NEVER be killed.
+        v145.0: Added exclude_service parameter to fix "Self-Kill Protection Deadlock"
 
         CRITICAL FIX: Only protect PIDs from the CURRENT SESSION.
         PIDs from previous sessions are STALE and can be safely killed.
 
-        Normalizes all PIDs to integers to prevent type mismatch issues.
-        Includes: self, parent, spawned children, CURRENT SESSION GlobalProcessRegistry.
+        v145.0 FIX: When restarting a service (e.g., jarvis-prime), we MUST allow
+        killing that service's OLD PID. Otherwise we get a deadlock:
+        - Port 8000 is held by old jarvis-prime (zombie/stale)
+        - Supervisor tries to clean port 8000
+        - Old jarvis-prime PID is in protected_pids (from self.processes)
+        - Supervisor refuses to kill it
+        - New jarvis-prime can't start
+        - Loop forever
+
+        The fix: Pass exclude_service to explicitly allow killing the target service's
+        old PID when we're trying to restart it.
+
+        Args:
+            exclude_service: Service name to EXCLUDE from protection (allows killing
+                             its old PID for restart)
+
+        Returns:
+            Set of protected PIDs (normalized to int)
         """
         protected: Set[int] = set()
         current_session_pid = os.getpid()
@@ -9231,8 +9258,17 @@ class ProcessOrchestrator:
         protected.add(os.getppid())
 
         # Add all spawned child PIDs from our process tracking (this session only)
-        for managed in self.processes.values():
+        # v145.0: EXCEPT for the service we're trying to restart
+        for service_name, managed in self.processes.items():
             if managed.pid:
+                # v145.0: Skip protection for the service we're restarting
+                if exclude_service and service_name.lower() == exclude_service.lower():
+                    logger.info(
+                        f"[v145.0] 🔓 Self-Kill Bypass: NOT protecting PID {managed.pid} "
+                        f"for {service_name} - allowing kill for restart"
+                    )
+                    continue
+
                 try:
                     protected.add(int(managed.pid))
                 except (ValueError, TypeError):
@@ -9487,9 +9523,11 @@ class ProcessOrchestrator:
         force_timeout: float = 2.0,
         post_kill_sleep: float = 1.0,
         verification_retries: int = 3,
+        allow_self_kill: bool = True,  # v145.0: Allow killing service's own old PID
     ) -> Tuple[bool, Optional[str], List[int]]:
         """
         v136.0: Enterprise-grade port cleanup with all 13 gap fixes.
+        v145.0: Added allow_self_kill parameter to fix "Self-Kill Protection Deadlock"
 
         This is the CRITICAL fix for OOM/port conflict issues.
 
@@ -9501,6 +9539,7 @@ class ProcessOrchestrator:
         - GAP 8: Platform-agnostic via _get_listening_pids_on_port()
         - GAP 9: Port validation (1-65535)
         - GAP 13: Accurate killed_pids tracking
+        - v145.0 GAP 14: Self-Kill Protection Bypass for restarts
 
         Args:
             port: The port to clean up
@@ -9509,6 +9548,7 @@ class ProcessOrchestrator:
             force_timeout: Seconds to wait after SIGKILL
             post_kill_sleep: Seconds to sleep after kill
             verification_retries: Number of verification retries
+            allow_self_kill: If True, allow killing the service's own old PID (v145.0)
 
         Returns:
             Tuple of (success, error_message, killed_pids)
@@ -9528,7 +9568,17 @@ class ProcessOrchestrator:
             logger.debug(f"[v136.0] Skipping orchestrator port {port} (self-protection)")
             return (True, None, [])
 
-        protected_pids = self._build_protected_pid_set()
+        # v145.0: Self-Kill Protection Bypass
+        # When restarting a service, we need to allow killing its OLD PID
+        # Pass the service_name to exclude it from protection
+        exclude_service = service_name if allow_self_kill else None
+        protected_pids = self._build_protected_pid_set(exclude_service=exclude_service)
+
+        if allow_self_kill and exclude_service:
+            logger.info(
+                f"[v145.0] 🔓 Self-Kill Protection Bypass ACTIVE for {service_name} - "
+                f"old PID can be killed for restart"
+            )
 
         logger.info(f"[v136.0] 🧹 Port hygiene for {service_name} on port {port}...")
 
