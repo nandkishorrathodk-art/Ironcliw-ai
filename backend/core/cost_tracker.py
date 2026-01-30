@@ -447,8 +447,10 @@ class CostTracker:
                 try:
                     import aioredis
                 except ImportError:
-                    logger.warning("🔴 Redis libraries not installed. Install with: pip install redis")
-                    logger.info("   Falling back to local-only mode (no real-time streaming)")
+                    # v149.0: Only log at INFO level, not WARNING - Redis is optional
+                    # The path may not be fully configured yet during early startup
+                    logger.info("🔴 Redis libraries not available (optional for real-time streaming)")
+                    logger.debug("   Install with: pip install redis")
                     self._redis_available = False
                     return False
             
