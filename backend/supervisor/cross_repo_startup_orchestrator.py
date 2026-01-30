@@ -13847,11 +13847,77 @@ echo "=== JARVIS Prime started ==="
         """
         v136.0: Core spawn implementation (separated for coordinator integration).
         v137.1: Added diagnostic logging for hang debugging.
+        v137.2: Added hard memory gate for heavy services.
 
         This is the actual spawn logic, wrapped by _spawn_service_inner which
         handles global coordination.
         """
         logger.info(f"[v137.1] _spawn_service_core({definition.name}): entering...")
+        
+        # =========================================================================
+        # v137.2: HARD MEMORY GATE - Prevent OOM kills for heavy services
+        # =========================================================================
+        # This is the LAST line of defense against starting heavy services when
+        # memory is critically low. Unlike the OOM Prevention bridge (which is
+        # advisory), this will BLOCK startup if memory is dangerously low.
+        # =========================================================================
+        heavy_services = ["jarvis-prime", "jarvis_prime", "j-prime", "reactor-core", "reactor_core"]
+        if definition.name.lower() in heavy_services:
+            try:
+                import psutil
+                mem = psutil.virtual_memory()
+                memory_pressure = mem.percent
+                available_gb = mem.available / (1024 ** 3)
+                
+                # Critical threshold: >80% used OR <2GB available
+                is_critical = memory_pressure > 80 or available_gb < 2.0
+                
+                if is_critical:
+                    logger.warning(
+                        f"[v137.2] ⚠️ MEMORY GATE: {definition.name} blocked - "
+                        f"memory at {memory_pressure:.1f}% ({available_gb:.1f}GB free)"
+                    )
+                    
+                    # Check if GCP VM is available for offloading
+                    gcp_available = False
+                    try:
+                        from backend.core.gcp_vm_manager import get_gcp_vm_manager_safe
+                        vm_manager = await get_gcp_vm_manager_safe()
+                        if vm_manager:
+                            active_vm = await vm_manager.get_active_vm()
+                            if active_vm:
+                                gcp_available = True
+                                logger.info(
+                                    f"[v137.2] ✅ GCP VM available - {definition.name} can use cloud offloading"
+                                )
+                    except Exception as gcp_err:
+                        logger.debug(f"GCP check failed: {gcp_err}")
+                    
+                    if not gcp_available:
+                        # No GCP and critical memory - this is dangerous
+                        # Wait briefly for memory to stabilize
+                        logger.info(f"[v137.2] Waiting 10s for memory to stabilize before {definition.name}...")
+                        await asyncio.sleep(10)
+                        
+                        # Re-check
+                        mem = psutil.virtual_memory()
+                        memory_pressure = mem.percent
+                        available_gb = mem.available / (1024 ** 3)
+                        
+                        if memory_pressure > 80 or available_gb < 2.0:
+                            logger.error(
+                                f"[v137.2] ❌ MEMORY GATE BLOCKED: Cannot start {definition.name} - "
+                                f"memory still at {memory_pressure:.1f}% ({available_gb:.1f}GB free). "
+                                f"This prevents OOM kill (SIGKILL -9)."
+                            )
+                            managed.status = ServiceStatus.DEGRADED
+                            return False
+                        else:
+                            logger.info(
+                                f"[v137.2] ✅ Memory recovered to {memory_pressure:.1f}% - proceeding"
+                            )
+            except Exception as mem_gate_err:
+                logger.debug(f"Memory gate check failed (non-fatal): {mem_gate_err}")
         
         # v95.0: Wait for dependencies to be healthy before spawning
         if definition.depends_on:
@@ -14020,10 +14086,66 @@ echo "=== JARVIS Prime started ==="
                                 # Still try local, but with degradation flags
                                 managed.degradation_tier = _DegradationTier.TIER_3_SEQUENTIAL_LOAD if _DegradationTier else None
                         else:
+                            # v137.2: CRITICAL - Don't proceed when memory is dangerously low
+                            # Wait for either memory to free up or GCP VM to become available
                             logger.warning(
-                                f"[OOM Prevention] ⚠️ GCP VM not available but memory is low - "
-                                f"proceeding with risk for {definition.name}"
+                                f"[v137.2] ⚠️ CRITICAL: Cannot start {definition.name} - "
+                                f"insufficient memory and no GCP VM available"
                             )
+                            logger.info(f"[v137.2] Waiting up to 60s for memory to stabilize...")
+                            
+                            # Wait with exponential backoff, checking memory and GCP status
+                            memory_recovered = False
+                            wait_intervals = [2, 3, 5, 8, 13, 21]  # Fibonacci-ish backoff
+                            total_waited = 0
+                            max_wait = 60
+                            
+                            for interval in wait_intervals:
+                                if total_waited >= max_wait:
+                                    break
+                                    
+                                await asyncio.sleep(interval)
+                                total_waited += interval
+                                
+                                # Re-check memory
+                                try:
+                                    import psutil
+                                    mem = psutil.virtual_memory()
+                                    current_pressure = mem.percent
+                                    available_gb = mem.available / (1024 ** 3)
+                                    
+                                    logger.info(
+                                        f"[v137.2] Memory check after {total_waited}s: "
+                                        f"{current_pressure:.1f}% used, {available_gb:.1f}GB available"
+                                    )
+                                    
+                                    # If memory dropped below 75%, we can proceed cautiously
+                                    if current_pressure < 75:
+                                        logger.info(f"[v137.2] ✅ Memory recovered to {current_pressure:.1f}% - proceeding")
+                                        memory_recovered = True
+                                        break
+                                except Exception as mem_check_err:
+                                    logger.debug(f"Memory check failed: {mem_check_err}")
+                            
+                            if not memory_recovered:
+                                # Still critical after waiting - skip this service
+                                logger.error(
+                                    f"[v137.2] ❌ Cannot start {definition.name}: "
+                                    f"memory still critical after {total_waited}s wait. "
+                                    f"Skipping to prevent OOM kill."
+                                )
+                                managed.status = ServiceStatus.DEGRADED
+                                await _emit_event(
+                                    "SERVICE_SKIPPED_OOM",
+                                    service_name=definition.name,
+                                    priority="CRITICAL",
+                                    details={
+                                        "reason": "critical_memory_no_gcp",
+                                        "memory_pressure": current_pressure if 'current_pressure' in dir() else 999,
+                                        "waited_seconds": total_waited,
+                                    }
+                                )
+                                return False  # Don't proceed - prevent OOM kill
                     elif memory_result.decision == _MemoryDecision.CLOUD:
                         if memory_result.gcp_vm_ready:
                             logger.info(

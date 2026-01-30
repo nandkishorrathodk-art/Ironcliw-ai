@@ -581,8 +581,10 @@ class SupervisorAwareGCPController:
         """
         async with self._state_lock:
             if self._active_vm is not None:
-                logger.warning("Cannot create VM - one already active")
-                return None
+                # v137.2: Reuse existing VM instead of failing
+                # This allows emergency offload to work when VM is already running
+                logger.info(f"[v137.2] ✅ Reusing existing active VM: {self._active_vm.instance_id}")
+                return self._active_vm
             
             self._state = VMLifecycleState.CREATING
         
