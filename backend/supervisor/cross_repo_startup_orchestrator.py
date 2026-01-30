@@ -7514,6 +7514,262 @@ class ProcessOrchestrator:
         return False
 
     # =========================================================================
+    # v135.0: Pre-Spawn Port Hygiene - Comprehensive Port Cleanup
+    # =========================================================================
+    # Strategy from user requirements:
+    # 1. Clean actual service ports (8000, 8090) before spawn, not just legacy
+    # 2. Get ports dynamically from service definitions (no hardcoding)
+    # 3. SIGTERM → wait → SIGKILL (graceful then force)
+    # 4. Sleep after kill to let port fully release
+    # 5. Final port check before spawn
+    # 6. Never kill self/parent/spawned children
+    # =========================================================================
+
+    async def _enforce_port_hygiene(
+        self,
+        port: int,
+        service_name: str,
+        graceful_timeout: float = 3.0,
+        force_timeout: float = 2.0,
+        post_kill_sleep: float = 1.0,
+    ) -> Tuple[bool, Optional[str]]:
+        """
+        v135.0: Comprehensive pre-spawn port cleanup with graceful-then-force termination.
+
+        This is the CRITICAL fix for OOM/port conflict issues. Before spawning ANY service,
+        we ensure the port is COMPLETELY FREE by:
+        1. Finding any process listening on the port
+        2. Sending SIGTERM and waiting gracefully
+        3. If still alive, sending SIGKILL
+        4. Sleeping to let the kernel fully release the port
+        5. Final verification that port is free
+
+        Args:
+            port: The port to clean up
+            service_name: Name of service that will use this port (for logging)
+            graceful_timeout: Seconds to wait after SIGTERM before SIGKILL
+            force_timeout: Seconds to wait after SIGKILL
+            post_kill_sleep: Seconds to sleep after kill for port release
+
+        Returns:
+            Tuple of (success: bool, error_message: Optional[str])
+            success=True means port is ready for use
+        """
+        current_pid = os.getpid()
+        parent_pid = os.getppid()
+
+        # v135.0: Collect PIDs we should NEVER kill
+        protected_pids: Set[int] = {current_pid, parent_pid}
+
+        # Add all spawned child PIDs
+        for managed in self.processes.values():
+            if managed.pid:
+                protected_pids.add(managed.pid)
+
+        # Also check GlobalProcessRegistry
+        try:
+            from backend.core.supervisor_singleton import GlobalProcessRegistry
+            for pid in GlobalProcessRegistry.get_all().keys():
+                protected_pids.add(pid)
+        except (ImportError, AttributeError):
+            pass
+
+        logger.info(f"[v135.0] 🧹 Port hygiene for {service_name} on port {port}...")
+
+        try:
+            # Step 1: Find processes listening on the port
+            proc = await asyncio.create_subprocess_exec(
+                "lsof", "-i", f":{port}", "-sTCP:LISTEN", "-t",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, _ = await proc.communicate()
+
+            if not stdout or not stdout.strip():
+                logger.info(f"[v135.0] ✅ Port {port} is already free for {service_name}")
+                return (True, None)
+
+            pids = [p.strip() for p in stdout.decode().strip().split('\n') if p.strip()]
+
+            for pid_str in pids:
+                try:
+                    pid = int(pid_str)
+
+                    # Safety check: Never kill protected processes
+                    if pid in protected_pids:
+                        logger.warning(
+                            f"[v135.0] ⚠️ Port {port} occupied by protected PID {pid} - "
+                            f"cannot kill (self/parent/child)"
+                        )
+                        # This is a problem - port is blocked by our own process
+                        # Could indicate double-spawn or stale child
+                        continue
+
+                    # Get process info for logging
+                    proc_info = "unknown"
+                    try:
+                        import psutil
+                        p = psutil.Process(pid)
+                        proc_info = f"{p.name()} ({' '.join(p.cmdline()[:3])})"
+                    except Exception:
+                        pass
+
+                    logger.info(
+                        f"[v135.0] 🔪 Terminating process on port {port}: "
+                        f"PID={pid}, {proc_info}"
+                    )
+
+                    # Step 2: Graceful termination (SIGTERM)
+                    try:
+                        os.kill(pid, signal.SIGTERM)
+                        logger.debug(f"[v135.0] Sent SIGTERM to PID {pid}")
+                    except ProcessLookupError:
+                        logger.debug(f"[v135.0] PID {pid} already gone after SIGTERM attempt")
+                        continue
+                    except PermissionError as e:
+                        logger.warning(f"[v135.0] Cannot kill PID {pid}: {e}")
+                        continue
+
+                    # Step 3: Wait for graceful shutdown
+                    process_gone = False
+                    start_wait = time.time()
+                    while time.time() - start_wait < graceful_timeout:
+                        try:
+                            os.kill(pid, 0)  # Check if still alive
+                            await asyncio.sleep(0.2)
+                        except ProcessLookupError:
+                            process_gone = True
+                            logger.debug(f"[v135.0] PID {pid} terminated gracefully")
+                            break
+
+                    # Step 4: Force kill if still alive
+                    if not process_gone:
+                        logger.warning(
+                            f"[v135.0] ⚡ PID {pid} did not respond to SIGTERM after "
+                            f"{graceful_timeout}s, sending SIGKILL..."
+                        )
+                        try:
+                            os.kill(pid, signal.SIGKILL)
+
+                            # Wait for forced termination
+                            start_force = time.time()
+                            while time.time() - start_force < force_timeout:
+                                try:
+                                    os.kill(pid, 0)
+                                    await asyncio.sleep(0.1)
+                                except ProcessLookupError:
+                                    process_gone = True
+                                    logger.info(f"[v135.0] PID {pid} killed by SIGKILL")
+                                    break
+
+                            if not process_gone:
+                                logger.error(
+                                    f"[v135.0] ❌ PID {pid} survived SIGKILL - zombie process?"
+                                )
+                        except ProcessLookupError:
+                            process_gone = True
+                        except PermissionError as e:
+                            logger.error(f"[v135.0] Cannot SIGKILL PID {pid}: {e}")
+
+                except ValueError as e:
+                    logger.debug(f"[v135.0] Invalid PID '{pid_str}': {e}")
+                    continue
+
+            # Step 5: Sleep to allow kernel to fully release the port
+            # This is critical - the socket may still be in TIME_WAIT
+            logger.debug(f"[v135.0] Sleeping {post_kill_sleep}s for port release...")
+            await asyncio.sleep(post_kill_sleep)
+
+            # Step 6: Final verification - is the port actually free?
+            verify_proc = await asyncio.create_subprocess_exec(
+                "lsof", "-i", f":{port}", "-sTCP:LISTEN", "-t",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            verify_stdout, _ = await verify_proc.communicate()
+
+            if verify_stdout and verify_stdout.strip():
+                remaining_pids = verify_stdout.decode().strip()
+                logger.error(
+                    f"[v135.0] ❌ Port {port} still occupied after cleanup: PIDs={remaining_pids}"
+                )
+                return (False, f"Port {port} still occupied by PIDs: {remaining_pids}")
+
+            logger.info(f"[v135.0] ✅ Port {port} cleaned and verified free for {service_name}")
+            return (True, None)
+
+        except asyncio.CancelledError:
+            logger.warning(f"[v135.0] Port hygiene cancelled for {service_name}")
+            return (True, None)  # Don't block startup on cancellation
+        except Exception as e:
+            logger.error(f"[v135.0] Port hygiene failed for {service_name}: {e}")
+            return (False, str(e))
+
+    async def _get_all_service_ports(self) -> Dict[str, int]:
+        """
+        v135.0: Get all service ports dynamically from service definitions.
+
+        This is the SINGLE SOURCE OF TRUTH for ports - no hardcoding!
+        Returns a dict mapping service_name -> port.
+        """
+        ports: Dict[str, int] = {}
+
+        # Get from config (which reads from trinity_config)
+        ports["jarvis-prime"] = self.config.jarvis_prime_default_port
+        ports["reactor-core"] = self.config.reactor_core_default_port
+
+        # Also get from service definitions if available
+        try:
+            definitions = self._get_service_definitions()
+            for defn in definitions:
+                if defn.default_port:
+                    ports[defn.name] = defn.default_port
+        except Exception as e:
+            logger.debug(f"[v135.0] Could not get service definitions: {e}")
+
+        # Add legacy ports for completeness
+        for legacy_port in self.config.legacy_jarvis_prime_ports:
+            ports[f"legacy-jprime-{legacy_port}"] = legacy_port
+        for legacy_port in self.config.legacy_reactor_core_ports:
+            ports[f"legacy-reactor-{legacy_port}"] = legacy_port
+
+        return ports
+
+    async def _comprehensive_pre_flight_cleanup(self) -> Dict[str, List[int]]:
+        """
+        v135.0: Enhanced pre-flight cleanup that cleans ALL service ports.
+
+        This replaces the old _cleanup_legacy_ports() approach by:
+        1. Getting ports dynamically from service definitions
+        2. Cleaning BOTH legacy AND current service ports
+        3. Using graceful-then-force termination
+        """
+        logger.info("[v135.0] 🧹 Comprehensive pre-flight port cleanup...")
+
+        all_ports = await self._get_all_service_ports()
+        cleaned: Dict[str, List[int]] = {}
+
+        # Sort ports so we clean them in a predictable order
+        for service_name, port in sorted(all_ports.items(), key=lambda x: x[1]):
+            success, error = await self._enforce_port_hygiene(
+                port=port,
+                service_name=service_name,
+            )
+            if success and error is None:
+                # Check if we actually cleaned something (vs port was already free)
+                pass  # _enforce_port_hygiene already logs this
+            else:
+                if error:
+                    logger.warning(f"[v135.0] Port cleanup issue for {service_name}: {error}")
+
+            if service_name not in cleaned:
+                cleaned[service_name] = []
+            cleaned[service_name].append(port)
+
+        logger.info(f"[v135.0] ✅ Pre-flight cleanup complete")
+        return cleaned
+
+    # =========================================================================
     # v93.8: Docker Hybrid Mode - Check Docker Before Local Process
     # =========================================================================
 
@@ -12184,6 +12440,41 @@ echo "=== JARVIS Prime started ==="
         )
 
         # =========================================================================
+        # v135.0: PRE-SPAWN PORT HYGIENE - Ensure port is free before spawn
+        # =========================================================================
+        # This is the CRITICAL fix for port conflict issues. Before spawning ANY
+        # service, we ensure the target port is COMPLETELY FREE using:
+        # 1. SIGTERM → graceful wait → SIGKILL (if needed)
+        # 2. Post-kill sleep for kernel port release
+        # 3. Final verification that port is available
+        # =========================================================================
+        port_ready, port_error = await self._enforce_port_hygiene(
+            port=definition.default_port,
+            service_name=definition.name,
+            graceful_timeout=3.0,
+            force_timeout=2.0,
+            post_kill_sleep=1.0,
+        )
+
+        if not port_ready:
+            logger.error(
+                f"[v135.0] ❌ Cannot spawn {definition.name}: port {definition.default_port} "
+                f"not available after cleanup: {port_error}"
+            )
+            managed.status = ServiceStatus.FAILED
+            await _emit_event(
+                "SERVICE_BLOCKED",
+                service_name=definition.name,
+                priority="CRITICAL",
+                details={
+                    "reason": "port_hygiene_failed",
+                    "port": definition.default_port,
+                    "error": port_error
+                }
+            )
+            return False
+
+        # =========================================================================
         # v131.0: OOM PREVENTION - Check memory before spawning heavy services
         # =========================================================================
         # This prevents SIGKILL (exit code -9) crashes during initialization by
@@ -14424,8 +14715,14 @@ echo "=== JARVIS Prime started ==="
             {"phase": 0, "action": "cleanup"}
         )
 
-        # v5.0: Clean up legacy ports (processes on old hardcoded ports)
-        await self._cleanup_legacy_ports()
+        # v135.0: Comprehensive port cleanup (replaces legacy-only cleanup)
+        # This cleans ALL service ports dynamically from definitions, not just legacy ports
+        try:
+            await self._comprehensive_pre_flight_cleanup()
+        except Exception as e:
+            logger.warning(f"[v135.0] Comprehensive cleanup failed, falling back to legacy: {e}")
+            # Fallback to legacy cleanup if comprehensive fails
+            await self._cleanup_legacy_ports()
 
         # v4.0: Clean up stale service registry entries (dead PIDs, PID reuse)
         if self.registry:
