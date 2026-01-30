@@ -177,7 +177,9 @@ class GlobalSpawnCoordinator:
         if getattr(self, "_initialized", False):
             return
 
-        self._state_lock = threading.Lock()
+        # v137.2: Use RLock (reentrant lock) to prevent deadlock when
+        # methods like mark_spawning() call _get_state() which also acquires lock
+        self._state_lock = threading.RLock()
         self._service_locks: Dict[str, asyncio.Lock] = {}
         self._service_state: Dict[str, Dict[str, Any]] = {}
         self._spawn_cooldown_seconds = 10.0  # Min time between spawn attempts
@@ -13803,15 +13805,18 @@ echo "=== JARVIS Prime started ==="
             return False
 
         # Mark as spawning in global coordinator
-        logger.info(f"[v137.1] _spawn_service_inner({definition.name}): marking as spawning in coordinator...")
-        if not coordinator.mark_spawning(
+        # v137.2: Fixed nested lock deadlock by using RLock instead of Lock
+        logger.info(f"[v137.2] _spawn_service_inner({definition.name}): marking as spawning in coordinator...")
+        mark_result = coordinator.mark_spawning(
             service_name=definition.name,
             component_name="ProcessOrchestrator",
             port=definition.default_port,
-        ):
+        )
+        logger.info(f"[v137.2] _spawn_service_inner({definition.name}): mark_spawning returned {mark_result}")
+        if not mark_result:
             logger.warning(f"[v136.0] Failed to mark {definition.name} as spawning")
             return False
-        logger.info(f"[v137.1] _spawn_service_inner({definition.name}): marked as spawning, calling _spawn_service_core...")
+        logger.info(f"[v137.2] _spawn_service_inner({definition.name}): marked as spawning, calling _spawn_service_core...")
 
         try:
             success = await self._spawn_service_core(managed, definition)
