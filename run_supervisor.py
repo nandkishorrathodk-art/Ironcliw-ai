@@ -6714,8 +6714,19 @@ class SupervisorBootstrapper:
         return False, None, {"error": "Protection disabled, no fallback", "component": component}
 
     async def _emergency_shutdown(self) -> None:
-        """v80.0: Emergency shutdown when startup times out."""
+        """v80.0/v148.0: Emergency shutdown when startup times out."""
         self.logger.warning("🚨 Emergency shutdown initiated")
+        
+        # v148.0: Write exit code marker for crash detection on next startup
+        try:
+            trinity_dir = Path.home() / ".jarvis" / "trinity"
+            trinity_dir.mkdir(parents=True, exist_ok=True)
+            exit_code_file = trinity_dir / "last_exit_code"
+            exit_code_file.write_text("-9")  # SIGKILL equivalent
+            self.logger.debug("[v148.0] Wrote emergency exit code marker")
+        except Exception as e:
+            self.logger.debug(f"[v148.0] Could not write exit code marker: {e}")
+        
         try:
             # v101.0: Notify supervisor restart manager to stop restart attempts
             self._supervisor_restart_manager.request_shutdown()
@@ -6802,9 +6813,345 @@ class SupervisorBootstrapper:
                     self._ownership_acquired = False
                     self.logger.info("[v85.0] ✅ Ownership released")
                 self._state_coordinator = None
+            
+            # v148.0: Write clean exit code to indicate graceful shutdown
+            self._write_clean_exit_code(0)
 
         except Exception as e:
             self.logger.warning(f"[v85.0] Error releasing ownership: {e}")
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    # v148.0: INTELLIGENT STATE RECOVERY - Crash Detection & Auto-Healing
+    # ═══════════════════════════════════════════════════════════════════════════
+    # This advanced system detects crash states and intelligently clears stale
+    # state to allow fresh startup. It's NOT a brute-force cleanup - it analyzes
+    # crash markers and only clears what's necessary.
+    # ═══════════════════════════════════════════════════════════════════════════
+
+    async def _intelligent_state_recovery(self) -> Dict[str, Any]:
+        """
+        v148.0: Intelligent State Recovery with Crash Detection.
+        
+        This method implements advanced crash detection and state recovery:
+        
+        1. CRASH DETECTION:
+           - Checks cloud_lock.json for OOM/SIGKILL markers
+           - Checks for orphaned memory pressure signals
+           - Checks for stale process tree files
+           - Analyzes exit codes from previous run
+        
+        2. INTELLIGENT CLEANUP:
+           - Only clears state files when crash is detected
+           - Preserves valid state from clean shutdowns
+           - Logs all recovery actions for debugging
+        
+        3. RECOVERY ACTIONS:
+           - Clears cloud lock (enables fresh GCP provisioning)
+           - Clears memory pressure signals (prevents false emergency)
+           - Clears stale orchestrator state (prevents conflicts)
+           - Clears process tree JSON (prevents false orphan detection)
+        
+        Returns:
+            Dict with recovery results:
+            - crash_detected: bool - whether crash was detected
+            - crash_reason: str - reason for crash (OOM, SIGKILL, timeout, etc.)
+            - files_cleared: int - number of stale files cleared
+            - actions_taken: List[str] - list of recovery actions
+        """
+        result = {
+            "crash_detected": False,
+            "crash_reason": None,
+            "files_cleared": 0,
+            "actions_taken": [],
+            "state_analysis": {},
+        }
+        
+        trinity_dir = Path.home() / ".jarvis" / "trinity"
+        cross_repo_dir = Path.home() / ".jarvis" / "cross_repo"
+        
+        # Ensure directories exist
+        trinity_dir.mkdir(parents=True, exist_ok=True)
+        cross_repo_dir.mkdir(parents=True, exist_ok=True)
+        
+        try:
+            # ═══════════════════════════════════════════════════════════════════
+            # PHASE 1: Crash Detection - Analyze state files for crash markers
+            # ═══════════════════════════════════════════════════════════════════
+            crash_markers = await self._detect_crash_markers(trinity_dir, cross_repo_dir)
+            result["state_analysis"] = crash_markers
+            
+            if crash_markers.get("crash_detected"):
+                result["crash_detected"] = True
+                result["crash_reason"] = crash_markers.get("reason", "unknown")
+                self.logger.warning(
+                    f"[v148.0] 🚨 Crash detected: {result['crash_reason']} - "
+                    f"initiating intelligent recovery"
+                )
+                
+                # ═══════════════════════════════════════════════════════════════════
+                # PHASE 2: Intelligent Cleanup - Clear stale state files
+                # ═══════════════════════════════════════════════════════════════════
+                
+                # Action 1: Clear cloud lock (enables fresh GCP provisioning)
+                cloud_lock_file = trinity_dir / "cloud_lock.json"
+                if cloud_lock_file.exists():
+                    try:
+                        cloud_lock_file.unlink()
+                        result["files_cleared"] += 1
+                        result["actions_taken"].append("cleared_cloud_lock")
+                        self.logger.info("[v148.0] ✅ Cloud lock cleared - GCP provisioning enabled")
+                    except Exception as e:
+                        self.logger.warning(f"[v148.0] Failed to clear cloud lock: {e}")
+                
+                # Action 2: Clear memory pressure signals (prevents false emergency)
+                memory_pressure_file = cross_repo_dir / "memory_pressure.json"
+                if memory_pressure_file.exists():
+                    try:
+                        memory_pressure_file.unlink()
+                        result["files_cleared"] += 1
+                        result["actions_taken"].append("cleared_memory_pressure")
+                        self.logger.info("[v148.0] ✅ Memory pressure signals cleared")
+                    except Exception as e:
+                        self.logger.warning(f"[v148.0] Failed to clear memory pressure: {e}")
+                
+                # Action 3: Clear stale orchestrator state (prevents conflicts)
+                orchestrator_state_file = trinity_dir / "orchestrator_state.json"
+                if orchestrator_state_file.exists():
+                    try:
+                        # Check if state is stale (last update > 5 minutes ago)
+                        state_mtime = orchestrator_state_file.stat().st_mtime
+                        if time.time() - state_mtime > 300:  # 5 minutes
+                            orchestrator_state_file.unlink()
+                            result["files_cleared"] += 1
+                            result["actions_taken"].append("cleared_stale_orchestrator_state")
+                            self.logger.info("[v148.0] ✅ Stale orchestrator state cleared")
+                    except Exception as e:
+                        self.logger.warning(f"[v148.0] Failed to clear orchestrator state: {e}")
+                
+                # Action 4: Clear stale process tree (prevents false orphan detection)
+                process_tree_file = trinity_dir / "process_tree.json"
+                if process_tree_file.exists():
+                    try:
+                        process_tree_file.unlink()
+                        result["files_cleared"] += 1
+                        result["actions_taken"].append("cleared_process_tree")
+                        self.logger.info("[v148.0] ✅ Process tree cleared")
+                    except Exception as e:
+                        self.logger.warning(f"[v148.0] Failed to clear process tree: {e}")
+                
+                # Action 5: Clear stale port allocations (prevents EADDRINUSE)
+                ports_dir = trinity_dir / "ports"
+                if ports_dir.exists() and ports_dir.is_dir():
+                    cleared_ports = 0
+                    for port_file in ports_dir.glob("*.port"):
+                        try:
+                            # Check if port is actually in use by a valid process
+                            port_data = json.loads(port_file.read_text())
+                            pid = port_data.get("pid")
+                            if pid and not self._is_process_running(pid):
+                                port_file.unlink()
+                                cleared_ports += 1
+                        except Exception:
+                            # Invalid file, remove it
+                            try:
+                                port_file.unlink()
+                                cleared_ports += 1
+                            except Exception:
+                                pass
+                    
+                    if cleared_ports > 0:
+                        result["files_cleared"] += cleared_ports
+                        result["actions_taken"].append(f"cleared_{cleared_ports}_stale_ports")
+                        self.logger.info(f"[v148.0] ✅ Cleared {cleared_ports} stale port allocations")
+                
+                # ═══════════════════════════════════════════════════════════════════
+                # PHASE 3: Signal fresh start to other components
+                # ═══════════════════════════════════════════════════════════════════
+                # Set environment variables to signal crash recovery mode
+                os.environ["JARVIS_CRASH_RECOVERY_MODE"] = "1"
+                os.environ["JARVIS_RECOVERY_TIMESTAMP"] = str(time.time())
+                os.environ["JARVIS_RECOVERY_REASON"] = result["crash_reason"]
+                result["actions_taken"].append("set_recovery_environment")
+                
+            else:
+                self.logger.info("[v148.0] ✅ No crash markers detected - clean startup")
+            
+            return result
+            
+        except Exception as e:
+            self.logger.warning(f"[v148.0] State recovery error (non-fatal): {e}")
+            result["error"] = str(e)
+            return result
+    
+    async def _detect_crash_markers(
+        self,
+        trinity_dir: Path,
+        cross_repo_dir: Path,
+    ) -> Dict[str, Any]:
+        """
+        v148.0: Detect crash markers from state files.
+        
+        Analyzes various state files for indicators of a crash:
+        - cloud_lock.json with OOM/SIGKILL markers
+        - Memory pressure signals with emergency flags
+        - Stale heartbeat files (process died without cleanup)
+        - Exit code markers from previous run
+        
+        Returns:
+            Dict with crash detection results
+        """
+        markers = {
+            "crash_detected": False,
+            "reason": None,
+            "indicators": [],
+        }
+        
+        try:
+            # Check 1: Cloud lock with crash markers
+            cloud_lock_file = trinity_dir / "cloud_lock.json"
+            if cloud_lock_file.exists():
+                try:
+                    cloud_lock_data = json.loads(cloud_lock_file.read_text())
+                    lock_reason = cloud_lock_data.get("reason", "")
+                    
+                    # OOM crash markers
+                    if "OOM" in lock_reason.upper() or "OOM_CRASH" in lock_reason:
+                        markers["crash_detected"] = True
+                        markers["reason"] = "OOM_CRASH_PROTECTION"
+                        markers["indicators"].append("cloud_lock_oom_marker")
+                    
+                    # SIGKILL markers
+                    elif "SIGKILL" in lock_reason.upper() or "KILLED" in lock_reason.upper():
+                        markers["crash_detected"] = True
+                        markers["reason"] = "SIGKILL_DETECTED"
+                        markers["indicators"].append("cloud_lock_sigkill_marker")
+                    
+                    # Emergency offload markers
+                    elif "EMERGENCY" in lock_reason.upper():
+                        markers["crash_detected"] = True
+                        markers["reason"] = "EMERGENCY_OFFLOAD"
+                        markers["indicators"].append("cloud_lock_emergency_marker")
+                    
+                    # Check lock age - stale lock indicates crash
+                    lock_timestamp = cloud_lock_data.get("timestamp", 0)
+                    if lock_timestamp and time.time() - lock_timestamp > 3600:  # 1 hour
+                        markers["crash_detected"] = True
+                        if not markers["reason"]:
+                            markers["reason"] = "STALE_CLOUD_LOCK"
+                        markers["indicators"].append("cloud_lock_stale")
+                        
+                except json.JSONDecodeError:
+                    # Corrupted cloud lock file - indicates crash
+                    markers["crash_detected"] = True
+                    markers["reason"] = "CORRUPTED_STATE"
+                    markers["indicators"].append("cloud_lock_corrupted")
+            
+            # Check 2: Memory pressure emergency flags
+            memory_pressure_file = cross_repo_dir / "memory_pressure.json"
+            if memory_pressure_file.exists():
+                try:
+                    pressure_data = json.loads(memory_pressure_file.read_text())
+                    status = pressure_data.get("status", "")
+                    
+                    if status == "offload_active" or pressure_data.get("emergency", False):
+                        markers["crash_detected"] = True
+                        if not markers["reason"]:
+                            markers["reason"] = "MEMORY_EMERGENCY"
+                        markers["indicators"].append("memory_pressure_emergency")
+                    
+                    # Check if pressure signal is stale (process died without cleanup)
+                    pressure_timestamp = pressure_data.get("timestamp", 0)
+                    if pressure_timestamp and time.time() - pressure_timestamp > 300:  # 5 min
+                        markers["crash_detected"] = True
+                        if not markers["reason"]:
+                            markers["reason"] = "STALE_MEMORY_PRESSURE"
+                        markers["indicators"].append("memory_pressure_stale")
+                        
+                except json.JSONDecodeError:
+                    markers["indicators"].append("memory_pressure_corrupted")
+            
+            # Check 3: Stale heartbeat (process died without proper shutdown)
+            jarvis_body_file = trinity_dir / "jarvis_body.json"
+            if jarvis_body_file.exists():
+                try:
+                    body_data = json.loads(jarvis_body_file.read_text())
+                    last_heartbeat = body_data.get("last_heartbeat_epoch", 0)
+                    
+                    # If heartbeat is more than 2 minutes old but file exists,
+                    # the process crashed without proper cleanup
+                    if last_heartbeat and time.time() - last_heartbeat > 120:
+                        # But make sure there's no running process
+                        pid = body_data.get("pid")
+                        if pid and not self._is_process_running(pid):
+                            markers["crash_detected"] = True
+                            if not markers["reason"]:
+                                markers["reason"] = "STALE_HEARTBEAT"
+                            markers["indicators"].append("heartbeat_stale_dead_pid")
+                            
+                except json.JSONDecodeError:
+                    markers["indicators"].append("heartbeat_corrupted")
+            
+            # Check 4: Previous exit code marker
+            exit_code_file = trinity_dir / "last_exit_code"
+            if exit_code_file.exists():
+                try:
+                    exit_code = int(exit_code_file.read_text().strip())
+                    if exit_code < 0:  # Negative = killed by signal
+                        signal_num = abs(exit_code)
+                        markers["crash_detected"] = True
+                        if not markers["reason"]:
+                            if signal_num == 9:  # SIGKILL
+                                markers["reason"] = "SIGKILL_EXIT"
+                            elif signal_num == 137:  # 128 + 9 = OOM killed
+                                markers["reason"] = "OOM_KILLED"
+                            else:
+                                markers["reason"] = f"SIGNAL_{signal_num}_EXIT"
+                        markers["indicators"].append(f"exit_code_{exit_code}")
+                        
+                    elif exit_code > 1:  # Non-standard exit
+                        markers["indicators"].append(f"non_standard_exit_{exit_code}")
+                        
+                except (ValueError, IOError):
+                    pass
+                    
+            return markers
+            
+        except Exception as e:
+            self.logger.debug(f"[v148.0] Crash marker detection error: {e}")
+            return markers
+    
+    def _is_process_running(self, pid: int) -> bool:
+        """Check if a process is running by PID."""
+        try:
+            import psutil
+            return psutil.pid_exists(pid) and psutil.Process(pid).is_running()
+        except Exception:
+            # Fallback to os.kill probe
+            try:
+                os.kill(pid, 0)
+                return True
+            except (OSError, ProcessLookupError):
+                return False
+    
+    def _write_clean_exit_code(self, exit_code: int = 0) -> None:
+        """
+        v148.0: Write clean exit code marker for crash detection on next startup.
+        
+        This should be called during graceful shutdown to indicate the system
+        exited cleanly. The next startup will check this marker and skip
+        crash recovery if exit was clean.
+        
+        Args:
+            exit_code: Exit code to write (0 = clean, >0 = error, <0 = signal)
+        """
+        try:
+            trinity_dir = Path.home() / ".jarvis" / "trinity"
+            trinity_dir.mkdir(parents=True, exist_ok=True)
+            exit_code_file = trinity_dir / "last_exit_code"
+            exit_code_file.write_text(str(exit_code))
+            self.logger.debug(f"[v148.0] Wrote clean exit code: {exit_code}")
+        except Exception as e:
+            self.logger.debug(f"[v148.0] Could not write exit code: {e}")
 
     # ═══════════════════════════════════════════════════════════════════════════
     # v111.0: In-Process Backend Management (Unified Monolith Mode)
@@ -7671,6 +8018,42 @@ class SupervisorBootstrapper:
                 self._coord_hub = None
 
             self.perf.end("cleanup")
+
+            # ═══════════════════════════════════════════════════════════════════
+            # v148.0: INTELLIGENT STATE RECOVERY - Crash Detection & Auto-Healing
+            # ═══════════════════════════════════════════════════════════════════
+            # This phase detects if the system was in a crash state (OOM, SIGKILL, etc.)
+            # and automatically clears stale state to allow fresh startup.
+            #
+            # What it clears (ONLY when crash detected):
+            # 1. Cloud lock (allows fresh GCP provisioning)
+            # 2. Memory pressure signals (prevents false emergency mode)
+            # 3. Stale orchestrator state (prevents service conflicts)
+            # 4. Process tree JSON (prevents orphan detection false positives)
+            #
+            # This is NOT a brute-force cleanup - it's intelligent:
+            # - Only triggers when crash markers are detected
+            # - Preserves valid state from healthy shutdowns
+            # - Logs all recovery actions for debugging
+            # ═══════════════════════════════════════════════════════════════════
+            self.perf.start("state_recovery")
+            TerminalUI.print_step("[v148.0] Intelligent State Recovery")
+            
+            recovery_result = await self._intelligent_state_recovery()
+            
+            if recovery_result.get("crash_detected"):
+                crash_reason = recovery_result.get("crash_reason", "unknown")
+                TerminalUI.print_warning(f"[v148.0] Crash recovery: {crash_reason}")
+                self.logger.info(
+                    f"[v148.0] 🔧 State recovery complete: "
+                    f"{recovery_result.get('files_cleared', 0)} stale files cleared, "
+                    f"reason: {crash_reason}"
+                )
+            else:
+                TerminalUI.print_success("[v148.0] Clean startup (no recovery needed)")
+                self.logger.info("[v148.0] ✅ Clean startup state - no recovery needed")
+            
+            self.perf.end("state_recovery")
 
             # ═══════════════════════════════════════════════════════════════════
             # v111.3: Start backend in-process BEFORE cross-repo orchestration
