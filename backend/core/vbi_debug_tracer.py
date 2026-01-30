@@ -1570,9 +1570,8 @@ class VBIPipelineOrchestrator:
             logger.info("[VBI-ORCH] 💻 Trying direct local SpeechBrain extraction (last resort)...")
             from voice.speaker_verification_service import get_speaker_verification_service
             
-            service = get_speaker_verification_service()
-            if service is None:
-                service = await get_speaker_verification_service()
+            # v137.2: Fix - get_speaker_verification_service is async, must await it
+            service = await get_speaker_verification_service()
             
             if service and hasattr(service, '_local_engine') and service._local_engine:
                 audio_array = np.frombuffer(audio_bytes, dtype=np.float32)

@@ -379,19 +379,39 @@ class UnifiedProxyOrchestrator:
                 # Leader starts the proxy
                 success = await self._lifecycle.start()
                 if not success:
-                    self._complete_phase(phase, False, "Proxy start failed")
-                    if OrchestratorConfig.CLOUDSQL_REQUIRED:
+                    # v137.2: Check if this was a graceful skip (not a real failure)
+                    # When CLOUDSQL_SKIP_IF_UNCONFIGURED=true and CloudSQL is unconfigured,
+                    # the lifecycle controller transitions to STOPPED (not DEAD) and returns False.
+                    # This is a graceful skip, not a failure.
+                    from .lifecycle_controller import ProxyState, ProxyConfig
+                    
+                    was_gracefully_skipped = (
+                        ProxyConfig.SKIP_IF_UNCONFIGURED and 
+                        not ProxyConfig.is_configured() and
+                        self._lifecycle._state == ProxyState.STOPPED
+                    )
+                    
+                    if was_gracefully_skipped:
+                        logger.info(
+                            "[Orchestrator] v137.2: CloudSQL gracefully skipped (not configured, "
+                            "SKIP_IF_UNCONFIGURED=true). Continuing without CloudSQL proxy."
+                        )
+                        self._complete_phase(phase, True, "skipped_unconfigured")
+                    elif OrchestratorConfig.CLOUDSQL_REQUIRED:
+                        self._complete_phase(phase, False, "Proxy start failed")
                         await self._transition_to(OrchestratorState.FAILED, "proxy_start_failed")
                         return False
                     else:
+                        self._complete_phase(phase, False, "Proxy start failed (non-fatal)")
                         logger.warning(
                             "[Orchestrator] Proxy failed but CLOUDSQL_REQUIRED=false, continuing"
                         )
+                else:
+                    self._complete_phase(phase, True)
             else:
                 # Follower just initializes to observe state
                 await self._lifecycle.initialize()
-
-            self._complete_phase(phase, True)
+                self._complete_phase(phase, True)
 
             # Phase 2: Verification Barrier
             await self._transition_to(OrchestratorState.VERIFYING_PROXY)
@@ -409,16 +429,31 @@ class UnifiedProxyOrchestrator:
             )
 
             if not cloudsql_ready:
-                self._complete_phase(phase, False, "CloudSQL verification failed")
-                if OrchestratorConfig.CLOUDSQL_REQUIRED:
+                # v137.2: Check if CloudSQL was gracefully skipped
+                from .lifecycle_controller import ProxyState, ProxyConfig
+                
+                was_gracefully_skipped = (
+                    ProxyConfig.SKIP_IF_UNCONFIGURED and 
+                    not ProxyConfig.is_configured()
+                )
+                
+                if was_gracefully_skipped:
+                    logger.info(
+                        "[Orchestrator] v137.2: CloudSQL verification skipped (not configured). "
+                        "Operating without CloudSQL - using local SQLite/file-based storage."
+                    )
+                    self._complete_phase(phase, True, "skipped_unconfigured")
+                elif OrchestratorConfig.CLOUDSQL_REQUIRED:
+                    self._complete_phase(phase, False, "CloudSQL verification failed")
                     await self._transition_to(OrchestratorState.FAILED, "cloudsql_not_ready")
                     return False
                 else:
+                    self._complete_phase(phase, False, "CloudSQL not ready (non-fatal)")
                     logger.warning(
                         "[Orchestrator] CloudSQL not ready but CLOUDSQL_REQUIRED=false"
                     )
-
-            self._complete_phase(phase, True)
+            else:
+                self._complete_phase(phase, True)
 
             # Phase 3: Start Health Aggregator
             self._health = await create_health_aggregator(
