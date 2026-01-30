@@ -101,6 +101,7 @@ python-dotenv==1.2.1
 python-multipart==0.0.20
 PyYAML==6.0.3
 rapidfuzz>=3.0.0  # v32.3: Intelligent fuzzy text matching for OCR detection
+redis>=4.2.0  # cost_tracker real-time streaming; redis.asyncio for async
 referencing==0.36.2
 regex==2025.11.3
 requests==2.32.5
