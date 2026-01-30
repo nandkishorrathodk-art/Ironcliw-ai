@@ -52,9 +52,16 @@ Architecture:
     └──────────────────────────────────────────────────────────────────┘
 
 Author: JARVIS AI System
-Version: 5.9.0 (v142.0)
+Version: 5.10.0 (v143.0)
 
 Changelog:
+- v143.0 (v5.10): OPERATION HOLLOW CLIENT - Early Hardware Detection
+  - CRITICAL FIX: Set JARVIS_ENABLE_SLIM_MODE in supervisor's OWN environment at startup
+  - Hardware assessment now runs FIRST in start_all_services() BEFORE any spawn attempts
+  - Added set_hardware_env_in_supervisor() to set all hardware env vars early
+  - log_hardware_assessment() now also sets env vars (defense in depth)
+  - The v142.0 memory gate can now properly detect Slim Mode from os.environ
+  - ROOT CAUSE: Memory gate checked env var that was only passed to subprocess, not set locally
 - v142.0 (v5.9): DYNAMIC MEMORY GATING - Context-Aware Slim Mode Support
   - Fixed DEADLOCK: Supervisor was blocking jarvis-prime even when Slim Mode only needs ~300MB
   - Memory gate now CONTEXT-AWARE: checks JARVIS_ENABLE_SLIM_MODE env and hardware profile
@@ -387,15 +394,66 @@ def get_hardware_env_vars(assessment: Optional[HardwareAssessment] = None) -> Di
     return env_vars
 
 
+def set_hardware_env_in_supervisor(assessment: Optional[HardwareAssessment] = None) -> Dict[str, str]:
+    """
+    v143.0: Set hardware-based environment variables in the SUPERVISOR's own environment.
+
+    CRITICAL FIX: The v142.0 memory gate checks os.environ for JARVIS_ENABLE_SLIM_MODE,
+    but this env var was only being passed to subprocess, NOT set in the supervisor.
+    This caused the memory gate to fail to detect Slim Mode from Source 1.
+
+    This function should be called EARLY in supervisor startup (before any spawn attempts)
+    to ensure the memory gate can detect Slim Mode correctly.
+
+    Args:
+        assessment: Optional pre-computed assessment. If None, will assess hardware.
+
+    Returns:
+        Dict of environment variables that were set
+    """
+    if assessment is None:
+        assessment = assess_hardware_profile()
+
+    # Set environment variables in the SUPERVISOR's own environment
+    env_vars = {
+        "JARVIS_HARDWARE_PROFILE": assessment.profile.name,
+        "JARVIS_TOTAL_RAM_GB": str(assessment.total_ram_gb),
+        "JARVIS_AVAILABLE_RAM_GB": str(assessment.available_ram_gb),
+        "JARVIS_CPU_COUNT": str(assessment.cpu_count),
+        "JARVIS_IS_APPLE_SILICON": str(assessment.is_apple_silicon).lower(),
+        "JARVIS_SKIP_AGI_HUB": str(assessment.skip_agi_hub).lower(),
+        "JARVIS_ENABLE_SLIM_MODE": str(assessment.enable_slim_mode).lower(),
+        "JARVIS_DEFER_HEAVY_SUBSYSTEMS": str(assessment.defer_heavy_subsystems).lower(),
+        "JARVIS_HAS_GPU": str(assessment.has_gpu).lower(),
+        "JARVIS_GPU_NAME": assessment.gpu_name,
+        "JARVIS_GPU_LAYERS": str(assessment.recommended_gpu_layers),
+        "JARVIS_CONTEXT_SIZE": str(assessment.recommended_context_size),
+    }
+
+    for key, value in env_vars.items():
+        os.environ[key] = value
+
+    logger.info(
+        f"[v143.0] ✅ Set hardware env vars in supervisor environment: "
+        f"SLIM_MODE={assessment.enable_slim_mode}, PROFILE={assessment.profile.name}"
+    )
+
+    return env_vars
+
+
 def log_hardware_assessment(assessment: Optional[HardwareAssessment] = None) -> None:
     """
     v138.0: Log detailed hardware assessment to console.
+    v143.0: Also sets environment variables in supervisor's own environment.
 
     Args:
         assessment: Optional pre-computed assessment. If None, will assess hardware.
     """
     if assessment is None:
         assessment = assess_hardware_profile()
+
+    # v143.0: Set env vars in supervisor's own environment FIRST
+    set_hardware_env_in_supervisor(assessment)
 
     logger.info("=" * 70)
     logger.info("v138.0 HARDWARE-AWARE STARTUP ASSESSMENT")
@@ -16733,6 +16791,21 @@ echo "=== JARVIS Prime started ==="
         Returns dict mapping service names to success status.
         """
         self._running = True
+
+        # =========================================================================
+        # v143.0: SET HARDWARE ENVIRONMENT VARS FIRST (Critical for memory gate)
+        # =========================================================================
+        # This MUST happen before ANY spawn attempts. The v142.0 memory gate checks
+        # os.environ for JARVIS_ENABLE_SLIM_MODE to determine thresholds.
+        # Without this, the memory gate won't detect Slim Mode and will use the
+        # wrong thresholds (80% instead of 95%), blocking startup on low-memory systems.
+        # =========================================================================
+        try:
+            hw_assessment = assess_hardware_profile()
+            set_hardware_env_in_supervisor(hw_assessment)
+            log_hardware_assessment(hw_assessment)
+        except Exception as e:
+            logger.warning(f"[v143.0] Hardware assessment failed: {e}, proceeding with defaults")
 
         # v117.0: Acquire distributed startup lock to prevent concurrent supervisor instances
         # This solves race conditions where multiple supervisors try to start/adopt services
