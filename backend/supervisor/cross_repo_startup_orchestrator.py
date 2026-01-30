@@ -13702,6 +13702,7 @@ echo "=== JARVIS Prime started ==="
         """
         v95.0: Spawn a service process with comprehensive event emissions.
         v136.0: Enhanced with per-service spawn lock for atomic clean+spawn.
+        v137.1: Added diagnostic logging for hang debugging.
 
         Enhanced with:
         - Dependency checking before spawn
@@ -13714,6 +13715,7 @@ echo "=== JARVIS Prime started ==="
         Returns True if spawn and health check succeeded.
         """
         definition = managed.definition
+        logger.info(f"[v137.1] _spawn_service({definition.name}): entering...")
 
         # =========================================================================
         # v136.0 GAP 5, 12: Per-service spawn lock - atomic clean+spawn
@@ -13724,7 +13726,9 @@ echo "=== JARVIS Prime started ==="
         # - Parallel startup and crash recovery collide
         # - Initial spawn and auto-recovery overlap
         # =========================================================================
+        logger.info(f"[v137.1] _spawn_service({definition.name}): getting spawn lock...")
         spawn_lock = self._get_service_spawn_lock(definition.name)
+        logger.info(f"[v137.1] _spawn_service({definition.name}): spawn lock obtained, locked={spawn_lock.locked()}")
 
         if spawn_lock.locked():
             logger.warning(
@@ -13732,8 +13736,12 @@ echo "=== JARVIS Prime started ==="
                 f"Another spawn in progress - this call will wait."
             )
 
+        logger.info(f"[v137.1] _spawn_service({definition.name}): acquiring spawn lock...")
         async with spawn_lock:
-            return await self._spawn_service_inner(managed, definition)
+            logger.info(f"[v137.1] _spawn_service({definition.name}): spawn lock acquired, calling _spawn_service_inner...")
+            result = await self._spawn_service_inner(managed, definition)
+            logger.info(f"[v137.1] _spawn_service({definition.name}): _spawn_service_inner returned {result}")
+            return result
 
     async def _spawn_service_inner(
         self,
@@ -13742,6 +13750,7 @@ echo "=== JARVIS Prime started ==="
     ) -> bool:
         """
         v136.0: Inner spawn implementation (called within spawn lock).
+        v137.1: Added diagnostic logging for hang debugging.
 
         Integrated with GlobalSpawnCoordinator for cross-component coordination.
         This prevents double-spawn from:
@@ -13749,19 +13758,24 @@ echo "=== JARVIS Prime started ==="
         - Auto-recovery callbacks
         - Parallel orchestrator instances
         """
+        logger.info(f"[v137.1] _spawn_service_inner({definition.name}): entering...")
+        
         # =========================================================================
         # v136.0: GLOBAL SPAWN COORDINATION CHECK
         # =========================================================================
         # Check with global coordinator before proceeding. This prevents race
         # conditions with health monitors and auto-recovery callbacks.
         # =========================================================================
+        logger.info(f"[v137.1] _spawn_service_inner({definition.name}): getting spawn coordinator...")
         coordinator = get_spawn_coordinator()
+        logger.info(f"[v137.1] _spawn_service_inner({definition.name}): coordinator obtained, checking should_attempt_spawn...")
 
         should_spawn, reason = coordinator.should_attempt_spawn(
             service_name=definition.name,
             component_name="ProcessOrchestrator",
             ignore_cooldown=False,
         )
+        logger.info(f"[v137.1] _spawn_service_inner({definition.name}): should_spawn={should_spawn}, reason={reason}")
 
         if not should_spawn:
             logger.warning(
@@ -13789,6 +13803,7 @@ echo "=== JARVIS Prime started ==="
             return False
 
         # Mark as spawning in global coordinator
+        logger.info(f"[v137.1] _spawn_service_inner({definition.name}): marking as spawning in coordinator...")
         if not coordinator.mark_spawning(
             service_name=definition.name,
             component_name="ProcessOrchestrator",
@@ -13796,9 +13811,11 @@ echo "=== JARVIS Prime started ==="
         ):
             logger.warning(f"[v136.0] Failed to mark {definition.name} as spawning")
             return False
+        logger.info(f"[v137.1] _spawn_service_inner({definition.name}): marked as spawning, calling _spawn_service_core...")
 
         try:
             success = await self._spawn_service_core(managed, definition)
+            logger.info(f"[v137.1] _spawn_service_inner({definition.name}): _spawn_service_core returned {success}")
 
             if success:
                 # Mark ready in global coordinator
@@ -13813,6 +13830,7 @@ echo "=== JARVIS Prime started ==="
             return success
 
         except Exception as e:
+            logger.error(f"[v137.1] _spawn_service_inner({definition.name}): exception: {e}")
             coordinator.mark_failed(definition.name, str(e))
             raise
 
@@ -13823,12 +13841,16 @@ echo "=== JARVIS Prime started ==="
     ) -> bool:
         """
         v136.0: Core spawn implementation (separated for coordinator integration).
+        v137.1: Added diagnostic logging for hang debugging.
 
         This is the actual spawn logic, wrapped by _spawn_service_inner which
         handles global coordination.
         """
+        logger.info(f"[v137.1] _spawn_service_core({definition.name}): entering...")
+        
         # v95.0: Wait for dependencies to be healthy before spawning
         if definition.depends_on:
+            logger.info(f"[v137.1] _spawn_service_core({definition.name}): checking dependencies...")
             deps_ready = await self._wait_for_dependencies(definition)
             if not deps_ready:
                 logger.error(
@@ -13861,6 +13883,7 @@ echo "=== JARVIS Prime started ==="
                     )
 
         # v95.0: Emit service spawning event
+        logger.info(f"[v137.1] _spawn_service_core({definition.name}): emitting SERVICE_SPAWNING event...")
         await _emit_event(
             "SERVICE_SPAWNING",
             service_name=definition.name,
@@ -13872,6 +13895,7 @@ echo "=== JARVIS Prime started ==="
                 "depends_on": definition.depends_on
             }
         )
+        logger.info(f"[v137.1] _spawn_service_core({definition.name}): SERVICE_SPAWNING event emitted")
 
         # =========================================================================
         # v136.0: ATOMIC PORT HYGIENE + SPAWN LOCK
@@ -13885,6 +13909,7 @@ echo "=== JARVIS Prime started ==="
         # 3. Returns success/failure while holding lock
         # 4. Caller proceeds to spawn while still holding context
         # =========================================================================
+        logger.info(f"[v137.1] _spawn_service_core({definition.name}): enforcing port hygiene on port {definition.default_port}...")
         port_ready, port_error, killed_pids = await self._enforce_port_hygiene(
             port=definition.default_port,
             service_name=definition.name,
@@ -13893,6 +13918,7 @@ echo "=== JARVIS Prime started ==="
             post_kill_sleep=1.0,
             verification_retries=3,  # GAP 4: TIME_WAIT retry
         )
+        logger.info(f"[v137.1] _spawn_service_core({definition.name}): port hygiene complete: ready={port_ready}, error={port_error}")
 
         if not port_ready:
             logger.error(
