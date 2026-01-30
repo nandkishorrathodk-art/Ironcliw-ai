@@ -1893,9 +1893,14 @@ class ServiceRegistry:
         if not service:
             return None
 
+        # v137.1: FIX - Offload psutil check to thread to avoid blocking event loop
+        # The is_process_alive() method uses synchronous psutil calls which can
+        # block for 10-100ms per call, stalling the event loop during startup.
+        is_alive = await asyncio.to_thread(service.is_process_alive)
+        
         # v95.1: Check if process is still alive with grace period
         # This prevents premature deregistration due to transient PID issues
-        if not service.is_process_alive():
+        if not is_alive:
             dead_pid = service.pid
             current_time = time.time()
 
@@ -2032,18 +2037,32 @@ class ServiceRegistry:
         if not healthy_only:
             return list(services.values())
 
-        # v93.3: Filter to only healthy services with startup-aware stale detection
-        healthy = []
-        for service in services.values():
-            is_stale = service.is_stale_startup_aware(
-                timeout_seconds=self.heartbeat_timeout,
-                startup_grace_period=self.startup_grace_period,
-                startup_multiplier=self.startup_stale_multiplier,
-            )
-            if service.is_process_alive() and not is_stale:
-                healthy.append(service)
-
-        return healthy
+        # v137.1: FIX - Offload healthy filtering to thread since is_process_alive()
+        # uses synchronous psutil calls that can block the event loop
+        def _filter_healthy(
+            services_dict: Dict[str, ServiceInfo],
+            heartbeat_timeout: float,
+            startup_grace_period: float,
+            startup_stale_multiplier: float,
+        ) -> List[ServiceInfo]:
+            healthy = []
+            for service in services_dict.values():
+                is_stale = service.is_stale_startup_aware(
+                    timeout_seconds=heartbeat_timeout,
+                    startup_grace_period=startup_grace_period,
+                    startup_multiplier=startup_stale_multiplier,
+                )
+                if service.is_process_alive() and not is_stale:
+                    healthy.append(service)
+            return healthy
+        
+        return await asyncio.to_thread(
+            _filter_healthy,
+            services,
+            self.heartbeat_timeout,
+            self.startup_grace_period,
+            self.startup_stale_multiplier,
+        )
 
     async def heartbeat(
         self,
@@ -2398,6 +2417,7 @@ class ServiceRegistry:
     async def cleanup_stale_services(self) -> int:
         """
         v95.1: Remove services with dead PIDs or stale heartbeats.
+        v137.1: FIX - Process checking is now offloaded to thread.
 
         CRITICAL: Registry owner (jarvis-body) is NEVER removed.
         If the registry is running, the owner must be alive by definition.
@@ -2405,47 +2425,67 @@ class ServiceRegistry:
         Returns:
             Number of services cleaned up
         """
-        services = await asyncio.to_thread(self._read_registry)
-        cleaned = 0
+        # v137.1: FIX - Run entire cleanup logic in thread since is_process_alive()
+        # uses synchronous psutil calls that can block the event loop
+        def _sync_cleanup(
+            services: Dict[str, ServiceInfo],
+            owner_service_name: Optional[str],
+            heartbeat_timeout: float,
+            startup_grace_period: float,
+            startup_stale_multiplier: float,
+        ) -> Tuple[Dict[str, ServiceInfo], int, List[str]]:
+            """Synchronous cleanup logic that runs in a thread."""
+            cleaned = 0
+            cleaned_names = []
+            
+            for service_name, service in list(services.items()):
+                # CRITICAL - Registry owner is EXEMPT from cleanup
+                if service_name == owner_service_name:
+                    continue
 
-        for service_name, service in list(services.items()):
-            # v95.1: CRITICAL - Registry owner is EXEMPT from cleanup
-            # If the registry code is running, the owner service MUST be alive
-            if service_name == self._owner_service_name:
-                logger.debug(f"  ✓ {service_name} is registry owner - exempt from cleanup")
-                continue
+                should_remove = False
 
-            should_remove = False
-
-            # Check if process is dead
-            if not service.is_process_alive():
-                logger.info(
-                    f"🧹 Cleaning dead service: {service_name} (PID {service.pid} not found)"
-                )
-                should_remove = True
-
-            # v93.3: Check if stale with startup awareness
-            elif service.is_stale_startup_aware(
-                timeout_seconds=self.heartbeat_timeout,
-                startup_grace_period=self.startup_grace_period,
-                startup_multiplier=self.startup_stale_multiplier,
-            ):
-                in_startup = service.is_in_startup_phase(self.startup_grace_period)
-                # Only clean if past startup grace period
-                if not in_startup:
-                    logger.info(
-                        f"🧹 Cleaning stale service: {service_name} "
-                        f"(last heartbeat {time.time() - service.last_heartbeat:.0f}s ago)"
-                    )
+                # Check if process is dead
+                if not service.is_process_alive():
+                    cleaned_names.append(f"dead:{service_name}:{service.pid}")
                     should_remove = True
-                else:
-                    logger.debug(
-                        f"⏳ Service {service_name} stale but in startup phase, keeping"
-                    )
 
-            if should_remove:
-                del services[service_name]
-                cleaned += 1
+                # Check if stale with startup awareness
+                elif service.is_stale_startup_aware(
+                    timeout_seconds=heartbeat_timeout,
+                    startup_grace_period=startup_grace_period,
+                    startup_multiplier=startup_stale_multiplier,
+                ):
+                    in_startup = service.is_in_startup_phase(startup_grace_period)
+                    if not in_startup:
+                        elapsed = time.time() - service.last_heartbeat
+                        cleaned_names.append(f"stale:{service_name}:{elapsed:.0f}s")
+                        should_remove = True
+
+                if should_remove:
+                    del services[service_name]
+                    cleaned += 1
+                    
+            return services, cleaned, cleaned_names
+        
+        services = await asyncio.to_thread(self._read_registry)
+        
+        services, cleaned, cleaned_names = await asyncio.to_thread(
+            _sync_cleanup,
+            services,
+            self._owner_service_name,
+            self.heartbeat_timeout,
+            self.startup_grace_period,
+            self.startup_stale_multiplier,
+        )
+        
+        # Log cleaned services (outside thread for proper logging)
+        for info in cleaned_names:
+            parts = info.split(":", 2)
+            if parts[0] == "dead":
+                logger.info(f"🧹 Cleaning dead service: {parts[1]} (PID {parts[2]} not found)")
+            elif parts[0] == "stale":
+                logger.info(f"🧹 Cleaning stale service: {parts[1]} (last heartbeat {parts[2]} ago)")
 
         if cleaned > 0:
             await asyncio.to_thread(self._write_registry, services)
@@ -3030,38 +3070,59 @@ class ServiceRegistry:
         # Check if any registered service claims this port
         services = await asyncio.to_thread(self._read_registry)
 
-        for service_name, service in services.items():
-            if service.port == port:
-                if service.is_process_alive():
-                    logger.warning(
-                        f"Port {port} in use by registered service {service_name} "
-                        f"(PID: {service.pid})"
-                    )
-                    return False
-                else:
-                    # Dead service holding port - remove from registry
-                    logger.info(
-                        f"Removing dead service {service_name} from port {port}"
-                    )
-                    await self.deregister_service(service_name)
+        # v137.1: FIX - Check registered services for port usage in thread
+        def _check_registered_services(
+            services_dict: Dict[str, ServiceInfo],
+            target_port: int
+        ) -> Tuple[Optional[str], Optional[str], bool]:
+            """Check if a registered service uses the port. Returns (service_name, pid, is_alive)."""
+            for service_name, service in services_dict.items():
+                if service.port == target_port:
+                    is_alive = service.is_process_alive()
+                    return service_name, str(service.pid), is_alive
+            return None, None, False
+        
+        service_name, service_pid, is_alive = await asyncio.to_thread(
+            _check_registered_services, services, port
+        )
+        
+        if service_name:
+            if is_alive:
+                logger.warning(
+                    f"Port {port} in use by registered service {service_name} "
+                    f"(PID: {service_pid})"
+                )
+                return False
+            else:
+                # Dead service holding port - remove from registry
+                logger.info(
+                    f"Removing dead service {service_name} from port {port}"
+                )
+                await self.deregister_service(service_name)
 
-        # Check if port is in use by an unregistered process
-        try:
-            for conn in psutil.net_connections(kind='inet'):
-                if conn.laddr.port == port and conn.status == 'LISTEN':
-                    # Port is in use by unregistered process
-                    try:
-                        proc = psutil.Process(conn.pid)
-                        logger.warning(
-                            f"Port {port} in use by unregistered process: "
-                            f"{proc.name()} (PID: {conn.pid})"
-                        )
-                        return False
-                    except (psutil.NoSuchProcess, psutil.AccessDenied):
-                        pass
-        except (psutil.AccessDenied, OSError):
-            # May not have permission to check all connections
-            pass
+        # v137.1: FIX - Check unregistered processes in thread
+        def _check_unregistered_processes(target_port: int) -> Optional[Tuple[str, int]]:
+            """Check if an unregistered process uses the port. Returns (proc_name, pid) or None."""
+            try:
+                for conn in psutil.net_connections(kind='inet'):
+                    if conn.laddr.port == target_port and conn.status == 'LISTEN':
+                        try:
+                            proc = psutil.Process(conn.pid)
+                            return proc.name(), conn.pid
+                        except (psutil.NoSuchProcess, psutil.AccessDenied):
+                            pass
+            except (psutil.AccessDenied, OSError):
+                pass
+            return None
+        
+        unregistered = await asyncio.to_thread(_check_unregistered_processes, port)
+        if unregistered:
+            proc_name, proc_pid = unregistered
+            logger.warning(
+                f"Port {port} in use by unregistered process: "
+                f"{proc_name} (PID: {proc_pid})"
+            )
+            return False
 
         return True
 
@@ -3074,61 +3135,77 @@ class ServiceRegistry:
         """
         services = await asyncio.to_thread(self._read_registry)
 
-        report = {
-            "timestamp": datetime.now().isoformat(),
-            "total_services": len(services),
-            "healthy_services": 0,
-            "degraded_services": 0,
-            "dead_services": 0,
-            "stale_services": 0,
-            "services": {}
-        }
-
-        for service_name, service in services.items():
-            is_alive = service.is_process_alive()
-            # v93.3: Use startup-aware stale detection for health report
-            is_in_startup = service.is_in_startup_phase(self.startup_grace_period)
-            is_stale = service.is_stale_startup_aware(
-                timeout_seconds=self.heartbeat_timeout,
-                startup_grace_period=self.startup_grace_period,
-                startup_multiplier=self.startup_stale_multiplier,
-            )
-
-            service_report = {
-                "pid": service.pid,
-                "port": service.port,
-                "host": service.host,
-                "status": service.status,
-                "is_alive": is_alive,
-                "is_stale": is_stale,
-                "is_in_startup": is_in_startup,  # v93.3: Track startup phase
-                "registered_at": datetime.fromtimestamp(
-                    service.registered_at
-                ).isoformat() if service.registered_at else None,
-                "last_heartbeat": datetime.fromtimestamp(
-                    service.last_heartbeat
-                ).isoformat() if service.last_heartbeat else None,
-                "heartbeat_age_seconds": time.time() - service.last_heartbeat,
-                "service_age_seconds": time.time() - service.registered_at,  # v93.3
+        # v137.1: FIX - Run health checks in thread to avoid blocking event loop
+        def _build_health_report(
+            services_dict: Dict[str, ServiceInfo],
+            heartbeat_timeout: float,
+            startup_grace_period: float,
+            startup_stale_multiplier: float,
+        ) -> Dict[str, Any]:
+            """Build health report synchronously (runs in thread)."""
+            report = {
+                "timestamp": datetime.now().isoformat(),
+                "total_services": len(services_dict),
+                "healthy_services": 0,
+                "degraded_services": 0,
+                "dead_services": 0,
+                "stale_services": 0,
+                "services": {}
             }
-
-            if not is_alive:
-                service_report["health"] = "DEAD"
-                report["dead_services"] += 1
-            elif is_stale:
-                service_report["health"] = "STALE"
-                report["stale_services"] += 1
-            elif is_in_startup:
-                service_report["health"] = "STARTING"  # v93.3: New status
-            elif service.status == "degraded":
-                service_report["health"] = "DEGRADED"
-                report["degraded_services"] += 1
-            else:
-                service_report["health"] = "HEALTHY"
-                report["healthy_services"] += 1
-
-            report["services"][service_name] = service_report
-
+            
+            for service_name, service in services_dict.items():
+                is_alive = service.is_process_alive()
+                is_in_startup = service.is_in_startup_phase(startup_grace_period)
+                is_stale = service.is_stale_startup_aware(
+                    timeout_seconds=heartbeat_timeout,
+                    startup_grace_period=startup_grace_period,
+                    startup_multiplier=startup_stale_multiplier,
+                )
+                
+                service_report = {
+                    "pid": service.pid,
+                    "port": service.port,
+                    "host": service.host,
+                    "status": service.status,
+                    "is_alive": is_alive,
+                    "is_stale": is_stale,
+                    "is_in_startup": is_in_startup,
+                    "registered_at": datetime.fromtimestamp(
+                        service.registered_at
+                    ).isoformat() if service.registered_at else None,
+                    "last_heartbeat": datetime.fromtimestamp(
+                        service.last_heartbeat
+                    ).isoformat() if service.last_heartbeat else None,
+                    "heartbeat_age_seconds": time.time() - service.last_heartbeat,
+                    "service_age_seconds": time.time() - service.registered_at,
+                }
+                
+                # Determine health status
+                if not is_alive:
+                    service_report["health"] = "dead"
+                    report["dead_services"] += 1
+                elif is_stale and not is_in_startup:
+                    service_report["health"] = "stale"
+                    report["stale_services"] += 1
+                elif is_stale and is_in_startup:
+                    service_report["health"] = "starting"
+                    report["healthy_services"] += 1
+                else:
+                    service_report["health"] = "healthy"
+                    report["healthy_services"] += 1
+                    
+                report["services"][service_name] = service_report
+                
+            return report
+        
+        report = await asyncio.to_thread(
+            _build_health_report,
+            services,
+            self.heartbeat_timeout,
+            self.startup_grace_period,
+            self.startup_stale_multiplier,
+        )
+        
         return report
 
 
@@ -3635,7 +3712,8 @@ class ServiceSupervisor:
                     f"[v93.14] {service_name} not registered, initiating restart"
                 )
                 await self.restart_service(service_name)
-            elif not service_info.is_process_alive():
+            # v137.1: FIX - Offload psutil check to thread
+            elif not await asyncio.to_thread(service_info.is_process_alive):
                 # Service registered but process is dead
                 logger.warning(
                     f"[v93.14] {service_name} process dead (was PID {service_info.pid}), "

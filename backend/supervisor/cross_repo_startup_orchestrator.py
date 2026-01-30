@@ -7455,6 +7455,7 @@ class ProcessOrchestrator:
     ) -> str:
         """
         v95.5: Create a new trace span for an operation.
+        v137.1: Added diagnostic logging for hang debugging.
 
         Args:
             operation: Name of the operation
@@ -7464,28 +7465,36 @@ class ProcessOrchestrator:
         Returns:
             Span ID
         """
+        # v137.1: Temporarily using INFO level for debugging hang issue
+        logger.info(f"[v137.1] _create_span({operation}): entering...")
         self._ensure_locks_initialized()
         metadata = metadata or {}
 
         try:
+            logger.info(f"[v137.1] _create_span({operation}): importing CorrelationContext...")
             from backend.core.resilience.correlation_context import CorrelationContext
+            logger.info(f"[v137.1] _create_span({operation}): import complete")
 
             parent = parent_context or self._startup_trace_context
 
             # Create child context for this operation
+            logger.info(f"[v137.1] _create_span({operation}): creating context...")
             ctx = CorrelationContext.create(
                 operation=operation,
                 source_repo="jarvis",
                 source_component="orchestrator",
                 parent=parent,
             )
+            logger.info(f"[v137.1] _create_span({operation}): context created")
 
             # Add metadata to baggage
             for key, value in metadata.items():
                 ctx.baggage[key] = str(value)
 
+            logger.info(f"[v137.1] _create_span({operation}): acquiring trace lock...")
             async with self._trace_lock_safe:
                 self._active_traces[ctx.correlation_id] = ctx
+            logger.info(f"[v137.1] _create_span({operation}): trace lock released")
 
             logger.debug(f"[v95.5] Created span: {operation} ({ctx.correlation_id})")
             return ctx.correlation_id
@@ -15276,8 +15285,11 @@ echo "=== JARVIS Prime started ==="
                 self._startup_events[service_name] = asyncio.Event()
 
         # v95.5: Publish lifecycle event and create trace span for this service
+        logger.info(f"[v137.1] 🚀 {service_name}: Starting service coordination...")
         await self.publish_service_lifecycle_event(service_name, "starting", {"depends_on": definition.depends_on})
+        logger.info(f"[v137.1] {service_name}: Lifecycle event published, creating span...")
         service_span = await self._create_span(f"start_{service_name}", metadata={"service": service_name})
+        logger.info(f"[v137.1] {service_name}: Span created, checking dependencies...")
 
         try:
             # ==================================================================
@@ -15301,6 +15313,7 @@ echo "=== JARVIS Prime started ==="
             # ==================================================================
             # PHASE 2: Acquire semaphore WITH TIMEOUT (prevents indefinite block)
             # ==================================================================
+            logger.info(f"[v137.1] {service_name}: No dependencies (or all ready), acquiring semaphore...")
             semaphore_timeout = 60.0  # Max wait for semaphore slot
             try:
                 acquired = await asyncio.wait_for(
@@ -15309,6 +15322,7 @@ echo "=== JARVIS Prime started ==="
                 )
                 if not acquired:
                     return service_name, False, "semaphore_acquisition_failed"
+                logger.info(f"[v137.1] {service_name}: Semaphore acquired, proceeding to PHASE 3...")
             except asyncio.TimeoutError:
                 logger.warning(
                     f"[v95.1] {service_name}: Semaphore timeout after {semaphore_timeout}s "
@@ -15323,6 +15337,7 @@ echo "=== JARVIS Prime started ==="
                 # ==============================================================
                 # PHASE 3: Perform actual startup (semaphore held)
                 # ==============================================================
+                logger.info(f"[v137.1] {service_name}: PHASE 3 - Checking persistent state...")
 
                 # v117.5: Step -1 - Check PERSISTENT STATE FILES for previously running services
                 # This enables service adoption across full supervisor restarts (not just SIGHUP)
@@ -15330,7 +15345,9 @@ echo "=== JARVIS Prime started ==="
                 # v137.0: Use non-blocking I/O for state file read
                 try:
                     service_state_file = Path.home() / ".jarvis" / "trinity" / "state" / "services.json"
+                    logger.info(f"[v137.1] {service_name}: Reading persistent state from {service_state_file}...")
                     persistent_services = await read_json_nonblocking(service_state_file)
+                    logger.info(f"[v137.1] {service_name}: Persistent state read complete (found: {persistent_services is not None})")
                     if persistent_services is not None:
                         # Normalize service name for lookup (handle hyphens vs underscores)
                         normalized_name = service_name.replace("-", "_")
@@ -15401,6 +15418,8 @@ echo "=== JARVIS Prime started ==="
                                     )
                 except Exception as e:
                     logger.debug(f"[v117.5] Persistent state check failed: {e}")
+                
+                logger.info(f"[v137.1] {service_name}: Checking GlobalProcessRegistry for preserved services...")
 
                 # v117.0: Step 0 - Check if service was PRESERVED during restart
                 # If GlobalProcessRegistry has this service (preserved via os.execv restart),
@@ -15493,10 +15512,13 @@ echo "=== JARVIS Prime started ==="
                     pass
                 except Exception as e:
                     logger.debug(f"[v117.0] GlobalProcessRegistry check failed: {e}")
+                
+                logger.info(f"[v137.1] {service_name}: Checking service registry for existing instances...")
 
                 # Step 1: Check if already running via registry
                 if self.registry:
                     existing = await self.registry.discover_service(service_name)
+                    logger.info(f"[v137.1] {service_name}: Registry check complete (found: {existing is not None})")
                     if existing:
                         reason = f"already running (PID: {existing.pid}, Port: {existing.port})"
                         # v116.0: Register adopted service in GlobalProcessRegistry for SIGHUP protection
@@ -15518,6 +15540,7 @@ echo "=== JARVIS Prime started ==="
                         return service_name, True, reason
 
                 # Step 2: HTTP probe using shared session
+                logger.info(f"[v137.1] {service_name}: Performing HTTP health probe on port {definition.default_port}...")
                 session = await self._get_http_session()
                 url = f"http://localhost:{definition.default_port}{definition.health_endpoint}"
 
@@ -15534,9 +15557,13 @@ echo "=== JARVIS Prime started ==="
                             return service_name, True, reason
                 except Exception:
                     pass  # Service not running, need to start
+                
+                logger.info(f"[v137.1] {service_name}: HTTP probe complete (service not running)")
 
                 # Step 3: Try Docker hybrid mode
+                logger.info(f"[v137.1] {service_name}: Checking Docker hybrid mode...")
                 use_docker, docker_reason = await self._try_docker_hybrid_for_service(definition)
+                logger.info(f"[v137.1] {service_name}: Docker check complete (use_docker={use_docker}, reason={docker_reason})")
                 if use_docker:
                     # Create managed process entry for Docker
                     managed = ManagedProcess(definition=definition)
@@ -15575,8 +15602,10 @@ echo "=== JARVIS Prime started ==="
                     return service_name, True, f"Docker container ({docker_reason})"
 
                 # Step 4: Spawn local process
+                logger.info(f"[v137.1] {service_name}: Docker not available, spawning local process...")
 
                 # v95.9: Check for port conflicts and resolve them automatically
+                logger.info(f"[v137.1] {service_name}: Resolving port conflicts...")
                 resolved_port, _ = await self._resolve_port_conflict(
                     service_name, definition.default_port
                 )
@@ -15606,7 +15635,9 @@ echo "=== JARVIS Prime started ==="
                 managed = ManagedProcess(definition=definition)
                 self.processes[service_name] = managed
 
+                logger.info(f"[v137.1] {service_name}: Calling _spawn_service...")
                 success = await self._spawn_service(managed)
+                logger.info(f"[v137.1] {service_name}: _spawn_service returned: {success}")
 
                 if success:
                     # v95.9: Start process health monitor for crash detection and auto-restart
@@ -15738,13 +15769,16 @@ echo "=== JARVIS Prime started ==="
         # Phase 1: Start light services in parallel
         if light_services:
             logger.info(f"  🚀 Starting {len(light_services)} light service(s) in parallel...")
+            logger.info(f"[v137.1] Creating asyncio tasks for light services: {[s.name for s in light_services]}")
 
             light_tasks = [
                 self._start_single_service_with_coordination(d)
                 for d in light_services
             ]
+            logger.info(f"[v137.1] Light tasks created: {len(light_tasks)}, now awaiting gather...")
 
             light_results = await asyncio.gather(*light_tasks, return_exceptions=True)
+            logger.info(f"[v137.1] asyncio.gather completed for light services")
 
             for result in light_results:
                 # v95.7: Check for BaseException (not just Exception) for proper type narrowing
