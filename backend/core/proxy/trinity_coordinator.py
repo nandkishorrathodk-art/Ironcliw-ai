@@ -1138,6 +1138,10 @@ async def integrate_with_proxy_orchestrator(
         from .orchestrator import UnifiedProxyOrchestrator
 
         # Register CloudSQL as a component
+        # v148.0: CloudSQL is OPTIONAL - system gracefully degrades to SQLite
+        # Only mark as required if explicitly configured via env var
+        cloudsql_required = os.getenv("CLOUDSQL_REQUIRED", "false").lower() == "true"
+        
         cloudsql_config = ComponentConfig(
             component=TrinityComponent.CLOUDSQL_PROXY,
             display_name="CloudSQL Proxy",
@@ -1148,9 +1152,16 @@ async def integrate_with_proxy_orchestrator(
             health_timeout=5.0,
             heartbeat_stale=30.0,
             grace_period=10.0,
-            required=True,
+            required=cloudsql_required,  # v148.0: Optional by default (SQLite fallback)
         )
         trinity_coordinator.register_component(cloudsql_config)
+        
+        if not cloudsql_required:
+            logger.debug(
+                "[v148.0] CloudSQL Proxy registered as OPTIONAL. "
+                "System will use SQLite fallback if unavailable. "
+                "Set CLOUDSQL_REQUIRED=true to make it required."
+            )
 
     except ImportError:
         logger.debug("[TrinityCoordinator] Proxy orchestrator not available")
