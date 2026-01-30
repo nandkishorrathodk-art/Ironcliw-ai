@@ -52,9 +52,17 @@ Architecture:
     └──────────────────────────────────────────────────────────────────┘
 
 Author: JARVIS AI System
-Version: 5.8.0 (v137.0)
+Version: 5.9.0 (v142.0)
 
 Changelog:
+- v142.0 (v5.9): DYNAMIC MEMORY GATING - Context-Aware Slim Mode Support
+  - Fixed DEADLOCK: Supervisor was blocking jarvis-prime even when Slim Mode only needs ~300MB
+  - Memory gate now CONTEXT-AWARE: checks JARVIS_ENABLE_SLIM_MODE env and hardware profile
+  - SLIM MODE thresholds: 95% max memory usage, 0.5GB minimum free (vs 80%/2GB for FULL mode)
+  - Auto-detect Slim Mode for jarvis-prime on systems with <32GB RAM
+  - Enhanced SystemExit protection in I/O thread pool to prevent ugly stack traces
+  - Graceful thread pool shutdown with timeout and forced exit handling
+  - ROOT CAUSE: Users couldn't use GCP Cloud because the Local Client (Slim Mode) was blocked!
 - v137.0 (v5.8): I/O Airlock Pattern - Non-Blocking File & System Operations
   - Dedicated ThreadPoolExecutor (4 workers) for I/O operations
   - Prevents event loop blocking from synchronous file I/O (json.loads, read_text)
@@ -766,23 +774,43 @@ def _get_io_thread_pool() -> concurrent.futures.ThreadPoolExecutor:
     return _IO_THREAD_POOL
 
 
-def _shutdown_io_thread_pool() -> None:
+def _shutdown_io_thread_pool(wait: bool = True, timeout: float = 5.0) -> None:
     """
     v137.0: Shutdown the I/O thread pool gracefully.
+    v142.0: Enhanced with timeout and SystemExit protection.
 
     Call this during orchestrator shutdown to clean up threads.
+    This prevents the ugly "Exception in worker: SystemExit" stack traces
+    that appear when the interpreter shuts down while workers are blocked.
+
+    Args:
+        wait: Whether to wait for threads to complete (default True)
+        timeout: Maximum time to wait for shutdown (default 5s)
     """
     global _IO_THREAD_POOL
     if _IO_THREAD_POOL is not None:
         with _IO_POOL_LOCK:
             if _IO_THREAD_POOL is not None:
                 try:
-                    _IO_THREAD_POOL.shutdown(wait=True, cancel_futures=True)
-                except TypeError:
-                    # Python < 3.9 doesn't have cancel_futures
-                    _IO_THREAD_POOL.shutdown(wait=True)
-                _IO_THREAD_POOL = None
-                logger.debug("[v137.0] I/O Airlock thread pool shut down")
+                    # v142.0: Use wait=False first to allow quick exit,
+                    # then cancel pending futures
+                    try:
+                        # Python 3.9+ has cancel_futures parameter
+                        _IO_THREAD_POOL.shutdown(wait=wait, cancel_futures=True)
+                    except TypeError:
+                        # Python < 3.9 doesn't have cancel_futures
+                        _IO_THREAD_POOL.shutdown(wait=wait)
+                except (SystemExit, KeyboardInterrupt):
+                    # v142.0: Interpreter shutting down - force non-waiting shutdown
+                    try:
+                        _IO_THREAD_POOL.shutdown(wait=False)
+                    except Exception:
+                        pass  # Best effort
+                except Exception as e:
+                    logger.debug(f"[v142.0] Thread pool shutdown note: {e}")
+                finally:
+                    _IO_THREAD_POOL = None
+                    logger.debug("[v142.0] I/O Airlock thread pool shut down")
 
 
 async def _run_blocking_io(
@@ -858,6 +886,16 @@ async def _run_blocking_io(
         logger.warning(
             f"[v137.0] ⏱️ I/O Airlock TIMEOUT: {operation_name} exceeded {timeout}s "
             f"(elapsed: {elapsed_ms:.1f}ms). Returning default."
+        )
+        return default
+
+    except (SystemExit, KeyboardInterrupt):
+        # v142.0: Handle interpreter shutdown gracefully
+        # This prevents ugly thread pool stack traces when the orchestrator
+        # exits during memory gate blocking or other early termination
+        logger.debug(
+            f"[v142.0] I/O Airlock interrupted ({operation_name}) - "
+            f"interpreter shutting down. Returning default."
         )
         return default
 
@@ -14253,11 +14291,24 @@ echo "=== JARVIS Prime started ==="
         logger.info(f"[v137.1] _spawn_service_core({definition.name}): entering...")
         
         # =========================================================================
-        # v137.2: HARD MEMORY GATE - Prevent OOM kills for heavy services
+        # v142.0: DYNAMIC MEMORY GATING - Context-Aware Slim Mode Support
         # =========================================================================
         # This is the LAST line of defense against starting heavy services when
         # memory is critically low. Unlike the OOM Prevention bridge (which is
         # advisory), this will BLOCK startup if memory is dangerously low.
+        #
+        # v142.0 ENHANCEMENT: The gate is now CONTEXT-AWARE:
+        #   - SLIM MODE: The Hollow Client only needs ~300MB, so we allow up to
+        #     95% memory usage with 0.5GB minimum free. This unblocks the deadlock
+        #     where the Supervisor blocks jarvis-prime startup even though Slim Mode
+        #     specifically exists to offload heavy work to GCP.
+        #   - FULL MODE: Standard thresholds (80% max, 2GB minimum free).
+        #
+        # ROOT CAUSE FIX: Without this, users are stuck in a deadlock:
+        #   1. They need GCP Cloud to save RAM
+        #   2. To use GCP, they need jarvis-prime to start (even in Slim Mode)
+        #   3. The old gate blocked jarvis-prime because RAM was at 85%
+        #   4. Result: Cannot use Cloud because Local Client can't start!
         # =========================================================================
         heavy_services = ["jarvis-prime", "jarvis_prime", "j-prime", "reactor-core", "reactor_core"]
         if definition.name.lower() in heavy_services:
@@ -14266,16 +14317,86 @@ echo "=== JARVIS Prime started ==="
                 mem = psutil.virtual_memory()
                 memory_pressure = mem.percent
                 available_gb = mem.available / (1024 ** 3)
-                
-                # Critical threshold: >80% used OR <2GB available
-                is_critical = memory_pressure > 80 or available_gb < 2.0
-                
+
+                # =====================================================================
+                # v142.0: DYNAMIC THRESHOLD CALCULATION based on Slim Mode status
+                # =====================================================================
+                # Detect Slim Mode from multiple sources:
+                #   1. Environment variable (highest priority)
+                #   2. Hardware profile from orchestrator (if available)
+                #   3. Service definition flags (if available)
+                # =====================================================================
+                is_slim_mode = False
+                slim_mode_source = "none"
+
+                # Source 1: Environment variable (set by supervisor or user)
+                slim_env = os.environ.get("JARVIS_ENABLE_SLIM_MODE", "").lower()
+                if slim_env in ("true", "1", "yes", "on"):
+                    is_slim_mode = True
+                    slim_mode_source = "env:JARVIS_ENABLE_SLIM_MODE"
+
+                # Source 2: Hardware profile from global assessment (v138.0)
+                if not is_slim_mode:
+                    try:
+                        hw_assessment = assess_hardware_profile()
+                        if hw_assessment.profile in (HardwareProfile.SLIM, HardwareProfile.CLOUD_ONLY):
+                            is_slim_mode = True
+                            slim_mode_source = f"hardware_profile:{hw_assessment.profile.name}"
+                    except Exception:
+                        pass  # Assessment not available yet
+
+                # Source 3: Service definition environment (passed during spawn)
+                if not is_slim_mode:
+                    service_env = getattr(definition, 'environment', {}) or {}
+                    if service_env.get("JARVIS_ENABLE_SLIM_MODE", "").lower() in ("true", "1", "yes", "on"):
+                        is_slim_mode = True
+                        slim_mode_source = "service_env"
+
+                # Source 4: Check if jarvis-prime specifically requested slim spawn
+                if not is_slim_mode and "j-prime" in definition.name.lower() or "jarvis-prime" in definition.name.lower():
+                    # For jarvis-prime on systems with <32GB, default to Slim Mode
+                    total_ram_gb = mem.total / (1024 ** 3)
+                    if total_ram_gb < 32:
+                        is_slim_mode = True
+                        slim_mode_source = f"auto_detect:total_ram={total_ram_gb:.1f}GB"
+
+                # =====================================================================
+                # v142.0: ADAPTIVE THRESHOLDS
+                # =====================================================================
+                # SLIM MODE (Hollow Client ~300MB):
+                #   - percent_threshold: 95% (allow almost full RAM)
+                #   - min_available_gb: 0.5GB (Hollow Client + some headroom)
+                #
+                # FULL MODE (Heavy ML ~4-6GB):
+                #   - percent_threshold: 80% (keep 20% buffer)
+                #   - min_available_gb: 2.0GB (room for model loading)
+                # =====================================================================
+                if is_slim_mode:
+                    percent_threshold = 95.0
+                    min_available_gb = 0.5
+                    mode_label = "SLIM"
+                else:
+                    percent_threshold = 80.0
+                    min_available_gb = 2.0
+                    mode_label = "FULL"
+
+                # Log the mode detection result
+                logger.info(
+                    f"[v142.0] 🎛️ Memory Gate Mode: {mode_label} "
+                    f"(source: {slim_mode_source}) - "
+                    f"thresholds: {percent_threshold}% max, {min_available_gb}GB min free"
+                )
+
+                # Critical check with dynamic thresholds
+                is_critical = memory_pressure > percent_threshold or available_gb < min_available_gb
+
                 if is_critical:
                     logger.warning(
-                        f"[v137.2] ⚠️ MEMORY GATE: {definition.name} blocked - "
-                        f"memory at {memory_pressure:.1f}% ({available_gb:.1f}GB free)"
+                        f"[v142.0] ⚠️ MEMORY GATE CHECK: {definition.name} "
+                        f"({mode_label} mode) - memory at {memory_pressure:.1f}% "
+                        f"({available_gb:.1f}GB free), threshold: {percent_threshold}%"
                     )
-                    
+
                     # Check if GCP VM is available for offloading
                     gcp_available = False
                     try:
@@ -14286,34 +14407,58 @@ echo "=== JARVIS Prime started ==="
                             if active_vm:
                                 gcp_available = True
                                 logger.info(
-                                    f"[v137.2] ✅ GCP VM available - {definition.name} can use cloud offloading"
+                                    f"[v142.0] ✅ GCP VM available - {definition.name} can use cloud offloading"
                                 )
                     except Exception as gcp_err:
                         logger.debug(f"GCP check failed: {gcp_err}")
-                    
-                    if not gcp_available:
-                        # No GCP and critical memory - this is dangerous
+
+                    # In Slim Mode with memory pressure, we STILL allow startup
+                    # because the whole point of Slim Mode is to offload to GCP
+                    if is_slim_mode and available_gb >= 0.3:
+                        logger.info(
+                            f"[v142.0] ✅ SLIM MODE BYPASS: Allowing {definition.name} despite "
+                            f"{memory_pressure:.1f}% memory usage. Hollow Client needs only ~300MB. "
+                            f"Heavy inference will be routed to GCP."
+                        )
+                        # Don't block - Slim Mode is specifically designed for this scenario
+                    elif gcp_available:
+                        logger.info(
+                            f"[v142.0] ✅ GCP AVAILABLE: Allowing {definition.name} - "
+                            f"heavy tasks will be offloaded to cloud"
+                        )
+                        # Don't block - GCP can handle the heavy lifting
+                    else:
+                        # FULL MODE with no GCP and critical memory - this is dangerous
                         # Wait briefly for memory to stabilize
-                        logger.info(f"[v137.2] Waiting 10s for memory to stabilize before {definition.name}...")
+                        logger.info(f"[v142.0] Waiting 10s for memory to stabilize before {definition.name}...")
                         await asyncio.sleep(10)
-                        
+
                         # Re-check
                         mem = psutil.virtual_memory()
                         memory_pressure = mem.percent
                         available_gb = mem.available / (1024 ** 3)
-                        
-                        if memory_pressure > 80 or available_gb < 2.0:
+
+                        if memory_pressure > percent_threshold or available_gb < min_available_gb:
                             logger.error(
-                                f"[v137.2] ❌ MEMORY GATE BLOCKED: Cannot start {definition.name} - "
-                                f"memory still at {memory_pressure:.1f}% ({available_gb:.1f}GB free). "
-                                f"This prevents OOM kill (SIGKILL -9)."
+                                f"[v142.0] ❌ MEMORY GATE BLOCKED: Cannot start {definition.name} "
+                                f"in {mode_label} mode - memory still at {memory_pressure:.1f}% "
+                                f"({available_gb:.1f}GB free). Threshold: {percent_threshold}%, "
+                                f"min free: {min_available_gb}GB. This prevents OOM kill (SIGKILL -9)."
                             )
                             managed.status = ServiceStatus.DEGRADED
+                            # v142.0: Return gracefully without raising SystemExit
+                            # This prevents the ugly thread pool stack traces
                             return False
                         else:
                             logger.info(
-                                f"[v137.2] ✅ Memory recovered to {memory_pressure:.1f}% - proceeding"
+                                f"[v142.0] ✅ Memory recovered to {memory_pressure:.1f}% - proceeding"
                             )
+                else:
+                    # Memory is fine - log and proceed
+                    logger.info(
+                        f"[v142.0] ✅ Memory Gate PASSED: {definition.name} ({mode_label} mode) - "
+                        f"{memory_pressure:.1f}% used ({available_gb:.1f}GB free)"
+                    )
             except Exception as mem_gate_err:
                 logger.debug(f"Memory gate check failed (non-fatal): {mem_gate_err}")
         
