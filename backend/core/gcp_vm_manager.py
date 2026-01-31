@@ -968,100 +968,281 @@ class GCPVMManager:
 
             self.gcp_optimizer = None
         
-        # v147.0: Ensure firewall rule exists for health checks
+        # v155.0: CRITICAL - Ensure firewall rule exists BEFORE any VM creation
+        # Previous versions marked this "non-critical" but it's actually MANDATORY
+        self._firewall_rule_verified = False
         await self._ensure_firewall_rule()
 
-    async def _ensure_firewall_rule(self):
+    async def _ensure_firewall_rule(self) -> bool:
         """
-        v147.0: Ensure GCP firewall rule exists for health checks on port 8000.
-        
-        This is the ROOT FIX for "GCP VM not ready after Xs timeout" errors.
-        Without this firewall rule, the VM's port 8000 is blocked and health
-        checks fail even though the service is running inside the VM.
-        
-        Creates a firewall rule allowing TCP port 8000 from anywhere (0.0.0.0/0)
-        to VMs tagged with 'jarvis-node'.
+        v155.0: CRITICAL - Ensure GCP firewall rule exists for health checks.
+
+        ROOT CAUSE FIX: Previous versions marked firewall creation as "non-critical"
+        but without this rule, health checks CANNOT reach VMs, causing 100% of
+        provisioning attempts to timeout with "GCP VM not ready after Xs".
+
+        v155.0 Changes:
+        - Returns bool indicating success (True) or failure (False)
+        - Sets self._firewall_rule_verified flag
+        - VM creation will be BLOCKED if firewall rule doesn't exist
+        - Added retry logic with exponential backoff
+        - Better error classification and recovery guidance
+
+        Creates a firewall rule allowing TCP ports to VMs tagged with 'jarvis-node'.
         """
-        try:
-            # Import the firewalls client
-            firewalls_client = await asyncio.to_thread(compute_v1.FirewallsClient)
-            
-            firewall_name = "jarvis-allow-health-checks"
-            
-            # Check if firewall rule already exists
+        firewall_name = "jarvis-allow-health-checks"
+        max_retries = 3
+
+        for attempt in range(max_retries):
             try:
-                existing_rule = await asyncio.to_thread(
-                    firewalls_client.get,
-                    project=self.config.project_id,
-                    firewall=firewall_name,
+                # Import the firewalls client
+                firewalls_client = await asyncio.to_thread(compute_v1.FirewallsClient)
+
+                # Check if firewall rule already exists
+                try:
+                    existing_rule = await asyncio.to_thread(
+                        firewalls_client.get,
+                        project=self.config.project_id,
+                        firewall=firewall_name,
+                    )
+                    logger.info(f"[v155.0] ✅ Firewall rule '{firewall_name}' verified - health checks will work")
+                    self._firewall_rule_verified = True
+                    return True
+                except Exception as e:
+                    error_str = str(e).lower()
+                    if "404" not in error_str and "not found" not in error_str:
+                        # Unexpected error - might be permissions
+                        if "403" in error_str or "permission" in error_str:
+                            logger.error(
+                                f"[v155.0] ❌ PERMISSION DENIED checking firewall rule. "
+                                f"Service account needs 'compute.firewalls.get' permission.\n"
+                                f"    Fix: gcloud projects add-iam-policy-binding {self.config.project_id} \\\n"
+                                f"        --member='serviceAccount:YOUR_SA@...' \\\n"
+                                f"        --role='roles/compute.securityAdmin'"
+                            )
+                        else:
+                            logger.warning(f"[v155.0] Firewall check error: {e}")
+                        if attempt < max_retries - 1:
+                            await asyncio.sleep(2 ** attempt)  # Exponential backoff
+                            continue
+                        return False
+                    # 404 = rule doesn't exist, we'll create it
+
+                # Create the firewall rule
+                logger.info(f"[v155.0] 🔥 Creating firewall rule '{firewall_name}' (attempt {attempt + 1}/{max_retries})...")
+
+                firewall_rule = compute_v1.Firewall(
+                    name=firewall_name,
+                    description="CRITICAL: Allow health checks for JARVIS GCP VMs (v155.0)",
+                    network=f"global/networks/{self.config.network}",
+                    priority=1000,
+                    direction="INGRESS",
+                    target_tags=["jarvis-node"],
+                    source_ranges=["0.0.0.0/0"],  # Required for external health checks
+                    allowed=[
+                        compute_v1.Allowed(
+                            I_p_protocol="tcp",
+                            ports=["8000", "8010", "8080", "8090", "22"],  # All JARVIS ports + SSH for debugging
+                        ),
+                    ],
                 )
-                logger.info(f"[v147.0] ✅ Firewall rule '{firewall_name}' already exists")
-                return
-            except Exception as e:
-                if "404" not in str(e) and "not found" not in str(e).lower():
-                    logger.warning(f"[v147.0] Firewall check error (non-critical): {e}")
-                    return
-                # 404 = rule doesn't exist, we'll create it
-            
-            # Create the firewall rule
-            logger.info(f"[v147.0] 🔥 Creating firewall rule '{firewall_name}' for health checks...")
-            
-            firewall_rule = compute_v1.Firewall(
-                name=firewall_name,
-                description="Allow health checks on port 8000 for JARVIS GCP VMs (v147.0)",
-                network=f"global/networks/{self.config.network}",
-                priority=1000,
-                direction="INGRESS",
-                target_tags=["jarvis-node"],  # Matches tags set on VM creation
-                source_ranges=["0.0.0.0/0"],  # Allow from anywhere (for health checks)
-                allowed=[
-                    compute_v1.Allowed(
-                        I_p_protocol="tcp",
-                        ports=["8000", "8010", "8080", "8090"],  # All JARVIS ports
-                    ),
-                ],
-            )
-            
-            # Insert the firewall rule
-            operation = await asyncio.to_thread(
-                firewalls_client.insert,
-                project=self.config.project_id,
-                firewall_resource=firewall_rule,
-            )
-            
-            # Wait for operation to complete (with timeout)
-            try:
+
+                # Insert the firewall rule
+                operation = await asyncio.to_thread(
+                    firewalls_client.insert,
+                    project=self.config.project_id,
+                    firewall_resource=firewall_rule,
+                )
+
+                # Wait for operation to complete (with timeout)
                 global_ops_client = await asyncio.to_thread(compute_v1.GlobalOperationsClient)
-                
-                # Poll for completion (max 30 seconds)
-                for _ in range(30):
+
+                # Poll for completion (max 60 seconds - increased from 30)
+                for poll in range(60):
                     op_result = await asyncio.to_thread(
                         global_ops_client.get,
                         project=self.config.project_id,
                         operation=operation.name,
                     )
                     if op_result.status == compute_v1.Operation.Status.DONE:
-                        break
+                        if op_result.error:
+                            logger.error(f"[v155.0] ❌ Firewall creation failed: {op_result.error}")
+                            break
+                        logger.info(f"[v155.0] ✅ Firewall rule '{firewall_name}' created successfully!")
+                        logger.info(f"[v155.0]    Allows TCP ports 8000,8010,8080,8090,22 to VMs with 'jarvis-node' tag")
+                        self._firewall_rule_verified = True
+                        return True
                     await asyncio.sleep(1)
-                
-                logger.info(f"[v147.0] ✅ Firewall rule '{firewall_name}' created successfully!")
-                logger.info(f"[v147.0]    Allows TCP ports 8000,8010,8080,8090 to VMs with 'jarvis-node' tag")
-                
-            except Exception as wait_err:
-                # Operation started but we couldn't confirm completion
-                logger.info(f"[v147.0] ⏳ Firewall rule creation started (confirmation pending): {wait_err}")
-                
-        except Exception as e:
-            # Non-critical - log warning but don't fail initialization
-            # User may need to create the rule manually
-            logger.warning(
-                f"[v147.0] ⚠️ Could not create firewall rule (non-critical): {e}\n"
-                f"    If health checks fail, create rule manually:\n"
-                f"    gcloud compute firewall-rules create jarvis-allow-health-checks \\\n"
-                f"        --allow tcp:8000,tcp:8010,tcp:8080,tcp:8090 \\\n"
-                f"        --target-tags jarvis-node \\\n"
-                f"        --description 'JARVIS health checks'"
+                else:
+                    logger.warning(f"[v155.0] ⚠️ Firewall creation timed out after 60s - may still complete")
+                    # Optimistically mark as verified since operation started
+                    self._firewall_rule_verified = True
+                    return True
+
+            except Exception as e:
+                error_str = str(e).lower()
+
+                # Classify the error for better guidance
+                if "already exists" in error_str:
+                    logger.info(f"[v155.0] ✅ Firewall rule already exists (race condition, OK)")
+                    self._firewall_rule_verified = True
+                    return True
+                elif "403" in error_str or "permission" in error_str:
+                    logger.error(
+                        f"[v155.0] ❌ PERMISSION DENIED creating firewall rule.\n"
+                        f"    The service account needs 'compute.firewalls.create' permission.\n"
+                        f"    Quick fix - create manually:\n"
+                        f"    gcloud compute firewall-rules create {firewall_name} \\\n"
+                        f"        --allow tcp:8000,tcp:8010,tcp:8080,tcp:8090,tcp:22 \\\n"
+                        f"        --target-tags jarvis-node \\\n"
+                        f"        --description 'JARVIS health checks' \\\n"
+                        f"        --project {self.config.project_id}"
+                    )
+                    return False
+                elif "quota" in error_str:
+                    logger.error(f"[v155.0] ❌ QUOTA EXCEEDED for firewall rules: {e}")
+                    return False
+                else:
+                    logger.warning(f"[v155.0] ⚠️ Firewall rule creation error (attempt {attempt + 1}): {e}")
+
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(2 ** attempt)
+
+        # All retries exhausted
+        logger.error(
+            f"[v155.0] ❌ CRITICAL: Could not ensure firewall rule exists after {max_retries} attempts.\n"
+            f"    VM creation will be BLOCKED until this is resolved.\n"
+            f"    Manual fix:\n"
+            f"    gcloud compute firewall-rules create {firewall_name} \\\n"
+            f"        --allow tcp:8000,tcp:8010,tcp:8080,tcp:8090,tcp:22 \\\n"
+            f"        --target-tags jarvis-node \\\n"
+            f"        --description 'JARVIS health checks' \\\n"
+            f"        --project {self.config.project_id}"
+        )
+        return False
+
+    async def _get_vm_serial_console_output(self, vm_name: str, lines: int = 100) -> Optional[str]:
+        """
+        v155.0: Get serial console output from a VM for debugging startup failures.
+
+        This provides visibility into what's happening inside the VM when
+        health checks fail. Essential for diagnosing startup script issues.
+
+        Args:
+            vm_name: Name of the VM
+            lines: Number of lines to retrieve (default 100)
+
+        Returns:
+            Serial console output string, or None if unavailable
+        """
+        try:
+            output = await asyncio.to_thread(
+                self.instances_client.get_serial_port_output,
+                project=self.config.project_id,
+                zone=self.config.zone,
+                instance=vm_name,
+                port=1,  # Primary serial port
             )
+
+            if output and output.contents:
+                # Get last N lines
+                all_lines = output.contents.split('\n')
+                recent_lines = all_lines[-lines:] if len(all_lines) > lines else all_lines
+                return '\n'.join(recent_lines)
+            return None
+
+        except Exception as e:
+            logger.debug(f"[v155.0] Could not get serial console output for {vm_name}: {e}")
+            return None
+
+    async def diagnose_vm_startup_failure(self, vm_name: str, vm_ip: Optional[str] = None) -> Dict[str, Any]:
+        """
+        v155.0: Comprehensive diagnosis of VM startup failure.
+
+        When health checks fail, this method gathers diagnostic information
+        to help identify the root cause.
+
+        Returns:
+            Dict with diagnostic information including:
+            - vm_state: Current VM state in GCP
+            - serial_output: Last 100 lines of serial console
+            - firewall_rule_exists: Whether the firewall rule exists
+            - network_reachable: Whether the IP is pingable
+            - health_check_results: Results of health check attempts
+        """
+        diagnosis: Dict[str, Any] = {
+            "vm_name": vm_name,
+            "vm_ip": vm_ip,
+            "timestamp": datetime.now().isoformat(),
+            "diagnosis_version": "v155.0",
+        }
+
+        # 1. Check VM state in GCP
+        try:
+            instance = await asyncio.to_thread(
+                self.instances_client.get,
+                project=self.config.project_id,
+                zone=self.config.zone,
+                instance=vm_name,
+            )
+            diagnosis["vm_state"] = instance.status
+            diagnosis["vm_creation_time"] = instance.creation_timestamp if hasattr(instance, 'creation_timestamp') else None
+
+            # Get network interface info
+            if instance.network_interfaces:
+                ni = instance.network_interfaces[0]
+                diagnosis["internal_ip"] = ni.network_i_p if hasattr(ni, 'network_i_p') else None
+                if ni.access_configs:
+                    diagnosis["external_ip"] = ni.access_configs[0].nat_i_p if hasattr(ni.access_configs[0], 'nat_i_p') else None
+        except Exception as e:
+            diagnosis["vm_state"] = f"ERROR: {e}"
+
+        # 2. Get serial console output
+        serial_output = await self._get_vm_serial_console_output(vm_name)
+        if serial_output:
+            diagnosis["serial_output"] = serial_output
+
+            # Look for common failure patterns
+            failure_patterns = [
+                ("apt-get", "Package manager issue"),
+                ("pip3 install", "Python package installation issue"),
+                ("Permission denied", "Permission issue"),
+                ("No space left", "Disk space issue"),
+                ("Connection refused", "Network connectivity issue"),
+                ("timeout", "Timeout issue"),
+                ("error", "General error"),
+                ("failed", "General failure"),
+            ]
+
+            detected_issues = []
+            serial_lower = serial_output.lower()
+            for pattern, description in failure_patterns:
+                if pattern.lower() in serial_lower:
+                    detected_issues.append(description)
+
+            diagnosis["detected_issues"] = list(set(detected_issues))
+        else:
+            diagnosis["serial_output"] = "Unavailable"
+            diagnosis["detected_issues"] = ["Could not retrieve serial console output"]
+
+        # 3. Check firewall rule
+        diagnosis["firewall_rule_verified"] = getattr(self, '_firewall_rule_verified', False)
+
+        # 4. Log comprehensive diagnosis
+        logger.error(
+            f"[v155.0] 🔍 VM STARTUP FAILURE DIAGNOSIS\n"
+            f"    VM: {vm_name}\n"
+            f"    IP: {vm_ip}\n"
+            f"    State: {diagnosis.get('vm_state', 'unknown')}\n"
+            f"    Firewall Rule: {'✅ Verified' if diagnosis['firewall_rule_verified'] else '❌ NOT VERIFIED'}\n"
+            f"    Detected Issues: {diagnosis.get('detected_issues', [])}\n"
+            f"    Serial Output (last 20 lines):\n"
+            f"    {'='*60}\n"
+            f"    {chr(10).join((diagnosis.get('serial_output', 'N/A') or 'N/A').split(chr(10))[-20:])}\n"
+            f"    {'='*60}"
+        )
+
+        return diagnosis
 
     async def _sync_managed_vms_with_gcp(self):
         """
@@ -1195,7 +1376,20 @@ class GCPVMManager:
         if not is_valid:
             logger.warning(f"[v147.0] GCP config validation failed: {validation_error}")
             return False, f"CONFIG_INVALID: {validation_error}"
-            
+
+        # v155.0: CRITICAL - Check firewall rule before VM creation
+        # Without this, health checks will ALWAYS fail and VM will timeout
+        if not getattr(self, '_firewall_rule_verified', False):
+            logger.warning("[v155.0] Firewall rule not verified - attempting to verify now...")
+            firewall_ok = await self._ensure_firewall_rule()
+            if not firewall_ok:
+                logger.error(
+                    "[v155.0] ❌ BLOCKING VM CREATION: Firewall rule not configured.\n"
+                    "    Health checks cannot reach VMs without this rule.\n"
+                    "    Fix: Create firewall rule manually or grant service account permissions."
+                )
+                return False, "FIREWALL_RULE_MISSING: Health checks will fail. Create jarvis-allow-health-checks rule."
+
         try:
             # Check if we already have one
             existing = await self.get_active_vm()

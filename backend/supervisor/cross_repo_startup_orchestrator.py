@@ -1612,13 +1612,36 @@ async def ensure_gcp_vm_ready_for_prime(
                     vm_ip = active_vm.ip_address
                     logger.info(f"[v147.0] 🔍 Found VM IP from manager: {vm_ip}")
 
-        # Timeout reached
+        # Timeout reached - v155.0: Run diagnostics before failing
+        logger.warning(f"[v155.0] ⏳ GCP VM health check timeout - running diagnostics...")
+
+        # v155.0: Get VM diagnostics to understand WHY health checks failed
+        vm_name = None
+        diagnosis = None
+        try:
+            # Find the VM name from managed_vms
+            async with vm_manager._vm_lock:
+                for name, vm in vm_manager.managed_vms.items():
+                    if vm.ip_address == vm_ip:
+                        vm_name = name
+                        break
+
+            if vm_name and hasattr(vm_manager, 'diagnose_vm_startup_failure'):
+                diagnosis = await vm_manager.diagnose_vm_startup_failure(vm_name, vm_ip)
+                logger.info(f"[v155.0] Diagnosis complete: {diagnosis.get('detected_issues', [])}")
+            else:
+                logger.warning(f"[v155.0] Could not find VM for IP {vm_ip} or diagnosis method unavailable")
+        except Exception as diag_err:
+            logger.warning(f"[v155.0] Diagnosis error (non-fatal): {diag_err}")
+
         timeout_error = TimeoutError(
             f"GCP VM not ready after {timeout_seconds}s timeout. "
-            f"VM IP was: {vm_ip}. Startup script may have failed."
+            f"VM IP was: {vm_ip}. "
+            f"Detected issues: {diagnosis.get('detected_issues', ['diagnosis unavailable']) if diagnosis else ['no diagnosis']}. "
+            f"Firewall rule verified: {diagnosis.get('firewall_rule_verified', 'unknown') if diagnosis else 'unknown'}."
         )
         logger.error(
-            f"[v144.0] ❌ Active Rescue: {timeout_error}"
+            f"[v155.0] ❌ Active Rescue: {timeout_error}"
         )
 
         # v149.0: Use enterprise hooks for intelligent recovery decision
