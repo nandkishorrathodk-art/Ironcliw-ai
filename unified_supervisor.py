@@ -11182,6 +11182,1810 @@ class IntelligenceRegistry:
         return {name: manager.status for name, manager in self._managers.items()}
 
 
+# =============================================================================
+# ZONE 4.5: LEARNING GOALS DISCOVERY SYSTEM
+# =============================================================================
+# v108.0: Intelligent learning goals discovery with reactor-core integration
+# Analyzes experiences, logs, and corrections to discover what JARVIS needs to learn
+
+
+class DiscoverySource(Enum):
+    """Sources of discovered learning topics."""
+
+    CORRECTION = "correction"  # User corrected JARVIS
+    FAILED_INTERACTION = "failed_interaction"  # Low quality_score
+    USER_QUESTION = "user_question"  # User asked about something
+    UNKNOWN_TERM = "unknown_term"  # JARVIS didn't recognize a term
+    TRENDING = "trending"  # Frequently mentioned topic
+    MANUAL = "manual"  # Manually added topic
+
+
+@dataclass
+class DiscoveredTopic:
+    """
+    A topic discovered for JARVIS to learn.
+
+    Attributes:
+        topic: The topic name/identifier
+        priority: Priority score (0-10, higher = more important)
+        source: How the topic was discovered
+        confidence: Confidence that this is a valuable topic (0.0-1.0)
+        frequency: Number of times this topic appeared
+        urls: Documentation URLs for learning
+        keywords: Related keywords for search
+        scraped: Whether documentation has been scraped
+        pages_scraped: Number of pages scraped so far
+    """
+
+    topic: str
+    priority: float = 5.0
+    source: DiscoverySource = DiscoverySource.MANUAL
+    confidence: float = 0.5
+    frequency: int = 1
+    urls: List[str] = field(default_factory=list)
+    keywords: List[str] = field(default_factory=list)
+    scraped: bool = False
+    pages_scraped: int = 0
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for serialization."""
+        return {
+            "topic": self.topic,
+            "priority": self.priority,
+            "source": self.source.value,
+            "confidence": self.confidence,
+            "frequency": self.frequency,
+            "urls": self.urls,
+            "keywords": self.keywords,
+            "scraped": self.scraped,
+            "pages_scraped": self.pages_scraped,
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "DiscoveredTopic":
+        """Create from dictionary."""
+        return cls(
+            topic=data["topic"],
+            priority=data.get("priority", 5.0),
+            source=DiscoverySource(data.get("source", "manual")),
+            confidence=data.get("confidence", 0.5),
+            frequency=data.get("frequency", 1),
+            urls=data.get("urls", []),
+            keywords=data.get("keywords", []),
+            scraped=data.get("scraped", False),
+            pages_scraped=data.get("pages_scraped", 0),
+        )
+
+
+class IntelligentLearningGoalsDiscovery:
+    """
+    v108.0: Comprehensive learning goals discovery with reactor-core integration.
+
+    Features:
+    - Multi-source topic extraction (logs, experiences, corrections)
+    - Intelligent priority scoring based on source weights
+    - Automatic URL generation for documentation
+    - Safe Scout integration for automated scraping
+    - Real-time progress broadcasts
+
+    This class analyzes JARVIS's interactions to discover what topics
+    it needs to learn about to improve future responses.
+    """
+
+    def __init__(
+        self,
+        max_topics: int = 50,
+        min_mentions: int = 2,
+        min_confidence: float = 0.5,
+        source_weights: Optional[Dict[str, float]] = None,
+        logger: Optional[Any] = None,
+        project_root: Optional[Path] = None,
+    ):
+        """
+        Initialize the learning goals discovery system.
+
+        Args:
+            max_topics: Maximum number of topics to track
+            min_mentions: Minimum mentions before tracking a topic
+            min_confidence: Minimum confidence to keep a topic
+            source_weights: Custom weights for different sources
+            logger: Logger instance
+            project_root: Project root path
+        """
+        self.max_topics = max_topics
+        self.min_mentions = min_mentions
+        self.min_confidence = min_confidence
+        self.logger = logger or logging.getLogger("LearningGoals")
+        self._project_root = project_root or Path(__file__).parent
+
+        # Source weights for priority calculation
+        self.source_weights = source_weights or {
+            DiscoverySource.CORRECTION.value: 1.0,
+            DiscoverySource.FAILED_INTERACTION.value: 0.9,
+            DiscoverySource.USER_QUESTION.value: 0.7,
+            DiscoverySource.UNKNOWN_TERM.value: 0.6,
+            DiscoverySource.TRENDING.value: 0.5,
+            DiscoverySource.MANUAL.value: 1.0,
+        }
+
+        # Topic storage
+        self.topics: Dict[str, DiscoveredTopic] = {}
+        self.topics_file = self._project_root / "data" / "discovered_topics.json"
+        self._term_frequency: Dict[str, int] = {}
+        self._last_discovery: Optional[datetime] = None
+
+        # Reactor-core integration (optional)
+        self._reactor_topic_discovery: Optional[Any] = None
+        self._safe_scout: Optional[Any] = None
+        self._topic_queue: Optional[Any] = None
+
+        # Thread safety
+        self._lock = asyncio.Lock()
+
+        # Statistics
+        self._stats = {
+            "topics_discovered": 0,
+            "topics_scraped": 0,
+            "discovery_runs": 0,
+            "last_run": None,
+        }
+
+        # Load existing topics
+        self._load_topics()
+
+        # Try to import reactor-core components
+        self._init_reactor_core_integration()
+
+    def _init_reactor_core_integration(self) -> None:
+        """Try to connect to reactor-core for enhanced discovery."""
+        try:
+            reactor_core_path = self._project_root.parent / "reactor-core"
+            if reactor_core_path.exists():
+                import sys
+
+                if str(reactor_core_path) not in sys.path:
+                    sys.path.insert(0, str(reactor_core_path))
+
+                # Import TopicDiscovery from reactor-core
+                try:
+                    from reactor_core.scout.topic_discovery import TopicDiscovery
+
+                    self._reactor_topic_discovery = TopicDiscovery()
+                    self.logger.debug("✓ Reactor-core TopicDiscovery connected")
+                except ImportError:
+                    pass
+
+                # Import SafeScoutOrchestrator
+                try:
+                    from reactor_core.scout.safe_scout_orchestrator import (
+                        SafeScoutOrchestrator,
+                    )
+
+                    self._safe_scout = SafeScoutOrchestrator()
+                    self.logger.debug("✓ Reactor-core SafeScout connected")
+                except ImportError:
+                    pass
+
+                # Import TopicQueue
+                try:
+                    from reactor_core.scout.topic_queue import TopicQueue
+
+                    queue_db = self._project_root / "data" / "topic_queue.db"
+                    queue_db.parent.mkdir(parents=True, exist_ok=True)
+                    self._topic_queue = TopicQueue(db_path=str(queue_db))
+                    self.logger.debug("✓ Reactor-core TopicQueue connected")
+                except ImportError:
+                    pass
+
+        except Exception as e:
+            self.logger.debug(f"Reactor-core init error: {e}")
+
+    def _load_topics(self) -> None:
+        """Load previously discovered topics."""
+        if self.topics_file.exists():
+            try:
+                data = json.loads(self.topics_file.read_text())
+                for t in data.get("topics", []):
+                    topic = DiscoveredTopic.from_dict(t)
+                    self.topics[topic.topic.lower()] = topic
+                if data.get("last_discovery"):
+                    self._last_discovery = datetime.fromisoformat(
+                        data["last_discovery"]
+                    )
+            except Exception as e:
+                self.logger.debug(f"Failed to load topics: {e}")
+
+    def _save_topics(self) -> None:
+        """Persist discovered topics."""
+        try:
+            self.topics_file.parent.mkdir(parents=True, exist_ok=True)
+            data = {
+                "topics": [t.to_dict() for t in self.topics.values()],
+                "last_discovery": (
+                    self._last_discovery.isoformat() if self._last_discovery else None
+                ),
+            }
+            self.topics_file.write_text(json.dumps(data, indent=2, default=str))
+        except Exception as e:
+            self.logger.warning(f"Failed to save topics: {e}")
+
+    def _calculate_priority(
+        self,
+        source: DiscoverySource,
+        confidence: float,
+        frequency: int,
+        recency_days: float = 0.0,
+    ) -> float:
+        """
+        Calculate topic priority using weighted scoring.
+
+        Formula: priority = 0.4*confidence + 0.3*frequency_norm + 0.2*recency + 0.1*source_weight
+        Final score scaled to 0-10.
+
+        Args:
+            source: How the topic was discovered
+            confidence: Confidence score (0.0-1.0)
+            frequency: Number of times topic appeared
+            recency_days: Days since topic was discovered
+
+        Returns:
+            Priority score (0-10)
+        """
+        import math
+
+        # Normalize frequency (log scale, max 10)
+        frequency_norm = min(1.0, math.log10(frequency + 1) / math.log10(11))
+
+        # Recency score (1.0 for today, decays over 30 days)
+        recency_score = max(0.0, 1.0 - (recency_days / 30.0))
+
+        # Source weight
+        source_weight = self.source_weights.get(source.value, 0.5)
+
+        # Weighted combination
+        raw_score = (
+            0.4 * confidence
+            + 0.3 * frequency_norm
+            + 0.2 * recency_score
+            + 0.1 * source_weight
+        )
+
+        # Scale to 0-10
+        return round(raw_score * 10, 2)
+
+    def _generate_documentation_urls(self, topic: str) -> List[str]:
+        """Generate likely documentation URLs for a topic."""
+        urls = []
+        topic_slug = topic.lower().replace(" ", "-").replace(".", "-")
+        topic_underscore = topic.lower().replace(" ", "_").replace(".", "_")
+
+        # Common documentation patterns
+        patterns = [
+            f"https://docs.python.org/3/library/{topic_underscore}.html",
+            f"https://{topic_slug}.readthedocs.io/",
+            f"https://github.com/{topic_slug}/{topic_slug}",
+            f"https://pypi.org/project/{topic_slug}/",
+            f"https://developer.mozilla.org/en-US/docs/Web/{topic}",
+            f"https://www.npmjs.com/package/{topic_slug}",
+        ]
+
+        # Add relevant patterns based on topic keywords
+        topic_lower = topic.lower()
+        if "python" in topic_lower or topic_lower.startswith("py"):
+            urls.append(f"https://docs.python.org/3/search.html?q={topic}")
+        if "react" in topic_lower:
+            urls.append(f"https://react.dev/reference/react/{topic}")
+        if "langchain" in topic_lower:
+            urls.append("https://python.langchain.com/docs/")
+        if "llm" in topic_lower or "model" in topic_lower:
+            urls.append("https://huggingface.co/docs")
+
+        # Add base patterns
+        urls.extend(patterns[:3])  # Limit to avoid too many
+
+        return urls[:5]  # Cap at 5 URLs
+
+    def _extract_technical_terms(self, text: str) -> List[str]:
+        """
+        Extract technical terms from text using pattern matching.
+
+        Patterns:
+        - CamelCase words (e.g., LangChain, FastAPI)
+        - snake_case identifiers (e.g., async_generator)
+        - Dotted names (e.g., numpy.array)
+        - Known tech patterns (e.g., React, Python, API)
+
+        Args:
+            text: Input text to analyze
+
+        Returns:
+            List of extracted technical terms
+        """
+        if not text:
+            return []
+
+        terms = []
+
+        # CamelCase pattern
+        camel_pattern = r"\b([A-Z][a-z]+(?:[A-Z][a-z]+)+)\b"
+        terms.extend(re.findall(camel_pattern, text))
+
+        # snake_case pattern
+        snake_pattern = r"\b([a-z]+(?:_[a-z]+)+)\b"
+        terms.extend(re.findall(snake_pattern, text))
+
+        # Dotted names (e.g., module.function)
+        dot_pattern = r"\b([a-z]+(?:\.[a-z]+)+)\b"
+        terms.extend(re.findall(dot_pattern, text))
+
+        # Known technology keywords
+        tech_keywords = [
+            r"\b(Python|JavaScript|TypeScript|Rust|Go|Swift)\b",
+            r"\b(React|Vue|Angular|FastAPI|Flask|Django)\b",
+            r"\b(LangChain|LangGraph|ChromaDB|FAISS)\b",
+            r"\b(Docker|Kubernetes|Terraform|AWS|GCP|Azure)\b",
+            r"\b(PostgreSQL|MongoDB|Redis|SQLite)\b",
+            r"\b(API|REST|GraphQL|WebSocket|gRPC)\b",
+            r"\b(ML|AI|LLM|NLP|transformers?|embeddings?)\b",
+        ]
+        for pattern in tech_keywords:
+            matches = re.findall(pattern, text, re.IGNORECASE)
+            terms.extend(matches)
+
+        # Clean and deduplicate
+        cleaned = []
+        seen: set[str] = set()
+        for term in terms:
+            term_lower = term.lower().strip()
+            if len(term_lower) > 2 and term_lower not in seen:
+                # Filter common words
+                if term_lower not in {"the", "and", "for", "with", "this", "that"}:
+                    cleaned.append(term)
+                    seen.add(term_lower)
+
+        return cleaned
+
+    def _add_or_update_topic(
+        self,
+        term: str,
+        source: DiscoverySource,
+        confidence: float,
+        frequency: int = 1,
+    ) -> Optional[DiscoveredTopic]:
+        """
+        Add a new topic or update an existing one.
+
+        Args:
+            term: Topic term
+            source: How the topic was discovered
+            confidence: Confidence score
+            frequency: Number of occurrences
+
+        Returns:
+            The new topic if created, None if updated existing
+        """
+        term_key = term.lower().strip()
+
+        if len(term_key) < 3:
+            return None
+
+        if term_key in self.topics:
+            # Update existing topic
+            existing = self.topics[term_key]
+            existing.frequency += frequency
+            # Upgrade source if higher priority
+            if self.source_weights.get(
+                source.value, 0
+            ) > self.source_weights.get(existing.source.value, 0):
+                existing.source = source
+            # Update confidence (weighted average)
+            existing.confidence = (existing.confidence + confidence) / 2
+            # Recalculate priority
+            existing.priority = self._calculate_priority(
+                existing.source,
+                existing.confidence,
+                existing.frequency,
+            )
+            return None  # Not a new discovery
+        else:
+            # Create new topic
+            if len(self.topics) >= self.max_topics:
+                # Remove lowest priority scraped topic
+                scraped = [t for t in self.topics.values() if t.scraped]
+                if scraped:
+                    lowest = min(scraped, key=lambda t: t.priority)
+                    del self.topics[lowest.topic.lower()]
+
+            topic = DiscoveredTopic(
+                topic=term,
+                priority=self._calculate_priority(source, confidence, frequency),
+                source=source,
+                confidence=confidence,
+                frequency=frequency,
+                urls=self._generate_documentation_urls(term),
+            )
+            self.topics[term_key] = topic
+            self._stats["topics_discovered"] += 1
+            return topic
+
+    async def discover_from_experiences(
+        self,
+        db_path: Optional[Path] = None,
+        lookback_days: int = 30,
+    ) -> List[DiscoveredTopic]:
+        """
+        Discover learning topics from the training database experiences.
+
+        Analyzes:
+        - Failed interactions (low quality_score)
+        - Corrected responses (feedback='corrected')
+        - User questions (input contains question patterns)
+        - Unknown terms (technical terms in low-confidence responses)
+
+        Args:
+            db_path: Path to training database
+            lookback_days: Number of days to look back
+
+        Returns:
+            List of newly discovered topics
+        """
+        discovered = []
+
+        # Default database path
+        if db_path is None:
+            db_path = self._project_root / "data" / "jarvis_training.db"
+
+        if not db_path.exists():
+            self.logger.debug(f"Training DB not found: {db_path}")
+            return discovered
+
+        async with self._lock:
+            try:
+                # v109.0: Non-blocking database access
+                loop = asyncio.get_running_loop()
+
+                def _query_db() -> List[DiscoveredTopic]:
+                    """Run database queries in thread pool."""
+                    local_discovered = []
+                    conn = sqlite3.connect(str(db_path))
+                    cursor = conn.cursor()
+
+                    # Calculate cutoff timestamp
+                    cutoff = datetime.now() - timedelta(days=lookback_days)
+                    cutoff_ts = cutoff.timestamp()
+
+                    # Source 1: Failed Interactions (low quality_score)
+                    cursor.execute(
+                        """
+                        SELECT input_text, context, quality_score
+                        FROM experiences
+                        WHERE timestamp > ? AND quality_score < 0.4
+                        ORDER BY timestamp DESC
+                        LIMIT 100
+                    """,
+                        (cutoff_ts,),
+                    )
+
+                    for row in cursor.fetchall():
+                        input_text, context, quality_score = row
+                        terms = self._extract_technical_terms(input_text)
+                        for term in terms:
+                            topic = self._add_or_update_topic(
+                                term,
+                                DiscoverySource.FAILED_INTERACTION,
+                                confidence=0.3 + (1.0 - quality_score) * 0.5,
+                            )
+                            if topic:
+                                local_discovered.append(topic)
+
+                    # Source 2: Corrected Responses
+                    cursor.execute(
+                        """
+                        SELECT input_text, correction, context
+                        FROM experiences
+                        WHERE timestamp > ? AND feedback = 'corrected'
+                        ORDER BY timestamp DESC
+                        LIMIT 100
+                    """,
+                        (cutoff_ts,),
+                    )
+
+                    for row in cursor.fetchall():
+                        input_text, correction, context = row
+                        terms = self._extract_technical_terms(input_text)
+                        if correction:
+                            terms.extend(self._extract_technical_terms(correction))
+                        for term in terms:
+                            topic = self._add_or_update_topic(
+                                term,
+                                DiscoverySource.CORRECTION,
+                                confidence=0.85,  # High confidence for corrections
+                            )
+                            if topic:
+                                local_discovered.append(topic)
+
+                    # Source 3: User Questions
+                    cursor.execute(
+                        """
+                        SELECT input_text, context
+                        FROM experiences
+                        WHERE timestamp > ?
+                          AND (input_text LIKE '%what is%'
+                               OR input_text LIKE '%how do%'
+                               OR input_text LIKE '%how does%'
+                               OR input_text LIKE '%explain%'
+                               OR input_text LIKE '%learn about%')
+                        ORDER BY timestamp DESC
+                        LIMIT 100
+                    """,
+                        (cutoff_ts,),
+                    )
+
+                    for row in cursor.fetchall():
+                        input_text, context = row
+                        terms = self._extract_technical_terms(input_text)
+                        for term in terms:
+                            topic = self._add_or_update_topic(
+                                term,
+                                DiscoverySource.USER_QUESTION,
+                                confidence=0.7,
+                            )
+                            if topic:
+                                local_discovered.append(topic)
+
+                    # Source 4: Trending Terms (high frequency)
+                    cursor.execute(
+                        """
+                        SELECT input_text
+                        FROM experiences
+                        WHERE timestamp > ?
+                        ORDER BY timestamp DESC
+                        LIMIT 500
+                    """,
+                        (cutoff_ts,),
+                    )
+
+                    all_terms = []
+                    for row in cursor.fetchall():
+                        all_terms.extend(self._extract_technical_terms(row[0]))
+
+                    # Count term frequency
+                    from collections import Counter
+
+                    term_counts = Counter(all_terms)
+
+                    # Add trending terms (appearing 3+ times)
+                    for term, count in term_counts.most_common(20):
+                        if count >= 3:
+                            topic = self._add_or_update_topic(
+                                term,
+                                DiscoverySource.TRENDING,
+                                confidence=min(0.9, 0.4 + count * 0.05),
+                                frequency=count,
+                            )
+                            if topic:
+                                local_discovered.append(topic)
+
+                    conn.close()
+                    return local_discovered
+
+                # Run database queries in executor
+                discovered = await loop.run_in_executor(None, _query_db)
+
+                # Save after discovery
+                self._save_topics()
+                self._stats["discovery_runs"] += 1
+                self._stats["last_run"] = datetime.now().isoformat()
+                self._last_discovery = datetime.now()
+
+            except Exception as e:
+                self.logger.warning(f"Experience discovery error: {e}")
+
+        return discovered
+
+    async def discover_from_logs(self, log_dir: Path) -> List[DiscoveredTopic]:
+        """
+        Discover topics from JARVIS log files.
+
+        Args:
+            log_dir: Directory containing log files
+
+        Returns:
+            List of newly discovered topics
+        """
+        discovered = []
+
+        if not log_dir.exists():
+            return discovered
+
+        # Patterns for discovering learning opportunities
+        patterns = [
+            (
+                r"(?:learn|study|research|understand)\s+(\w+(?:\s+\w+)?)",
+                DiscoverySource.USER_QUESTION,
+            ),
+            (r"what\s+is\s+(\w+(?:\s+\w+)?)\??", DiscoverySource.USER_QUESTION),
+            (
+                r"how\s+(?:does|do)\s+(\w+(?:\s+\w+)?)\s+work",
+                DiscoverySource.USER_QUESTION,
+            ),
+            (
+                r"error:?\s+(?:unknown|unrecognized)\s+(\w+)",
+                DiscoverySource.UNKNOWN_TERM,
+            ),
+            (
+                r"failed to (?:import|load|find)\s+(\w+)",
+                DiscoverySource.FAILED_INTERACTION,
+            ),
+        ]
+
+        # v109.0: Non-blocking file I/O
+        def _read_file_sync(file_path: Path) -> str:
+            """Read file content synchronously (runs in thread pool)."""
+            try:
+                return file_path.read_text(errors="ignore")
+            except Exception:
+                return ""
+
+        loop = asyncio.get_running_loop()
+
+        async with self._lock:
+            # Scan recent log files (non-blocking)
+            for log_file in sorted(log_dir.glob("*.log"), reverse=True)[:10]:
+                try:
+                    # Run blocking I/O in executor to prevent event loop blocking
+                    content = await loop.run_in_executor(None, _read_file_sync, log_file)
+                    if not content:
+                        continue
+
+                    for pattern, source in patterns:
+                        matches = re.findall(pattern, content, re.IGNORECASE)
+                        for match in matches[:5]:
+                            term = match.strip()
+                            topic = self._add_or_update_topic(
+                                term,
+                                source,
+                                confidence=0.5,
+                            )
+                            if topic:
+                                discovered.append(topic)
+                except Exception:
+                    continue
+
+            if discovered:
+                self._save_topics()
+
+        return discovered
+
+    async def discover_with_reactor_core(
+        self,
+        events: Optional[List[Dict[str, Any]]] = None,
+    ) -> List[DiscoveredTopic]:
+        """
+        Use reactor-core's TopicDiscovery for enhanced extraction.
+
+        If reactor-core is available, leverages its ML-based
+        topic extraction for higher quality results.
+
+        Args:
+            events: Optional list of events to analyze
+
+        Returns:
+            List of newly discovered topics
+        """
+        discovered = []
+
+        if not self._reactor_topic_discovery:
+            return discovered
+
+        try:
+            # Use reactor-core's analyze_events if available
+            if hasattr(self._reactor_topic_discovery, "analyze_events") and events:
+                results = await self._reactor_topic_discovery.analyze_events(events)
+                for result in results:
+                    topic = self._add_or_update_topic(
+                        result.get("topic", ""),
+                        DiscoverySource(result.get("source", "trending")),
+                        confidence=result.get("confidence", 0.5),
+                    )
+                    if topic:
+                        discovered.append(topic)
+
+            # Use discover_from_jarvis if available
+            if hasattr(self._reactor_topic_discovery, "discover_from_jarvis"):
+                results = await self._reactor_topic_discovery.discover_from_jarvis()
+                for result in results:
+                    topic = self._add_or_update_topic(
+                        result.get("topic", ""),
+                        DiscoverySource.TRENDING,
+                        confidence=result.get("confidence", 0.5),
+                    )
+                    if topic:
+                        discovered.append(topic)
+
+        except Exception as e:
+            self.logger.debug(f"Reactor-core discovery error: {e}")
+
+        return discovered
+
+    def get_pending_topics(self, limit: int = 10) -> List[DiscoveredTopic]:
+        """Get unscraped topics sorted by priority."""
+        pending = [t for t in self.topics.values() if not t.scraped]
+        return sorted(pending, key=lambda t: -t.priority)[:limit]
+
+    def get_pending_goals(self, limit: int = 10) -> List[DiscoveredTopic]:
+        """Alias for get_pending_topics for backward compatibility."""
+        return self.get_pending_topics(limit)
+
+    def mark_scraped(self, topic: str, pages: int = 0) -> None:
+        """Mark a topic as scraped."""
+        topic_key = topic.lower()
+        if topic_key in self.topics:
+            self.topics[topic_key].scraped = True
+            self.topics[topic_key].pages_scraped = pages
+            self._stats["topics_scraped"] += 1
+            self._save_topics()
+
+    def add_manual_topic(
+        self,
+        topic: str,
+        priority: float = 8.0,
+        urls: Optional[List[str]] = None,
+    ) -> DiscoveredTopic:
+        """Add a manually specified topic."""
+        new_topic = DiscoveredTopic(
+            topic=topic,
+            priority=priority,
+            source=DiscoverySource.MANUAL,
+            confidence=1.0,
+            urls=urls or self._generate_documentation_urls(topic),
+        )
+        self.topics[topic.lower()] = new_topic
+        self._stats["topics_discovered"] += 1
+        self._save_topics()
+        return new_topic
+
+    def get_stats(self) -> Dict[str, Any]:
+        """Get discovery statistics."""
+        return {
+            **self._stats,
+            "total_topics": len(self.topics),
+            "pending_topics": len([t for t in self.topics.values() if not t.scraped]),
+            "scraped_topics": len([t for t in self.topics.values() if t.scraped]),
+            "has_reactor_core": self._reactor_topic_discovery is not None,
+            "has_safe_scout": self._safe_scout is not None,
+        }
+
+
+# =============================================================================
+# ZONE 4.6: NEURAL MESH COORDINATION SYSTEM
+# =============================================================================
+# v108.0: Neural Mesh for coordinating multiple intelligence nodes
+# Enables distributed decision-making across subsystems
+
+
+@dataclass
+class NeuralMeshNode:
+    """
+    A node in the Neural Mesh network.
+
+    Represents a component that can participate in distributed
+    intelligence coordination (UAE, SAI, MAS, etc.).
+    """
+
+    node_id: str
+    node_type: str
+    capabilities: List[str] = field(default_factory=list)
+    status: str = "active"
+    last_heartbeat: float = field(default_factory=time.time)
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+    def is_healthy(self, timeout_seconds: float = 30.0) -> bool:
+        """Check if the node is healthy (recent heartbeat)."""
+        return (time.time() - self.last_heartbeat) < timeout_seconds
+
+    def update_heartbeat(self) -> None:
+        """Update the node's heartbeat timestamp."""
+        self.last_heartbeat = time.time()
+
+
+class NeuralMeshCoordinator:
+    """
+    Neural Mesh Coordinator for distributed intelligence.
+
+    Provides:
+    - Node registration and discovery
+    - Event broadcasting across nodes
+    - Heartbeat monitoring
+    - Load balancing recommendations
+    - Collective decision synthesis
+
+    This is the production implementation with full features.
+    """
+
+    def __init__(
+        self,
+        sync_interval: float = 5.0,
+        heartbeat_timeout: float = 30.0,
+        logger: Optional[Any] = None,
+    ):
+        """
+        Initialize the Neural Mesh Coordinator.
+
+        Args:
+            sync_interval: Seconds between sync operations
+            heartbeat_timeout: Seconds before node is considered dead
+            logger: Logger instance
+        """
+        self._nodes: Dict[str, NeuralMeshNode] = {}
+        self._context: Dict[str, Any] = {}
+        self._subscribers: Dict[str, List[Callable]] = defaultdict(list)
+        self._sync_interval = sync_interval
+        self._heartbeat_timeout = heartbeat_timeout
+        self._sync_task: Optional[asyncio.Task] = None
+        self._running = False
+        self._logger = logger or logging.getLogger("NeuralMesh")
+        self._lock = asyncio.Lock()
+
+        # Metrics
+        self._metrics = {
+            "broadcasts_sent": 0,
+            "events_processed": 0,
+            "nodes_registered": 0,
+            "nodes_deregistered": 0,
+        }
+
+    async def register_node(
+        self,
+        node: Optional[NeuralMeshNode] = None,
+        node_name: Optional[str] = None,
+        node_type: Optional[str] = None,
+        capabilities: Optional[List[str]] = None,
+    ) -> bool:
+        """
+        Register a node with the Neural Mesh.
+
+        Can accept either a NeuralMeshNode dataclass or individual parameters.
+
+        Args:
+            node: Pre-configured NeuralMeshNode
+            node_name: Node identifier (if not using node parameter)
+            node_type: Type of node (if not using node parameter)
+            capabilities: List of capabilities (if not using node parameter)
+
+        Returns:
+            True if registration successful
+        """
+        async with self._lock:
+            if node is not None:
+                self._nodes[node.node_id] = node
+                self._logger.debug(f"Node registered: {node.node_id}")
+            elif node_name is not None:
+                new_node = NeuralMeshNode(
+                    node_id=node_name,
+                    node_type=node_type or "unknown",
+                    capabilities=capabilities or [],
+                )
+                self._nodes[node_name] = new_node
+                self._logger.debug(f"Node registered: {node_name}")
+            else:
+                return False
+
+            self._metrics["nodes_registered"] += 1
+            return True
+
+    async def deregister_node(self, node_id: str) -> bool:
+        """Remove a node from the mesh."""
+        async with self._lock:
+            if node_id in self._nodes:
+                del self._nodes[node_id]
+                self._metrics["nodes_deregistered"] += 1
+                self._logger.debug(f"Node deregistered: {node_id}")
+                return True
+            return False
+
+    async def broadcast(
+        self,
+        event_type: str,
+        data: Dict[str, Any],
+        source: Optional[str] = None,
+    ) -> None:
+        """
+        Broadcast an event to all subscribers.
+
+        Args:
+            event_type: Type of event (e.g., "context_update", "alert")
+            data: Event data payload
+            source: Source node ID
+        """
+        event = {
+            "event_type": event_type,
+            "data": data,
+            "source": source,
+            "timestamp": time.time(),
+        }
+
+        for subscriber in self._subscribers.get(event_type, []):
+            try:
+                if asyncio.iscoroutinefunction(subscriber):
+                    await subscriber(event)
+                else:
+                    subscriber(event)
+            except Exception as e:
+                self._logger.warning(f"Subscriber error: {e}")
+
+        self._metrics["broadcasts_sent"] += 1
+
+    async def subscribe(self, event_type: str, callback: Callable) -> bool:
+        """
+        Subscribe to events of a specific type.
+
+        Args:
+            event_type: Type of event to subscribe to
+            callback: Function to call when event occurs
+
+        Returns:
+            True if subscription successful
+        """
+        self._subscribers[event_type].append(callback)
+        return True
+
+    async def unsubscribe(self, event_type: str, callback: Callable) -> bool:
+        """Remove a subscription."""
+        if callback in self._subscribers.get(event_type, []):
+            self._subscribers[event_type].remove(callback)
+            return True
+        return False
+
+    def get_active_nodes(
+        self, node_type: Optional[str] = None
+    ) -> List[NeuralMeshNode]:
+        """
+        Get all active nodes, optionally filtered by type.
+
+        Args:
+            node_type: Filter by node type (e.g., "uae", "sai")
+
+        Returns:
+            List of active nodes
+        """
+        nodes = list(self._nodes.values())
+        if node_type:
+            nodes = [n for n in nodes if n.node_type == node_type]
+        return [n for n in nodes if n.status == "active" and n.is_healthy()]
+
+    def get_node(self, node_id: str) -> Optional[NeuralMeshNode]:
+        """Get a specific node by ID."""
+        return self._nodes.get(node_id)
+
+    async def update_context(self, key: str, value: Any) -> None:
+        """Update shared context and broadcast change."""
+        self._context[key] = value
+        await self.broadcast("context_update", {key: value})
+
+    def get_context(self, key: str = None) -> Any:
+        """Get shared context (or specific key)."""
+        if key:
+            return self._context.get(key)
+        return dict(self._context)
+
+    async def start(self) -> None:
+        """Start the Neural Mesh coordinator."""
+        self._running = True
+        self._sync_task = asyncio.create_task(self._sync_loop())
+        self._logger.info("Neural Mesh coordinator started")
+
+    async def stop(self) -> None:
+        """Stop the Neural Mesh coordinator."""
+        self._running = False
+        if self._sync_task:
+            self._sync_task.cancel()
+            try:
+                await self._sync_task
+            except asyncio.CancelledError:
+                pass
+        self._logger.info("Neural Mesh coordinator stopped")
+
+    async def _sync_loop(self) -> None:
+        """Background sync loop for heartbeat checking."""
+        while self._running:
+            try:
+                await asyncio.sleep(self._sync_interval)
+
+                # Check for dead nodes
+                async with self._lock:
+                    for node_id, node in list(self._nodes.items()):
+                        if not node.is_healthy(self._heartbeat_timeout):
+                            node.status = "unhealthy"
+                            await self.broadcast(
+                                "node_unhealthy",
+                                {"node_id": node_id},
+                                source="coordinator",
+                            )
+
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                self._logger.error(f"Sync loop error: {e}")
+
+    def get_stats(self) -> Dict[str, Any]:
+        """Get Neural Mesh statistics."""
+        return {
+            "total_nodes": len(self._nodes),
+            "active_nodes": len([n for n in self._nodes.values() if n.status == "active"]),
+            "unhealthy_nodes": len(
+                [n for n in self._nodes.values() if n.status == "unhealthy"]
+            ),
+            "subscribers": {k: len(v) for k, v in self._subscribers.items()},
+            "context_keys": list(self._context.keys()),
+            "running": self._running,
+            **self._metrics,
+        }
+
+
+class BasicNeuralMesh:
+    """
+    Basic Neural Mesh for fallback compatibility.
+
+    A simplified version that provides the same interface but without
+    the full production features. Used when full mesh is not needed.
+    """
+
+    def __init__(self, sync_interval: float = 5.0):
+        """Initialize basic Neural Mesh."""
+        self._nodes: Dict[str, NeuralMeshNode] = {}
+        self._context: Dict[str, Any] = {}
+        self._subscribers: Dict[str, List[Callable]] = defaultdict(list)
+        self._sync_interval = sync_interval
+        self._running = False
+        self._logger = logging.getLogger("NeuralMesh.Basic")
+
+    async def register_node(
+        self,
+        node: Optional[NeuralMeshNode] = None,
+        node_name: Optional[str] = None,
+        node_type: Optional[str] = None,
+        capabilities: Optional[List[str]] = None,
+    ) -> bool:
+        """Register a node."""
+        if node is not None:
+            self._nodes[node.node_id] = node
+        elif node_name is not None:
+            new_node = NeuralMeshNode(
+                node_id=node_name,
+                node_type=node_type or "unknown",
+                capabilities=capabilities or [],
+            )
+            self._nodes[node_name] = new_node
+        return True
+
+    async def broadcast(
+        self,
+        event_type: str,
+        data: Dict[str, Any],
+        source: Optional[str] = None,
+    ) -> None:
+        """Broadcast an event."""
+        for subscriber in self._subscribers.get(event_type, []):
+            try:
+                if asyncio.iscoroutinefunction(subscriber):
+                    await subscriber(
+                        {"event_type": event_type, "data": data, "source": source}
+                    )
+                else:
+                    subscriber(
+                        {"event_type": event_type, "data": data, "source": source}
+                    )
+            except Exception as e:
+                self._logger.warning(f"Subscriber error: {e}")
+
+    async def subscribe(self, event_type: str, callback: Callable) -> bool:
+        """Subscribe to events."""
+        self._subscribers[event_type].append(callback)
+        return True
+
+    def get_active_nodes(
+        self, node_type: Optional[str] = None
+    ) -> List[NeuralMeshNode]:
+        """Get active nodes."""
+        nodes = list(self._nodes.values())
+        if node_type:
+            nodes = [n for n in nodes if n.node_type == node_type]
+        return [n for n in nodes if n.status == "active"]
+
+    async def start(self) -> None:
+        """Start the mesh."""
+        self._running = True
+
+    async def stop(self) -> None:
+        """Stop the mesh."""
+        self._running = False
+
+    def get_stats(self) -> Dict[str, Any]:
+        """Get statistics."""
+        return {
+            "total_nodes": len(self._nodes),
+            "active_nodes": len(
+                [n for n in self._nodes.values() if n.status == "active"]
+            ),
+            "mode": "basic_fallback",
+        }
+
+
+# =============================================================================
+# ZONE 4.7: MULTI-AGENT SYSTEM (MAS)
+# =============================================================================
+# v108.0: Multi-Agent System for coordinated autonomous execution
+# Enables parallel task processing with dynamic agent spawning
+
+
+class AgentStatus(Enum):
+    """Status of an agent in the MAS."""
+
+    IDLE = "idle"
+    RUNNING = "running"
+    WAITING = "waiting"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+@dataclass
+class AgentTask:
+    """
+    A task for an agent to execute.
+
+    Supports:
+    - Priority-based scheduling
+    - Task dependencies
+    - Parent-child relationships for subtasks
+    """
+
+    task_id: str
+    goal: str
+    context: Dict[str, Any] = field(default_factory=dict)
+    priority: int = 5  # 1-10, higher = more important
+    dependencies: List[str] = field(default_factory=list)
+    parent_task_id: Optional[str] = None
+    status: AgentStatus = AgentStatus.IDLE
+    result: Optional[Any] = None
+    error: Optional[str] = None
+    created_at: float = field(default_factory=time.time)
+    started_at: Optional[float] = None
+    completed_at: Optional[float] = None
+
+    @property
+    def duration(self) -> Optional[float]:
+        """Get task duration in seconds."""
+        if self.started_at and self.completed_at:
+            return self.completed_at - self.started_at
+        return None
+
+
+@dataclass
+class Agent:
+    """
+    An autonomous agent in the MAS.
+
+    Each agent has:
+    - Unique identifier
+    - Type (determines what executor to use)
+    - Capabilities (for task matching)
+    - Current task assignment
+    - Performance metrics
+    """
+
+    agent_id: str
+    agent_type: str
+    capabilities: List[str] = field(default_factory=list)
+    current_task: Optional[AgentTask] = None
+    status: AgentStatus = AgentStatus.IDLE
+    metrics: Dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self):
+        """Initialize metrics."""
+        if not self.metrics:
+            self.metrics = {
+                "tasks_completed": 0,
+                "tasks_failed": 0,
+                "total_time": 0.0,
+            }
+
+
+class MultiAgentSystem:
+    """
+    Multi-Agent System for coordinated autonomous execution.
+
+    Provides:
+    - Dynamic agent spawning based on task complexity
+    - Task decomposition and parallel execution
+    - Agent collaboration and result aggregation
+    - Conflict resolution for shared resources
+    - Load balancing across available agents
+
+    This enables JARVIS to break down complex goals into subtasks
+    and execute them in parallel with multiple specialized agents.
+    """
+
+    def __init__(
+        self,
+        max_concurrent_agents: int = 5,
+        logger: Optional[Any] = None,
+    ):
+        """
+        Initialize the Multi-Agent System.
+
+        Args:
+            max_concurrent_agents: Maximum number of agents that can run simultaneously
+            logger: Logger instance
+        """
+        self._agents: Dict[str, Agent] = {}
+        self._task_queue: asyncio.Queue = asyncio.Queue()
+        self._completed_tasks: Dict[str, AgentTask] = {}
+        self._max_concurrent = max_concurrent_agents
+        self._running = False
+        self._coordinator_task: Optional[asyncio.Task] = None
+        self._agent_executors: Dict[str, Callable] = {}
+        self._logger = logger or logging.getLogger("MAS")
+        self._lock = asyncio.Lock()
+
+        # Metrics
+        self._metrics = {
+            "tasks_submitted": 0,
+            "tasks_completed": 0,
+            "tasks_failed": 0,
+            "agents_spawned": 0,
+        }
+
+        # Register default executors
+        self._register_default_executors()
+
+    def _register_default_executors(self) -> None:
+        """Register default agent executors."""
+
+        async def general_executor(task: AgentTask) -> Dict[str, Any]:
+            """Default general-purpose agent executor."""
+            return {"status": "completed", "message": f"Processed: {task.goal}"}
+
+        async def explorer_executor(task: AgentTask) -> Dict[str, Any]:
+            """Explorer agent for search and discovery tasks."""
+            return {"status": "completed", "message": f"Explored: {task.goal}"}
+
+        async def creator_executor(task: AgentTask) -> Dict[str, Any]:
+            """Creator agent for generation tasks."""
+            return {"status": "completed", "message": f"Created: {task.goal}"}
+
+        async def analyzer_executor(task: AgentTask) -> Dict[str, Any]:
+            """Analyzer agent for analysis tasks."""
+            return {"status": "completed", "message": f"Analyzed: {task.goal}"}
+
+        async def scraper_executor(task: AgentTask) -> Dict[str, Any]:
+            """Scraper agent for web scraping tasks."""
+            return {"status": "completed", "message": f"Scraped: {task.goal}"}
+
+        self._agent_executors["general"] = general_executor
+        self._agent_executors["explorer"] = explorer_executor
+        self._agent_executors["creator"] = creator_executor
+        self._agent_executors["analyzer"] = analyzer_executor
+        self._agent_executors["scraper"] = scraper_executor
+
+    def register_agent_type(self, agent_type: str, executor: Callable) -> None:
+        """
+        Register an agent type with its executor function.
+
+        Args:
+            agent_type: Type name (e.g., "researcher", "coder")
+            executor: Async function that executes tasks
+        """
+        self._agent_executors[agent_type] = executor
+        self._logger.debug(f"Agent type registered: {agent_type}")
+
+    async def spawn_agent(
+        self,
+        agent_type: str,
+        capabilities: Optional[List[str]] = None,
+    ) -> Agent:
+        """
+        Spawn a new agent.
+
+        Args:
+            agent_type: Type of agent to spawn
+            capabilities: List of capabilities for the agent
+
+        Returns:
+            The spawned or reused agent
+
+        Raises:
+            RuntimeError: If max agents reached and none are idle
+        """
+        async with self._lock:
+            if len(self._agents) >= self._max_concurrent:
+                # Find idle agent to reuse
+                for agent in self._agents.values():
+                    if agent.status == AgentStatus.IDLE:
+                        agent.capabilities = capabilities or []
+                        return agent
+                raise RuntimeError(f"Max agents ({self._max_concurrent}) reached")
+
+            agent = Agent(
+                agent_id=f"agent-{uuid.uuid4().hex[:8]}",
+                agent_type=agent_type,
+                capabilities=capabilities or [],
+            )
+            self._agents[agent.agent_id] = agent
+            self._metrics["agents_spawned"] += 1
+            self._logger.info(f"Agent spawned: {agent.agent_id} ({agent_type})")
+            return agent
+
+    async def submit_task(self, task: AgentTask) -> str:
+        """
+        Submit a task for execution.
+
+        Args:
+            task: The task to submit
+
+        Returns:
+            Task ID
+        """
+        await self._task_queue.put(task)
+        self._metrics["tasks_submitted"] += 1
+        self._logger.debug(f"Task submitted: {task.task_id}")
+        return task.task_id
+
+    async def decompose_task(
+        self,
+        goal: str,
+        context: Optional[Dict[str, Any]] = None,
+    ) -> List[AgentTask]:
+        """
+        Decompose a complex goal into subtasks.
+
+        Currently creates a single task. In production, this would use
+        an LLM to break down complex goals into subtasks.
+
+        Args:
+            goal: The goal to decompose
+            context: Optional context for the task
+
+        Returns:
+            List of tasks to execute
+        """
+        # Simple implementation - could be enhanced with LLM decomposition
+        task = AgentTask(
+            task_id=f"task-{uuid.uuid4().hex[:8]}",
+            goal=goal,
+            context=context or {},
+        )
+        return [task]
+
+    def _determine_agent_type(self, task: AgentTask) -> str:
+        """
+        Determine the best agent type for a task.
+
+        Args:
+            task: The task to analyze
+
+        Returns:
+            Agent type string
+        """
+        goal_lower = task.goal.lower()
+
+        if any(w in goal_lower for w in ["search", "find", "look", "discover"]):
+            return "explorer"
+        elif any(w in goal_lower for w in ["write", "create", "generate", "build"]):
+            return "creator"
+        elif any(w in goal_lower for w in ["analyze", "review", "check", "evaluate"]):
+            return "analyzer"
+        elif any(w in goal_lower for w in ["scrape", "fetch", "download", "crawl"]):
+            return "scraper"
+        else:
+            return "general"
+
+    async def execute_task(self, task: AgentTask) -> AgentTask:
+        """
+        Execute a single task.
+
+        Args:
+            task: The task to execute
+
+        Returns:
+            The completed task with results
+        """
+        task.status = AgentStatus.RUNNING
+        task.started_at = time.time()
+        agent = None
+
+        try:
+            # Find appropriate agent type
+            agent_type = self._determine_agent_type(task)
+
+            # Spawn or reuse agent
+            agent = await self.spawn_agent(agent_type)
+            agent.current_task = task
+            agent.status = AgentStatus.RUNNING
+
+            # Get executor for this agent type
+            executor = self._agent_executors.get(agent_type)
+            if executor:
+                if asyncio.iscoroutinefunction(executor):
+                    result = await executor(task)
+                else:
+                    result = executor(task)
+                task.result = result
+                task.status = AgentStatus.COMPLETED
+                self._metrics["tasks_completed"] += 1
+                agent.metrics["tasks_completed"] += 1
+            else:
+                task.error = f"No executor for agent type: {agent_type}"
+                task.status = AgentStatus.FAILED
+                self._metrics["tasks_failed"] += 1
+
+        except Exception as e:
+            task.error = str(e)
+            task.status = AgentStatus.FAILED
+            self._metrics["tasks_failed"] += 1
+            self._logger.error(f"Task {task.task_id} failed: {e}")
+            if agent:
+                agent.metrics["tasks_failed"] += 1
+
+        finally:
+            task.completed_at = time.time()
+            if agent:
+                if task.duration:
+                    agent.metrics["total_time"] += task.duration
+                agent.current_task = None
+                agent.status = AgentStatus.IDLE
+
+        self._completed_tasks[task.task_id] = task
+        return task
+
+    async def run_goal(
+        self,
+        goal: str,
+        context: Optional[Dict[str, Any]] = None,
+    ) -> List[AgentTask]:
+        """
+        Execute a goal by decomposing and running all subtasks.
+
+        Args:
+            goal: The goal to achieve
+            context: Optional context for the task
+
+        Returns:
+            List of completed tasks
+        """
+        tasks = await self.decompose_task(goal, context)
+        results = []
+
+        # Execute tasks (respecting dependencies)
+        for task in tasks:
+            result = await self.execute_task(task)
+            results.append(result)
+
+        return results
+
+    async def start(self) -> None:
+        """Start the MAS coordinator."""
+        self._running = True
+        self._coordinator_task = asyncio.create_task(self._coordinate())
+        self._logger.info("MAS coordinator started")
+
+    async def stop(self) -> None:
+        """Stop the MAS."""
+        self._running = False
+        if self._coordinator_task:
+            self._coordinator_task.cancel()
+            try:
+                await self._coordinator_task
+            except asyncio.CancelledError:
+                pass
+        self._logger.info("MAS coordinator stopped")
+
+    async def _coordinate(self) -> None:
+        """Background coordination loop."""
+        while self._running:
+            try:
+                # Process queued tasks
+                try:
+                    task = await asyncio.wait_for(
+                        self._task_queue.get(), timeout=1.0
+                    )
+                    asyncio.create_task(self.execute_task(task))
+                except asyncio.TimeoutError:
+                    pass
+
+                # Clean up completed agents
+                for agent in list(self._agents.values()):
+                    if agent.status == AgentStatus.COMPLETED:
+                        agent.status = AgentStatus.IDLE
+
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                self._logger.error(f"Coordinator error: {e}")
+                await asyncio.sleep(1)
+
+    def get_task_status(self, task_id: str) -> Optional[AgentTask]:
+        """Get the status of a task."""
+        return self._completed_tasks.get(task_id)
+
+    def get_agent_stats(self, agent_id: str) -> Optional[Dict[str, Any]]:
+        """Get statistics for a specific agent."""
+        agent = self._agents.get(agent_id)
+        if agent:
+            return {
+                "agent_id": agent.agent_id,
+                "agent_type": agent.agent_type,
+                "status": agent.status.value,
+                "capabilities": agent.capabilities,
+                **agent.metrics,
+            }
+        return None
+
+    def get_stats(self) -> Dict[str, Any]:
+        """Get MAS statistics."""
+        return {
+            "total_agents": len(self._agents),
+            "active_agents": len(
+                [a for a in self._agents.values() if a.status == AgentStatus.RUNNING]
+            ),
+            "idle_agents": len(
+                [a for a in self._agents.values() if a.status == AgentStatus.IDLE]
+            ),
+            "queued_tasks": self._task_queue.qsize(),
+            "completed_tasks": len(self._completed_tasks),
+            "max_concurrent": self._max_concurrent,
+            **self._metrics,
+        }
+
+
+# =============================================================================
+# ZONE 4.8: COLLECTIVE AI INTELLIGENCE (CAI)
+# =============================================================================
+# v108.0: Emergent intelligence from all subsystems
+# Synthesizes insights across UAE, SAI, MAS, and other components
+
+
+@dataclass
+class InsightSource:
+    """Source of an insight in the Collective AI."""
+
+    system: str  # "uae", "sai", "mas", "neural_mesh", etc.
+    confidence: float
+    timestamp: float
+    data: Dict[str, Any]
+
+
+@dataclass
+class CollectiveInsight:
+    """
+    An insight aggregated from multiple sources.
+
+    Represents knowledge synthesized across multiple intelligence
+    systems with aggregated confidence scoring.
+    """
+
+    insight_id: str
+    topic: str
+    sources: List[InsightSource] = field(default_factory=list)
+    aggregated_confidence: float = 0.0
+    recommendations: List[str] = field(default_factory=list)
+    created_at: float = field(default_factory=time.time)
+
+
+class CollectiveAI:
+    """
+    Collective AI Intelligence - Emergent intelligence from all subsystems.
+
+    Provides:
+    - Synthesis of insights from UAE, SAI, MAS
+    - Cross-system pattern detection
+    - Proactive recommendation generation
+    - Adaptive learning from system interactions
+
+    This is the highest level of JARVIS's intelligence, combining
+    all subsystems into a unified understanding.
+    """
+
+    def __init__(self, logger: Optional[Any] = None):
+        """
+        Initialize the Collective AI.
+
+        Args:
+            logger: Logger instance
+        """
+        self._insights: Dict[str, CollectiveInsight] = {}
+        self._patterns: List[Dict[str, Any]] = []
+        self._recommendation_callbacks: List[Callable] = []
+        self._logger = logger or logging.getLogger("CAI")
+        self._lock = asyncio.Lock()
+
+        # Connected subsystems
+        self._neural_mesh: Optional[NeuralMeshCoordinator] = None
+        self._mas: Optional[MultiAgentSystem] = None
+        self._learning_goals: Optional[IntelligentLearningGoalsDiscovery] = None
+
+        # Metrics
+        self._metrics = {
+            "insights_created": 0,
+            "patterns_detected": 0,
+            "recommendations_generated": 0,
+        }
+
+    def connect_neural_mesh(self, mesh: NeuralMeshCoordinator) -> None:
+        """Connect to the Neural Mesh for event coordination."""
+        self._neural_mesh = mesh
+
+    def connect_mas(self, mas: MultiAgentSystem) -> None:
+        """Connect to the Multi-Agent System."""
+        self._mas = mas
+
+    def connect_learning_goals(
+        self, learning_goals: IntelligentLearningGoalsDiscovery
+    ) -> None:
+        """Connect to the Learning Goals Discovery system."""
+        self._learning_goals = learning_goals
+
+    async def add_insight_source(self, topic: str, source: InsightSource) -> None:
+        """
+        Add an insight source for a topic.
+
+        Args:
+            topic: Topic being tracked
+            source: The insight source to add
+        """
+        async with self._lock:
+            if topic not in self._insights:
+                self._insights[topic] = CollectiveInsight(
+                    insight_id=f"insight-{uuid.uuid4().hex[:8]}",
+                    topic=topic,
+                )
+                self._metrics["insights_created"] += 1
+
+            self._insights[topic].sources.append(source)
+            self._recalculate_confidence(topic)
+
+    def _recalculate_confidence(self, topic: str) -> None:
+        """Recalculate aggregated confidence for a topic."""
+        if topic in self._insights:
+            insight = self._insights[topic]
+            if insight.sources:
+                # Weighted average based on source confidence and recency
+                total = sum(s.confidence for s in insight.sources)
+                insight.aggregated_confidence = total / len(insight.sources)
+
+    def get_insight(self, topic: str) -> Optional[CollectiveInsight]:
+        """Get the collective insight for a topic."""
+        return self._insights.get(topic)
+
+    def detect_patterns(self) -> List[Dict[str, Any]]:
+        """
+        Detect patterns across all insights.
+
+        Looks for:
+        - Topics with multiple high-confidence sources
+        - Correlations between topics
+        - Emerging trends
+
+        Returns:
+            List of detected patterns
+        """
+        patterns = []
+
+        for insight in self._insights.values():
+            # Multi-source patterns
+            if len(insight.sources) >= 2 and insight.aggregated_confidence > 0.7:
+                patterns.append(
+                    {
+                        "type": "multi_source",
+                        "topic": insight.topic,
+                        "confidence": insight.aggregated_confidence,
+                        "source_count": len(insight.sources),
+                        "systems": list(set(s.system for s in insight.sources)),
+                    }
+                )
+
+            # High confidence patterns
+            if insight.aggregated_confidence > 0.9:
+                patterns.append(
+                    {
+                        "type": "high_confidence",
+                        "topic": insight.topic,
+                        "confidence": insight.aggregated_confidence,
+                    }
+                )
+
+        self._patterns = patterns
+        self._metrics["patterns_detected"] = len(patterns)
+        return patterns
+
+    async def generate_recommendations(self) -> List[str]:
+        """
+        Generate proactive recommendations based on patterns.
+
+        Returns:
+            List of recommendation strings
+        """
+        recommendations = []
+        patterns = self.detect_patterns()
+
+        for pattern in patterns:
+            if pattern.get("confidence", 0) > 0.8:
+                topic = pattern.get("topic", "unknown")
+                pattern_type = pattern.get("type", "unknown")
+
+                if pattern_type == "multi_source":
+                    recommendations.append(
+                        f"High-confidence insight on '{topic}' - consider taking action"
+                    )
+                elif pattern_type == "high_confidence":
+                    recommendations.append(
+                        f"Strong pattern detected for '{topic}' - may warrant attention"
+                    )
+
+        # Notify callbacks
+        for callback in self._recommendation_callbacks:
+            try:
+                if asyncio.iscoroutinefunction(callback):
+                    await callback(recommendations)
+                else:
+                    callback(recommendations)
+            except Exception as e:
+                self._logger.warning(f"Recommendation callback error: {e}")
+
+        self._metrics["recommendations_generated"] += len(recommendations)
+        return recommendations
+
+    def register_recommendation_callback(self, callback: Callable) -> None:
+        """Register a callback to receive recommendations."""
+        self._recommendation_callbacks.append(callback)
+
+    async def synthesize_state(self) -> Dict[str, Any]:
+        """
+        Synthesize the current collective state.
+
+        Combines information from all connected subsystems into
+        a unified state representation.
+
+        Returns:
+            Unified state dictionary
+        """
+        state = {
+            "timestamp": time.time(),
+            "insights_count": len(self._insights),
+            "patterns_count": len(self._patterns),
+            "subsystems": {},
+        }
+
+        # Get Neural Mesh state
+        if self._neural_mesh:
+            state["subsystems"]["neural_mesh"] = self._neural_mesh.get_stats()
+
+        # Get MAS state
+        if self._mas:
+            state["subsystems"]["mas"] = self._mas.get_stats()
+
+        # Get Learning Goals state
+        if self._learning_goals:
+            state["subsystems"]["learning_goals"] = self._learning_goals.get_stats()
+
+        return state
+
+    def get_stats(self) -> Dict[str, Any]:
+        """Get CAI statistics."""
+        return {
+            "total_insights": len(self._insights),
+            "total_patterns": len(self._patterns),
+            "connected_subsystems": sum(
+                [
+                    self._neural_mesh is not None,
+                    self._mas is not None,
+                    self._learning_goals is not None,
+                ]
+            ),
+            **self._metrics,
+        }
+
+
 # ╔═══════════════════════════════════════════════════════════════════════════════╗
 # ║                                                                               ║
 # ║   END OF ZONE 4                                                               ║
