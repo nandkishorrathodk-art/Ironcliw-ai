@@ -7588,6 +7588,13 @@ class JarvisSystemKernel:
         self._backend_process: Optional[asyncio.subprocess.Process] = None
         self._backend_server: Optional[Any] = None  # uvicorn.Server if in-process
 
+        # Frontend and loading server processes
+        self._frontend_process: Optional[asyncio.subprocess.Process] = None
+        self._loading_server_process: Optional[asyncio.subprocess.Process] = None
+
+        # Enterprise status tracking
+        self._enterprise_status: Dict[str, Any] = {}
+
         # Background tasks
         self._background_tasks: List[asyncio.Task] = []
         self._shutdown_event = asyncio.Event()
@@ -8062,6 +8069,273 @@ class JarvisSystemKernel:
 
             return True  # Enterprise services are optional
 
+    # =========================================================================
+    # LOADING SERVER AND FRONTEND MANAGEMENT
+    # =========================================================================
+    # Manages the loading page display during startup and React frontend
+    # lifecycle for the main JARVIS UI.
+    # =========================================================================
+
+    async def _start_loading_server(self) -> bool:
+        """
+        Start the loading server for startup progress display.
+
+        The loading server shows a progress page while the backend initializes.
+        Once the system is ready, it's stopped and traffic goes to the main frontend.
+
+        Returns:
+            True if loading server started successfully
+        """
+        if self.config.loading_server_port == 0:
+            self.logger.info("[LoadingServer] Port not configured - skipping")
+            return False
+
+        self.logger.info(f"[LoadingServer] Starting on port {self.config.loading_server_port}...")
+
+        try:
+            # Check for dedicated loading server script
+            loading_server_path = self.config.backend_dir / "loading_server.py"
+
+            if loading_server_path.exists():
+                env = os.environ.copy()
+                env["LOADING_SERVER_PORT"] = str(self.config.loading_server_port)
+
+                self._loading_server_process = await asyncio.create_subprocess_exec(
+                    sys.executable, str(loading_server_path),
+                    env=env,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+            else:
+                # Fallback: serve static files with Python's HTTP server
+                public_dir = self.config.project_root / "frontend" / "public"
+                if public_dir.exists():
+                    self._loading_server_process = await asyncio.create_subprocess_exec(
+                        sys.executable, "-m", "http.server", str(self.config.loading_server_port),
+                        cwd=str(public_dir),
+                        stdout=asyncio.subprocess.DEVNULL,
+                        stderr=asyncio.subprocess.DEVNULL,
+                    )
+                else:
+                    self.logger.info("[LoadingServer] No loading server found - skipping")
+                    return False
+
+            # Wait for process to start
+            await asyncio.sleep(0.5)
+
+            if self._loading_server_process.returncode is None:
+                self.logger.success(
+                    f"[LoadingServer] Started on port {self.config.loading_server_port} "
+                    f"(PID: {self._loading_server_process.pid})"
+                )
+                return True
+            else:
+                self.logger.warning(
+                    f"[LoadingServer] Exited with code {self._loading_server_process.returncode}"
+                )
+                return False
+
+        except Exception as e:
+            self.logger.warning(f"[LoadingServer] Failed to start: {e}")
+            return False
+
+    async def _stop_loading_server(self) -> None:
+        """Stop the loading server (called after frontend is ready)."""
+        if hasattr(self, '_loading_server_process') and self._loading_server_process:
+            if self._loading_server_process.returncode is None:
+                self.logger.info("[LoadingServer] Stopping...")
+                try:
+                    self._loading_server_process.terminate()
+                    await asyncio.wait_for(
+                        self._loading_server_process.wait(),
+                        timeout=5.0
+                    )
+                except asyncio.TimeoutError:
+                    self._loading_server_process.kill()
+                    await self._loading_server_process.wait()
+                self.logger.info("[LoadingServer] Stopped")
+            self._loading_server_process = None
+
+    async def _start_frontend(self) -> bool:
+        """
+        Start the React frontend.
+
+        Returns:
+            True if frontend started successfully
+        """
+        frontend_dir = self.config.project_root / "frontend"
+
+        if not frontend_dir.exists():
+            self.logger.info("[Frontend] Directory not found - skipping")
+            return False
+
+        self.logger.info("[Frontend] Starting...")
+
+        try:
+            # Check for node_modules
+            node_modules = frontend_dir / "node_modules"
+            if not node_modules.exists():
+                self.logger.info("[Frontend] Installing dependencies (first run)...")
+                npm_install = await asyncio.create_subprocess_exec(
+                    "npm", "install",
+                    cwd=str(frontend_dir),
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                try:
+                    await asyncio.wait_for(npm_install.wait(), timeout=300.0)
+                except asyncio.TimeoutError:
+                    self.logger.warning("[Frontend] npm install timed out")
+                    return False
+                if npm_install.returncode != 0:
+                    self.logger.warning("[Frontend] npm install failed")
+                    return False
+                self.logger.success("[Frontend] Dependencies installed")
+
+            # Configure frontend environment
+            frontend_port = int(os.environ.get("JARVIS_FRONTEND_PORT", "3000"))
+            env = os.environ.copy()
+            env["PORT"] = str(frontend_port)
+            env["BROWSER"] = "none"  # Don't auto-open browser
+            env["REACT_APP_BACKEND_URL"] = f"http://localhost:{self.config.backend_port}"
+
+            # Start the frontend
+            self._frontend_process = await asyncio.create_subprocess_exec(
+                "npm", "start",
+                cwd=str(frontend_dir),
+                env=env,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+
+            # Wait for frontend to be ready
+            deadline = time.time() + 120.0  # 2 minute timeout
+            check_interval = 3.0
+
+            while time.time() < deadline:
+                try:
+                    # Socket check
+                    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    sock.settimeout(2.0)
+                    result = sock.connect_ex(('localhost', frontend_port))
+                    sock.close()
+
+                    if result == 0:
+                        self.logger.success(
+                            f"[Frontend] Ready on port {frontend_port} "
+                            f"(PID: {self._frontend_process.pid})"
+                        )
+                        # Stop loading server now that frontend is ready
+                        await self._stop_loading_server()
+                        return True
+
+                except Exception:
+                    pass
+
+                # Check if process died
+                if self._frontend_process.returncode is not None:
+                    self.logger.warning(
+                        f"[Frontend] Exited with code {self._frontend_process.returncode}"
+                    )
+                    return False
+
+                await asyncio.sleep(check_interval)
+
+            self.logger.warning("[Frontend] Startup timeout (120s)")
+            return False
+
+        except Exception as e:
+            self.logger.error(f"[Frontend] Failed to start: {e}")
+            return False
+
+    async def _stop_frontend(self) -> None:
+        """Stop the frontend (called during shutdown)."""
+        if hasattr(self, '_frontend_process') and self._frontend_process:
+            if self._frontend_process.returncode is None:
+                self.logger.info("[Frontend] Stopping...")
+                try:
+                    self._frontend_process.terminate()
+                    await asyncio.wait_for(
+                        self._frontend_process.wait(),
+                        timeout=10.0
+                    )
+                except asyncio.TimeoutError:
+                    self._frontend_process.kill()
+                    await self._frontend_process.wait()
+                self.logger.info("[Frontend] Stopped")
+            self._frontend_process = None
+
+    # =========================================================================
+    # PROGRESS BROADCASTING
+    # =========================================================================
+    # WebSocket-based progress broadcasting for real-time startup status.
+    # =========================================================================
+
+    async def _broadcast_startup_progress(
+        self,
+        stage: str,
+        message: str,
+        progress: int,
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> None:
+        """
+        Broadcast startup progress to connected clients.
+
+        Args:
+            stage: Current startup stage (e.g., "backend", "voice", "trinity")
+            message: Human-readable progress message
+            progress: Progress percentage (0-100)
+            metadata: Optional additional data (icons, labels, etc.)
+        """
+        if self.config.loading_server_port == 0:
+            return  # No loading server - skip broadcasting
+
+        progress_data = {
+            "type": "startup_progress",
+            "stage": stage,
+            "message": message,
+            "progress": min(100, max(0, progress)),
+            "timestamp": datetime.now().isoformat(),
+            "metadata": metadata or {},
+        }
+
+        # Try to broadcast via loading server if available
+        try:
+            if AIOHTTP_AVAILABLE and aiohttp is not None:
+                async with aiohttp.ClientSession() as session:
+                    url = f"http://localhost:{self.config.loading_server_port}/api/progress"
+                    await session.post(
+                        url,
+                        json=progress_data,
+                        timeout=aiohttp.ClientTimeout(total=2.0)
+                    )
+        except Exception:
+            pass  # Non-critical - don't fail if broadcast fails
+
+    # =========================================================================
+    # DIAGNOSTIC LOGGING
+    # =========================================================================
+    # Enhanced diagnostic logging for debugging and forensics.
+    # =========================================================================
+
+    def _log_startup_checkpoint(self, checkpoint: str, message: str) -> None:
+        """Log a startup checkpoint for diagnostics."""
+        timestamp = datetime.now().isoformat()
+        self.logger.debug(f"[Checkpoint:{checkpoint}] {message} @ {timestamp}")
+
+    def _log_state_change(
+        self,
+        component: str,
+        old_state: str,
+        new_state: str,
+        reason: str
+    ) -> None:
+        """Log a state change for diagnostics."""
+        timestamp = datetime.now().isoformat()
+        self.logger.info(
+            f"[StateChange] {component}: {old_state} → {new_state} ({reason}) @ {timestamp}"
+        )
+
     async def run(self) -> int:
         """
         Run the main event loop.
@@ -8140,6 +8414,10 @@ class JarvisSystemKernel:
             if self._trinity:
                 await self._trinity.stop()
                 self.logger.info("[Kernel] Trinity stopped")
+
+            # Stop frontend and loading server
+            await self._stop_frontend()
+            await self._stop_loading_server()
 
             # Stop backend
             if self._backend_server:
