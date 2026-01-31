@@ -8673,6 +8673,821 @@ def get_bootstrapper() -> AdvancedStartupBootstrapper:
     return _bootstrapper
 
 
+# =============================================================================
+# PROCESS INFO DATACLASS - Process Metadata
+# =============================================================================
+
+@dataclass
+class ProcessInfo:
+    """Information about a discovered process."""
+    pid: int
+    cmdline: str
+    age_seconds: float
+    memory_mb: float = 0.0
+    source: str = "scan"  # "pid_file", "scan", or "port_<N>"
+
+
+# =============================================================================
+# PARALLEL PROCESS CLEANER - Intelligent Process Cleanup
+# =============================================================================
+
+class ParallelProcessCleaner:
+    """
+    Intelligent parallel process cleaner with cascade termination.
+
+    Features:
+    - Parallel process discovery using ThreadPoolExecutor
+    - Async termination with SIGINT → SIGTERM → SIGKILL cascade
+    - Semaphore-controlled parallelism
+    - Detailed progress reporting
+    - PID file cleanup
+    - v97.0: Stale lock holder cleanup
+    - v117.0: GlobalProcessRegistry preservation
+    - v132.4: SystemExit protection for thread pool workers
+    - v152.0: Progressive readiness awareness
+    """
+
+    def __init__(
+        self,
+        config: Optional[SystemKernelConfig] = None,
+        logger: Optional[logging.Logger] = None,
+    ):
+        self.config = config or SystemKernelConfig.from_environment()
+        self.logger = logger or logging.getLogger("ParallelProcessCleaner")
+        self._my_pid = os.getpid()
+        self._my_parent = os.getppid()
+
+        # Process patterns for JARVIS discovery
+        self.jarvis_patterns = [
+            "run_supervisor.py",
+            "start_system.py",
+            "unified_supervisor.py",
+            "jarvis",
+            "uvicorn",
+            "main.py",
+        ]
+
+        # PID files to check
+        self.pid_files = [
+            Path.home() / ".jarvis" / "supervisor.pid",
+            Path.home() / ".jarvis" / "backend.pid",
+            Path("/tmp") / "jarvis_supervisor.pid",
+        ]
+
+        # Required ports to check
+        self.required_ports = [8010, 8000, 8090, 3000, 3001]
+
+        # Cleanup timeouts
+        self.cleanup_timeout_sigint = 1.0
+        self.cleanup_timeout_sigterm = 2.0
+        self.cleanup_timeout_sigkill = 1.0
+        self.max_parallel_cleanups = 10
+
+    async def discover_and_cleanup(self) -> Tuple[int, List[ProcessInfo]]:
+        """
+        Discover and cleanup existing JARVIS instances.
+
+        v97.0: Includes lock holder cleanup as Phase 0 to prevent
+        30-second ownership acquisition timeouts.
+
+        Returns:
+            Tuple of (terminated_count, discovered_processes)
+        """
+        # v97.0: Phase 0 - Clean up any processes holding ownership locks
+        lock_holders_killed = await self.cleanup_stale_lock_holders()
+        if lock_holders_killed > 0:
+            self.logger.info(f"[v97.0] Killed {lock_holders_killed} stale lock holder(s)")
+            await asyncio.sleep(0.5)  # Allow OS to release resources
+
+        # Phase 1: Parallel discovery
+        discovered = await self._parallel_discover()
+
+        if not discovered:
+            return 0, []
+
+        # Phase 2: Parallel termination with semaphore
+        terminated = await self._parallel_terminate(discovered)
+
+        # Phase 3: PID file cleanup
+        await self._cleanup_pid_files()
+
+        return terminated, list(discovered.values())
+
+    async def _parallel_discover(self) -> Dict[int, ProcessInfo]:
+        """Discover processes in parallel using ThreadPoolExecutor."""
+        discovered: Dict[int, ProcessInfo] = {}
+
+        # Run in thread pool for psutil operations (they can block)
+        loop = asyncio.get_event_loop()
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            # Task 1: Check PID files
+            pid_file_task = loop.run_in_executor(
+                executor, self._discover_from_pid_files
+            )
+
+            # Task 2: Scan process list
+            process_scan_task = loop.run_in_executor(
+                executor, self._discover_from_process_list
+            )
+
+            # Task 3: Scan ports
+            port_scan_task = loop.run_in_executor(
+                executor, self._discover_from_ports
+            )
+
+            # Wait for all
+            pid_file_procs, scanned_procs, port_procs = await asyncio.gather(
+                pid_file_task, process_scan_task, port_scan_task
+            )
+
+        # Merge results (PID files take precedence, then ports, then scan)
+        discovered.update(scanned_procs)
+        discovered.update(port_procs)
+        discovered.update(pid_file_procs)
+
+        return discovered
+
+    def _discover_from_pid_files(self) -> Dict[int, ProcessInfo]:
+        """
+        Discover processes from PID files (runs in thread).
+
+        v132.4: Added SystemExit protection for thread pool workers.
+        """
+        try:
+            import psutil
+        except ImportError:
+            return {}
+        except SystemExit:
+            return {}
+
+        discovered = {}
+
+        for pid_file in self.pid_files:
+            try:
+                if not pid_file.exists():
+                    continue
+            except OSError:
+                continue
+
+            pid = None
+            try:
+                with open(str(pid_file), 'r', encoding='utf-8') as f:
+                    content = f.read().strip()
+                pid = int(content) if content else None
+
+                if pid is None:
+                    continue
+
+                if not psutil.pid_exists(pid) or pid in (self._my_pid, self._my_parent):
+                    self._safe_unlink(pid_file)
+                    continue
+
+                proc = psutil.Process(pid)
+                cmdline = " ".join(proc.cmdline()).lower()
+
+                if any(p in cmdline for p in self.jarvis_patterns):
+                    discovered[pid] = ProcessInfo(
+                        pid=pid,
+                        cmdline=cmdline[:100],
+                        age_seconds=time.time() - proc.create_time(),
+                        memory_mb=proc.memory_info().rss / (1024 * 1024),
+                        source="pid_file"
+                    )
+            except (ValueError, Exception):
+                self._safe_unlink(pid_file)
+            except SystemExit:
+                return discovered
+
+        return discovered
+
+    def _safe_unlink(self, path: Path) -> bool:
+        """Safely unlink a file with proper error handling."""
+        try:
+            path.unlink(missing_ok=True)
+            return True
+        except (OSError, IOError, PermissionError):
+            return False
+
+    def _discover_from_process_list(self) -> Dict[int, ProcessInfo]:
+        """
+        Scan process list for JARVIS processes (runs in thread).
+
+        v132.4: Added SystemExit protection.
+        """
+        try:
+            import psutil
+        except ImportError:
+            return {}
+        except SystemExit:
+            return {}
+
+        discovered = {}
+
+        try:
+            for proc in psutil.process_iter(['pid', 'cmdline', 'create_time', 'memory_info']):
+                try:
+                    pid = proc.info['pid']
+                    if pid in (self._my_pid, self._my_parent):
+                        continue
+
+                    cmdline = " ".join(proc.info.get('cmdline') or []).lower()
+                    if any(p in cmdline for p in self.jarvis_patterns):
+                        mem_info = proc.info.get('memory_info')
+                        discovered[pid] = ProcessInfo(
+                            pid=pid,
+                            cmdline=cmdline[:100],
+                            age_seconds=time.time() - proc.info['create_time'],
+                            memory_mb=mem_info.rss / (1024 * 1024) if mem_info else 0,
+                            source="scan"
+                        )
+                except Exception:
+                    pass
+        except SystemExit:
+            pass
+
+        return discovered
+
+    def _discover_from_ports(self) -> Dict[int, ProcessInfo]:
+        """
+        Discover processes holding critical ports.
+
+        v132.4: Added SystemExit protection.
+        """
+        try:
+            import psutil
+        except ImportError:
+            return {}
+        except SystemExit:
+            return {}
+
+        discovered = {}
+
+        try:
+            for conn in psutil.net_connections(kind='inet'):
+                if conn.laddr.port in self.required_ports:
+                    try:
+                        pid = conn.pid
+                        if not pid or pid in (self._my_pid, self._my_parent):
+                            continue
+
+                        if pid in discovered:
+                            continue
+
+                        proc = psutil.Process(pid)
+                        cmdline = " ".join(proc.cmdline()).lower()
+                        mem_info = proc.memory_info()
+
+                        discovered[pid] = ProcessInfo(
+                            pid=pid,
+                            cmdline=cmdline[:100],
+                            age_seconds=time.time() - proc.create_time(),
+                            memory_mb=mem_info.rss / (1024 * 1024),
+                            source=f"port_{conn.laddr.port}"
+                        )
+                    except Exception:
+                        pass
+        except (PermissionError, Exception):
+            pass
+        except SystemExit:
+            pass
+
+        return discovered
+
+    async def _parallel_terminate(self, processes: Dict[int, ProcessInfo]) -> int:
+        """Terminate processes in parallel with semaphore control."""
+        semaphore = asyncio.Semaphore(self.max_parallel_cleanups)
+
+        async def terminate_one(pid: int, info: ProcessInfo) -> bool:
+            async with semaphore:
+                return await self._terminate_process(pid, info)
+
+        tasks = [
+            asyncio.create_task(terminate_one(pid, info))
+            for pid, info in processes.items()
+        ]
+
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        terminated = 0
+        for result in results:
+            if result is True:
+                terminated += 1
+
+        return terminated
+
+    async def _terminate_process(self, pid: int, info: ProcessInfo) -> bool:
+        """
+        Terminate a single process with cascade strategy.
+
+        Strategy: SIGINT → wait → SIGTERM → wait → SIGKILL
+        """
+        try:
+            import psutil
+
+            def _safe_kill(target_pid: int, sig: int) -> bool:
+                """Send signal with PID validation."""
+                try:
+                    proc = psutil.Process(target_pid)
+                    os.kill(target_pid, sig)
+                    return True
+                except (Exception, ProcessLookupError, OSError):
+                    return True  # Process already gone
+
+            # Phase 1: SIGINT (graceful)
+            if _safe_kill(pid, signal.SIGINT):
+                try:
+                    proc = psutil.Process(pid)
+                    await asyncio.sleep(0.1)
+                    proc.wait(timeout=self.cleanup_timeout_sigint)
+                    return True
+                except Exception:
+                    pass
+
+            # Phase 2: SIGTERM
+            if _safe_kill(pid, signal.SIGTERM):
+                try:
+                    proc = psutil.Process(pid)
+                    proc.wait(timeout=self.cleanup_timeout_sigterm)
+                    return True
+                except Exception:
+                    pass
+
+            # Phase 3: SIGKILL (force)
+            if _safe_kill(pid, signal.SIGKILL):
+                try:
+                    proc = psutil.Process(pid)
+                    proc.wait(timeout=self.cleanup_timeout_sigkill)
+                except Exception:
+                    pass
+            return True
+
+        except Exception as e:
+            self.logger.debug(f"Failed to terminate {pid}: {e}")
+            return False
+
+    async def _cleanup_pid_files(self) -> None:
+        """Clean up stale PID files."""
+        for pid_file in self.pid_files:
+            try:
+                pid_file.unlink(missing_ok=True)
+            except Exception:
+                pass
+
+    async def cleanup_stale_lock_holders(self) -> int:
+        """
+        v97.0/v152.0: Clean up processes holding fcntl locks on ownership files.
+
+        Uses lsof to detect which process holds the lock file, then kills
+        it if it's an orphaned supervisor from a previous session.
+
+        v152.0: Checks progressive readiness state before killing.
+
+        Returns:
+            Number of lock holders killed
+        """
+        lock_file = Path.home() / ".jarvis" / "state" / "locks" / "jarvis.lock"
+        killed_count = 0
+
+        if not lock_file.exists():
+            return 0
+
+        try:
+            result = subprocess.run(
+                ["lsof", str(lock_file)],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+
+            if result.returncode != 0:
+                return 0
+
+            for line in result.stdout.strip().split('\n')[1:]:
+                parts = line.split()
+                if len(parts) < 2:
+                    continue
+
+                try:
+                    holder_pid = int(parts[1])
+                except ValueError:
+                    continue
+
+                if holder_pid in (self._my_pid, self._my_parent):
+                    continue
+
+                try:
+                    import psutil
+                    proc = psutil.Process(holder_pid)
+                    cmdline = " ".join(proc.cmdline())
+
+                    if any(p in cmdline for p in self.jarvis_patterns):
+                        is_truly_stale = await self._is_supervisor_truly_stale(holder_pid)
+
+                        if not is_truly_stale:
+                            self.logger.info(
+                                f"[v152.0] Lock holder PID {holder_pid} is still making progress - NOT killing"
+                            )
+                            continue
+
+                        self.logger.warning(
+                            f"[v97.0] Found stale lock holder PID {holder_pid}, killing..."
+                        )
+
+                        try:
+                            os.kill(holder_pid, signal.SIGTERM)
+                            await asyncio.sleep(0.5)
+
+                            if psutil.pid_exists(holder_pid):
+                                os.kill(holder_pid, signal.SIGKILL)
+                                await asyncio.sleep(0.2)
+
+                            killed_count += 1
+
+                        except (ProcessLookupError, OSError):
+                            killed_count += 1
+
+                except Exception:
+                    pass
+
+            if killed_count > 0:
+                await asyncio.sleep(0.3)
+                try:
+                    if lock_file.exists():
+                        lock_file.unlink()
+                except Exception:
+                    pass
+
+        except subprocess.TimeoutExpired:
+            self.logger.debug("[v97.0] lsof timed out")
+        except FileNotFoundError:
+            self.logger.debug("[v97.0] lsof not available")
+        except Exception as e:
+            self.logger.debug(f"[v97.0] Lock holder cleanup error: {e}")
+
+        return killed_count
+
+    async def _is_supervisor_truly_stale(self, holder_pid: int) -> bool:
+        """
+        v152.0: Determine if a supervisor process is truly stale.
+
+        A supervisor is NOT stale if:
+        1. Readiness state file was updated in the last 120 seconds
+        2. Heartbeat file was updated in the last 60 seconds
+        """
+        now = time.time()
+
+        # Check 1: Readiness state file freshness
+        readiness_state_file = Path.home() / ".jarvis" / "trinity" / "readiness_state.json"
+        try:
+            if readiness_state_file.exists():
+                state_data = json.loads(readiness_state_file.read_text())
+                updated_at = state_data.get("updated_at", 0)
+                state_age = now - updated_at
+
+                if state_age < 120:
+                    return False
+        except Exception:
+            pass
+
+        # Check 2: Heartbeat file freshness
+        heartbeat_file = Path.home() / ".jarvis" / "trinity" / "heartbeats" / "supervisor.json"
+        try:
+            if heartbeat_file.exists():
+                heartbeat_data = json.loads(heartbeat_file.read_text())
+                heartbeat_time = heartbeat_data.get("timestamp", 0)
+                heartbeat_age = now - heartbeat_time
+
+                if heartbeat_age < 60:
+                    return False
+        except Exception:
+            pass
+
+        # Check 3: IPC ping (last resort)
+        try:
+            ipc_socket = Path.home() / ".jarvis" / "ipc" / "supervisor.sock"
+            if ipc_socket.exists():
+                import socket
+                sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                sock.settimeout(2.0)
+                try:
+                    sock.connect(str(ipc_socket))
+                    sock.sendall(b'{"type": "ping"}\n')
+                    response = sock.recv(1024)
+                    if response:
+                        return False
+                finally:
+                    sock.close()
+        except Exception:
+            pass
+
+        return True
+
+
+# =============================================================================
+# ZOMBIE PROCESS INFO DATACLASS - Extended Process Metadata
+# =============================================================================
+
+@dataclass
+class ZombieProcessInfo:
+    """Extended process info with zombie detection metadata."""
+    pid: int
+    cmdline: str
+    age_seconds: float
+    memory_mb: float = 0.0
+    cpu_percent: float = 0.0
+    status: str = "unknown"
+    is_orphaned: bool = False
+    is_zombie_like: bool = False
+    stale_connection_count: int = 0
+    repo_origin: str = "unknown"  # jarvis, jarvis-prime, reactor-core
+    detection_source: str = "scan"  # scan, port, registry, pid_file
+
+
+# =============================================================================
+# COMPREHENSIVE ZOMBIE CLEANUP - Cross-Repo Zombie Detection
+# =============================================================================
+
+class ComprehensiveZombieCleanup:
+    """
+    v109.7: Comprehensive Zombie Cleanup System for JARVIS Ecosystem.
+
+    Provides ultra-robust cleanup across all three repos:
+    - JARVIS (main AI agent) - port 8010
+    - JARVIS-Prime (J-Prime Mind) - port 8000
+    - Reactor-Core (Nerves) - port 8090
+
+    Features:
+    - Async parallel discovery across multiple detection sources
+    - Zombie detection via responsiveness heuristics
+    - Cross-repo registry integration for coordinated cleanup
+    - Memory-aware cleanup
+    - Port-based Trinity service detection
+    - Graceful termination with cascade (SIGINT → SIGTERM → SIGKILL)
+    - Circuit breaker pattern to prevent cleanup storms
+    """
+
+    # Trinity ports by service
+    TRINITY_PORTS = {
+        "jarvis-body": [8010],
+        "jarvis-prime": [8000],
+        "reactor-core": [8090],
+    }
+
+    # Process patterns by repo
+    REPO_PATTERNS = {
+        "jarvis": ["run_supervisor.py", "start_system.py", "unified_supervisor.py", "jarvis", "uvicorn.*8010"],
+        "jarvis-prime": ["trinity_orchestrator.*jarvis-prime", "jarvis.prime", "uvicorn.*8000"],
+        "reactor-core": ["trinity_orchestrator.*reactor-core", "reactor.core", "uvicorn.*8090"],
+    }
+
+    def __init__(
+        self,
+        config: Optional[SystemKernelConfig] = None,
+        logger: Optional[logging.Logger] = None,
+        enable_cross_repo: bool = True,
+        enable_memory_aware: bool = True,
+        enable_circuit_breaker: bool = True,
+    ):
+        self.config = config or SystemKernelConfig.from_environment()
+        self.logger = logger or logging.getLogger("ZombieCleanup")
+        self._enable_cross_repo = enable_cross_repo
+        self._enable_memory_aware = enable_memory_aware
+        self._enable_circuit_breaker = enable_circuit_breaker
+
+        # Circuit breaker state
+        self._cleanup_count = 0
+        self._last_cleanup_time: Optional[float] = None
+        self._circuit_open = False
+        self._circuit_cooldown = 60.0  # seconds
+
+        # Stats tracking
+        self._stats = {
+            "total_cleanups": 0,
+            "total_zombies_found": 0,
+            "total_zombies_killed": 0,
+            "total_ports_freed": 0,
+            "circuit_breaker_trips": 0,
+        }
+
+        self._my_pid = os.getpid()
+        self._my_parent = os.getppid()
+
+    async def run_comprehensive_cleanup(self) -> Dict[str, Any]:
+        """
+        Run full comprehensive zombie cleanup.
+
+        Returns:
+            Cleanup results with stats
+        """
+        start_time = time.time()
+        result = {
+            "zombies_found": 0,
+            "zombies_killed": 0,
+            "ports_freed": 0,
+            "duration_ms": 0,
+            "phases_completed": [],
+            "errors": [],
+        }
+
+        try:
+            # Check circuit breaker
+            if self._enable_circuit_breaker and self._is_circuit_open():
+                self.logger.warning("[v109.7] Circuit breaker open - skipping cleanup")
+                result["errors"].append("circuit_breaker_open")
+                return result
+
+            # Phase 1: Discover zombies
+            self.logger.info("[v109.7] Phase 1: Discovering zombie processes...")
+            zombies = await self._discover_all_zombies()
+            result["zombies_found"] = len(zombies)
+            result["phases_completed"].append("discovery")
+
+            if not zombies:
+                self.logger.info("[v109.7] No zombie processes found")
+                result["duration_ms"] = int((time.time() - start_time) * 1000)
+                return result
+
+            # Phase 2: Terminate zombies
+            self.logger.info(f"[v109.7] Phase 2: Terminating {len(zombies)} zombie process(es)...")
+            killed = await self._terminate_zombies(zombies)
+            result["zombies_killed"] = killed
+            result["phases_completed"].append("termination")
+
+            # Phase 3: Free ports
+            self.logger.info("[v109.7] Phase 3: Freeing ports...")
+            freed = await self._free_ports()
+            result["ports_freed"] = freed
+            result["phases_completed"].append("port_cleanup")
+
+            # Update stats
+            self._stats["total_cleanups"] += 1
+            self._stats["total_zombies_found"] += result["zombies_found"]
+            self._stats["total_zombies_killed"] += result["zombies_killed"]
+            self._stats["total_ports_freed"] += result["ports_freed"]
+
+            result["duration_ms"] = int((time.time() - start_time) * 1000)
+            self._last_cleanup_time = time.time()
+
+            self.logger.info(
+                f"[v109.7] Cleanup complete: {result['zombies_killed']}/{result['zombies_found']} "
+                f"zombies killed, {result['ports_freed']} ports freed in {result['duration_ms']}ms"
+            )
+
+            return result
+
+        except Exception as e:
+            result["errors"].append(str(e))
+            self.logger.error(f"[v109.7] Cleanup error: {e}")
+            return result
+
+    def _is_circuit_open(self) -> bool:
+        """Check if circuit breaker is open."""
+        if not self._circuit_open:
+            return False
+
+        if self._last_cleanup_time and (time.time() - self._last_cleanup_time) > self._circuit_cooldown:
+            self._circuit_open = False
+            return False
+
+        return True
+
+    async def _discover_all_zombies(self) -> Dict[int, ZombieProcessInfo]:
+        """Discover all zombie processes across repos."""
+        zombies: Dict[int, ZombieProcessInfo] = {}
+
+        try:
+            import psutil
+        except ImportError:
+            return zombies
+
+        # Scan all processes
+        all_ports = []
+        for ports in self.TRINITY_PORTS.values():
+            all_ports.extend(ports)
+
+        for proc in psutil.process_iter(['pid', 'cmdline', 'create_time', 'memory_info', 'cpu_percent', 'status']):
+            try:
+                pid = proc.info['pid']
+                if pid in (self._my_pid, self._my_parent):
+                    continue
+
+                cmdline = " ".join(proc.info.get('cmdline') or []).lower()
+
+                # Check if matches any repo pattern
+                repo_origin = "unknown"
+                for repo, patterns in self.REPO_PATTERNS.items():
+                    if any(p in cmdline for p in patterns):
+                        repo_origin = repo
+                        break
+
+                if repo_origin == "unknown":
+                    continue
+
+                # Detect zombie-like characteristics
+                status = proc.info.get('status', 'unknown')
+                is_zombie_like = status in ('zombie', 'stopped')
+
+                # Check if orphaned (parent is init/1)
+                try:
+                    parent_pid = psutil.Process(pid).ppid()
+                    is_orphaned = parent_pid == 1
+                except Exception:
+                    is_orphaned = False
+
+                mem_info = proc.info.get('memory_info')
+                zombies[pid] = ZombieProcessInfo(
+                    pid=pid,
+                    cmdline=cmdline[:100],
+                    age_seconds=time.time() - proc.info.get('create_time', time.time()),
+                    memory_mb=mem_info.rss / (1024 * 1024) if mem_info else 0,
+                    cpu_percent=proc.info.get('cpu_percent', 0.0),
+                    status=status,
+                    is_orphaned=is_orphaned,
+                    is_zombie_like=is_zombie_like,
+                    repo_origin=repo_origin,
+                    detection_source="scan",
+                )
+
+            except Exception:
+                pass
+
+        return zombies
+
+    async def _terminate_zombies(self, zombies: Dict[int, ZombieProcessInfo]) -> int:
+        """Terminate zombie processes."""
+        try:
+            import psutil
+        except ImportError:
+            return 0
+
+        killed = 0
+
+        for pid, info in zombies.items():
+            try:
+                # Try SIGTERM first
+                os.kill(pid, signal.SIGTERM)
+                await asyncio.sleep(0.5)
+
+                if psutil.pid_exists(pid):
+                    os.kill(pid, signal.SIGKILL)
+                    await asyncio.sleep(0.2)
+
+                killed += 1
+                self.logger.info(f"[v109.7] Killed zombie PID {pid} ({info.repo_origin})")
+
+            except (ProcessLookupError, OSError):
+                killed += 1  # Already dead
+            except Exception as e:
+                self.logger.debug(f"[v109.7] Failed to kill PID {pid}: {e}")
+
+        return killed
+
+    async def _free_ports(self) -> int:
+        """Free up Trinity ports."""
+        freed = 0
+
+        try:
+            import psutil
+        except ImportError:
+            return freed
+
+        all_ports = []
+        for ports in self.TRINITY_PORTS.values():
+            all_ports.extend(ports)
+
+        try:
+            for conn in psutil.net_connections(kind='inet'):
+                if conn.laddr.port in all_ports and conn.pid:
+                    if conn.pid in (self._my_pid, self._my_parent):
+                        continue
+
+                    try:
+                        os.kill(conn.pid, signal.SIGKILL)
+                        freed += 1
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+        return freed
+
+    def get_stats(self) -> Dict[str, Any]:
+        """Get cleanup statistics."""
+        return self._stats.copy()
+
+
+# Global process cleaner singleton
+_process_cleaner: Optional[ParallelProcessCleaner] = None
+
+
+def get_process_cleaner() -> ParallelProcessCleaner:
+    """Get the global process cleaner."""
+    global _process_cleaner
+    if _process_cleaner is None:
+        _process_cleaner = ParallelProcessCleaner()
+    return _process_cleaner
+
+
 # ╔═══════════════════════════════════════════════════════════════════════════════╗
 # ║                                                                               ║
 # ║   END OF ZONE 3                                                               ║
