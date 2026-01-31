@@ -1610,43 +1610,21 @@ def shutdown_third_party_threads(timeout: float = 5.0) -> Dict[str, Any]:
         except Exception as e:
             logger.debug(f"SQLAlchemy cleanup: {e}")
 
-        # Connection managers - handle event loop lifecycle carefully
+        # Connection managers - use sync accessor to avoid unawaited coroutine
+        # v149.0: FIX - Use sync accessor instead of async get_database_adapter
         try:
-            from intelligence.cloud_database_adapter import get_database_adapter
-            adapter = get_database_adapter()
-            if hasattr(adapter, 'close'):
-                import asyncio
-
-                # Check if we can use an existing loop
-                try:
-                    loop = asyncio.get_running_loop()
-                    # We're in an async context - schedule but don't wait
-                    # The event loop owner will handle cleanup
-                    if not loop.is_closed():
-                        asyncio.ensure_future(adapter.close())
-                        logger.debug("Database close scheduled on running loop")
-                except RuntimeError:
-                    # No running loop - check if there's a non-closed loop
-                    try:
-                        loop = asyncio.get_event_loop()
-                        if not loop.is_closed():
-                            loop.run_until_complete(adapter.close())
-                            logger.debug("Database closed on existing loop")
-                        else:
-                            # Event loop is closed - use sync close if available
-                            if hasattr(adapter, 'close_sync'):
-                                adapter.close_sync()
-                                logger.debug("Database closed synchronously")
-                            else:
-                                # Create new loop as last resort
-                                new_loop = asyncio.new_event_loop()
-                                try:
-                                    new_loop.run_until_complete(adapter.close())
-                                    logger.debug("Database closed on new loop")
-                                finally:
-                                    new_loop.close()
-                    except Exception as loop_e:
-                        logger.debug(f"Event loop unavailable for database cleanup: {loop_e}")
+            from intelligence.cloud_database_adapter import (
+                get_database_adapter_sync,
+                close_database_adapter_sync,
+            )
+            adapter = get_database_adapter_sync()
+            if adapter is not None:
+                # Use the centralized sync close which handles all event loop cases
+                closed = close_database_adapter_sync()
+                if closed:
+                    logger.debug("Database adapter closed via sync accessor")
+                else:
+                    logger.debug("Database adapter close failed, may complete async")
 
         except ImportError:
             pass
@@ -1865,11 +1843,35 @@ def final_thread_cleanup(
         logger.warning(f"[v124.0] Third-party cleanup error: {e}")
 
     # Phase 3: Force terminate stubborn threads
+    # v149.0: Skip executor workers and asyncio threads - they should be handled by their managers
     if force_terminate:
+        # Patterns for threads that should NOT be force-terminated
+        # These are managed by their respective systems
+        skip_patterns = (
+            'ThreadPoolExecutor',  # Managed by executor.shutdown()
+            'asyncio',             # Managed by event loop
+            'QueueFeederThread',   # multiprocessing Queue feeder
+            'SelectorThread',      # asyncio selector
+        )
+
         remaining = [
             t for t in threading.enumerate()
-            if t != threading.main_thread() and not t.daemon and t.is_alive()
+            if (t != threading.main_thread()
+                and not t.daemon
+                and t.is_alive()
+                and not any(pattern in t.name for pattern in skip_patterns))
         ]
+
+        # Log skipped threads for debugging
+        skipped = [
+            t.name for t in threading.enumerate()
+            if (t != threading.main_thread()
+                and not t.daemon
+                and t.is_alive()
+                and any(pattern in t.name for pattern in skip_patterns))
+        ]
+        if skipped:
+            logger.debug(f"[v149.0] Phase 3: Skipping managed threads: {skipped}")
 
         for thread in remaining:
             if force_terminate_thread(thread, timeout=1.0):

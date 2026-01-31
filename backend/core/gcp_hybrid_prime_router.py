@@ -991,7 +991,7 @@ class GCPHybridPrimeRouter:
         if len(self._memory_history) >= 3:
             recent_samples = list(self._memory_history)[-3:]
             memory_trend = recent_samples[-1][1] - recent_samples[0][1]  # [1] is used_percent
-            
+
             if memory_trend > 5.0:  # Memory grew more than 5% despite offload
                 self.logger.warning(
                     f"[v148.0] Memory still growing (+{memory_trend:.1f}%) despite offload - "
@@ -1003,6 +1003,9 @@ class GCPHybridPrimeRouter:
                     action="reduce_load",
                     used_percent=current_used_percent,
                 )
+
+                # v149.0: Aggressive memory cleanup when growth continues
+                await self._aggressive_memory_cleanup(memory_trend)
 
     async def _release_emergency_offload(self, reason: str) -> None:
         """v93.0: Release emergency offload - SIGCONT all paused processes."""
@@ -1192,6 +1195,97 @@ class GCPHybridPrimeRouter:
                 )
         except Exception as e:
             self.logger.warning(f"[v93.0] Failed to clear memory pressure signal: {e}")
+
+    async def _aggressive_memory_cleanup(self, memory_trend: float) -> None:
+        """
+        v149.0: Aggressive memory cleanup when memory grows despite LLM offload.
+
+        This indicates non-LLM processes are consuming memory. We perform:
+        1. Force garbage collection with all generations
+        2. Clear Python caches (functools.lru_cache, etc.)
+        3. Trigger database connection pool cleanup
+        4. Notify enterprise hooks for coordinated cleanup
+
+        Args:
+            memory_trend: Memory growth percentage since offload started
+        """
+        import gc
+        import functools
+
+        self.logger.info(f"[v149.0] Aggressive memory cleanup triggered (trend: +{memory_trend:.1f}%)")
+
+        cleanup_stats = {
+            "gc_collected": 0,
+            "caches_cleared": 0,
+            "db_pools_cleaned": False,
+            "enterprise_notified": False,
+        }
+
+        # Phase 1: Aggressive garbage collection
+        try:
+            # Collect all generations multiple times to release circular refs
+            for _ in range(3):
+                cleanup_stats["gc_collected"] += gc.collect(2)  # Full collection
+
+            # Force finalization
+            gc.collect()
+            self.logger.debug(f"[v149.0] GC collected {cleanup_stats['gc_collected']} objects")
+        except Exception as e:
+            self.logger.warning(f"[v149.0] GC error: {e}")
+
+        # Phase 2: Clear functools caches (lru_cache wrappers)
+        try:
+            cleared_count = 0
+            # Iterate over all objects to find lru_cache wrappers
+            for obj in gc.get_objects():
+                if hasattr(obj, 'cache_clear') and callable(obj.cache_clear):
+                    try:
+                        obj.cache_clear()
+                        cleared_count += 1
+                    except Exception:
+                        pass
+            cleanup_stats["caches_cleared"] = cleared_count
+            if cleared_count > 0:
+                self.logger.debug(f"[v149.0] Cleared {cleared_count} LRU caches")
+        except Exception as e:
+            self.logger.warning(f"[v149.0] Cache clear error: {e}")
+
+        # Phase 3: Database pool cleanup
+        try:
+            from intelligence.cloud_database_adapter import close_database_adapter_sync
+            cleanup_stats["db_pools_cleaned"] = close_database_adapter_sync()
+            if cleanup_stats["db_pools_cleaned"]:
+                self.logger.debug("[v149.0] Database pools cleaned")
+        except ImportError:
+            pass  # Module not available
+        except Exception as e:
+            self.logger.warning(f"[v149.0] DB pool cleanup error: {e}")
+
+        # Phase 4: Enterprise hooks notification
+        try:
+            from backend.core.enterprise_hooks import handle_memory_pressure
+            import psutil
+            current_percent = psutil.virtual_memory().percent
+            strategy = await handle_memory_pressure(
+                memory_percent=current_percent,
+                trend="increasing",
+                slope=memory_trend / 10.0,  # Approximate slope
+            )
+            cleanup_stats["enterprise_notified"] = True
+            self.logger.debug(f"[v149.0] Enterprise hooks strategy: {strategy}")
+        except ImportError:
+            pass  # Enterprise hooks not available
+        except Exception as e:
+            self.logger.warning(f"[v149.0] Enterprise hooks error: {e}")
+
+        # Final GC pass
+        gc.collect()
+
+        self.logger.info(
+            f"[v149.0] Aggressive cleanup complete: "
+            f"gc={cleanup_stats['gc_collected']}, caches={cleanup_stats['caches_cleared']}, "
+            f"db={cleanup_stats['db_pools_cleaned']}, enterprise={cleanup_stats['enterprise_notified']}"
+        )
 
     async def _trigger_vm_provisioning(self, reason: str = "unknown") -> bool:
         """

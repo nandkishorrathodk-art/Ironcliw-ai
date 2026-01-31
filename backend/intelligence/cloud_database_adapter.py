@@ -573,6 +573,32 @@ class CloudDatabaseAdapter:
             await self._local_connection.close()
             logger.info("✅ SQLite connection closed")
 
+    def close_sync(self) -> bool:
+        """
+        Close database connections synchronously.
+
+        v149.0: Added for sync shutdown contexts where await is not available.
+        SQLite connections can be closed synchronously. Cloud connections
+        (asyncpg) require async close, handled by the global close_database_adapter_sync.
+
+        Returns:
+            True if closed successfully, False otherwise.
+        """
+        try:
+            # SQLite can be closed synchronously via underlying connection
+            if self._local_connection:
+                # Access the underlying aiosqlite connection
+                conn = self._local_connection
+                if hasattr(conn, '_connection') and conn._connection:
+                    # Direct sqlite3 close
+                    conn._connection.close()
+                    logger.info("✅ SQLite connection closed synchronously")
+                self._local_connection = None
+            return True
+        except Exception as e:
+            logger.warning(f"Sync close partial: {e}")
+            return False
+
     @property
     def is_cloud(self) -> bool:
         """Check if using cloud database"""
@@ -997,3 +1023,76 @@ async def close_database_adapter():
     if _adapter:
         await _adapter.close()
         _adapter = None
+
+
+# v149.0: Sync accessors for shutdown scenarios
+def get_database_adapter_sync() -> Optional[CloudDatabaseAdapter]:
+    """
+    Get the global database adapter synchronously (if already initialized).
+
+    This returns the existing adapter instance without initialization.
+    Use this in sync contexts like shutdown handlers where you need to
+    access an existing adapter but cannot await.
+
+    Returns:
+        The adapter if initialized, None otherwise.
+    """
+    return _adapter
+
+
+def close_database_adapter_sync() -> bool:
+    """
+    Close the global database adapter synchronously.
+
+    Attempts to close the adapter without requiring an event loop.
+    Uses close_sync() if available, otherwise schedules on available loop.
+
+    Returns:
+        True if closed successfully, False otherwise.
+    """
+    global _adapter
+    if _adapter is None:
+        return True
+
+    import asyncio
+
+    # Try sync close first
+    if hasattr(_adapter, 'close_sync'):
+        try:
+            _adapter.close_sync()
+            _adapter = None
+            return True
+        except Exception:
+            pass
+
+    # Try to schedule on running loop
+    try:
+        loop = asyncio.get_running_loop()
+        if not loop.is_closed():
+            asyncio.ensure_future(_adapter.close())
+            # Don't set _adapter = None here, async close will handle it
+            return True
+    except RuntimeError:
+        pass
+
+    # Try to use existing event loop
+    try:
+        loop = asyncio.get_event_loop()
+        if not loop.is_closed():
+            loop.run_until_complete(_adapter.close())
+            _adapter = None
+            return True
+    except Exception:
+        pass
+
+    # Create new loop as last resort
+    try:
+        new_loop = asyncio.new_event_loop()
+        try:
+            new_loop.run_until_complete(_adapter.close())
+            _adapter = None
+            return True
+        finally:
+            new_loop.close()
+    except Exception:
+        return False
