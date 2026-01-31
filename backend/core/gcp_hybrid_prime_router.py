@@ -103,6 +103,39 @@ except ImportError:
     FailureType = None
 
 # =============================================================================
+# Enterprise Hooks Integration (v148.1)
+# =============================================================================
+
+ENTERPRISE_HOOKS_AVAILABLE = False
+try:
+    from backend.core.enterprise_hooks import (
+        enterprise_init,
+        handle_memory_pressure,
+        handle_gcp_failure,
+        GCPErrorContext,
+        record_provider_success,
+        record_provider_failure,
+        update_component_health,
+        is_enterprise_available,
+        RecoveryStrategy,
+    )
+    from backend.core.health_contracts import HealthStatus
+    ENTERPRISE_HOOKS_AVAILABLE = True
+    logger.info("[v148.1] Enterprise hooks available - intelligent recovery enabled")
+except ImportError as e:
+    logger.debug(f"[v148.1] Enterprise hooks not available: {e}")
+    enterprise_init = None
+    handle_memory_pressure = None
+    handle_gcp_failure = None
+    GCPErrorContext = None
+    record_provider_success = None
+    record_provider_failure = None
+    update_component_health = None
+    is_enterprise_available = lambda: False
+    RecoveryStrategy = None
+    HealthStatus = None
+
+# =============================================================================
 # Configuration
 # =============================================================================
 
@@ -526,10 +559,39 @@ class GCPHybridPrimeRouter:
                         )
 
                 # v93.0: Emergency offload check - highest priority
+                # v148.1: Consult enterprise recovery engine for strategy
                 if used_percent >= EMERGENCY_OFFLOAD_RAM_PERCENT and not self._emergency_offload_active:
                     self.logger.critical(
                         f"[v93.0] EMERGENCY: RAM at {used_percent:.1f}% - initiating emergency offload"
                     )
+
+                    # v148.1: Get recovery strategy from enterprise hooks
+                    recovery_strategy = None
+                    if ENTERPRISE_HOOKS_AVAILABLE and handle_memory_pressure:
+                        try:
+                            trend = "increasing" if memory_rate_mb_sec > 0 else "stable"
+                            recovery_strategy = await handle_memory_pressure(
+                                used_percent,
+                                trend=trend,
+                                slope=memory_rate_mb_sec,
+                            )
+                            self.logger.info(
+                                f"[v148.1] Recovery engine suggests: {recovery_strategy.value}"
+                            )
+                        except Exception as e:
+                            self.logger.debug(f"[v148.1] Recovery engine error: {e}")
+
+                    # v148.1: Update health status
+                    if ENTERPRISE_HOOKS_AVAILABLE and update_component_health and HealthStatus:
+                        try:
+                            update_component_health(
+                                "gcp_hybrid_router",
+                                HealthStatus.DEGRADED,
+                                message=f"Emergency offload: RAM at {used_percent:.1f}%",
+                            )
+                        except Exception:
+                            pass
+
                     await self._emergency_offload(
                         reason=f"critical_ram_{used_percent:.0f}pct",
                         used_percent=used_percent,
@@ -1202,6 +1264,25 @@ class GCPHybridPrimeRouter:
                 if result:
                     self.logger.info("GCP VM provisioned successfully")
                     self._metrics.gcp_requests += 1
+
+                    # v148.1: Record success for circuit breaker
+                    if ENTERPRISE_HOOKS_AVAILABLE and record_provider_success:
+                        try:
+                            record_provider_success("llm_inference", "gcp_vm")
+                        except Exception:
+                            pass
+
+                    # v148.1: Update health to healthy
+                    if ENTERPRISE_HOOKS_AVAILABLE and update_component_health and HealthStatus:
+                        try:
+                            update_component_health(
+                                "gcp_hybrid_router",
+                                HealthStatus.HEALTHY,
+                                message="GCP VM provisioned successfully",
+                            )
+                        except Exception:
+                            pass
+
                     return True
                 else:
                     # Check if this is a permanent failure (disabled/misconfigured)
@@ -1211,6 +1292,32 @@ class GCPHybridPrimeRouter:
                             is_valid, _ = config.is_valid_for_vm_operations()
                             if not is_valid:
                                 self._gcp_permanently_unavailable = True
+
+                    # v148.1: Report failure to enterprise recovery engine
+                    if ENTERPRISE_HOOKS_AVAILABLE and handle_gcp_failure and GCPErrorContext:
+                        try:
+                            error = RuntimeError(f"GCP VM provisioning failed for reason: {reason}")
+                            ctx = GCPErrorContext(
+                                error=error,
+                                error_message=str(error),
+                                component="gcp_vm",
+                            )
+                            strategy = await handle_gcp_failure(error, ctx)
+                            self.logger.info(f"[v148.1] GCP failure handled, strategy: {strategy.value}")
+                        except Exception as e:
+                            self.logger.debug(f"[v148.1] GCP failure handler error: {e}")
+
+                    # v148.1: Record provider failure for circuit breaker
+                    if ENTERPRISE_HOOKS_AVAILABLE and record_provider_failure:
+                        try:
+                            record_provider_failure(
+                                "llm_inference",
+                                "gcp_vm",
+                                RuntimeError("VM provisioning failed"),
+                            )
+                        except Exception:
+                            pass
+
                     self.logger.error("GCP VM provisioning failed")
                     return False
             else:
