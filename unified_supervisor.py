@@ -6722,6 +6722,437 @@ class VMSessionTracker:
             return False
 
 
+# =============================================================================
+# CACHE STATISTICS TRACKER - Comprehensive Cache Metrics
+# =============================================================================
+class CacheStatisticsTracker:
+    """
+    Async-safe, self-healing cache statistics tracker with comprehensive validation.
+
+    Features:
+    - Atomic counter operations with asyncio.Lock
+    - Comprehensive consistency validation with detailed diagnostics
+    - Self-healing capability to detect and correct drift
+    - Subset relationship enforcement (expired ⊆ misses, uninitialized ⊆ misses)
+    - Event-driven statistics with timestamps for debugging
+    - Automatic anomaly detection and logging
+
+    Mathematical Invariants:
+    - total_queries == cache_hits + cache_misses (always)
+    - cache_expired <= cache_misses (expired is a subset of misses)
+    - queries_while_uninitialized <= cache_misses (uninitialized is subset of misses)
+    """
+
+    __slots__ = (
+        '_lock', '_cache_hits', '_cache_misses', '_cache_expired',
+        '_total_queries', '_queries_while_uninitialized', '_cost_saved_usd',
+        '_expired_entries_cleaned', '_cleanup_runs', '_cleanup_errors',
+        '_cost_per_inference', '_last_consistency_check', '_consistency_violations',
+        '_auto_heal_count', '_event_log', '_max_event_log_size', '_created_at'
+    )
+
+    def __init__(self, cost_per_inference: float = 0.002, max_event_log_size: int = 100):
+        """Initialize the statistics tracker."""
+        self._lock = LazyAsyncLock()
+
+        # Core counters
+        self._cache_hits: int = 0
+        self._cache_misses: int = 0
+        self._cache_expired: int = 0
+        self._total_queries: int = 0
+        self._queries_while_uninitialized: int = 0
+        self._cost_saved_usd: float = 0.0
+
+        # Maintenance counters
+        self._expired_entries_cleaned: int = 0
+        self._cleanup_runs: int = 0
+        self._cleanup_errors: int = 0
+
+        # Configuration
+        self._cost_per_inference = cost_per_inference
+
+        # Consistency tracking
+        self._last_consistency_check: float = 0.0
+        self._consistency_violations: int = 0
+        self._auto_heal_count: int = 0
+
+        # Event log for debugging (rolling window)
+        self._event_log: List[Dict[str, Any]] = []
+        self._max_event_log_size = max_event_log_size
+        self._created_at = time.time()
+
+    def _log_event(self, event_type: str, details: Optional[Dict[str, Any]] = None):
+        """Log an event for debugging purposes."""
+        event = {
+            "timestamp": time.time(),
+            "type": event_type,
+            "details": details or {},
+            "snapshot": {
+                "hits": self._cache_hits,
+                "misses": self._cache_misses,
+                "total": self._total_queries,
+            }
+        }
+        self._event_log.append(event)
+
+        if len(self._event_log) > self._max_event_log_size:
+            self._event_log = self._event_log[-self._max_event_log_size:]
+
+    async def record_hit(self, add_cost_savings: bool = True) -> None:
+        """Record a cache hit atomically."""
+        async with self._lock:
+            self._total_queries += 1
+            self._cache_hits += 1
+            if add_cost_savings:
+                self._cost_saved_usd += self._cost_per_inference
+            self._log_event("hit", {"cost_saved": add_cost_savings})
+
+    async def record_miss(
+        self,
+        is_expired: bool = False,
+        is_uninitialized: bool = False
+    ) -> None:
+        """Record a cache miss atomically with categorization."""
+        async with self._lock:
+            self._total_queries += 1
+            self._cache_misses += 1
+
+            if is_expired:
+                self._cache_expired += 1
+                self._log_event("miss_expired")
+            elif is_uninitialized:
+                self._queries_while_uninitialized += 1
+                self._log_event("miss_uninitialized")
+            else:
+                self._log_event("miss")
+
+    async def record_cleanup(
+        self,
+        entries_cleaned: int,
+        success: bool = True
+    ) -> None:
+        """Record a cleanup operation atomically."""
+        async with self._lock:
+            self._cleanup_runs += 1
+            if success:
+                self._expired_entries_cleaned += entries_cleaned
+                self._log_event("cleanup_success", {"cleaned": entries_cleaned})
+            else:
+                self._cleanup_errors += 1
+                self._log_event("cleanup_error", {"attempted": entries_cleaned})
+
+    async def record_cleanup_error(self) -> None:
+        """Record a cleanup error atomically."""
+        async with self._lock:
+            self._cleanup_errors += 1
+            self._log_event("cleanup_error")
+
+    async def get_snapshot(self) -> Dict[str, Any]:
+        """Get an atomic snapshot of all statistics."""
+        async with self._lock:
+            return {
+                "cache_hits": self._cache_hits,
+                "cache_misses": self._cache_misses,
+                "cache_expired": self._cache_expired,
+                "total_queries": self._total_queries,
+                "queries_while_uninitialized": self._queries_while_uninitialized,
+                "cost_saved_usd": self._cost_saved_usd,
+                "expired_entries_cleaned": self._expired_entries_cleaned,
+                "cleanup_runs": self._cleanup_runs,
+                "cleanup_errors": self._cleanup_errors,
+                "consistency_violations": self._consistency_violations,
+                "auto_heal_count": self._auto_heal_count,
+                "uptime_seconds": time.time() - self._created_at,
+            }
+
+    async def validate_consistency(self, auto_heal: bool = True) -> Dict[str, Any]:
+        """Validate statistics consistency and optionally self-heal."""
+        async with self._lock:
+            self._last_consistency_check = time.time()
+            issues: List[Dict[str, Any]] = []
+
+            # Invariant 1: total_queries == hits + misses
+            expected_total = self._cache_hits + self._cache_misses
+            if self._total_queries != expected_total:
+                diff = self._total_queries - expected_total
+                issues.append({
+                    "type": "total_mismatch",
+                    "expected": expected_total,
+                    "actual": self._total_queries,
+                    "diff": diff,
+                })
+                if auto_heal:
+                    self._total_queries = expected_total
+                    self._auto_heal_count += 1
+
+            # Invariant 2: expired <= misses
+            if self._cache_expired > self._cache_misses:
+                issues.append({
+                    "type": "expired_exceeds_misses",
+                    "expired": self._cache_expired,
+                    "misses": self._cache_misses,
+                })
+                if auto_heal:
+                    self._cache_expired = self._cache_misses
+                    self._auto_heal_count += 1
+
+            # Invariant 3: uninitialized <= misses
+            if self._queries_while_uninitialized > self._cache_misses:
+                issues.append({
+                    "type": "uninitialized_exceeds_misses",
+                    "uninitialized": self._queries_while_uninitialized,
+                    "misses": self._cache_misses,
+                })
+                if auto_heal:
+                    self._queries_while_uninitialized = self._cache_misses
+                    self._auto_heal_count += 1
+
+            # Invariant 4: All counters >= 0
+            for name, value in [
+                ("cache_hits", self._cache_hits),
+                ("cache_misses", self._cache_misses),
+                ("cache_expired", self._cache_expired),
+                ("total_queries", self._total_queries),
+            ]:
+                if value < 0:
+                    issues.append({
+                        "type": "negative_counter",
+                        "counter": name,
+                        "value": value,
+                    })
+                    if auto_heal:
+                        setattr(self, f"_{name}", 0)
+                        self._auto_heal_count += 1
+
+            if issues:
+                self._consistency_violations += 1
+
+            return {
+                "consistent": len(issues) == 0,
+                "issues": issues,
+                "auto_healed": auto_heal and len(issues) > 0,
+                "total_violations": self._consistency_violations,
+                "total_heals": self._auto_heal_count,
+            }
+
+    @property
+    def hit_rate(self) -> float:
+        """Calculate cache hit rate."""
+        if self._total_queries == 0:
+            return 0.0
+        return self._cache_hits / self._total_queries
+
+    @property
+    def miss_rate(self) -> float:
+        """Calculate cache miss rate."""
+        if self._total_queries == 0:
+            return 0.0
+        return self._cache_misses / self._total_queries
+
+
+# =============================================================================
+# PROCESS RESTART MANAGER - Advanced Process Supervision
+# =============================================================================
+@dataclass
+class RestartableManagedProcess:
+    """Metadata for a managed process under supervision."""
+    name: str
+    process: Optional[asyncio.subprocess.Process]
+    restart_func: Callable[[], Awaitable[asyncio.subprocess.Process]]
+    restart_count: int = 0
+    last_restart: float = 0.0
+    max_restarts: int = 5
+    port: Optional[int] = None
+    exit_code: Optional[int] = None
+
+
+class ProcessRestartManager:
+    """
+    Advanced process restart manager with exponential backoff and intelligent recovery.
+
+    Features:
+    - Named process tracking (dict-based, not fragile index-based)
+    - Exponential backoff: 1s → 2s → 4s → 8s → max configurable
+    - Per-process restart tracking with cooldown reset
+    - Maximum restart limit with alerting
+    - Global shutdown flag reset before restart
+    - Async-safe with proper locking
+    - All thresholds configurable via environment variables
+
+    Environment Variables:
+        JARVIS_MAX_RESTARTS: Maximum restart attempts (default: 5)
+        JARVIS_MAX_BACKOFF: Maximum backoff delay in seconds (default: 30.0)
+        JARVIS_RESTART_COOLDOWN: Seconds of stability before resetting restart count (default: 300.0)
+        JARVIS_BASE_BACKOFF: Initial backoff delay in seconds (default: 1.0)
+    """
+
+    def __init__(self):
+        """Initialize the restart manager with environment-driven configuration."""
+        self.processes: Dict[str, RestartableManagedProcess] = {}
+        self._lock = asyncio.Lock()
+        self._shutdown_requested = False
+
+        # Environment-driven configuration
+        self.max_restarts = int(os.getenv("JARVIS_MAX_RESTARTS", "5"))
+        self.max_backoff = float(os.getenv("JARVIS_MAX_BACKOFF", "30.0"))
+        self.restart_cooldown = float(os.getenv("JARVIS_RESTART_COOLDOWN", "300.0"))
+        self.base_backoff = float(os.getenv("JARVIS_BASE_BACKOFF", "1.0"))
+
+        self._logger = logging.getLogger("ProcessRestartManager")
+
+    def register(
+        self,
+        name: str,
+        process: asyncio.subprocess.Process,
+        restart_func: Callable[[], Awaitable[asyncio.subprocess.Process]],
+        port: Optional[int] = None,
+    ) -> None:
+        """Register a process for monitoring and automatic restart."""
+        self.processes[name] = RestartableManagedProcess(
+            name=name,
+            process=process,
+            restart_func=restart_func,
+            restart_count=0,
+            last_restart=0.0,
+            max_restarts=self.max_restarts,
+            port=port,
+        )
+        self._logger.info(f"✓ Registered process '{name}' (PID: {process.pid})" +
+                         (f" on port {port}" if port else ""))
+
+    def unregister(self, name: str) -> None:
+        """Remove a process from monitoring."""
+        if name in self.processes:
+            del self.processes[name]
+            self._logger.info(f"✓ Unregistered process '{name}'")
+
+    def request_shutdown(self) -> None:
+        """Signal that shutdown is requested - stop all restart attempts."""
+        self._shutdown_requested = True
+        self._logger.info("Shutdown requested - restart manager will not restart processes")
+
+    def reset_shutdown(self) -> None:
+        """Reset shutdown flag - allow restarts again."""
+        self._shutdown_requested = False
+        self._logger.info("Shutdown flag reset - restart manager active")
+
+    async def check_and_restart_all(self) -> List[str]:
+        """Check all processes and restart any that have unexpectedly exited."""
+        if self._shutdown_requested:
+            return []
+
+        restarted = []
+
+        async with self._lock:
+            for name, managed in list(self.processes.items()):
+                proc = managed.process
+                if proc is None:
+                    continue
+
+                if proc.returncode is not None:
+                    managed.exit_code = proc.returncode
+
+                    # Normal exit or controlled shutdown - don't restart
+                    if proc.returncode in (0, -2, -15):
+                        self._logger.debug(
+                            f"Process '{name}' exited normally (code: {proc.returncode})"
+                        )
+                        continue
+
+                    success = await self._handle_unexpected_exit(name, managed)
+                    if success:
+                        restarted.append(name)
+
+        return restarted
+
+    async def _handle_unexpected_exit(self, name: str, managed: RestartableManagedProcess) -> bool:
+        """Handle an unexpected process exit with exponential backoff restart."""
+        current_time = time.time()
+
+        if managed.restart_count >= managed.max_restarts:
+            self._logger.error(
+                f"❌ Process '{name}' exceeded restart limit ({managed.max_restarts}). "
+                f"Last exit code: {managed.exit_code}. Manual intervention required."
+            )
+            return False
+
+        if current_time - managed.last_restart > self.restart_cooldown:
+            if managed.restart_count > 0:
+                self._logger.info(
+                    f"Process '{name}' was stable for {self.restart_cooldown}s - "
+                    f"resetting restart count from {managed.restart_count} to 0"
+                )
+            managed.restart_count = 0
+
+        backoff = min(
+            self.base_backoff * (2 ** managed.restart_count),
+            self.max_backoff
+        )
+
+        managed.restart_count += 1
+        managed.last_restart = current_time
+
+        self._logger.warning(
+            f"🔄 Restarting '{name}' in {backoff:.1f}s "
+            f"(attempt {managed.restart_count}/{managed.max_restarts}, "
+            f"exit code: {managed.exit_code})"
+        )
+
+        await asyncio.sleep(backoff)
+
+        if self._shutdown_requested:
+            self._logger.info(f"Shutdown requested - aborting restart of '{name}'")
+            return False
+
+        # Reset global shutdown flag BEFORE restarting
+        try:
+            from backend.core.resilience.graceful_shutdown import reset_global_shutdown
+            reset_global_shutdown()
+            self._logger.debug(f"Global shutdown flag reset for '{name}' restart")
+        except ImportError:
+            pass
+        except Exception as e:
+            self._logger.debug(f"Failed to reset global shutdown: {e}")
+
+        try:
+            new_proc = await managed.restart_func()
+            managed.process = new_proc
+            self._logger.info(
+                f"✅ Process '{name}' restarted successfully (new PID: {new_proc.pid})"
+            )
+            return True
+        except Exception as e:
+            self._logger.error(f"❌ Failed to restart '{name}': {e}")
+            return False
+
+    def get_status(self) -> Dict[str, Dict[str, Any]]:
+        """Get status of all managed processes."""
+        status = {}
+        for name, managed in self.processes.items():
+            proc = managed.process
+            status[name] = {
+                "pid": proc.pid if proc else None,
+                "running": proc.returncode is None if proc else False,
+                "exit_code": managed.exit_code,
+                "restart_count": managed.restart_count,
+                "last_restart": managed.last_restart,
+                "port": managed.port,
+            }
+        return status
+
+
+# Global restart manager instance
+_restart_manager: Optional[ProcessRestartManager] = None
+
+
+def get_restart_manager() -> ProcessRestartManager:
+    """Get the global process restart manager instance."""
+    global _restart_manager
+    if _restart_manager is None:
+        _restart_manager = ProcessRestartManager()
+    return _restart_manager
+
+
 # ╔═══════════════════════════════════════════════════════════════════════════════╗
 # ║                                                                               ║
 # ║   END OF ZONE 3                                                               ║
