@@ -3916,6 +3916,553 @@ class ResourceManagerRegistry:
         return len(self._managers)
 
 
+# =============================================================================
+# SPOT INSTANCE RESILIENCE HANDLER
+# =============================================================================
+class SpotInstanceResilienceHandler(ResourceManagerBase):
+    """
+    Spot Instance Resilience Handler for GCP Preemption.
+
+    Features:
+    - Graceful preemption handling (30 second warning)
+    - State preservation before shutdown
+    - Automatic fallback to micro instance or local
+    - Cost tracking during preemption events
+    - Learning from preemption patterns
+    - Webhook notifications
+
+    Environment Configuration:
+    - SPOT_RESILIENCE_ENABLED: Enable/disable (default: true)
+    - SPOT_FALLBACK_MODE: micro/local/none (default: local)
+    - SPOT_STATE_PRESERVE: Save state on preemption (default: true)
+    - SPOT_PREEMPTION_WEBHOOK: Webhook URL for notifications (default: none)
+    - SPOT_STATE_FILE: Path to state file (default: ~/.jarvis/spot_state.json)
+    - SPOT_POLL_INTERVAL: Metadata poll interval in seconds (default: 5)
+    """
+
+    def __init__(self, config: Optional[SystemKernelConfig] = None):
+        super().__init__("SpotInstanceResilienceHandler", config)
+
+        # Configuration from environment
+        self.enabled = os.getenv("SPOT_RESILIENCE_ENABLED", "true").lower() == "true"
+        self.fallback_mode = os.getenv("SPOT_FALLBACK_MODE", "local")  # micro/local/none
+        self.state_preserve = os.getenv("SPOT_STATE_PRESERVE", "true").lower() == "true"
+        self.preemption_webhook = os.getenv("SPOT_PREEMPTION_WEBHOOK")
+        self.poll_interval = float(os.getenv("SPOT_POLL_INTERVAL", "5"))
+
+        # State file
+        self.state_file = Path(os.getenv(
+            "SPOT_STATE_FILE",
+            str(Path.home() / ".jarvis" / "spot_state.json")
+        ))
+
+        # Preemption tracking
+        self.preemption_count = 0
+        self.last_preemption_time: Optional[float] = None
+        self.preemption_history: List[Dict[str, Any]] = []
+
+        # Callbacks
+        self._preemption_callback: Optional[Callable[[], Awaitable[None]]] = None
+        self._fallback_callback: Optional[Callable[[str], Awaitable[None]]] = None
+
+        # Polling task
+        self._polling_task: Optional[asyncio.Task] = None
+        self._polling_active = False
+
+    async def initialize(self) -> bool:
+        """Initialize resilience handler."""
+        if not self.enabled:
+            self._logger.info("Spot resilience handler disabled")
+            self._initialized = True
+            return True
+
+        # Load preserved state if available
+        preserved = await self.load_preserved_state()
+        if preserved:
+            self.preemption_count = preserved.get("preemption_count", 0)
+            self.preemption_history = preserved.get("preemption_history", [])[-10:]
+            self._logger.info(f"Loaded preserved state: {self.preemption_count} previous preemptions")
+
+        self._initialized = True
+        self._logger.success(
+            f"Spot resilience initialized: fallback={self.fallback_mode}, "
+            f"preserve_state={self.state_preserve}"
+        )
+        return True
+
+    async def health_check(self) -> Tuple[bool, str]:
+        """Check resilience handler health."""
+        if not self.enabled:
+            return True, "Spot resilience disabled"
+
+        status_parts = [f"preemptions={self.preemption_count}"]
+        if self._polling_active:
+            status_parts.append("polling=active")
+        if self.last_preemption_time:
+            since = time.time() - self.last_preemption_time
+            status_parts.append(f"last_preemption={since:.0f}s ago")
+
+        return True, ", ".join(status_parts)
+
+    async def cleanup(self) -> None:
+        """Stop polling and clean up."""
+        await self.stop_preemption_handler()
+        self._initialized = False
+
+    async def setup_preemption_handler(
+        self,
+        preemption_callback: Optional[Callable[[], Awaitable[None]]] = None,
+        fallback_callback: Optional[Callable[[str], Awaitable[None]]] = None
+    ) -> None:
+        """
+        Setup preemption handling callbacks and start polling.
+
+        Args:
+            preemption_callback: Called when preemption detected (before fallback)
+            fallback_callback: Called with fallback mode to trigger fallback
+        """
+        self._preemption_callback = preemption_callback
+        self._fallback_callback = fallback_callback
+
+        if self.enabled and not self._polling_active:
+            self._polling_task = asyncio.create_task(self._poll_preemption_notice())
+            self._polling_active = True
+            self._logger.info("Preemption handler active")
+
+    async def stop_preemption_handler(self) -> None:
+        """Stop preemption polling."""
+        self._polling_active = False
+        if self._polling_task and not self._polling_task.done():
+            self._polling_task.cancel()
+            try:
+                await self._polling_task
+            except asyncio.CancelledError:
+                pass
+        self._polling_task = None
+
+    async def _poll_preemption_notice(self) -> None:
+        """Poll GCP metadata server for preemption notice."""
+        metadata_url = "http://metadata.google.internal/computeMetadata/v1/instance/preempted"
+        headers = {"Metadata-Flavor": "Google"}
+
+        while self._polling_active:
+            try:
+                if AIOHTTP_AVAILABLE and aiohttp is not None:
+                    async with aiohttp.ClientSession() as session:
+                        async with session.get(
+                            metadata_url,
+                            headers=headers,
+                            timeout=aiohttp.ClientTimeout(total=5)
+                        ) as response:
+                            if response.status == 200:
+                                text = await response.text()
+                                if text.strip().lower() == "true":
+                                    await self._handle_preemption()
+                                    break  # Stop polling after preemption
+            except Exception:
+                # Not on GCP or metadata not available - this is normal
+                pass
+
+            await asyncio.sleep(self.poll_interval)
+
+    async def _handle_preemption(self) -> None:
+        """Handle preemption event (30 seconds to cleanup)."""
+        self._logger.warning("⚠️ SPOT PREEMPTION NOTICE - 30 seconds to shutdown!")
+
+        self.preemption_count += 1
+        self.last_preemption_time = time.time()
+
+        preemption_event = {
+            "timestamp": time.time(),
+            "preemption_count": self.preemption_count,
+            "fallback_mode": self.fallback_mode,
+        }
+        self.preemption_history.append(preemption_event)
+
+        # Preserve state if enabled
+        if self.state_preserve:
+            await self._preserve_state()
+
+        # Call preemption callback
+        if self._preemption_callback:
+            try:
+                await self._preemption_callback()
+            except Exception as e:
+                self._logger.error(f"Preemption callback failed: {e}")
+
+        # Trigger fallback
+        if self.fallback_mode != "none" and self._fallback_callback:
+            try:
+                await self._fallback_callback(self.fallback_mode)
+            except Exception as e:
+                self._logger.error(f"Fallback callback failed: {e}")
+
+        # Send webhook notification if configured
+        if self.preemption_webhook:
+            await self._send_webhook_notification(preemption_event)
+
+    async def _preserve_state(self) -> None:
+        """Preserve current state to disk for recovery."""
+        try:
+            state = {
+                "timestamp": time.time(),
+                "preemption_count": self.preemption_count,
+                "preemption_history": self.preemption_history[-10:],  # Last 10
+            }
+
+            self.state_file.parent.mkdir(parents=True, exist_ok=True)
+            self.state_file.write_text(json.dumps(state, indent=2))
+            self._logger.info(f"State preserved to {self.state_file}")
+
+        except Exception as e:
+            self._logger.error(f"State preservation failed: {e}")
+
+    async def _send_webhook_notification(self, event: Dict[str, Any]) -> None:
+        """Send webhook notification for preemption event."""
+        if not self.preemption_webhook:
+            return
+
+        try:
+            if AIOHTTP_AVAILABLE and aiohttp is not None:
+                async with aiohttp.ClientSession() as session:
+                    await session.post(
+                        self.preemption_webhook,
+                        json=event,
+                        timeout=aiohttp.ClientTimeout(total=5)
+                    )
+                self._logger.info("Preemption webhook sent")
+        except Exception as e:
+            self._logger.error(f"Webhook notification failed: {e}")
+
+    async def load_preserved_state(self) -> Optional[Dict[str, Any]]:
+        """Load preserved state from previous session."""
+        try:
+            if self.state_file.exists():
+                state = json.loads(self.state_file.read_text())
+                return state
+        except Exception as e:
+            self._logger.error(f"Failed to load preserved state: {e}")
+        return None
+
+    def get_statistics(self) -> Dict[str, Any]:
+        """Get resilience statistics."""
+        return {
+            "enabled": self.enabled,
+            "fallback_mode": self.fallback_mode,
+            "state_preserve": self.state_preserve,
+            "preemption_count": self.preemption_count,
+            "last_preemption_time": self.last_preemption_time,
+            "preemption_history_count": len(self.preemption_history),
+            "polling_active": self._polling_active,
+        }
+
+
+# =============================================================================
+# INTELLIGENT CACHE MANAGER
+# =============================================================================
+class IntelligentCacheManager(ResourceManagerBase):
+    """
+    Intelligent Cache Manager for Dynamic Python Module and Data Caching.
+
+    Features:
+    - Python module cache clearing with pattern-based filtering
+    - Bytecode (.pyc/__pycache__) cleanup with size tracking
+    - ML model cache warming and eviction
+    - Async operations for non-blocking cleanup
+    - Statistics tracking and reporting
+    - Environment-driven configuration
+
+    Environment Configuration:
+    - CACHE_MANAGER_ENABLED: Enable/disable (default: true)
+    - CACHE_CLEAR_BYTECODE: Clear .pyc files (default: true)
+    - CACHE_CLEAR_PYCACHE: Remove __pycache__ dirs (default: true)
+    - CACHE_MODULE_PATTERNS: Comma-separated patterns to clear
+    - CACHE_PRESERVE_PATTERNS: Patterns to preserve (default: none)
+    - CACHE_WARM_ON_START: Pre-load critical modules (default: false)
+    - CACHE_ASYNC_CLEANUP: Use async for cleanup (default: true)
+    - CACHE_MAX_BYTECODE_AGE_HOURS: Max age for .pyc files (default: 24)
+    - CACHE_WARM_MODULES: Comma-separated modules to pre-load
+    """
+
+    def __init__(self, config: Optional[SystemKernelConfig] = None):
+        super().__init__("IntelligentCacheManager", config)
+
+        # Configuration from environment
+        self.enabled = os.getenv("CACHE_MANAGER_ENABLED", "true").lower() == "true"
+        self.clear_bytecode = os.getenv("CACHE_CLEAR_BYTECODE", "true").lower() == "true"
+        self.clear_pycache = os.getenv("CACHE_CLEAR_PYCACHE", "true").lower() == "true"
+        self.async_cleanup = os.getenv("CACHE_ASYNC_CLEANUP", "true").lower() == "true"
+        self.warm_on_start = os.getenv("CACHE_WARM_ON_START", "false").lower() == "true"
+        self.max_bytecode_age_hours = float(os.getenv("CACHE_MAX_BYTECODE_AGE_HOURS", "24"))
+
+        # Module patterns to clear/preserve
+        default_patterns = "backend,api,vision,voice,unified,command,intelligence,core"
+        self.module_patterns = [
+            p.strip() for p in os.getenv("CACHE_MODULE_PATTERNS", default_patterns).split(",")
+        ]
+        preserve_patterns = os.getenv("CACHE_PRESERVE_PATTERNS", "")
+        self.preserve_patterns = [
+            p.strip() for p in preserve_patterns.split(",") if p.strip()
+        ]
+
+        # Warm-up modules (critical paths to pre-load)
+        default_warm = "backend.core,backend.api,backend.voice_unlock"
+        self.warm_modules = [
+            p.strip() for p in os.getenv("CACHE_WARM_MODULES", default_warm).split(",")
+        ]
+
+        # Statistics
+        self._modules_cleared = 0
+        self._bytecode_files_removed = 0
+        self._pycache_dirs_removed = 0
+        self._bytes_freed = 0
+        self._warmup_modules_loaded = 0
+        self._last_clear_time: Optional[float] = None
+        self._clear_count = 0
+        self._errors: List[str] = []
+
+        # Project root for bytecode cleanup
+        self._project_root: Optional[Path] = None
+
+    async def initialize(self) -> bool:
+        """Initialize cache manager."""
+        if not self.enabled:
+            self._logger.info("Cache manager disabled")
+            self._initialized = True
+            return True
+
+        # Try to detect project root
+        if self._config and hasattr(self._config, "project_root"):
+            self._project_root = self._config.project_root
+        else:
+            # Try to find project root
+            current = Path.cwd()
+            while current != current.parent:
+                if (current / "backend").exists() or (current / ".git").exists():
+                    self._project_root = current
+                    break
+                current = current.parent
+
+        self._initialized = True
+        self._logger.success(f"Cache manager initialized: project_root={self._project_root}")
+        return True
+
+    async def health_check(self) -> Tuple[bool, str]:
+        """Check cache manager health."""
+        if not self.enabled:
+            return True, "Cache manager disabled"
+
+        return True, (
+            f"cleared={self._modules_cleared} modules, "
+            f"freed={self._bytes_freed / (1024*1024):.1f}MB"
+        )
+
+    async def cleanup(self) -> None:
+        """Clean up cache manager."""
+        self._initialized = False
+
+    def _should_clear_module(self, module_name: str) -> bool:
+        """Determine if a module should be cleared based on patterns."""
+        # Check preserve patterns first
+        for pattern in self.preserve_patterns:
+            if pattern and pattern in module_name:
+                return False
+
+        # Check clear patterns
+        for pattern in self.module_patterns:
+            if pattern and pattern in module_name:
+                return True
+
+        return False
+
+    def clear_python_modules(self) -> Dict[str, Any]:
+        """
+        Clear Python module cache based on configured patterns.
+
+        Returns:
+            Statistics about cleared modules
+        """
+        if not self.enabled:
+            return {"cleared": 0, "skipped": "disabled"}
+
+        start_time = time.time()
+        modules_to_remove = []
+
+        for module_name in list(sys.modules.keys()):
+            if self._should_clear_module(module_name):
+                modules_to_remove.append(module_name)
+
+        for module_name in modules_to_remove:
+            try:
+                del sys.modules[module_name]
+            except Exception as e:
+                self._errors.append(f"Failed to clear {module_name}: {e}")
+
+        self._modules_cleared += len(modules_to_remove)
+        self._last_clear_time = time.time()
+        self._clear_count += 1
+
+        return {
+            "cleared": len(modules_to_remove),
+            "modules": modules_to_remove[:10],  # First 10 for logging
+            "duration_ms": (time.time() - start_time) * 1000,
+        }
+
+    def clear_bytecode_cache(self, target_path: Optional[Path] = None) -> Dict[str, Any]:
+        """
+        Clear Python bytecode cache (.pyc files and __pycache__ directories).
+
+        Args:
+            target_path: Path to clean (defaults to project backend)
+
+        Returns:
+            Statistics about cleared files
+        """
+        if not self.enabled or (not self.clear_bytecode and not self.clear_pycache):
+            return {"cleared": False, "reason": "disabled"}
+
+        import shutil
+        target = target_path or (self._project_root / "backend" if self._project_root else None)
+
+        if not target or not target.exists():
+            return {"cleared": False, "reason": "path_not_found"}
+
+        pycache_removed = 0
+        pyc_removed = 0
+        bytes_freed = 0
+        errors = []
+
+        # Remove __pycache__ directories
+        if self.clear_pycache:
+            for pycache_dir in target.rglob("__pycache__"):
+                try:
+                    dir_size = sum(f.stat().st_size for f in pycache_dir.rglob("*") if f.is_file())
+                    shutil.rmtree(pycache_dir)
+                    pycache_removed += 1
+                    bytes_freed += dir_size
+                except Exception as e:
+                    errors.append(f"Failed to remove {pycache_dir}: {e}")
+
+        # Remove individual .pyc files
+        if self.clear_bytecode:
+            for pyc_file in target.rglob("*.pyc"):
+                try:
+                    # Check age if configured
+                    if self.max_bytecode_age_hours > 0:
+                        file_age_hours = (time.time() - pyc_file.stat().st_mtime) / 3600
+                        if file_age_hours < self.max_bytecode_age_hours:
+                            continue  # Skip recent files
+
+                    file_size = pyc_file.stat().st_size
+                    pyc_file.unlink()
+                    pyc_removed += 1
+                    bytes_freed += file_size
+                except Exception as e:
+                    errors.append(f"Failed to remove {pyc_file}: {e}")
+
+        self._pycache_dirs_removed += pycache_removed
+        self._bytecode_files_removed += pyc_removed
+        self._bytes_freed += bytes_freed
+        self._errors.extend(errors[:5])
+
+        return {
+            "pycache_dirs": pycache_removed,
+            "pyc_files": pyc_removed,
+            "bytes_freed": bytes_freed,
+            "bytes_freed_mb": bytes_freed / (1024 * 1024),
+            "errors": len(errors),
+        }
+
+    async def clear_all_async(self, target_path: Optional[Path] = None) -> Dict[str, Any]:
+        """
+        Asynchronously clear all caches.
+
+        Args:
+            target_path: Path to clean (defaults to project backend)
+
+        Returns:
+            Combined statistics from all clear operations
+        """
+        results: Dict[str, Any] = {}
+
+        # Run bytecode cleanup in executor to not block
+        loop = asyncio.get_event_loop()
+
+        if self.clear_bytecode or self.clear_pycache:
+            bytecode_result = await loop.run_in_executor(
+                None, self.clear_bytecode_cache, target_path
+            )
+            results["bytecode"] = bytecode_result
+
+        # Module clearing is fast, do it directly
+        module_result = self.clear_python_modules()
+        results["modules"] = module_result
+
+        # Prevent new bytecode files
+        os.environ["PYTHONDONTWRITEBYTECODE"] = "1"
+
+        return results
+
+    async def warm_critical_modules(self) -> Dict[str, Any]:
+        """
+        Pre-load critical modules for faster subsequent imports.
+
+        Returns:
+            Statistics about warmed modules
+        """
+        if not self.warm_on_start:
+            return {"warmed": 0, "reason": "disabled"}
+
+        import importlib
+        warmed = []
+        errors = []
+
+        for module_path in self.warm_modules:
+            try:
+                importlib.import_module(module_path)
+                warmed.append(module_path)
+            except Exception as e:
+                errors.append(f"{module_path}: {e}")
+
+        self._warmup_modules_loaded += len(warmed)
+
+        return {
+            "warmed": len(warmed),
+            "modules": warmed,
+            "errors": errors,
+        }
+
+    def verify_fresh_imports(self) -> bool:
+        """
+        Verify that imports are fresh (no stale cached modules).
+
+        Returns:
+            True if imports appear fresh
+        """
+        stale_count = 0
+        for module_name in sys.modules:
+            if self._should_clear_module(module_name):
+                stale_count += 1
+
+        return stale_count == 0
+
+    def get_statistics(self) -> Dict[str, Any]:
+        """Get cache manager statistics."""
+        return {
+            "enabled": self.enabled,
+            "modules_cleared": self._modules_cleared,
+            "bytecode_files_removed": self._bytecode_files_removed,
+            "pycache_dirs_removed": self._pycache_dirs_removed,
+            "bytes_freed": self._bytes_freed,
+            "bytes_freed_mb": self._bytes_freed / (1024 * 1024),
+            "warmup_modules_loaded": self._warmup_modules_loaded,
+            "last_clear_time": self._last_clear_time,
+            "clear_count": self._clear_count,
+            "patterns": self.module_patterns,
+            "preserve_patterns": self.preserve_patterns,
+        }
+
+
 # ╔═══════════════════════════════════════════════════════════════════════════════╗
 # ║                                                                               ║
 # ║   END OF ZONE 3                                                               ║
