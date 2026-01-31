@@ -121,11 +121,13 @@ DEFAULT_PROFILES: Dict[ComponentType, ComponentTimeoutProfile] = {
     ),
     ComponentType.JARVIS_PRIME: ComponentTimeoutProfile(
         # J-Prime loads ML models, needs much longer timeouts
-        startup_timeout=_env_float("JARVIS_PRIME_STARTUP_TIMEOUT", 300.0),
+        # v150.0: UNIFIED TIMEOUT - 600s (10 minutes) for heavy model loading
+        # Previous: 300s - caused premature timeouts with 70B+ models
+        startup_timeout=_env_float("JARVIS_PRIME_STARTUP_TIMEOUT", 600.0),
         health_check_timeout=_env_float("JARVIS_PRIME_HEALTH_TIMEOUT", 15.0),
         heartbeat_stale=_env_float("JARVIS_PRIME_HEARTBEAT_STALE", 120.0),
-        heartbeat_dead=_env_float("JARVIS_PRIME_HEARTBEAT_DEAD", 450.0),  # 1.5x startup
-        startup_grace_period=_env_float("JARVIS_PRIME_STARTUP_GRACE", 360.0),
+        heartbeat_dead=_env_float("JARVIS_PRIME_HEARTBEAT_DEAD", 900.0),  # 1.5x startup (600*1.5=900)
+        startup_grace_period=_env_float("JARVIS_PRIME_STARTUP_GRACE", 660.0),  # startup + 60s buffer
         retry_attempts=_env_int("JARVIS_PRIME_RETRY_ATTEMPTS", 5),
         retry_delay=_env_float("JARVIS_PRIME_RETRY_DELAY", 5.0),
     ),

@@ -144,8 +144,10 @@ class OrchestratorConfig:
     jarvis_startup_timeout: float = field(
         default_factory=lambda: _get_env_float("JARVIS_CORE_STARTUP_TIMEOUT", 60.0)
     )
+    # v150.0: UNIFIED TIMEOUT - Must match cross_repo_startup_orchestrator.py (600s)
+    # Previous: 120s - inconsistent with other components
     jprime_startup_timeout: float = field(
-        default_factory=lambda: _get_env_float("JARVIS_PRIME_STARTUP_TIMEOUT", 120.0)
+        default_factory=lambda: _get_env_float("JARVIS_PRIME_STARTUP_TIMEOUT", 600.0)
     )
     jreactor_startup_timeout: float = field(
         default_factory=lambda: _get_env_float("JARVIS_REACTOR_STARTUP_TIMEOUT", 90.0)

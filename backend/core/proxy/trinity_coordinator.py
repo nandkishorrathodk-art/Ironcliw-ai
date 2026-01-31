@@ -122,7 +122,9 @@ class TrinityConfig:
     BODY_GRACE_PERIOD: Final[float] = float(os.getenv("JARVIS_BODY_GRACE_PERIOD", "5.0"))
 
     # JARVIS Prime (slow - ML model loading)
-    PRIME_STARTUP_TIMEOUT: Final[float] = float(os.getenv("JARVIS_PRIME_STARTUP_TIMEOUT", "300.0"))
+    # v150.0: UNIFIED TIMEOUT - 600s (10 minutes) for heavy model loading
+    # Previous: 300s - caused premature timeouts with 70B+ models
+    PRIME_STARTUP_TIMEOUT: Final[float] = float(os.getenv("JARVIS_PRIME_STARTUP_TIMEOUT", "600.0"))
     PRIME_HEALTH_TIMEOUT: Final[float] = float(os.getenv("JARVIS_PRIME_HEALTH_TIMEOUT", "15.0"))
     PRIME_HEARTBEAT_STALE: Final[float] = float(os.getenv("JARVIS_PRIME_HEARTBEAT_STALE", "120.0"))
     PRIME_GRACE_PERIOD: Final[float] = float(os.getenv("JARVIS_PRIME_GRACE_PERIOD", "60.0"))

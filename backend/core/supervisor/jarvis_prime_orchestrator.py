@@ -98,8 +98,11 @@ class JarvisPrimeConfig:
     )
 
     # Startup settings
+    # v150.0: UNIFIED TIMEOUT - Must match cross_repo_startup_orchestrator.py (600s)
+    # Previous: 30s - caused premature timeouts and self-shutdown during model loading
+    # The 600s (10 minutes) allows for heavy model loading operations
     startup_timeout_seconds: float = field(
-        default_factory=lambda: float(os.getenv("JARVIS_PRIME_STARTUP_TIMEOUT", "30.0"))
+        default_factory=lambda: float(os.getenv("JARVIS_PRIME_STARTUP_TIMEOUT", "600.0"))
     )
     health_check_interval_seconds: float = field(
         default_factory=lambda: float(os.getenv("JARVIS_PRIME_HEALTH_INTERVAL", "10.0"))

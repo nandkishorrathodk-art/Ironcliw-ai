@@ -803,6 +803,13 @@ class HeartbeatManager:
         self._stale_logged: Set[ComponentType] = set()
         # Track components that have never sent a heartbeat (don't warn about these)
         self._never_heartbeat: Set[ComponentType] = set()
+        # v149.2: Startup grace period - don't mark stale until after this
+        self._started_at: Optional[float] = None
+        self._startup_grace_seconds: float = 60.0  # 60s grace period for startup
+        # Track which components have been logged as stale to avoid spam
+        self._stale_logged: Set[ComponentType] = set()
+        # Track components that have never sent a heartbeat (don't warn about these)
+        self._never_heartbeat: Set[ComponentType] = set()
 
     async def start(self) -> None:
         """Start the heartbeat manager."""
@@ -810,11 +817,12 @@ class HeartbeatManager:
             return
 
         self._running = True
+        self._started_at = time.time()  # v149.2: Track start time for grace period
         self._check_task = asyncio.create_task(
             self._stale_check_loop(),
             name="heartbeat_stale_checker"
         )
-        logger.info("[HeartbeatManager] Started")
+        logger.debug("[HeartbeatManager] Started with {:.0f}s grace period".format(self._startup_grace_seconds))
 
     async def stop(self) -> None:
         """Stop the heartbeat manager."""
@@ -893,32 +901,33 @@ class HeartbeatManager:
     async def _check_stale_heartbeats(self) -> None:
         """Check for stale heartbeats and notify.
         
-        Only logs once per component to avoid log spam. Components that
-        have never sent a heartbeat are not considered stale.
+        v149.2: Only logs once per component to avoid log spam. Components that
+        have never sent a heartbeat are not considered stale during startup
+        grace period.
         """
         stale_components: List[ComponentType] = []
         newly_stale: List[ComponentType] = []
-
-        # v112.0: Check startup grace period from config
-        is_startup = False
-        try:
-            from backend.supervisor.cross_repo_startup_orchestrator import get_orchestrator_config
-            # This is a bit of a hack since we don't have direct access to the orchestrator instance
-            # but we can infer startup phase from uptime
-            # Better approach: check if uptime < 300s
-            pass
-        except ImportError:
-            pass
+        
+        # v149.2: Check if we're still in startup grace period
+        in_grace_period = False
+        if self._started_at:
+            uptime = time.time() - self._started_at
+            in_grace_period = uptime < self._startup_grace_seconds
 
         async with self._lock:
             for component, heartbeat in self._heartbeats.items():
-                # v112.0: Use component-specific stale threshold if available
+                # v149.2: Use component-specific stale threshold if available
                 # Default is 30s, but heavy components might need more
                 threshold = self._stale_threshold
                 if component in (ComponentType.ECAPA_CLIENT, ComponentType.CLOUDSQL):
-                    threshold = max(threshold, 60.0) # Give 60s for heavy components
+                    threshold = max(threshold, 60.0)  # Give 60s for heavy components
 
                 if heartbeat.age_seconds > threshold:
+                    # v149.2: During grace period, only mark stale if we've received
+                    # at least one heartbeat before (sequence > 1)
+                    if in_grace_period and heartbeat.sequence <= 1:
+                        continue  # Skip - component is still starting up
+                    
                     stale_components.append(component)
                     # Only log if this is the first time we're detecting it as stale
                     if component not in self._stale_logged:

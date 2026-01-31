@@ -1757,7 +1757,14 @@ class BootstrapConfig:
         str(Path.home() / "Documents" / "repos" / "jarvis-prime")
     )))
     jarvis_prime_models_dir: str = field(default_factory=lambda: os.getenv("JARVIS_PRIME_MODELS_DIR", "models"))
-    jarvis_prime_startup_timeout: float = field(default_factory=lambda: float(os.getenv("JARVIS_PRIME_STARTUP_TIMEOUT", "60.0")))
+    # v150.0: UNIFIED TIMEOUT - Must match cross_repo_startup_orchestrator.py (600s)
+    # Previous: 60s - caused premature timeouts during model loading
+    # The 600s (10 minutes) allows for:
+    #   - Heavy model downloads (if not cached)
+    #   - Model loading (70B+ models can take 3-5 minutes)
+    #   - GPU/MPS initialization
+    #   - Health endpoint warmup
+    jarvis_prime_startup_timeout: float = field(default_factory=lambda: float(os.getenv("JARVIS_PRIME_STARTUP_TIMEOUT", "600.0")))
 
     # Docker/Cloud Run mode
     jarvis_prime_use_docker: bool = field(default_factory=lambda: os.getenv("JARVIS_PRIME_USE_DOCKER", "false").lower() == "true")
@@ -13236,7 +13243,10 @@ class SupervisorBootstrapper:
                 orchestrator_started = True
 
                 # Wait for orchestrator to finish starting it (up to startup timeout)
-                wait_timeout = min(self.config.jarvis_prime_startup_timeout, 120.0)
+                # v150.0: REMOVED 120s CAP - This was causing premature timeouts
+                # Previous: min(timeout, 120.0) - artificially capped wait to 2 minutes
+                # Now: Uses full configured timeout (default 600s) for model loading
+                wait_timeout = self.config.jarvis_prime_startup_timeout
                 self.logger.info(f"    Waiting up to {wait_timeout}s for orchestrator to finish...")
 
                 start_time = time.time()

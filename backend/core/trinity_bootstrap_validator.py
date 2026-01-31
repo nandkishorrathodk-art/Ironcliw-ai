@@ -459,7 +459,8 @@ class EnvironmentValidator(BaseValidator):
     ENV_SPECS: ClassVar[Dict[str, Dict[str, Any]]] = {
         # Format: "VAR_NAME": {"type": "float|int|bool|path|str", "min": X, "max": Y, "required": bool}
         "JARVIS_PRIME_PORT": {"type": "int", "min": 1, "max": 65535},
-        "JARVIS_PRIME_STARTUP_TIMEOUT": {"type": "float", "min": 1.0, "max": 600.0},
+        # v150.0: Increased max from 600.0 to 1200.0 (20 minutes) to allow for very large models
+        "JARVIS_PRIME_STARTUP_TIMEOUT": {"type": "float", "min": 1.0, "max": 1200.0},
         "TRINITY_VALIDATION_TIMEOUT": {"type": "float", "min": 1.0, "max": 300.0},
         "JARVIS_PRIME_PATH": {"type": "path"},
         "REACTOR_CORE_PATH": {"type": "path"},

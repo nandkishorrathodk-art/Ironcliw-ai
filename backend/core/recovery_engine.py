@@ -26,10 +26,19 @@ logger = logging.getLogger("jarvis.recovery_engine")
 
 class ErrorClass(Enum):
     """Categories of errors for classification."""
-    TRANSIENT_NETWORK = "transient_network"   # Retry is likely to succeed
+    # Basic error classes
+    TRANSIENT = "transient"                   # Retry is likely to succeed
+    TRANSIENT_NETWORK = "transient_network"   # Network-related transient error
+    TIMEOUT = "timeout"                       # Operation timed out
+    NETWORK = "network"                       # Network connectivity issue
+    RESOURCE_EXHAUSTED = "resource_exhausted" # Out of memory/disk/etc
+    CONFIGURATION = "configuration"           # Configuration or auth issue
+    FATAL = "fatal"                           # Unrecoverable error
+    UNKNOWN = "unknown"                       # Unknown error type
+    # Semantic error classes
     NEEDS_FALLBACK = "needs_fallback"         # Switch to alternative
     MISSING_RESOURCE = "missing_resource"     # Resource doesn't exist
-    RESOURCE_EXHAUSTION = "resource_exhaustion"  # Out of memory/disk/etc
+    RESOURCE_EXHAUSTION = "resource_exhaustion"  # Alias for RESOURCE_EXHAUSTED
 
 
 class RecoveryPhase(Enum):

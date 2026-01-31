@@ -36,9 +36,9 @@ v86.0 Startup Timeout Fix:
               ✅ Fast-fail circuit breakers (5s detection)
 
     Environment Variables (NEW):
-    - JARVIS_PRIME_COMPONENT_TIMEOUT=120.0   # Individual J-Prime timeout
+    - JARVIS_PRIME_COMPONENT_TIMEOUT=600.0   # v150.0: J-Prime timeout (was 120.0)
     - REACTOR_CORE_COMPONENT_TIMEOUT=90.0    # Individual Reactor timeout
-    - SUPERVISOR_STARTUP_TIMEOUT=600.0       # Global safety net (doubled)
+    - SUPERVISOR_STARTUP_TIMEOUT=600.0       # Global safety net
 
 Architecture:
     ┌─────────────────────────────────────────────────────────────────────────┐
@@ -9768,7 +9768,9 @@ class TrinityUnifiedOrchestrator:
                             logger.info("   ✅ [v86.0] JARVIS Body heartbeat active")
 
                         # v86.0: Per-component timeouts (not global)
-                        jprime_timeout = float(os.getenv("JARVIS_PRIME_COMPONENT_TIMEOUT", "120.0"))
+                        # v150.0: UNIFIED TIMEOUT - 600s for J-Prime model loading
+                        # Previous: 120s - caused premature timeouts during heavy model loading
+                        jprime_timeout = float(os.getenv("JARVIS_PRIME_COMPONENT_TIMEOUT", "600.0"))
                         reactor_timeout = float(os.getenv("REACTOR_CORE_COMPONENT_TIMEOUT", "90.0"))
 
                         # v100.4: SINGLE SOURCE OF TRUTH - Check if supervisor handles launching
@@ -10169,7 +10171,8 @@ class TrinityUnifiedOrchestrator:
             self._jprime_client = await get_jarvis_prime_client()
 
             # v86.0: Use component-specific timeout
-            component_timeout = float(os.getenv("JARVIS_PRIME_COMPONENT_TIMEOUT", "120.0"))
+            # v150.0: UNIFIED TIMEOUT - 600s for J-Prime model loading
+            component_timeout = float(os.getenv("JARVIS_PRIME_COMPONENT_TIMEOUT", "600.0"))
             poll_interval = 0.5  # Start with fast polling
             max_poll_interval = 2.0
 
