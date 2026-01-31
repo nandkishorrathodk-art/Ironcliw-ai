@@ -1347,9 +1347,14 @@ class AdvancedModelCapabilityRegistry:
         timeout: Optional[float] = None,
     ) -> List[Dict[str, Any]]:
         """
-        v16.0: Discover available JARVIS Prime models with enhanced resilience.
+        v16.0/v152.0: Discover available JARVIS Prime models with enhanced resilience.
+
+        v152.0 CRITICAL FIX: Check cloud state FIRST before any network requests.
+        When cloud mode is active, local discovery is SKIPPED ENTIRELY to prevent
+        56+ circuit breaker failures during startup.
 
         Features:
+        - v152.0: Cloud-first detection - skip local if cloud locked
         - Wait-for-service pattern with configurable timeout
         - Circuit breaker protection against cascading failures
         - Graceful degradation with offline fallback models
@@ -1371,6 +1376,58 @@ class AdvancedModelCapabilityRegistry:
             - offline: True if using fallback (when J-Prime unavailable)
         """
         async with self._lock:
+            # =========================================================
+            # v152.0: CHECK CLOUD STATE FIRST - BEFORE ANY NETWORK OPS
+            # =========================================================
+            # This is the CRITICAL fix that prevents 56+ circuit breaker
+            # failures when cloud mode is active.
+            # =========================================================
+            cloud_mode_active = self._is_cloud_mode_active()
+            if cloud_mode_active:
+                cloud_reason = self._get_cloud_mode_reason()
+                logger.info(
+                    f"[v152.0] Cloud mode active ({cloud_reason}) - "
+                    f"skipping local discovery entirely"
+                )
+
+                # Try to get GCP endpoint for cloud discovery
+                gcp_endpoint = self._get_cloud_discovery_endpoint()
+                if gcp_endpoint:
+                    # Update api_base to use GCP endpoint
+                    original_api_base = self.api_base
+                    self.api_base = gcp_endpoint
+                    logger.info(f"[v152.0] Using GCP endpoint: {gcp_endpoint}")
+
+                    # Attempt cloud discovery (with limited retries)
+                    result = await self._discover_from_cloud_endpoint(
+                        gcp_endpoint, timeout
+                    )
+                    if result is not None:
+                        return result
+
+                    # Restore original api_base if cloud failed
+                    self.api_base = original_api_base
+
+                # Cloud mode active but no endpoint or cloud failed
+                # Return cached/offline models WITHOUT recording circuit breaker failures
+                if self._cached_models:
+                    logger.info(
+                        f"[v152.0] Cloud mode active, using {len(self._cached_models)} "
+                        f"cached models (no local discovery attempted)"
+                    )
+                    return self._cached_models
+                else:
+                    logger.info(
+                        "[v152.0] Cloud mode active, no cached models - "
+                        "returning offline fallback"
+                    )
+                    self._offline_mode = True
+                    return self.OFFLINE_FALLBACK_MODELS
+
+            # =========================================================
+            # v16.0: STANDARD LOCAL DISCOVERY (only when NOT cloud mode)
+            # =========================================================
+
             # Return cached models if valid
             if not force_refresh and self._cached_models and (time.time() - self._cache_time) < self._cache_ttl:
                 return self._cached_models
@@ -1486,7 +1543,182 @@ class AdvancedModelCapabilityRegistry:
             "cache_age_seconds": time.time() - self._cache_time if self._cache_time else None,
             "circuit_breaker": self._circuit_breaker.get_status(),
             "service_checker": self._service_checker.get_stats() if self._service_checker else None,
+            # v152.0: Cloud mode status
+            "cloud_mode_active": self._is_cloud_mode_active(),
+            "cloud_mode_reason": self._get_cloud_mode_reason() if self._is_cloud_mode_active() else None,
         }
+
+    # =========================================================================
+    # v152.0: CLOUD MODE DETECTION METHODS
+    # =========================================================================
+    # These methods check if cloud mode is active BEFORE attempting any local
+    # network operations. This prevents 56+ circuit breaker failures during
+    # startup when JARVIS_GCP_OFFLOAD_ACTIVE=true.
+    # =========================================================================
+
+    def _is_cloud_mode_active(self) -> bool:
+        """
+        v152.0: Check if cloud mode is active (skip local discovery).
+
+        Checks in order:
+        1. JARVIS_GCP_OFFLOAD_ACTIVE environment variable
+        2. cloud_lock.json persistent state
+        3. Hollow Client mode indicator
+
+        Returns:
+            True if cloud mode is active and local discovery should be SKIPPED
+        """
+        # Check 1: Environment variable (set by supervisor during startup)
+        if os.getenv("JARVIS_GCP_OFFLOAD_ACTIVE", "false").lower() == "true":
+            return True
+
+        # Check 2: Hollow Client mode (alternative env var)
+        if os.getenv("JARVIS_HOLLOW_CLIENT", "false").lower() == "true":
+            return True
+
+        # Check 3: Persistent cloud lock file
+        try:
+            cloud_lock_file = Path.home() / ".jarvis" / "trinity" / "cloud_lock.json"
+            if cloud_lock_file.exists():
+                lock_data = json.loads(cloud_lock_file.read_text())
+                if lock_data.get("locked", False):
+                    return True
+        except Exception:
+            pass
+
+        # Note: We don't check the GCPHybridPrimeRouter here because:
+        # 1. get_gcp_hybrid_prime_router() is async and we're in a sync context
+        # 2. The environment variables and cloud_lock.json are the authoritative
+        #    sources that the router also checks
+        # This avoids circular dependencies and async/sync mixing issues.
+
+        return False
+
+    def _get_cloud_mode_reason(self) -> Optional[str]:
+        """
+        v152.0: Get the reason for cloud mode (for logging/diagnostics).
+
+        Returns:
+            Reason string if cloud mode is active, None otherwise
+        """
+        if os.getenv("JARVIS_GCP_OFFLOAD_ACTIVE", "false").lower() == "true":
+            return "JARVIS_GCP_OFFLOAD_ACTIVE=true"
+
+        if os.getenv("JARVIS_HOLLOW_CLIENT", "false").lower() == "true":
+            return "JARVIS_HOLLOW_CLIENT=true"
+
+        try:
+            cloud_lock_file = Path.home() / ".jarvis" / "trinity" / "cloud_lock.json"
+            if cloud_lock_file.exists():
+                lock_data = json.loads(cloud_lock_file.read_text())
+                if lock_data.get("locked", False):
+                    return lock_data.get("reason", "cloud_lock.json")
+        except Exception:
+            pass
+
+        # Note: We don't check the GCPHybridPrimeRouter here because
+        # get_gcp_hybrid_prime_router() is async and we're in a sync context.
+
+        return None
+
+    def _get_cloud_discovery_endpoint(self) -> Optional[str]:
+        """
+        v152.0: Get the GCP endpoint for cloud model discovery.
+
+        Checks in order:
+        1. GCPHybridPrimeRouter.get_active_discovery_endpoint()
+        2. JARVIS_PRIME_CLOUD_RUN_URL environment variable
+        3. Construct from GCP_PROJECT_ID + GCP_REGION
+
+        Returns:
+            GCP endpoint URL if available, None otherwise
+        """
+        # Note: We don't check the GCPHybridPrimeRouter here because
+        # get_gcp_hybrid_prime_router() is async and we're in a sync context.
+        # The environment variables are the authoritative sources anyway.
+
+        # Priority 1: Direct environment variable
+        cloud_run_url = os.getenv("JARVIS_PRIME_CLOUD_RUN_URL")
+        if cloud_run_url:
+            # Ensure it has /v1 suffix
+            if not cloud_run_url.rstrip('/').endswith('/v1'):
+                cloud_run_url = cloud_run_url.rstrip('/') + '/v1'
+            return cloud_run_url
+
+        # Priority 3: Construct from GCP project info
+        gcp_project = os.getenv("GCP_PROJECT_ID", os.getenv("GOOGLE_CLOUD_PROJECT", ""))
+        gcp_region = os.getenv("GCP_REGION", "us-central1")
+        if gcp_project:
+            return f"https://jarvis-prime-{gcp_region}-{gcp_project}.a.run.app/v1"
+
+        return None
+
+    async def _discover_from_cloud_endpoint(
+        self,
+        endpoint: str,
+        timeout: Optional[float] = None,
+    ) -> Optional[List[Dict[str, Any]]]:
+        """
+        v152.0: Attempt model discovery from a GCP cloud endpoint.
+
+        This is a simplified discovery path that doesn't use the circuit
+        breaker for local failures (since we're explicitly in cloud mode).
+
+        Args:
+            endpoint: GCP endpoint URL (should include /v1)
+            timeout: Request timeout
+
+        Returns:
+            List of models if successful, None if failed
+        """
+        discovery_timeout = timeout or self._discovery_wait_timeout
+
+        try:
+            async with aiohttp.ClientSession() as session:
+                url = f"{endpoint.rstrip('/')}/models"
+                logger.debug(f"[v152.0] Attempting cloud discovery: {url}")
+
+                async with session.get(
+                    url,
+                    timeout=aiohttp.ClientTimeout(total=min(discovery_timeout, 30.0))
+                ) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        models = data.get("data", [])
+
+                        enriched = []
+                        for model in models:
+                            model_id = model.get("id", "unknown")
+                            metadata = await self._build_model_metadata(session, model_id, model)
+                            self._models[model_id] = metadata
+                            enriched.append(self._metadata_to_dict(metadata))
+
+                        enriched.sort(key=lambda m: m["context_window"], reverse=True)
+                        self._cached_models = enriched
+                        self._cache_time = time.time()
+                        self._initialization_complete = True
+                        self._offline_mode = False
+                        self._last_discovery_error = None
+                        # Note: We don't record circuit breaker success here
+                        # because we're in cloud mode, not testing local
+                        logger.info(
+                            f"✅ [v152.0] Discovered {len(enriched)} models from "
+                            f"GCP cloud endpoint"
+                        )
+                        return enriched
+                    else:
+                        logger.warning(
+                            f"[v152.0] Cloud discovery failed: HTTP {resp.status}"
+                        )
+
+        except aiohttp.ClientConnectorError as e:
+            logger.warning(f"[v152.0] Cloud endpoint connection error: {e}")
+        except asyncio.TimeoutError:
+            logger.warning(f"[v152.0] Cloud endpoint timeout after {discovery_timeout}s")
+        except Exception as e:
+            logger.warning(f"[v152.0] Cloud discovery error: {e}")
+
+        return None
 
     async def _build_model_metadata(
         self, session: aiohttp.ClientSession, model_id: str, basic_info: Dict
@@ -2787,6 +3019,42 @@ class CircuitState(Enum):
 
 
 # =============================================================================
+# v152.0: CLOUD MODE CHECK (Module-level function)
+# =============================================================================
+
+def _is_cloud_mode_active_for_circuit_breaker() -> bool:
+    """
+    v152.0: Check if cloud mode is active (for circuit breaker failure skipping).
+
+    This is a module-level function that can be called from the CircuitBreaker
+    dataclass without needing an instance of the ModelRegistry.
+
+    When cloud mode is active, local service failures are expected and should
+    NOT be recorded by the circuit breaker.
+
+    Returns:
+        True if cloud mode is active
+    """
+    # Check environment variables
+    if os.getenv("JARVIS_GCP_OFFLOAD_ACTIVE", "false").lower() == "true":
+        return True
+    if os.getenv("JARVIS_HOLLOW_CLIENT", "false").lower() == "true":
+        return True
+
+    # Check cloud lock file
+    try:
+        cloud_lock_file = Path.home() / ".jarvis" / "trinity" / "cloud_lock.json"
+        if cloud_lock_file.exists():
+            lock_data = json.loads(cloud_lock_file.read_text())
+            if lock_data.get("locked", False):
+                return True
+    except Exception:
+        pass
+
+    return False
+
+
+# =============================================================================
 # CIRCUIT BREAKER
 # =============================================================================
 
@@ -2885,8 +3153,28 @@ class CircuitBreaker:
                     f"(success after {old_failures} failures)"
                 )
 
-    def record_failure(self) -> None:
-        """Record a failed request."""
+    def record_failure(self, skip_if_cloud_mode: bool = False) -> None:
+        """
+        Record a failed request.
+
+        v152.0: Added skip_if_cloud_mode parameter to prevent recording failures
+        when cloud mode is active. This is CRITICAL for preventing 56+ failures
+        during startup when JARVIS_GCP_OFFLOAD_ACTIVE=true.
+
+        Args:
+            skip_if_cloud_mode: If True, check cloud mode and skip recording
+                               if cloud mode is active.
+        """
+        # v152.0: Skip recording if cloud mode is active
+        # This prevents the circuit breaker from being overwhelmed by failures
+        # for services that are intentionally disabled in cloud mode.
+        if skip_if_cloud_mode and _is_cloud_mode_active_for_circuit_breaker():
+            logger.debug(
+                f"[v152.0] Circuit breaker {self.name}: skipping failure recording "
+                f"(cloud mode active, failures already at {self.failures})"
+            )
+            return
+
         self.failures += 1
         self.last_failure_time = time.time()
 

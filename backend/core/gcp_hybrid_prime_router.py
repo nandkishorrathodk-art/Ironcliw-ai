@@ -424,6 +424,171 @@ class GCPHybridPrimeRouter:
             except Exception as e:
                 self.logger.warning(f"VM provisioning lock initialization failed: {e}")
 
+        # v152.0: Cloud lock cache for authoritative cloud state
+        self._cloud_lock_cache: Optional[Dict[str, Any]] = None
+        self._cloud_lock_cache_time: float = 0.0
+        self._cloud_lock_cache_ttl: float = 5.0  # Refresh every 5 seconds
+
+    # =========================================================================
+    # v152.0: AUTHORITATIVE CLOUD STATE METHODS
+    # =========================================================================
+    # These methods make GCPHybridPrimeRouter the single source of truth for
+    # cloud mode state. All components MUST check these methods before attempting
+    # local operations.
+    # =========================================================================
+
+    def is_cloud_locked(self) -> bool:
+        """
+        v152.0: AUTHORITATIVE check for cloud-only mode.
+
+        This is the SINGLE SOURCE OF TRUTH for whether local model operations
+        should be skipped. All components MUST call this before attempting
+        local model discovery, loading, or inference.
+
+        Checks (in order):
+        1. JARVIS_GCP_OFFLOAD_ACTIVE environment variable (set by supervisor)
+        2. cloud_lock.json persistent state (survives restarts)
+        3. Emergency offload active state (memory pressure)
+
+        Returns:
+            True if cloud mode is active and local operations should be SKIPPED
+        """
+        # Check 1: Environment variable (fastest, set by supervisor)
+        gcp_offload_active = os.getenv("JARVIS_GCP_OFFLOAD_ACTIVE", "false").lower() == "true"
+        if gcp_offload_active:
+            return True
+
+        # Check 2: Emergency offload state (memory pressure)
+        if self._emergency_offload_active:
+            return True
+
+        # Check 3: Persistent cloud lock file (with caching)
+        try:
+            now = time.time()
+            if (self._cloud_lock_cache is None or
+                    (now - self._cloud_lock_cache_time) > self._cloud_lock_cache_ttl):
+                # Refresh cache
+                from pathlib import Path
+                cloud_lock_file = Path.home() / ".jarvis" / "trinity" / "cloud_lock.json"
+                if cloud_lock_file.exists():
+                    self._cloud_lock_cache = json.loads(cloud_lock_file.read_text())
+                else:
+                    self._cloud_lock_cache = {"locked": False}
+                self._cloud_lock_cache_time = now
+
+            if self._cloud_lock_cache and self._cloud_lock_cache.get("locked", False):
+                return True
+
+        except Exception as e:
+            self.logger.debug(f"[v152.0] Cloud lock check error: {e}")
+
+        return False
+
+    def get_cloud_lock_reason(self) -> Optional[str]:
+        """
+        v152.0: Get the reason for cloud lock (for logging/diagnostics).
+
+        Returns:
+            Reason string if cloud locked, None otherwise
+        """
+        if os.getenv("JARVIS_GCP_OFFLOAD_ACTIVE", "false").lower() == "true":
+            return "JARVIS_GCP_OFFLOAD_ACTIVE=true"
+
+        if self._emergency_offload_active:
+            return f"Emergency offload (RAM critical)"
+
+        if self._cloud_lock_cache and self._cloud_lock_cache.get("locked", False):
+            return self._cloud_lock_cache.get("reason", "cloud_lock.json")
+
+        return None
+
+    def get_active_discovery_endpoint(self) -> Optional[str]:
+        """
+        v152.0: Get the active model discovery endpoint.
+
+        This is the AUTHORITATIVE method for determining which endpoint to use
+        for model discovery. Components MUST use this instead of hardcoding
+        localhost:8000.
+
+        Returns:
+            - GCP Cloud Run URL if cloud mode is active
+            - GCP VM endpoint if VM is available
+            - None if local endpoint should be used (caller uses localhost)
+
+        Usage:
+            endpoint = router.get_active_discovery_endpoint()
+            if endpoint:
+                # Use GCP endpoint - skip local discovery
+                api_base = endpoint
+            else:
+                # Use local endpoint
+                api_base = "http://localhost:8000/v1"
+        """
+        # If cloud locked, ALWAYS return cloud endpoint
+        if self.is_cloud_locked():
+            # Priority 1: Cloud Run URL (always available, serverless)
+            cloud_run_url = os.getenv("JARVIS_PRIME_CLOUD_RUN_URL")
+            if cloud_run_url:
+                self.logger.debug(f"[v152.0] Cloud locked - using Cloud Run: {cloud_run_url}")
+                return cloud_run_url
+
+            # Priority 2: GCP VM endpoint (if provisioned)
+            if self._gcp_controller and hasattr(self._gcp_controller, 'get_vm_endpoint'):
+                try:
+                    vm_endpoint = self._gcp_controller.get_vm_endpoint()
+                    if vm_endpoint:
+                        self.logger.debug(f"[v152.0] Cloud locked - using GCP VM: {vm_endpoint}")
+                        return vm_endpoint
+                except Exception:
+                    pass
+
+            # Priority 3: Fallback to Cloud Run URL from config
+            gcp_region = os.getenv("GCP_REGION", "us-central1")
+            gcp_project = os.getenv("GCP_PROJECT_ID", os.getenv("GOOGLE_CLOUD_PROJECT", ""))
+            if gcp_project:
+                fallback_url = f"https://jarvis-prime-{gcp_region}-{gcp_project}.a.run.app/v1"
+                self.logger.debug(f"[v152.0] Cloud locked - using fallback: {fallback_url}")
+                return fallback_url
+
+            # No cloud endpoint available - log warning but still return None
+            # This allows graceful degradation to offline mode
+            self.logger.warning(
+                "[v152.0] Cloud locked but no GCP endpoint configured. "
+                "Set JARVIS_PRIME_CLOUD_RUN_URL or GCP_PROJECT_ID."
+            )
+            return None
+
+        # Not cloud locked - check if GCP VM is available (opportunistic)
+        if self._gcp_controller and hasattr(self._gcp_controller, 'is_vm_available'):
+            if self._gcp_controller.is_vm_available():
+                try:
+                    vm_endpoint = self._gcp_controller.get_vm_endpoint()
+                    if vm_endpoint:
+                        self.logger.debug(f"[v152.0] GCP VM available - using: {vm_endpoint}")
+                        return vm_endpoint
+                except Exception:
+                    pass
+
+        # Use local endpoint (return None, caller uses localhost)
+        return None
+
+    def should_skip_local_discovery(self) -> bool:
+        """
+        v152.0: Determine if local model discovery should be skipped entirely.
+
+        This is a convenience method that components can call to determine
+        if they should skip local discovery attempts completely.
+
+        When True:
+        - Do NOT attempt to connect to localhost:8000
+        - Do NOT record circuit breaker failures for local endpoints
+        - Return cached/offline models immediately
+
+        Returns:
+            True if local discovery should be skipped
+        """
+        return self.is_cloud_locked()
+
     async def start(self) -> bool:
         """Start the hybrid router."""
         if self._running:
