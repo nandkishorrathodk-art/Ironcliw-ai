@@ -14219,7 +14219,15 @@ echo "=== JARVIS Prime started ==="
                 # v93.8: Check if running - for Docker services, always use HTTP health check
                 if not is_docker_service and not managed.is_running:
                     # Process died, trigger auto-heal if enabled
-                    exit_code = managed.process.returncode if managed.process else "unknown"
+                    # v150.0: Improved exit code detection
+                    exit_code: Any = "unknown"
+                    if managed.process:
+                        try:
+                            if managed.process.returncode is None:
+                                await asyncio.sleep(0.1)  # Allow returncode to update
+                            exit_code = managed.process.returncode if managed.process.returncode is not None else "pending"
+                        except Exception:
+                            pass  # Keep "unknown" if we can't read
 
                     # v95.3: Check if this is an intentional shutdown (exit code -15 = SIGTERM)
                     # During shutdown, processes are killed with SIGTERM, so we shouldn't
@@ -17747,7 +17755,15 @@ echo "=== JARVIS Prime started ==="
 
             # Check if process died
             if not managed.is_running:
-                exit_code = managed.process.returncode if managed.process else "unknown"
+                # v150.0: Improved exit code detection
+                exit_code: Any = "unknown"
+                if managed.process:
+                    try:
+                        if managed.process.returncode is None:
+                            await asyncio.sleep(0.1)  # Allow returncode to update
+                        exit_code = managed.process.returncode if managed.process.returncode is not None else "pending"
+                    except Exception as e:
+                        exit_code = f"error: {e}"
                 logger.error(
                     f"    ❌ {managed.definition.name} process died during startup "
                     f"(exit code: {exit_code})"
@@ -17841,7 +17857,15 @@ echo "=== JARVIS Prime started ==="
 
             # Check if process died
             if not managed.is_running:
-                exit_code = managed.process.returncode if managed.process else "unknown"
+                # v150.0: Improved exit code detection
+                exit_code: Any = "unknown"
+                if managed.process:
+                    try:
+                        if managed.process.returncode is None:
+                            await asyncio.sleep(0.1)  # Allow returncode to update
+                        exit_code = managed.process.returncode if managed.process.returncode is not None else "pending"
+                    except Exception as e:
+                        exit_code = f"error: {e}"
                 logger.error(
                     f"    ❌ {managed.definition.name} process died during model loading "
                     f"(exit code: {exit_code})"
@@ -18040,7 +18064,23 @@ echo "=== JARVIS Prime started ==="
 
                 # Check if process died
                 if not managed.is_running:
-                    exit_code = managed.process.returncode if managed.process else "unknown"
+                    # v150.0: IMPROVED EXIT CODE DETECTION
+                    # Previous: Just checked returncode which could be None during race
+                    # Now: Try to collect return code properly before giving up
+                    exit_code: Any = "unknown"
+                    if managed.process:
+                        # Try to get returncode - if process just died, poll() may help
+                        try:
+                            # poll() updates returncode if process has terminated
+                            if managed.process.returncode is None:
+                                # Give async subprocess a moment to update returncode
+                                await asyncio.sleep(0.1)
+                            exit_code = managed.process.returncode
+                            if exit_code is None:
+                                # Still None - process handle exists but no exit code yet
+                                exit_code = "pending (process handle exists)"
+                        except Exception as e:
+                            exit_code = f"error reading exit code: {e}"
 
                     # v108.2: Get crash forensics for detailed diagnosis
                     crash_context = managed.get_crash_context(num_lines=30)
