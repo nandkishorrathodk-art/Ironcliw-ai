@@ -4232,8 +4232,8 @@ class IntelligentCacheManager(ResourceManagerBase):
             return True
 
         # Try to detect project root
-        if self._config and hasattr(self._config, "project_root"):
-            self._project_root = self._config.project_root
+        if self.config and hasattr(self.config, "project_root"):
+            self._project_root = self.config.project_root
         else:
             # Try to find project root
             current = Path.cwd()
