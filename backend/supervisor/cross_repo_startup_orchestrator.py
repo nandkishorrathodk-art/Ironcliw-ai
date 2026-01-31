@@ -6750,8 +6750,12 @@ class ProcessOrchestrator:
             # =========================================================================
             is_jarvis_prime = service_name.lower() in ["jarvis-prime", "jarvis_prime", "j-prime"]
             slim_mode = os.environ.get("JARVIS_ENABLE_SLIM_MODE", "").lower() in ("true", "1", "yes", "on")
+            hollow_client = os.environ.get("JARVIS_GCP_OFFLOAD_ACTIVE", "").lower() in ("true", "1", "yes", "on")
+            cloud_lock_active = _load_cloud_lock().get("locked", False)
 
-            if is_jarvis_prime and slim_mode:
+            # v149.0: ALWAYS force GCP for jarvis-prime on OOM, not just in slim mode
+            # OOM indicates local resources are insufficient regardless of mode
+            if is_jarvis_prime and (slim_mode or hollow_client or cloud_lock_active or managed.restart_count >= 2):
                 logger.warning(
                     f"[v144.0] 🛟 ACTIVE RESCUE OOM DEATH HANDLER: "
                     f"jarvis-prime OOM'd - forcing GCP provisioning BEFORE restart!"
@@ -6973,11 +6977,40 @@ class ProcessOrchestrator:
         managed.last_restart = time.time()
         managed.status = ServiceStatus.RESTARTING
 
+        # v149.0: Check if cloud lock is active - FORCE GCP mode before ANY restart
+        is_jarvis_prime = service_name.lower() in ["jarvis-prime", "jarvis_prime", "j-prime"]
+        cloud_lock = _load_cloud_lock()
+        if is_jarvis_prime and cloud_lock.get("locked", False):
+            logger.warning(
+                f"[v149.0] 🔒 CLOUD LOCK ENFORCED: Cloud lock is active "
+                f"(reason: {cloud_lock.get('reason', 'unknown')}). "
+                f"Ensuring GCP is ready before restart..."
+            )
+            gcp_ready, gcp_endpoint = await ensure_gcp_vm_ready_for_prime(
+                timeout_seconds=120.0,
+                force_provision=False,
+            )
+            if gcp_ready and gcp_endpoint:
+                os.environ["JARVIS_GCP_OFFLOAD_ACTIVE"] = "true"
+                os.environ["GCP_PRIME_ENDPOINT"] = gcp_endpoint
+                os.environ["JARVIS_GCP_PRIME_ENDPOINT"] = gcp_endpoint
+                managed.gcp_offload_active = True
+                managed.gcp_vm_ip = gcp_endpoint.replace("http://", "").split(":")[0]
+                logger.info(f"[v149.0] ✅ GCP ready at {gcp_endpoint} - proceeding with Hollow Client restart")
+            else:
+                logger.error(
+                    f"[v149.0] ❌ CLOUD LOCK ACTIVE but GCP unavailable! "
+                    f"Cannot safely restart {service_name}. Marking as FAILED."
+                )
+                managed.status = ServiceStatus.FAILED
+                self._crash_circuit_breakers[service_name] = True
+                return
+
         # v132.3: If OOM was detected, trigger GCP offload before restart
         oom_detected = getattr(managed, "_oom_detected", False)
-        gcp_offload_active = False
+        gcp_offload_active = getattr(managed, "gcp_offload_active", False)
 
-        if oom_detected:
+        if oom_detected and not gcp_offload_active:
             logger.info(f"[v132.3] 🚀 OOM detected - initiating GCP Spot VM offload for {service_name}")
             try:
                 # v132.3: Use module-level imports if available, fallback to dynamic import
