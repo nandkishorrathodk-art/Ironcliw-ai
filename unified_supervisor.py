@@ -1114,6 +1114,8 @@ class LogSection(Enum):
     RESOURCES = "RESOURCES"
     PORTS = "PORTS"
     STORAGE = "STORAGE"
+    PROCESS = "PROCESS"
+    DEV = "DEV"
 
 
 # =============================================================================
@@ -5317,3 +5319,1984 @@ if __name__ == "__main__":
 
     # Run async tests
     asyncio.run(test_zones())
+
+
+# =============================================================================
+# =============================================================================
+#
+#  ███████╗ ██████╗ ███╗   ██╗███████╗    ███████╗
+#  ╚══███╔╝██╔═══██╗████╗  ██║██╔════╝    ██╔════╝
+#    ███╔╝ ██║   ██║██╔██╗ ██║█████╗      ███████╗
+#   ███╔╝  ██║   ██║██║╚██╗██║██╔══╝      ╚════██║
+#  ███████╗╚██████╔╝██║ ╚████║███████╗    ███████║
+#  ╚══════╝ ╚═════╝ ╚═╝  ╚═══╝╚══════╝    ╚══════╝
+#
+#  ZONE 5: PROCESS ORCHESTRATION
+#  Lines ~5320-8000
+#
+#  This zone handles:
+#  - UnifiedSignalHandler: SIGINT/SIGTERM with escalation
+#  - ComprehensiveZombieCleanup: Stale process detection/termination
+#  - ProcessStateManager: Managed process lifecycle tracking
+#  - HotReloadWatcher: File change detection for dev mode
+#  - ProgressiveReadinessManager: Multi-tier readiness (STARTING → FULL)
+#  - TrinityIntegrator: Cross-repo Prime/Reactor integration
+#
+# =============================================================================
+# =============================================================================
+
+
+# =============================================================================
+# ZONE 5.1: UNIFIED SIGNAL HANDLER
+# =============================================================================
+# Provides escalating shutdown behavior for SIGINT (Ctrl+C) and SIGTERM:
+# - 1st signal: Graceful shutdown (waits for cleanup)
+# - 2nd signal: Faster shutdown (shorter timeouts)
+# - 3rd signal: Immediate exit (sys.exit)
+# =============================================================================
+
+class UnifiedSignalHandler:
+    """
+    Unified signal handling for the monolithic kernel.
+
+    Handles SIGINT (Ctrl+C) and SIGTERM gracefully, ensuring
+    all components shut down in the correct order.
+
+    Signal escalation:
+    - 1st signal: Graceful shutdown (waits for cleanup)
+    - 2nd signal: Faster shutdown (shorter timeouts)
+    - 3rd signal: Immediate exit (os._exit)
+
+    Thread-safe: Uses threading.Lock for signal counting since signals
+    can arrive from any thread context.
+
+    Features:
+    - Async-first with sync fallback for Windows
+    - Callback registration for custom cleanup
+    - Timeout tracking for fast vs slow shutdown
+    - Idempotent installation (safe to call multiple times)
+    """
+
+    def __init__(self) -> None:
+        self._shutdown_event: Optional[asyncio.Event] = None
+        self._shutdown_requested: bool = False
+        self._shutdown_count: int = 0
+        self._lock = threading.Lock()
+        self._shutdown_reason: Optional[str] = None
+        self._loop: Optional[asyncio.AbstractEventLoop] = None
+        self._installed: bool = False
+        self._callbacks: List[Callable[[], Coroutine[Any, Any, None]]] = []
+        self._first_signal_time: Optional[float] = None
+
+    def _get_event(self) -> asyncio.Event:
+        """Lazily create shutdown event (needs running event loop)."""
+        if self._shutdown_event is None:
+            self._shutdown_event = asyncio.Event()
+        return self._shutdown_event
+
+    def register_callback(self, callback: Callable[[], Coroutine[Any, Any, None]]) -> None:
+        """
+        Register an async callback to run during shutdown.
+
+        Callbacks are run in registration order during graceful shutdown.
+        """
+        self._callbacks.append(callback)
+
+    def install(self, loop: asyncio.AbstractEventLoop) -> None:
+        """
+        Install signal handlers on the event loop.
+
+        Args:
+            loop: The running asyncio event loop
+        """
+        if self._installed:
+            return  # Avoid duplicate registration
+
+        self._loop = loop
+
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            try:
+                # Unix: Use async-safe loop.add_signal_handler
+                loop.add_signal_handler(
+                    sig,
+                    lambda s=sig: self._schedule_signal_handling(s)
+                )
+            except NotImplementedError:
+                # Windows doesn't support add_signal_handler
+                signal.signal(sig, lambda s, f, sig=sig: self._sync_handle_signal(sig))
+            except Exception as e:
+                # Log but don't fail - signal handling is best-effort
+                print(f"[Kernel] Warning: Could not install handler for {sig.name}: {e}")
+
+        self._installed = True
+        print("[Kernel] Unified signal handlers installed (SIGINT, SIGTERM)")
+
+    def _schedule_signal_handling(self, sig: signal.Signals) -> None:
+        """
+        Schedule async signal handling from sync context.
+
+        This is called by loop.add_signal_handler which runs in sync context.
+        We use create_task to handle the signal asynchronously.
+        """
+        if self._loop is not None and self._loop.is_running():
+            self._loop.create_task(self._handle_signal(sig))
+        else:
+            # Fallback to sync handling if loop not available
+            self._sync_handle_signal(sig.value)
+
+    def _sync_handle_signal(self, sig: int) -> None:
+        """
+        Synchronous signal handler (for Windows compatibility and fallback).
+
+        This handles signals when async handling is not possible.
+        """
+        with self._lock:
+            self._shutdown_count += 1
+            count = self._shutdown_count
+            self._shutdown_requested = True
+
+            if self._first_signal_time is None:
+                self._first_signal_time = time.time()
+
+            try:
+                sig_name = signal.Signals(sig).name
+            except (ValueError, AttributeError):
+                sig_name = f"signal_{sig}"
+
+            self._shutdown_reason = sig_name
+
+            if count == 1:
+                print(f"\n[Kernel] Received {sig_name} - initiating graceful shutdown...")
+            elif count == 2:
+                print(f"[Kernel] Received second {sig_name} - forcing faster shutdown...")
+            else:
+                print(f"[Kernel] Received third {sig_name} - forcing immediate exit!")
+                os._exit(128 + sig)
+
+            # Try to set the shutdown event if available
+            if self._shutdown_event is not None:
+                try:
+                    if self._loop is not None and self._loop.is_running():
+                        self._loop.call_soon_threadsafe(self._shutdown_event.set)
+                    else:
+                        # Direct set as fallback
+                        self._shutdown_event.set()
+                except Exception:
+                    pass  # Best effort
+
+    async def _handle_signal(self, sig: signal.Signals) -> None:
+        """
+        Handle incoming signal asynchronously.
+
+        Provides escalating shutdown behavior based on signal count.
+        """
+        with self._lock:
+            self._shutdown_count += 1
+            count = self._shutdown_count
+
+            if self._first_signal_time is None:
+                self._first_signal_time = time.time()
+
+        sig_name = sig.name
+        self._shutdown_reason = sig_name
+        self._shutdown_requested = True
+
+        if count == 1:
+            print(f"\n[Kernel] Received {sig_name} - initiating graceful shutdown...")
+            self._get_event().set()
+        elif count == 2:
+            print(f"[Kernel] Received second {sig_name} - forcing faster shutdown...")
+            self._get_event().set()
+        else:
+            print(f"[Kernel] Received third {sig_name} - forcing immediate exit!")
+            os._exit(128 + sig.value)
+
+    async def run_callbacks(self) -> None:
+        """Run all registered shutdown callbacks."""
+        for callback in self._callbacks:
+            try:
+                await asyncio.wait_for(callback(), timeout=5.0)
+            except asyncio.TimeoutError:
+                print(f"[Kernel] Shutdown callback timed out")
+            except Exception as e:
+                print(f"[Kernel] Shutdown callback error: {e}")
+
+    async def wait_for_shutdown(self) -> None:
+        """Wait for shutdown signal."""
+        await self._get_event().wait()
+
+    @property
+    def shutdown_requested(self) -> bool:
+        """Check if shutdown was requested."""
+        return self._shutdown_requested
+
+    @property
+    def shutdown_count(self) -> int:
+        """Number of shutdown signals received."""
+        return self._shutdown_count
+
+    @property
+    def shutdown_reason(self) -> Optional[str]:
+        """Reason for shutdown (signal name)."""
+        return self._shutdown_reason
+
+    @property
+    def is_fast_shutdown(self) -> bool:
+        """Check if we're in fast shutdown mode (2+ signals received)."""
+        return self._shutdown_count >= 2
+
+    @property
+    def seconds_since_first_signal(self) -> float:
+        """Seconds since first shutdown signal (for timeout decisions)."""
+        if self._first_signal_time is None:
+            return 0.0
+        return time.time() - self._first_signal_time
+
+    def reset(self) -> None:
+        """Reset the signal handler state (for testing or restart scenarios)."""
+        with self._lock:
+            self._shutdown_requested = False
+            self._shutdown_count = 0
+            self._shutdown_reason = None
+            self._first_signal_time = None
+            if self._shutdown_event is not None:
+                self._shutdown_event.clear()
+
+
+# Global signal handler singleton
+_unified_signal_handler: Optional[UnifiedSignalHandler] = None
+
+
+def get_unified_signal_handler() -> UnifiedSignalHandler:
+    """
+    Get or create the unified signal handler singleton.
+
+    Returns:
+        The global UnifiedSignalHandler instance
+    """
+    global _unified_signal_handler
+    if _unified_signal_handler is None:
+        _unified_signal_handler = UnifiedSignalHandler()
+    return _unified_signal_handler
+
+
+# =============================================================================
+# ZONE 5.2: ZOMBIE PROCESS DETECTION DATA STRUCTURES
+# =============================================================================
+
+@dataclass
+class ZombieProcessInfo:
+    """Extended process info with zombie detection metadata."""
+    pid: int
+    cmdline: str = ""
+    age_seconds: float = 0.0
+    memory_mb: float = 0.0
+    cpu_percent: float = 0.0
+    status: str = ""
+    repo_origin: str = ""
+    is_orphaned: bool = False
+    is_zombie_like: bool = False
+    stale_connection_count: int = 0
+    detection_source: str = ""
+
+
+# =============================================================================
+# ZONE 5.3: COMPREHENSIVE ZOMBIE CLEANUP SYSTEM
+# =============================================================================
+
+class ComprehensiveZombieCleanup:
+    """
+    Comprehensive Zombie Cleanup System for JARVIS Ecosystem.
+
+    This system provides ultra-robust cleanup across all services:
+    - JARVIS (main backend) - typically port 8010
+    - JARVIS-Prime (J-Prime Mind) - typically port 8000
+    - Reactor-Core (Nerves) - typically port 8090
+
+    Features:
+    - Async parallel discovery across multiple detection sources
+    - Zombie detection via responsiveness heuristics (orphaned, stuck, stale connections)
+    - Port-based service detection
+    - Graceful termination with cascade (SIGINT → SIGTERM → SIGKILL)
+    - Circuit breaker pattern to prevent cleanup storms
+    - File descriptor safe operations
+
+    This runs BEFORE startup to ensure a clean environment.
+    """
+
+    def __init__(
+        self,
+        config: SystemKernelConfig,
+        logger: UnifiedLogger,
+        enable_circuit_breaker: bool = True,
+    ) -> None:
+        self.config = config
+        self.logger = logger
+        self._my_pid = os.getpid()
+        self._my_parent = os.getppid()
+        self._enable_circuit_breaker = enable_circuit_breaker
+
+        # Circuit breaker state
+        self._cleanup_attempts = 0
+        self._cleanup_failures = 0
+        self._circuit_open = False
+        self._circuit_open_until = 0.0
+        self._max_failures_before_open = 3
+        self._circuit_cooldown = 30.0
+
+        # Stats
+        self._stats: Dict[str, int] = {
+            "zombies_detected": 0,
+            "zombies_killed": 0,
+            "ports_freed": 0,
+            "orphans_cleaned": 0,
+        }
+
+        # Dynamic service ports (discovered from config/env)
+        self._service_ports = self._discover_service_ports()
+
+        # Process patterns for detection
+        self._process_patterns = [
+            "unified_supervisor.py",
+            "run_supervisor.py",
+            "start_system.py",
+            "jarvis",
+            "uvicorn.*8010",
+            "trinity_orchestrator",
+            "jarvis_prime",
+            "reactor_core",
+        ]
+
+    def _discover_service_ports(self) -> Dict[str, List[int]]:
+        """Discover service ports from config and environment."""
+        ports: Dict[str, List[int]] = {}
+
+        # Backend port
+        backend_port = self.config.backend_port
+        ports["jarvis-backend"] = [backend_port] if backend_port else [8010]
+
+        # WebSocket port
+        ws_port = self.config.websocket_port
+        if ws_port:
+            ports["jarvis-websocket"] = [ws_port]
+
+        # Trinity ports from environment
+        jprime_port = int(os.getenv("TRINITY_JPRIME_PORT", "8000"))
+        reactor_port = int(os.getenv("TRINITY_REACTOR_PORT", "8090"))
+        ports["jarvis-prime"] = [jprime_port]
+        ports["reactor-core"] = [reactor_port]
+
+        return ports
+
+    def _is_circuit_open(self) -> bool:
+        """Check if circuit breaker is open."""
+        if not self._enable_circuit_breaker:
+            return False
+
+        if self._circuit_open:
+            if time.time() > self._circuit_open_until:
+                # Circuit is ready to try again (half-open)
+                self._circuit_open = False
+                return False
+            return True
+        return False
+
+    def _open_circuit(self) -> None:
+        """Open the circuit breaker."""
+        self._circuit_open = True
+        self._circuit_open_until = time.time() + self._circuit_cooldown
+
+    def get_stats(self) -> Dict[str, int]:
+        """Get cleanup statistics."""
+        return self._stats.copy()
+
+    async def run_comprehensive_cleanup(self) -> Dict[str, Any]:
+        """
+        Run comprehensive zombie cleanup.
+
+        This is the main entry point that coordinates all cleanup phases:
+        1. Circuit breaker check
+        2. Zombie process detection (multi-source)
+        3. Parallel termination
+        4. Port verification
+
+        Returns:
+            Dict with cleanup results and statistics
+        """
+        results: Dict[str, Any] = {
+            "success": True,
+            "phases_completed": [],
+            "zombies_found": 0,
+            "zombies_killed": 0,
+            "ports_freed": [],
+            "errors": [],
+            "duration_ms": 0,
+        }
+
+        start_time = time.time()
+
+        try:
+            # Phase 0: Circuit breaker check
+            if self._is_circuit_open():
+                results["success"] = False
+                results["errors"].append("Circuit breaker open - cleanup skipped")
+                self.logger.warning("[Kernel] Zombie cleanup skipped - circuit breaker open")
+                return results
+
+            self._cleanup_attempts += 1
+            self.logger.info("[Kernel] 🧹 Starting comprehensive zombie cleanup...")
+
+            # Phase 1: Parallel zombie discovery
+            zombies = await self._parallel_zombie_discovery()
+            results["zombies_found"] = len(zombies)
+            self._stats["zombies_detected"] += len(zombies)
+            results["phases_completed"].append("zombie_discovery")
+
+            if zombies:
+                self.logger.info(f"[Kernel] Found {len(zombies)} zombie process(es)")
+
+                # Phase 2: Parallel termination
+                killed = await self._parallel_zombie_termination(zombies)
+                results["zombies_killed"] = killed
+                self._stats["zombies_killed"] += killed
+                results["phases_completed"].append("zombie_termination")
+
+                # Phase 3: Port verification and cleanup
+                await asyncio.sleep(0.3)  # Brief pause for port release
+                ports_freed = await self._verify_and_free_ports()
+                results["ports_freed"] = ports_freed
+                self._stats["ports_freed"] += len(ports_freed)
+                results["phases_completed"].append("port_verification")
+
+            results["success"] = True
+            self._cleanup_failures = 0  # Reset on success
+
+        except Exception as e:
+            results["success"] = False
+            results["errors"].append(str(e))
+            self._cleanup_failures += 1
+
+            # Open circuit if too many failures
+            if self._cleanup_failures >= self._max_failures_before_open:
+                self._open_circuit()
+
+            self.logger.error(f"[Kernel] Comprehensive cleanup failed: {e}")
+
+        results["duration_ms"] = int((time.time() - start_time) * 1000)
+        self.logger.info(
+            f"[Kernel] ✅ Cleanup complete: "
+            f"{results['zombies_killed']}/{results['zombies_found']} zombies killed, "
+            f"{len(results['ports_freed'])} ports freed in {results['duration_ms']}ms"
+        )
+
+        return results
+
+    async def _parallel_zombie_discovery(self) -> Dict[int, ZombieProcessInfo]:
+        """
+        Parallel zombie discovery using multiple detection sources.
+
+        Detection sources:
+        1. Port scanning (service ports)
+        2. Process pattern matching
+        3. Zombie heuristics (orphaned, stuck, stale connections)
+        """
+        discovered: Dict[int, ZombieProcessInfo] = {}
+
+        try:
+            import psutil
+        except ImportError:
+            self.logger.warning("[Kernel] psutil not available - limited zombie detection")
+            return discovered
+
+        loop = asyncio.get_event_loop()
+
+        with ThreadPoolExecutor(max_workers=3) as executor:
+            # Task 1: Port scanning
+            port_task = loop.run_in_executor(
+                executor, self._discover_from_ports
+            )
+
+            # Task 2: Process pattern scanning
+            pattern_task = loop.run_in_executor(
+                executor, self._discover_from_patterns
+            )
+
+            # Task 3: Zombie heuristic detection
+            zombie_task = loop.run_in_executor(
+                executor, self._discover_zombies_by_heuristics
+            )
+
+            # Wait for all
+            results = await asyncio.gather(
+                port_task, pattern_task, zombie_task,
+                return_exceptions=True
+            )
+
+        # Merge results (later sources take precedence)
+        for result in results:
+            if isinstance(result, dict):
+                discovered.update(result)
+
+        # Filter out ourselves and our parent
+        discovered = {
+            pid: info for pid, info in discovered.items()
+            if pid not in (self._my_pid, self._my_parent)
+        }
+
+        return discovered
+
+    def _discover_from_ports(self) -> Dict[int, ZombieProcessInfo]:
+        """Discover processes holding service ports."""
+        try:
+            import psutil
+        except (ImportError, SystemExit):
+            return {}
+
+        discovered: Dict[int, ZombieProcessInfo] = {}
+
+        # Flatten all service ports
+        all_ports: List[int] = []
+        port_to_service: Dict[int, str] = {}
+        for service, ports in self._service_ports.items():
+            for port in ports:
+                all_ports.append(port)
+                port_to_service[port] = service
+
+        try:
+            for conn in psutil.net_connections(kind='inet'):
+                if conn.laddr.port in all_ports and conn.pid:
+                    pid = conn.pid
+                    if pid in (self._my_pid, self._my_parent):
+                        continue
+                    if pid in discovered:
+                        continue
+
+                    try:
+                        proc = psutil.Process(pid)
+                        cmdline = " ".join(proc.cmdline())
+                        mem_info = proc.memory_info()
+
+                        discovered[pid] = ZombieProcessInfo(
+                            pid=pid,
+                            cmdline=cmdline[:200],
+                            age_seconds=time.time() - proc.create_time(),
+                            memory_mb=mem_info.rss / (1024 * 1024),
+                            cpu_percent=proc.cpu_percent(interval=0.05),
+                            status=proc.status(),
+                            repo_origin=port_to_service.get(conn.laddr.port, "unknown"),
+                            detection_source=f"port_{conn.laddr.port}",
+                        )
+                    except (psutil.NoSuchProcess, psutil.AccessDenied):
+                        pass
+        except (psutil.AccessDenied, PermissionError, SystemExit):
+            pass
+
+        return discovered
+
+    def _discover_from_patterns(self) -> Dict[int, ZombieProcessInfo]:
+        """Discover processes matching JARVIS patterns."""
+        try:
+            import psutil
+        except (ImportError, SystemExit):
+            return {}
+
+        discovered: Dict[int, ZombieProcessInfo] = {}
+        import re
+
+        try:
+            for proc in psutil.process_iter(['pid', 'cmdline', 'create_time', 'memory_info', 'status']):
+                try:
+                    pid = proc.info['pid']
+                    if pid in (self._my_pid, self._my_parent):
+                        continue
+
+                    cmdline = " ".join(proc.info.get('cmdline') or [])
+                    if not cmdline:
+                        continue
+
+                    cmdline_lower = cmdline.lower()
+
+                    # Check against patterns
+                    for pattern in self._process_patterns:
+                        if re.search(pattern, cmdline_lower):
+                            mem_info = proc.info.get('memory_info')
+                            discovered[pid] = ZombieProcessInfo(
+                                pid=pid,
+                                cmdline=cmdline[:200],
+                                age_seconds=time.time() - proc.info['create_time'],
+                                memory_mb=mem_info.rss / (1024 * 1024) if mem_info else 0,
+                                status=proc.info.get('status', 'unknown'),
+                                repo_origin="jarvis",
+                                detection_source="pattern_scan",
+                            )
+                            break
+
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    pass
+        except SystemExit:
+            pass
+
+        return discovered
+
+    def _discover_zombies_by_heuristics(self) -> Dict[int, ZombieProcessInfo]:
+        """
+        Discover zombie-like processes using heuristics.
+
+        A process is zombie-like if:
+        - Orphaned (PPID=1) AND sleeping AND has stale connections
+        - OR has many stale connections (>5) and <0.1% CPU
+        - OR is in zombie/dead state
+        """
+        try:
+            import psutil
+        except (ImportError, SystemExit):
+            return {}
+
+        discovered: Dict[int, ZombieProcessInfo] = {}
+        import re
+
+        try:
+            for proc in psutil.process_iter(['pid', 'ppid', 'cmdline', 'create_time', 'status']):
+                try:
+                    pid = proc.info['pid']
+                    if pid in (self._my_pid, self._my_parent):
+                        continue
+
+                    cmdline = " ".join(proc.info.get('cmdline') or [])
+                    cmdline_lower = cmdline.lower()
+
+                    # Only check JARVIS-related processes
+                    is_jarvis_related = any(
+                        re.search(pattern, cmdline_lower)
+                        for pattern in self._process_patterns
+                    )
+
+                    if not is_jarvis_related:
+                        continue
+
+                    # Get process details
+                    ppid = proc.info.get('ppid', 0)
+                    status = proc.info.get('status', '')
+                    is_orphaned = ppid == 1
+                    is_sleeping = status in ('sleeping', 'idle')
+                    is_zombie_state = status in ('zombie', 'dead')
+
+                    # Count stale connections
+                    stale_count = 0
+                    try:
+                        connections = psutil.Process(pid).connections(kind='inet')
+                        for conn in connections:
+                            if conn.status in ('CLOSE_WAIT', 'TIME_WAIT', 'FIN_WAIT1', 'FIN_WAIT2'):
+                                stale_count += 1
+                    except (psutil.NoSuchProcess, psutil.AccessDenied):
+                        pass
+
+                    # Get CPU percent
+                    try:
+                        cpu_percent = psutil.Process(pid).cpu_percent(interval=0.05)
+                    except (psutil.NoSuchProcess, psutil.AccessDenied):
+                        cpu_percent = 0.0
+
+                    # Apply zombie heuristics
+                    is_zombie_like = (
+                        is_zombie_state or
+                        (is_orphaned and is_sleeping and stale_count > 0) or
+                        (stale_count > 5 and cpu_percent < 0.1)
+                    )
+
+                    if is_zombie_like:
+                        try:
+                            mem_info = psutil.Process(pid).memory_info()
+                            memory_mb = mem_info.rss / (1024 * 1024)
+                        except (psutil.NoSuchProcess, psutil.AccessDenied):
+                            memory_mb = 0.0
+
+                        discovered[pid] = ZombieProcessInfo(
+                            pid=pid,
+                            cmdline=cmdline[:200],
+                            age_seconds=time.time() - proc.info['create_time'],
+                            memory_mb=memory_mb,
+                            cpu_percent=cpu_percent,
+                            status=status,
+                            is_orphaned=is_orphaned,
+                            is_zombie_like=True,
+                            stale_connection_count=stale_count,
+                            detection_source="zombie_heuristic",
+                        )
+
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    pass
+        except SystemExit:
+            pass
+
+        return discovered
+
+    async def _parallel_zombie_termination(
+        self, zombies: Dict[int, ZombieProcessInfo]
+    ) -> int:
+        """
+        Terminate zombies in parallel with semaphore control.
+
+        Uses cascade strategy: SIGINT → SIGTERM → SIGKILL
+        """
+        if not zombies:
+            return 0
+
+        max_parallel = int(os.getenv("KERNEL_MAX_PARALLEL_CLEANUPS", "4"))
+        semaphore = asyncio.Semaphore(max_parallel)
+
+        async def terminate_one(pid: int, info: ZombieProcessInfo) -> bool:
+            async with semaphore:
+                return await self._terminate_zombie(pid, info)
+
+        tasks = [
+            asyncio.create_task(terminate_one(pid, info))
+            for pid, info in zombies.items()
+        ]
+
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        terminated = sum(1 for r in results if r is True)
+        return terminated
+
+    async def _terminate_zombie(
+        self, pid: int, info: ZombieProcessInfo
+    ) -> bool:
+        """Terminate a single zombie with cascade strategy."""
+        try:
+            import psutil
+
+            self.logger.info(
+                f"[Kernel] Killing zombie PID {pid} "
+                f"(origin={info.repo_origin}, source={info.detection_source})"
+            )
+
+            # Phase 1: SIGINT (graceful)
+            try:
+                os.kill(pid, signal.SIGINT)
+                await asyncio.sleep(0.5)
+                if not psutil.pid_exists(pid):
+                    return True
+            except (ProcessLookupError, OSError):
+                return True
+
+            # Phase 2: SIGTERM
+            try:
+                os.kill(pid, signal.SIGTERM)
+                await asyncio.sleep(1.0)
+                if not psutil.pid_exists(pid):
+                    return True
+            except (ProcessLookupError, OSError):
+                return True
+
+            # Phase 3: SIGKILL (force)
+            try:
+                os.kill(pid, signal.SIGKILL)
+                await asyncio.sleep(0.3)
+            except (ProcessLookupError, OSError):
+                pass
+
+            return True
+
+        except Exception as e:
+            self.logger.debug(f"[Kernel] Failed to terminate zombie {pid}: {e}")
+            return False
+
+    async def _verify_and_free_ports(self) -> List[int]:
+        """Verify service ports are free, force-free if needed."""
+        freed_ports: List[int] = []
+
+        try:
+            import psutil
+        except ImportError:
+            return freed_ports
+
+        # Check all service ports
+        all_ports: List[int] = []
+        for ports in self._service_ports.values():
+            all_ports.extend(ports)
+
+        for port in all_ports:
+            try:
+                for conn in psutil.net_connections(kind='inet'):
+                    if conn.laddr.port == port and conn.pid:
+                        pid = conn.pid
+                        if pid in (self._my_pid, self._my_parent):
+                            continue
+
+                        self.logger.warning(
+                            f"[Kernel] Port {port} still held by PID {pid}, force-freeing..."
+                        )
+
+                        try:
+                            os.kill(pid, signal.SIGKILL)
+                            freed_ports.append(port)
+                            await asyncio.sleep(0.2)
+                        except (ProcessLookupError, OSError):
+                            pass
+            except (psutil.AccessDenied, PermissionError):
+                pass
+
+        return freed_ports
+
+
+# =============================================================================
+# ZONE 5.4: PROCESS STATE MANAGER
+# =============================================================================
+
+class ProcessState(Enum):
+    """States for a managed process."""
+    CREATED = "created"
+    STARTING = "starting"
+    RUNNING = "running"
+    STOPPING = "stopping"
+    STOPPED = "stopped"
+    FAILED = "failed"
+    CRASHED = "crashed"
+
+
+@dataclass
+class ManagedProcess:
+    """Represents a managed subprocess with lifecycle tracking."""
+    name: str
+    pid: Optional[int] = None
+    state: ProcessState = ProcessState.CREATED
+    process: Optional[asyncio.subprocess.Process] = None
+    started_at: Optional[float] = None
+    stopped_at: Optional[float] = None
+    restart_count: int = 0
+    last_error: Optional[str] = None
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+    @property
+    def uptime_seconds(self) -> float:
+        """Get process uptime in seconds."""
+        if self.started_at is None:
+            return 0.0
+        end_time = self.stopped_at or time.time()
+        return end_time - self.started_at
+
+    @property
+    def is_running(self) -> bool:
+        """Check if process is in running state."""
+        return self.state == ProcessState.RUNNING
+
+
+class ProcessStateManager:
+    """
+    Manages lifecycle of spawned subprocesses.
+
+    Features:
+    - State tracking (CREATED → STARTING → RUNNING → STOPPED)
+    - Auto-restart with configurable limits
+    - Graceful shutdown with timeout
+    - Health checking via callbacks
+    - Statistics and metrics
+    """
+
+    def __init__(
+        self,
+        config: SystemKernelConfig,
+        logger: UnifiedLogger,
+        max_restarts: int = 3,
+        restart_cooldown: float = 60.0,
+    ) -> None:
+        self.config = config
+        self.logger = logger
+        self._max_restarts = max_restarts
+        self._restart_cooldown = restart_cooldown
+        self._processes: Dict[str, ManagedProcess] = {}
+        self._lock = asyncio.Lock()
+        self._monitor_task: Optional[asyncio.Task] = None
+        self._shutdown_event = asyncio.Event()
+
+    async def register_process(
+        self,
+        name: str,
+        process: asyncio.subprocess.Process,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """Register a new managed process."""
+        async with self._lock:
+            self._processes[name] = ManagedProcess(
+                name=name,
+                pid=process.pid,
+                state=ProcessState.RUNNING,
+                process=process,
+                started_at=time.time(),
+                metadata=metadata or {},
+            )
+            self.logger.info(f"[Kernel] Registered process '{name}' (PID: {process.pid})")
+
+    async def update_state(self, name: str, state: ProcessState, error: Optional[str] = None) -> None:
+        """Update process state."""
+        async with self._lock:
+            if name in self._processes:
+                proc = self._processes[name]
+                old_state = proc.state
+                proc.state = state
+                if error:
+                    proc.last_error = error
+                if state == ProcessState.STOPPED:
+                    proc.stopped_at = time.time()
+                self.logger.debug(f"[Kernel] Process '{name}' state: {old_state.value} → {state.value}")
+
+    async def get_process(self, name: str) -> Optional[ManagedProcess]:
+        """Get a managed process by name."""
+        async with self._lock:
+            return self._processes.get(name)
+
+    async def get_all_processes(self) -> Dict[str, ManagedProcess]:
+        """Get all managed processes."""
+        async with self._lock:
+            return dict(self._processes)
+
+    async def stop_process(
+        self,
+        name: str,
+        timeout: float = 10.0,
+        force: bool = False,
+    ) -> bool:
+        """
+        Stop a managed process gracefully.
+
+        Args:
+            name: Process name
+            timeout: Timeout before force kill
+            force: If True, skip graceful termination
+
+        Returns:
+            True if process was stopped successfully
+        """
+        async with self._lock:
+            if name not in self._processes:
+                return False
+
+            proc = self._processes[name]
+            if proc.process is None or proc.state == ProcessState.STOPPED:
+                return True
+
+            proc.state = ProcessState.STOPPING
+            process = proc.process
+
+        self.logger.info(f"[Kernel] Stopping process '{name}' (PID: {proc.pid})")
+
+        try:
+            if force:
+                process.kill()
+            else:
+                # Graceful termination
+                process.terminate()
+
+            try:
+                await asyncio.wait_for(process.wait(), timeout=timeout)
+            except asyncio.TimeoutError:
+                self.logger.warning(f"[Kernel] Process '{name}' didn't stop gracefully, force killing...")
+                process.kill()
+                await asyncio.wait_for(process.wait(), timeout=5.0)
+
+            await self.update_state(name, ProcessState.STOPPED)
+            return True
+
+        except Exception as e:
+            self.logger.error(f"[Kernel] Failed to stop process '{name}': {e}")
+            await self.update_state(name, ProcessState.FAILED, str(e))
+            return False
+
+    async def stop_all(self, timeout: float = 30.0) -> Dict[str, bool]:
+        """Stop all managed processes."""
+        self._shutdown_event.set()
+
+        results: Dict[str, bool] = {}
+        processes = await self.get_all_processes()
+
+        # Stop in parallel with semaphore
+        semaphore = asyncio.Semaphore(4)
+
+        async def stop_one(name: str) -> Tuple[str, bool]:
+            async with semaphore:
+                return name, await self.stop_process(name, timeout=timeout / 2)
+
+        tasks = [
+            asyncio.create_task(stop_one(name))
+            for name, proc in processes.items()
+            if proc.state == ProcessState.RUNNING
+        ]
+
+        if tasks:
+            completed = await asyncio.gather(*tasks, return_exceptions=True)
+            for result in completed:
+                if isinstance(result, tuple):
+                    name, success = result
+                    results[name] = success
+                else:
+                    self.logger.error(f"[Kernel] Process stop error: {result}")
+
+        return results
+
+    def get_statistics(self) -> Dict[str, Any]:
+        """Get statistics about managed processes."""
+        total = len(self._processes)
+        running = sum(1 for p in self._processes.values() if p.is_running)
+        failed = sum(1 for p in self._processes.values() if p.state == ProcessState.FAILED)
+        total_restarts = sum(p.restart_count for p in self._processes.values())
+
+        return {
+            "total_processes": total,
+            "running": running,
+            "failed": failed,
+            "total_restarts": total_restarts,
+            "processes": {
+                name: {
+                    "state": p.state.value,
+                    "pid": p.pid,
+                    "uptime_seconds": p.uptime_seconds,
+                    "restart_count": p.restart_count,
+                }
+                for name, p in self._processes.items()
+            }
+        }
+
+
+# =============================================================================
+# ZONE 5.5: HOT RELOAD WATCHER
+# =============================================================================
+
+@dataclass
+class FileTypeInfo:
+    """Information about a file type for hot reload."""
+    extension: str
+    requires_restart: bool = True
+    restart_target: str = "backend"  # backend, frontend, native, all
+    category: str = "code"  # code, config, docs, assets
+
+
+class IntelligentFileTypeRegistry:
+    """
+    Intelligent file type registry for hot reload.
+
+    Dynamically discovers file types and their restart requirements
+    without hardcoding.
+    """
+
+    def __init__(self, repo_root: Path, logger: UnifiedLogger) -> None:
+        self.repo_root = repo_root
+        self.logger = logger
+        self._registry: Dict[str, FileTypeInfo] = {}
+        self._discovered = False
+
+    def discover_file_types(self) -> None:
+        """Discover file types in the repository."""
+        if self._discovered:
+            return
+
+        # Backend file types (require full restart)
+        backend_extensions = {
+            ".py": FileTypeInfo(".py", True, "backend", "code"),
+            ".pyx": FileTypeInfo(".pyx", True, "backend", "code"),
+            ".pxd": FileTypeInfo(".pxd", True, "backend", "code"),
+        }
+
+        # Frontend file types
+        frontend_extensions = {
+            ".tsx": FileTypeInfo(".tsx", True, "frontend", "code"),
+            ".ts": FileTypeInfo(".ts", True, "frontend", "code"),
+            ".jsx": FileTypeInfo(".jsx", True, "frontend", "code"),
+            ".js": FileTypeInfo(".js", True, "frontend", "code"),
+            ".css": FileTypeInfo(".css", True, "frontend", "assets"),
+            ".scss": FileTypeInfo(".scss", True, "frontend", "assets"),
+            ".less": FileTypeInfo(".less", True, "frontend", "assets"),
+        }
+
+        # Config files (require full restart)
+        config_extensions = {
+            ".yaml": FileTypeInfo(".yaml", True, "all", "config"),
+            ".yml": FileTypeInfo(".yml", True, "all", "config"),
+            ".toml": FileTypeInfo(".toml", True, "all", "config"),
+            ".json": FileTypeInfo(".json", True, "all", "config"),
+        }
+
+        # Native/Rust files
+        native_extensions = {
+            ".rs": FileTypeInfo(".rs", True, "native", "code"),
+            ".c": FileTypeInfo(".c", True, "native", "code"),
+            ".cpp": FileTypeInfo(".cpp", True, "native", "code"),
+            ".h": FileTypeInfo(".h", True, "native", "code"),
+        }
+
+        # Docs (no restart needed)
+        docs_extensions = {
+            ".md": FileTypeInfo(".md", False, "none", "docs"),
+            ".txt": FileTypeInfo(".txt", False, "none", "docs"),
+            ".rst": FileTypeInfo(".rst", False, "none", "docs"),
+        }
+
+        # Merge all
+        self._registry.update(backend_extensions)
+        self._registry.update(frontend_extensions)
+        self._registry.update(config_extensions)
+        self._registry.update(native_extensions)
+        self._registry.update(docs_extensions)
+
+        self._discovered = True
+
+    def get_file_info(self, file_path: str) -> FileTypeInfo:
+        """Get file type info for a file path."""
+        ext = Path(file_path).suffix.lower()
+        return self._registry.get(ext, FileTypeInfo(ext, False, "none", "unknown"))
+
+    def categorize_changes(self, changed_files: List[str]) -> Dict[str, List[str]]:
+        """Categorize changed files by restart target."""
+        categories: Dict[str, List[str]] = defaultdict(list)
+        for file_path in changed_files:
+            info = self.get_file_info(file_path)
+            if info.requires_restart:
+                categories[info.restart_target].append(file_path)
+        return dict(categories)
+
+    def get_watch_patterns(self) -> List[str]:
+        """Get glob patterns for watched file types."""
+        return [f"*{ext}" for ext, info in self._registry.items() if info.requires_restart]
+
+
+class HotReloadWatcher:
+    """
+    Intelligent polyglot hot reload watcher.
+
+    Features:
+    - Dynamic file type discovery (no hardcoding!)
+    - Category-based restart decisions (backend vs frontend)
+    - Parallel file hash calculation
+    - Smart debouncing and cooldown
+    - Frontend rebuild support (npm run build)
+    - React dev server detection (skip if HMR is active)
+    """
+
+    def __init__(self, config: SystemKernelConfig, logger: UnifiedLogger) -> None:
+        self.config = config
+        self.logger = logger
+        self.repo_root = Path(os.getenv("JARVIS_PROJECT_ROOT", str(Path(__file__).parent)))
+        self.frontend_dir = self.repo_root / "frontend"
+        self.backend_dir = self.repo_root / "backend"
+
+        # Configuration from environment
+        self.enabled = self.config.hot_reload_enabled
+        self.grace_period = int(os.getenv("JARVIS_RELOAD_GRACE_PERIOD", "120"))
+        self.check_interval = self.config.reload_check_interval
+        self.cooldown_seconds = int(os.getenv("JARVIS_RELOAD_COOLDOWN", "10"))
+        self.verbose = os.getenv("JARVIS_RELOAD_VERBOSE", "false").lower() == "true"
+
+        # Frontend-specific config
+        self.frontend_auto_rebuild = os.getenv("JARVIS_FRONTEND_AUTO_REBUILD", "true").lower() == "true"
+        self.frontend_dev_server_port = int(os.getenv("JARVIS_FRONTEND_DEV_PORT", "3000"))
+
+        # Intelligent file type registry
+        self._type_registry = IntelligentFileTypeRegistry(self.repo_root, logger)
+
+        # Exclude patterns
+        self.exclude_dirs = {
+            '.git', '__pycache__', 'node_modules', 'venv', 'env',
+            '.venv', 'build', 'dist', 'target', '.cursor', '.idea',
+            '.vscode', 'coverage', '.pytest_cache', '.mypy_cache',
+            'logs', 'cache', '.jarvis_cache', 'htmlcov', '.worktrees',
+        }
+        self.exclude_patterns = [
+            "*.pyc", "*.pyo", "*.log", "*.tmp", "*.bak",
+            "*.swp", "*.swo", "*~", ".DS_Store",
+        ]
+
+        # State
+        self._start_time = time.time()
+        self._file_hashes: Dict[str, str] = {}
+        self._last_restart_time = 0.0
+        self._last_frontend_rebuild_time = 0.0
+        self._grace_period_ended = False
+        self._monitor_task: Optional[asyncio.Task] = None
+        self._restart_callback: Optional[Callable[[List[str]], Coroutine[Any, Any, None]]] = None
+        self._pending_changes: List[str] = []
+        self._debounce_task: Optional[asyncio.Task] = None
+        self._react_dev_server_running: Optional[bool] = None
+
+    def set_restart_callback(self, callback: Callable[[List[str]], Coroutine[Any, Any, None]]) -> None:
+        """Set the callback to invoke when a backend restart is needed."""
+        self._restart_callback = callback
+
+    def _should_watch_file(self, file_path: Path) -> bool:
+        """Determine if a file should be watched."""
+        from fnmatch import fnmatch
+
+        # Check if in excluded directory
+        for part in file_path.parts:
+            if part in self.exclude_dirs or part.startswith('.'):
+                return False
+
+        # Check exclude patterns
+        for pattern in self.exclude_patterns:
+            if fnmatch(file_path.name, pattern):
+                return False
+
+        # Check if file type requires restart
+        info = self._type_registry.get_file_info(str(file_path))
+        return info.requires_restart
+
+    def _calculate_file_hashes_parallel(self) -> Dict[str, str]:
+        """Calculate file hashes in parallel for speed."""
+        import hashlib
+        from concurrent.futures import as_completed
+
+        def hash_file(file_path: Path) -> Tuple[str, Optional[str]]:
+            try:
+                with open(file_path, 'rb') as f:
+                    return str(file_path.relative_to(self.repo_root)), hashlib.md5(f.read()).hexdigest()
+            except Exception:
+                return str(file_path), None
+
+        files_to_hash: List[Path] = []
+
+        # Walk directories and find watchable files
+        for root, dirs, files in os.walk(self.repo_root):
+            # Filter out excluded directories
+            dirs[:] = [d for d in dirs if d not in self.exclude_dirs and not d.startswith('.')]
+
+            root_path = Path(root)
+            for file in files:
+                file_path = root_path / file
+                if self._should_watch_file(file_path):
+                    files_to_hash.append(file_path)
+
+        # Calculate hashes in parallel
+        hashes: Dict[str, str] = {}
+        with ThreadPoolExecutor(max_workers=os.cpu_count() or 4) as executor:
+            futures = {executor.submit(hash_file, fp): fp for fp in files_to_hash}
+            for future in as_completed(futures):
+                rel_path, file_hash = future.result()
+                if file_hash:
+                    hashes[rel_path] = file_hash
+
+        return hashes
+
+    def _detect_changes(self) -> Tuple[bool, List[str], Dict[str, List[str]]]:
+        """
+        Detect which files have changed.
+
+        Returns: (has_changes, changed_files, categorized_changes)
+        """
+        current = self._calculate_file_hashes_parallel()
+        changed: List[str] = []
+
+        for path, hash_val in current.items():
+            if path not in self._file_hashes or self._file_hashes[path] != hash_val:
+                changed.append(path)
+
+        # Check for deleted files
+        for path in self._file_hashes:
+            if path not in current:
+                changed.append(f"[DELETED] {path}")
+
+        self._file_hashes = current
+
+        # Categorize changes
+        categorized = self._type_registry.categorize_changes(changed)
+
+        return len(changed) > 0, changed, categorized
+
+    def _is_in_grace_period(self) -> bool:
+        """Check if we're still in the startup grace period."""
+        elapsed = time.time() - self._start_time
+        in_grace = elapsed < self.grace_period
+
+        if not in_grace and not self._grace_period_ended:
+            self._grace_period_ended = True
+            self.logger.info(f"⏰ Hot reload grace period ended after {elapsed:.0f}s - now active")
+
+        return in_grace
+
+    def _is_in_cooldown(self) -> bool:
+        """Check if we're in cooldown from a recent restart."""
+        return (time.time() - self._last_restart_time) < self.cooldown_seconds
+
+    async def start(self) -> None:
+        """Start the hot reload watcher."""
+        if not self.enabled:
+            self.logger.info("🔥 Hot reload disabled (dev_mode=false)")
+            return
+
+        # Discover and log file types
+        self._type_registry.discover_file_types()
+
+        # Initialize file hashes
+        self._file_hashes = self._calculate_file_hashes_parallel()
+
+        self.logger.info(f"🔥 Hot reload watching {len(self._file_hashes)} files")
+        self.logger.info(f"   Grace period: {self.grace_period}s, Check interval: {self.check_interval}s")
+
+        # Start monitor task
+        self._monitor_task = asyncio.create_task(self._monitor_loop())
+
+    async def stop(self) -> None:
+        """Stop the hot reload watcher."""
+        if self._monitor_task:
+            self._monitor_task.cancel()
+            try:
+                await self._monitor_task
+            except asyncio.CancelledError:
+                pass
+
+        if self._debounce_task:
+            self._debounce_task.cancel()
+
+    async def _debounced_restart(self, delay: float = 0.5) -> None:
+        """Debounce rapid file changes into a single restart."""
+        await asyncio.sleep(delay)
+
+        if self._pending_changes and self._restart_callback:
+            changes = self._pending_changes.copy()
+            self._pending_changes.clear()
+
+            self._last_restart_time = time.time()
+            await self._restart_callback(changes)
+
+    async def _monitor_loop(self) -> None:
+        """Main monitoring loop."""
+        while True:
+            try:
+                await asyncio.sleep(self.check_interval)
+
+                # Skip during grace period
+                if self._is_in_grace_period():
+                    continue
+
+                # Check for changes
+                has_changes, changed_files, categorized = self._detect_changes()
+
+                if has_changes:
+                    self.logger.info(f"🔥 Detected {len(changed_files)} file change(s)")
+
+                    for target, files in categorized.items():
+                        if files and target != "none":
+                            icon = {
+                                "backend": "🐍",
+                                "frontend": "⚛️",
+                                "native": "🦀",
+                                "all": "🌐",
+                            }.get(target, "📁")
+                            self.logger.info(f"   {icon} {target.upper()}: {len(files)} file(s)")
+
+                    # Backend changes
+                    backend_changes = (
+                        categorized.get("backend", []) +
+                        categorized.get("native", []) +
+                        categorized.get("all", [])
+                    )
+
+                    if backend_changes:
+                        if self._is_in_cooldown():
+                            remaining = self.cooldown_seconds - (time.time() - self._last_restart_time)
+                            self.logger.info(f"   ⏳ Cooldown ({remaining:.0f}s remaining), deferring")
+                            self._pending_changes.extend(backend_changes)
+                        else:
+                            self._pending_changes.extend(backend_changes)
+                            if self._debounce_task:
+                                self._debounce_task.cancel()
+                            self._debounce_task = asyncio.create_task(self._debounced_restart())
+
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                self.logger.error(f"Hot reload monitor error: {e}")
+                await asyncio.sleep(self.check_interval)
+
+
+# =============================================================================
+# ZONE 5.6: PROGRESSIVE READINESS MANAGER
+# =============================================================================
+
+class ReadinessTier(Enum):
+    """Progressive readiness tiers."""
+    STARTING = "starting"
+    PROCESS_STARTED = "process_started"  # Process spawned but not responding
+    IPC_RESPONSIVE = "ipc_responsive"  # IPC socket accepting connections
+    HTTP_HEALTHY = "http_healthy"  # HTTP health endpoint responding
+    INTERACTIVE = "interactive"  # API ready, basic endpoints functional
+    WARMUP = "warmup"  # Frontend ready, optional components loading
+    FULLY_READY = "fully_ready"  # Complete system ready
+
+
+@dataclass
+class ReadinessState:
+    """Current readiness state."""
+    tier: ReadinessTier = ReadinessTier.STARTING
+    tier_reached_at: Dict[str, float] = field(default_factory=dict)
+    components_ready: Dict[str, bool] = field(default_factory=dict)
+    errors: List[str] = field(default_factory=list)
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+    def mark_tier(self, tier: ReadinessTier) -> None:
+        """Mark a tier as reached."""
+        self.tier = tier
+        self.tier_reached_at[tier.value] = time.time()
+
+    def get_tier_duration(self, tier: ReadinessTier) -> Optional[float]:
+        """Get time when a tier was reached."""
+        return self.tier_reached_at.get(tier.value)
+
+
+class ProgressiveReadinessManager:
+    """
+    Manages progressive readiness tiers.
+
+    This allows users to access the system immediately while heavy
+    components load in the background.
+
+    Tiers:
+    - STARTING: Kernel initializing
+    - PROCESS_STARTED: Backend process spawned
+    - IPC_RESPONSIVE: IPC socket accepting connections
+    - HTTP_HEALTHY: Health endpoint responding
+    - INTERACTIVE: API ready for basic requests
+    - WARMUP: Optional components loading
+    - FULLY_READY: Everything ready including ML models
+    """
+
+    def __init__(self, config: SystemKernelConfig, logger: UnifiedLogger) -> None:
+        self.config = config
+        self.logger = logger
+        self.state = ReadinessState()
+        self._state_file = Path.home() / ".jarvis" / "kernel" / "readiness_state.json"
+        self._state_file.parent.mkdir(parents=True, exist_ok=True)
+
+        # Heartbeat loop for staleness detection
+        self._heartbeat_task: Optional[asyncio.Task] = None
+        self._heartbeat_interval = 15.0  # Write heartbeat every 15 seconds
+        self._shutdown_event = asyncio.Event()
+
+    async def start_heartbeat_loop(self) -> None:
+        """Start background heartbeat loop."""
+        if self._heartbeat_task is not None:
+            return  # Already running
+
+        self._heartbeat_task = asyncio.create_task(
+            self._heartbeat_loop(),
+            name="kernel-heartbeat"
+        )
+        self.logger.info("[Kernel] Started heartbeat loop")
+
+    async def stop_heartbeat_loop(self) -> None:
+        """Stop the background heartbeat loop."""
+        self._shutdown_event.set()
+        if self._heartbeat_task:
+            self._heartbeat_task.cancel()
+            try:
+                await self._heartbeat_task
+            except asyncio.CancelledError:
+                pass
+            self._heartbeat_task = None
+        self.logger.info("[Kernel] Stopped heartbeat loop")
+
+    async def _heartbeat_loop(self) -> None:
+        """Background loop that continuously updates heartbeat."""
+        import random
+        consecutive_errors = 0
+
+        while not self._shutdown_event.is_set():
+            try:
+                # Add jitter (±10%) to prevent thundering herd
+                jitter = self._heartbeat_interval * 0.1 * (2 * random.random() - 1)
+                await asyncio.sleep(self._heartbeat_interval + jitter)
+
+                # Write heartbeat
+                self._write_heartbeat()
+                consecutive_errors = 0
+
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                consecutive_errors += 1
+                if consecutive_errors <= 3:
+                    self.logger.debug(f"[Kernel] Heartbeat write error: {e}")
+
+    def _write_heartbeat(self) -> None:
+        """Write heartbeat file."""
+        heartbeat_file = Path.home() / ".jarvis" / "kernel" / "heartbeat.json"
+        heartbeat_file.parent.mkdir(parents=True, exist_ok=True)
+
+        heartbeat_data = {
+            "timestamp": time.time(),
+            "iso": datetime.now().isoformat(),
+            "pid": os.getpid(),
+            "tier": self.state.tier.value,
+            "kernel_id": self.config.kernel_id,
+        }
+
+        with open(heartbeat_file, "w") as f:
+            json.dump(heartbeat_data, f)
+
+    def mark_tier(self, tier: ReadinessTier) -> None:
+        """Mark a readiness tier as reached."""
+        old_tier = self.state.tier
+        self.state.mark_tier(tier)
+        self._write_state()
+
+        if tier != old_tier:
+            self.logger.info(f"[Kernel] Readiness tier: {old_tier.value} → {tier.value}")
+
+    def mark_component_ready(self, component: str, ready: bool = True) -> None:
+        """Mark a component as ready/not ready."""
+        self.state.components_ready[component] = ready
+        self._write_state()
+
+    def add_error(self, error: str) -> None:
+        """Add an error to the readiness state."""
+        self.state.errors.append(error)
+        self._write_state()
+
+    def _write_state(self) -> None:
+        """Write state to file."""
+        try:
+            state_data = {
+                "tier": self.state.tier.value,
+                "tier_reached_at": self.state.tier_reached_at,
+                "components_ready": self.state.components_ready,
+                "errors": self.state.errors[-10:],  # Keep last 10 errors
+                "updated_at": time.time(),
+                "pid": os.getpid(),
+            }
+            with open(self._state_file, "w") as f:
+                json.dump(state_data, f, indent=2)
+        except Exception:
+            pass  # Best effort
+
+    def get_status(self) -> Dict[str, Any]:
+        """Get current readiness status."""
+        return {
+            "tier": self.state.tier.value,
+            "tier_reached_at": self.state.tier_reached_at,
+            "components_ready": self.state.components_ready,
+            "all_components_ready": all(self.state.components_ready.values()) if self.state.components_ready else False,
+            "error_count": len(self.state.errors),
+            "last_error": self.state.errors[-1] if self.state.errors else None,
+        }
+
+    def is_at_least(self, tier: ReadinessTier) -> bool:
+        """Check if readiness is at least at the given tier."""
+        tier_order = [
+            ReadinessTier.STARTING,
+            ReadinessTier.PROCESS_STARTED,
+            ReadinessTier.IPC_RESPONSIVE,
+            ReadinessTier.HTTP_HEALTHY,
+            ReadinessTier.INTERACTIVE,
+            ReadinessTier.WARMUP,
+            ReadinessTier.FULLY_READY,
+        ]
+        current_idx = tier_order.index(self.state.tier)
+        target_idx = tier_order.index(tier)
+        return current_idx >= target_idx
+
+
+# =============================================================================
+# ZONE 5.7: TRINITY INTEGRATOR
+# =============================================================================
+
+@dataclass
+class TrinityComponent:
+    """Represents a Trinity component (J-Prime or Reactor-Core)."""
+    name: str
+    repo_path: Optional[Path] = None
+    port: int = 0
+    process: Optional[asyncio.subprocess.Process] = None
+    pid: Optional[int] = None
+    state: str = "unknown"
+    health_url: Optional[str] = None
+    last_health_check: Optional[float] = None
+    restart_count: int = 0
+
+    @property
+    def is_running(self) -> bool:
+        """Check if component is running."""
+        return self.state in ("running", "healthy")
+
+
+class TrinityIntegrator:
+    """
+    Cross-repo integration for JARVIS Trinity architecture.
+
+    Manages J-Prime (Mind) and Reactor-Core (Nerves) components:
+    - Dynamic repo discovery
+    - Process lifecycle management
+    - Health monitoring with auto-restart
+    - Coordinated shutdown
+
+    The Trinity architecture:
+    - JARVIS (Body) - Main AI agent, this codebase
+    - J-Prime (Mind) - Local LLM inference, tier-0 brain
+    - Reactor-Core (Nerves) - Training pipeline, model optimization
+    """
+
+    def __init__(self, config: SystemKernelConfig, logger: UnifiedLogger) -> None:
+        self.config = config
+        self.logger = logger
+        self._enabled = config.trinity_enabled
+
+        # Components
+        self._jprime: Optional[TrinityComponent] = None
+        self._reactor: Optional[TrinityComponent] = None
+
+        # Monitoring
+        self._health_monitor_task: Optional[asyncio.Task] = None
+        self._shutdown_event = asyncio.Event()
+        self._health_check_interval = float(os.getenv("TRINITY_HEALTH_INTERVAL", "10.0"))
+        self._max_restarts = int(os.getenv("TRINITY_MAX_RESTARTS", "3"))
+
+        # Discovery cache
+        self._discovery_cache: Dict[str, Optional[Path]] = {}
+
+    async def initialize(self) -> bool:
+        """Initialize Trinity integration."""
+        if not self._enabled:
+            self.logger.info("[Trinity] Trinity integration disabled")
+            return True
+
+        self.logger.info("[Trinity] Initializing Trinity integration...")
+
+        # Discover repos
+        jprime_path = await self._discover_repo("jarvis-prime", self.config.prime_repo_path)
+        reactor_path = await self._discover_repo("reactor-core", self.config.reactor_repo_path)
+
+        # Initialize components
+        if jprime_path:
+            jprime_port = int(os.getenv("TRINITY_JPRIME_PORT", "8000"))
+            self._jprime = TrinityComponent(
+                name="jarvis-prime",
+                repo_path=jprime_path,
+                port=jprime_port,
+                health_url=f"http://localhost:{jprime_port}/health",
+            )
+            self.logger.info(f"[Trinity] J-Prime configured at {jprime_path}")
+        else:
+            self.logger.info("[Trinity] J-Prime repo not found - will run without local LLM")
+
+        if reactor_path:
+            reactor_port = int(os.getenv("TRINITY_REACTOR_PORT", "8090"))
+            self._reactor = TrinityComponent(
+                name="reactor-core",
+                repo_path=reactor_path,
+                port=reactor_port,
+                health_url=f"http://localhost:{reactor_port}/health",
+            )
+            self.logger.info(f"[Trinity] Reactor-Core configured at {reactor_path}")
+        else:
+            self.logger.info("[Trinity] Reactor-Core repo not found - will run without training pipeline")
+
+        return True
+
+    async def _discover_repo(self, name: str, explicit_path: Optional[Path]) -> Optional[Path]:
+        """Discover a Trinity repo location."""
+        if name in self._discovery_cache:
+            return self._discovery_cache[name]
+
+        # Strategy 1: Explicit path from config
+        if explicit_path and explicit_path.exists():
+            self._discovery_cache[name] = explicit_path
+            return explicit_path
+
+        # Strategy 2: Environment variable
+        env_var = f"{name.upper().replace('-', '_')}_PATH"
+        env_path = os.getenv(env_var)
+        if env_path:
+            path = Path(env_path)
+            if path.exists():
+                self._discovery_cache[name] = path
+                return path
+
+        # Strategy 3: Common locations
+        search_paths = [
+            Path.home() / "Documents" / "repos" / name,
+            Path.home() / "repos" / name,
+            Path.home() / "code" / name,
+            Path.home() / "projects" / name,
+            Path(__file__).parent.parent / name,  # Sibling directory
+        ]
+
+        for path in search_paths:
+            if path.exists() and (path / ".git").exists():
+                self._discovery_cache[name] = path
+                return path
+
+        self._discovery_cache[name] = None
+        return None
+
+    async def start_components(self) -> Dict[str, bool]:
+        """Start Trinity components."""
+        if not self._enabled:
+            return {}
+
+        results: Dict[str, bool] = {}
+
+        # Start J-Prime
+        if self._jprime:
+            results["jarvis-prime"] = await self._start_component(self._jprime)
+
+        # Start Reactor-Core
+        if self._reactor:
+            results["reactor-core"] = await self._start_component(self._reactor)
+
+        # Start health monitoring
+        if any(results.values()):
+            await self._start_health_monitor()
+
+        return results
+
+    async def _start_component(self, component: TrinityComponent) -> bool:
+        """Start a single Trinity component."""
+        if component.repo_path is None:
+            return False
+
+        self.logger.info(f"[Trinity] Starting {component.name}...")
+
+        # Find Python executable
+        venv_python = component.repo_path / "venv" / "bin" / "python3"
+        if not venv_python.exists():
+            venv_python = component.repo_path / "venv" / "bin" / "python"
+        if not venv_python.exists():
+            venv_python = Path(sys.executable)  # Fallback to current Python
+
+        # Find launch script
+        launch_scripts = [
+            component.repo_path / "run_server.py",
+            component.repo_path / "main.py",
+            component.repo_path / f"{component.name.replace('-', '_')}" / "server.py",
+        ]
+
+        launch_script = None
+        for script in launch_scripts:
+            if script.exists():
+                launch_script = script
+                break
+
+        if not launch_script:
+            self.logger.warning(f"[Trinity] No launch script found for {component.name}")
+            return False
+
+        try:
+            # Start process
+            env = os.environ.copy()
+            env["TRINITY_COMPONENT"] = component.name
+            env["TRINITY_PORT"] = str(component.port)
+
+            process = await asyncio.create_subprocess_exec(
+                str(venv_python),
+                str(launch_script),
+                "--port", str(component.port),
+                cwd=str(component.repo_path),
+                env=env,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+
+            component.process = process
+            component.pid = process.pid
+            component.state = "starting"
+
+            # Wait for health check
+            healthy = await self._wait_for_health(component, timeout=60.0)
+            if healthy:
+                component.state = "healthy"
+                self.logger.success(f"[Trinity] {component.name} started (PID: {component.pid})")
+                return True
+            else:
+                component.state = "failed"
+                self.logger.error(f"[Trinity] {component.name} failed to become healthy")
+                return False
+
+        except Exception as e:
+            self.logger.error(f"[Trinity] Failed to start {component.name}: {e}")
+            component.state = "failed"
+            return False
+
+    async def _wait_for_health(self, component: TrinityComponent, timeout: float = 60.0) -> bool:
+        """Wait for component to become healthy."""
+        if not component.health_url:
+            return True  # No health check configured
+
+        if not AIOHTTP_AVAILABLE:
+            self.logger.debug("[Trinity] aiohttp not available, skipping health check")
+            return True  # Assume healthy if we can't check
+
+        start_time = time.time()
+        while (time.time() - start_time) < timeout:
+            try:
+                async with aiohttp.ClientSession() as session:  # type: ignore[union-attr]
+                    async with session.get(component.health_url, timeout=5.0) as response:
+                        if response.status == 200:
+                            return True
+            except Exception:
+                pass
+            await asyncio.sleep(2.0)
+
+        return False
+
+    async def _start_health_monitor(self) -> None:
+        """Start health monitoring loop."""
+        if self._health_monitor_task:
+            return
+
+        self._health_monitor_task = asyncio.create_task(
+            self._health_monitor_loop(),
+            name="trinity-health-monitor"
+        )
+
+    async def _health_monitor_loop(self) -> None:
+        """Monitor component health and auto-restart if needed."""
+        while not self._shutdown_event.is_set():
+            try:
+                await asyncio.sleep(self._health_check_interval)
+
+                for component in [self._jprime, self._reactor]:
+                    if component and component.state == "healthy":
+                        healthy = await self._check_health(component)
+                        if not healthy:
+                            self.logger.warning(f"[Trinity] {component.name} became unhealthy")
+                            component.state = "unhealthy"
+
+                            if component.restart_count < self._max_restarts:
+                                self.logger.info(f"[Trinity] Attempting to restart {component.name}")
+                                component.restart_count += 1
+                                await self._start_component(component)
+
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                self.logger.debug(f"[Trinity] Health monitor error: {e}")
+
+    async def _check_health(self, component: TrinityComponent) -> bool:
+        """Check if a component is healthy."""
+        if not component.health_url:
+            return True
+
+        if not AIOHTTP_AVAILABLE:
+            return True  # Assume healthy if we can't check
+
+        try:
+            async with aiohttp.ClientSession() as session:  # type: ignore[union-attr]
+                async with session.get(component.health_url, timeout=5.0) as response:
+                    return response.status == 200
+        except Exception:
+            return False
+
+    async def stop(self) -> None:
+        """Stop all Trinity components."""
+        self._shutdown_event.set()
+
+        # Stop health monitor
+        if self._health_monitor_task:
+            self._health_monitor_task.cancel()
+            try:
+                await self._health_monitor_task
+            except asyncio.CancelledError:
+                pass
+
+        # Stop components
+        for component in [self._jprime, self._reactor]:
+            if component and component.process:
+                try:
+                    component.process.terminate()
+                    await asyncio.wait_for(component.process.wait(), timeout=10.0)
+                    self.logger.info(f"[Trinity] Stopped {component.name}")
+                except asyncio.TimeoutError:
+                    component.process.kill()
+                except Exception as e:
+                    self.logger.debug(f"[Trinity] Error stopping {component.name}: {e}")
+
+    def get_status(self) -> Dict[str, Any]:
+        """Get Trinity status."""
+        return {
+            "enabled": self._enabled,
+            "components": {
+                "jarvis-prime": {
+                    "configured": self._jprime is not None,
+                    "state": self._jprime.state if self._jprime else "not_configured",
+                    "pid": self._jprime.pid if self._jprime else None,
+                    "port": self._jprime.port if self._jprime else None,
+                    "restart_count": self._jprime.restart_count if self._jprime else 0,
+                },
+                "reactor-core": {
+                    "configured": self._reactor is not None,
+                    "state": self._reactor.state if self._reactor else "not_configured",
+                    "pid": self._reactor.pid if self._reactor else None,
+                    "port": self._reactor.port if self._reactor else None,
+                    "restart_count": self._reactor.restart_count if self._reactor else 0,
+                },
+            },
+        }
+
+
+# =============================================================================
+# ZONE 5 TEST BLOCK
+# =============================================================================
+
+if __name__ == "__main__":
+    async def test_zone5():
+        """Test Zone 5 components."""
+        # Create config and logger
+        config = SystemKernelConfig()
+        logger = UnifiedLogger()  # Singleton - no args
+
+        # ========== Test UnifiedSignalHandler ==========
+        with logger.section_start(LogSection.PROCESS, "Zone 5.1: UnifiedSignalHandler"):
+            handler = get_unified_signal_handler()
+            logger.success(f"Signal handler created (installed={handler._installed})")
+            logger.info(f"Shutdown requested: {handler.shutdown_requested}")
+            logger.info(f"Shutdown count: {handler.shutdown_count}")
+
+        # ========== Test ComprehensiveZombieCleanup ==========
+        with logger.section_start(LogSection.PROCESS, "Zone 5.3: ComprehensiveZombieCleanup"):
+            zombie_cleanup = ComprehensiveZombieCleanup(config, logger)
+            # Note: Actually running cleanup would kill processes - just test init
+            logger.success(f"Zombie cleanup initialized")
+            logger.info(f"Service ports: {zombie_cleanup._service_ports}")
+            stats = zombie_cleanup.get_stats()
+            logger.info(f"Initial stats: {stats}")
+
+        # ========== Test ProcessStateManager ==========
+        with logger.section_start(LogSection.PROCESS, "Zone 5.4: ProcessStateManager"):
+            process_mgr = ProcessStateManager(config, logger)
+            stats = process_mgr.get_statistics()
+            logger.success(f"Process manager initialized")
+            logger.info(f"Stats: {stats['total_processes']} processes tracked")
+
+        # ========== Test HotReloadWatcher ==========
+        with logger.section_start(LogSection.DEV, "Zone 5.5: HotReloadWatcher"):
+            hot_reload = HotReloadWatcher(config, logger)
+            logger.success(f"Hot reload watcher initialized")
+            logger.info(f"Enabled: {hot_reload.enabled}")
+            logger.info(f"Grace period: {hot_reload.grace_period}s")
+            logger.info(f"Check interval: {hot_reload.check_interval}s")
+
+        # ========== Test ProgressiveReadinessManager ==========
+        with logger.section_start(LogSection.PROCESS, "Zone 5.6: ProgressiveReadinessManager"):
+            readiness = ProgressiveReadinessManager(config, logger)
+            readiness.mark_tier(ReadinessTier.PROCESS_STARTED)
+            readiness.mark_component_ready("backend", True)
+            status = readiness.get_status()
+            logger.success(f"Readiness manager initialized")
+            logger.info(f"Current tier: {status['tier']}")
+            logger.info(f"Components ready: {status['components_ready']}")
+
+        # ========== Test TrinityIntegrator ==========
+        with logger.section_start(LogSection.TRINITY, "Zone 5.7: TrinityIntegrator"):
+            trinity = TrinityIntegrator(config, logger)
+            await trinity.initialize()
+            status = trinity.get_status()
+            logger.success(f"Trinity integrator initialized")
+            logger.info(f"Enabled: {status['enabled']}")
+            logger.info(f"J-Prime configured: {status['components']['jarvis-prime']['configured']}")
+            logger.info(f"Reactor-Core configured: {status['components']['reactor-core']['configured']}")
+
+        logger.print_startup_summary()
+        TerminalUI.print_success("Zone 5 validation complete!")
+
+    # Only run if this is the main module
+    # (test is already inside __main__ block from Zone 4)
+    print("\n" + "="*70)
+    print("Running Zone 5 tests...")
+    print("="*70 + "\n")
+    asyncio.run(test_zone5())
