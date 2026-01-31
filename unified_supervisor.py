@@ -16861,6 +16861,605 @@ class TrinityIntegrator:
 
 
 # =============================================================================
+# ZONE 5.8: UNIFIED TRINITY CONNECTOR (Enhanced Cross-Repo Orchestration)
+# =============================================================================
+#  - Master orchestrator for JARVIS, JARVIS Prime, and Reactor Core
+#  - Cross-repo self-improvement with diff preview and approval
+#  - Atomic multi-repo transactions with 2PC
+#  - Distributed health consensus
+#  - Lamport clocks for causal ordering
+#  - Real-time communication broadcasting
+
+class UnifiedTrinityConnector:
+    """
+    Master orchestrator that connects JARVIS, JARVIS Prime, and Reactor Core.
+
+    This is the single point of coordination for the entire Trinity system,
+    providing:
+    - Cross-repo self-improvement with diff preview and approval
+    - Atomic multi-repo transactions with 2PC
+    - Distributed health consensus
+    - Unified improvement request routing
+    - Session memory across all repos
+
+    Key difference from TrinityIntegrator:
+    - TrinityIntegrator handles process lifecycle (start/stop/health)
+    - UnifiedTrinityConnector handles cross-repo coordination (improvements, 2PC)
+
+    Configuration (all from environment):
+    - JARVIS_PATH: Main JARVIS repo path (default: current directory)
+    - JARVIS_PRIME_PATH: Prime repo path (default: sibling dir)
+    - REACTOR_CORE_PATH: Reactor repo path (default: sibling dir)
+    - TRINITY_CONNECTOR_ENABLED: Enable/disable connector (default: true)
+    """
+
+    def __init__(self) -> None:
+        self.logger = logging.getLogger("Trinity.Connector")
+        self._running = False
+        self._initialized = False
+
+        # Components (lazy-loaded)
+        self._enhanced_self_improvement: Any = None
+        self._enhanced_cross_repo: Any = None
+        self._session_id = f"trinity_{uuid.uuid4().hex[:12]}"
+
+        # Repository paths (from environment)
+        self._jarvis_path = Path(os.environ.get(
+            "JARVIS_PATH",
+            Path(__file__).parent
+        ))
+        self._prime_path = Path(os.environ.get(
+            "JARVIS_PRIME_PATH",
+            self._jarvis_path.parent / "JARVIS-Prime"
+        ))
+        self._reactor_path = Path(os.environ.get(
+            "REACTOR_CORE_PATH",
+            self._jarvis_path.parent / "reactor-core"
+        ))
+
+        # Health state
+        self._health: Dict[str, bool] = {
+            "jarvis": False,
+            "prime": False,
+            "reactor": False,
+        }
+
+        # Real-time communication
+        self._realtime_broadcaster: Any = None
+
+        # Lamport clock for causal ordering (simple implementation)
+        self._lamport_clock: int = 0
+        self._node_id = f"connector_{uuid.uuid4().hex[:8]}"
+
+    def _tick_clock(self) -> int:
+        """Increment and return Lamport clock value."""
+        self._lamport_clock += 1
+        return self._lamport_clock
+
+    def _receive_clock(self, received_time: int) -> int:
+        """Update clock based on received message."""
+        self._lamport_clock = max(self._lamport_clock, received_time) + 1
+        return self._lamport_clock
+
+    async def initialize(
+        self,
+        websocket_manager: Any = None,
+        voice_system: Any = None,
+        menu_bar: Any = None,
+        event_bus: Any = None,
+    ) -> bool:
+        """
+        Initialize the Trinity connector.
+
+        Sets up all enhanced components and establishes connections
+        to JARVIS Prime and Reactor Core.
+
+        Args:
+            websocket_manager: WebSocket manager for real-time UI updates
+            voice_system: Voice system for real-time narration
+            menu_bar: Menu bar for status indicators
+            event_bus: Event bus for system events
+
+        Returns:
+            True if initialization successful, False otherwise.
+        """
+        if self._initialized:
+            return True
+
+        enabled = os.getenv("TRINITY_CONNECTOR_ENABLED", "true").lower() in ("true", "1", "yes")
+        if not enabled:
+            self.logger.info("[Trinity.Connector] Disabled via environment")
+            return True
+
+        self.logger.info("=" * 60)
+        self.logger.info("  UNIFIED TRINITY CONNECTOR v2.0")
+        self.logger.info("=" * 60)
+        self.logger.info(f"  Session: {self._session_id}")
+        self.logger.info(f"  JARVIS: {self._jarvis_path}")
+        self.logger.info(f"  Prime: {self._prime_path}")
+        self.logger.info(f"  Reactor: {self._reactor_path}")
+        self.logger.info("=" * 60)
+
+        try:
+            # Phase 1: Initialize enhanced self-improvement
+            self.logger.info("[Trinity.Connector] Phase 1: Enhanced Self-Improvement...")
+            try:
+                from core.ouroboros.native_integration import (
+                    get_enhanced_self_improvement,
+                )
+                self._enhanced_self_improvement = get_enhanced_self_improvement()
+                await self._enhanced_self_improvement.initialize()
+                self.logger.info("[Trinity.Connector] ✓ Enhanced self-improvement ready")
+                self.logger.info(f"  - Session: {self._enhanced_self_improvement.session_memory.session_id}")
+                self.logger.info(f"  - Diff preview: enabled")
+                self.logger.info(f"  - Multi-file orchestration: enabled")
+            except ImportError as e:
+                self.logger.warning(f"[Trinity.Connector] Self-improvement module not available: {e}")
+                self._enhanced_self_improvement = None
+
+            # Phase 2: Initialize enhanced cross-repo orchestrator
+            self.logger.info("[Trinity.Connector] Phase 2: Cross-Repo Orchestrator...")
+            try:
+                from core.ouroboros.cross_repo import (
+                    get_enhanced_cross_repo_orchestrator,
+                    initialize_enhanced_cross_repo,
+                )
+                await initialize_enhanced_cross_repo()
+                self._enhanced_cross_repo = get_enhanced_cross_repo_orchestrator()
+                self.logger.info("[Trinity.Connector] ✓ Cross-repo orchestrator ready")
+                if hasattr(self._enhanced_cross_repo, '_lamport_clock'):
+                    self.logger.info(f"  - Lamport clock: {self._enhanced_cross_repo._lamport_clock.node_id}")
+                self.logger.info(f"  - Dead letter queue: enabled")
+                self.logger.info(f"  - Health consensus: enabled")
+            except ImportError as e:
+                self.logger.warning(f"[Trinity.Connector] Cross-repo module not available: {e}")
+                self._enhanced_cross_repo = None
+
+            # Phase 3: Validate repository connections
+            self.logger.info("[Trinity.Connector] Phase 3: Repository Validation...")
+            await self._validate_repositories()
+
+            # Phase 4: Establish health consensus
+            self.logger.info("[Trinity.Connector] Phase 4: Health Consensus...")
+            if self._enhanced_cross_repo and hasattr(self._enhanced_cross_repo, '_health_consensus'):
+                health = self._enhanced_cross_repo._health_consensus.get_cluster_health()
+                self.logger.info(f"  - Alive nodes: {health['alive_nodes']}/{health['total_nodes']}")
+                self.logger.info(f"  - Quorum: {'yes' if health['quorum'] else 'NO'}")
+            else:
+                self.logger.info(f"  - Nodes: jarvis={self._health['jarvis']}, prime={self._health['prime']}, reactor={self._health['reactor']}")
+
+            # Phase 5: Connect real-time broadcaster
+            if websocket_manager or voice_system or menu_bar or event_bus:
+                self.logger.info("[Trinity.Connector] Phase 5: Real-Time Communication...")
+                try:
+                    from core.ouroboros.ui_integration import connect_realtime_broadcaster
+                    self._realtime_broadcaster = await connect_realtime_broadcaster(
+                        websocket_manager=websocket_manager,
+                        voice_system=voice_system,
+                        menu_bar=menu_bar,
+                        event_bus=event_bus,
+                    )
+                    self.logger.info("[Trinity.Connector] ✓ Real-time communication enabled")
+                    self.logger.info(f"  - Voice narration: {'yes' if voice_system else 'no'}")
+                    self.logger.info(f"  - WebSocket streaming: {'yes' if websocket_manager else 'no'}")
+                    self.logger.info(f"  - Menu bar updates: {'yes' if menu_bar else 'no'}")
+                except Exception as e:
+                    self.logger.warning(f"[Trinity.Connector] Real-time broadcaster not available: {e}")
+                    self._realtime_broadcaster = None
+            else:
+                self.logger.info("[Trinity.Connector] Phase 5: Skipped (no communication channels)")
+                self._realtime_broadcaster = None
+
+            self._initialized = True
+            self._running = True
+
+            self.logger.info("=" * 60)
+            self.logger.info("  TRINITY CONNECTOR INITIALIZED SUCCESSFULLY")
+            self.logger.info("=" * 60)
+
+            return True
+
+        except Exception as e:
+            self.logger.error(f"[Trinity.Connector] Initialization failed: {e}")
+            import traceback
+            self.logger.debug(traceback.format_exc())
+            return False
+
+    async def _validate_repositories(self) -> None:
+        """Validate all repository connections."""
+        # JARVIS (always available - we're in it)
+        self._health["jarvis"] = True
+        self.logger.info(f"  - JARVIS: ✓ (local)")
+
+        # JARVIS Prime
+        if self._prime_path.exists():
+            prime_git = self._prime_path / ".git"
+            if prime_git.exists():
+                self._health["prime"] = True
+                self.logger.info(f"  - JARVIS Prime: ✓ ({self._prime_path})")
+            else:
+                self.logger.warning(f"  - JARVIS Prime: ⚠ not a git repo")
+        else:
+            self.logger.warning(f"  - JARVIS Prime: ⚠ not found ({self._prime_path})")
+
+        # Reactor Core
+        if self._reactor_path.exists():
+            reactor_git = self._reactor_path / ".git"
+            if reactor_git.exists():
+                self._health["reactor"] = True
+                self.logger.info(f"  - Reactor Core: ✓ ({self._reactor_path})")
+            else:
+                self.logger.warning(f"  - Reactor Core: ⚠ not a git repo")
+        else:
+            self.logger.warning(f"  - Reactor Core: ⚠ not found ({self._reactor_path})")
+
+    async def shutdown(self) -> None:
+        """Shutdown the Trinity connector."""
+        if not self._running:
+            return
+
+        self.logger.info("[Trinity.Connector] Shutting down...")
+
+        try:
+            # Disconnect real-time broadcaster first
+            if self._realtime_broadcaster:
+                try:
+                    from core.ouroboros.ui_integration import disconnect_realtime_broadcaster
+                    await disconnect_realtime_broadcaster()
+                except Exception as e:
+                    self.logger.warning(f"[Trinity.Connector] Realtime broadcaster disconnect error: {e}")
+                self._realtime_broadcaster = None
+
+            if self._enhanced_cross_repo:
+                try:
+                    from core.ouroboros.cross_repo import shutdown_enhanced_cross_repo
+                    await shutdown_enhanced_cross_repo()
+                except Exception as e:
+                    self.logger.warning(f"[Trinity.Connector] Cross-repo shutdown error: {e}")
+
+            if self._enhanced_self_improvement:
+                try:
+                    await self._enhanced_self_improvement.shutdown()
+                except Exception as e:
+                    self.logger.warning(f"[Trinity.Connector] Self-improvement shutdown error: {e}")
+
+        except Exception as e:
+            self.logger.warning(f"[Trinity.Connector] Shutdown error: {e}")
+
+        self._running = False
+        self._initialized = False
+        self.logger.info("[Trinity.Connector] Shutdown complete")
+
+    async def execute_improvement_with_preview(
+        self,
+        target: str,
+        goal: str,
+        require_approval: bool = True,
+    ) -> Dict[str, Any]:
+        """
+        Execute improvement with diff preview and approval workflow.
+
+        This is the main interface for Claude Code-like self-improvement.
+
+        Args:
+            target: File or component to improve
+            goal: Description of the improvement goal
+            require_approval: Whether to require user approval before applying
+
+        Returns:
+            Dict with improvement results including diff preview
+        """
+        if not self._initialized:
+            await self.initialize()
+
+        if not self._enhanced_self_improvement:
+            return {
+                "success": False,
+                "error": "Enhanced self-improvement not available",
+                "target": target,
+                "goal": goal,
+            }
+
+        # Tick Lamport clock for this operation
+        operation_time = self._tick_clock()
+
+        return await self._enhanced_self_improvement.execute_with_preview(
+            target=target,
+            goal=goal,
+            require_approval=require_approval,
+            lamport_time=operation_time,
+        )
+
+    async def execute_multi_file_improvement(
+        self,
+        files_and_goals: List[Dict[str, str]],
+        shared_context: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Execute atomic multi-file improvement.
+
+        Args:
+            files_and_goals: List of {file, goal} dicts
+            shared_context: Optional shared context for all improvements
+
+        Returns:
+            Dict with multi-file improvement results
+        """
+        if not self._initialized:
+            await self.initialize()
+
+        if not self._enhanced_self_improvement:
+            return {
+                "success": False,
+                "error": "Enhanced self-improvement not available",
+                "files": [fg.get("file") for fg in files_and_goals],
+            }
+
+        return await self._enhanced_self_improvement.execute_multi_file_improvement(
+            files_and_goals=files_and_goals,
+            shared_context=shared_context,
+        )
+
+    async def request_cross_repo_improvement(
+        self,
+        file_path: str,
+        goal: str,
+    ) -> Dict[str, Any]:
+        """
+        Request improvement across repositories with proper ordering.
+
+        Uses Lamport clocks for causal ordering.
+
+        Args:
+            file_path: Path to file in any Trinity repo
+            goal: Improvement goal
+
+        Returns:
+            Request ID and status
+        """
+        if not self._initialized:
+            await self.initialize()
+
+        if not self._enhanced_cross_repo:
+            return {
+                "success": False,
+                "error": "Cross-repo orchestrator not available",
+                "file_path": file_path,
+                "goal": goal,
+            }
+
+        operation_time = self._tick_clock()
+
+        result = await self._enhanced_cross_repo.request_improvement_with_ordering(
+            file_path=file_path,
+            goal=goal,
+            lamport_time=operation_time,
+        )
+
+        return {
+            "success": True,
+            "request_id": result,
+            "lamport_time": operation_time,
+            "node_id": self._node_id,
+        }
+
+    async def execute_two_phase_commit(
+        self,
+        changes: List[Dict[str, Any]],
+        transaction_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Execute atomic multi-repo changes with two-phase commit.
+
+        Phase 1 (Prepare): All repos prepare changes, write to staging
+        Phase 2 (Commit): If all prepared, commit; else rollback
+
+        Args:
+            changes: List of {repo, file, content} changes
+            transaction_id: Optional transaction ID (auto-generated if None)
+
+        Returns:
+            Transaction result with commit/rollback status
+        """
+        if not transaction_id:
+            transaction_id = f"2pc_{uuid.uuid4().hex[:12]}"
+
+        operation_time = self._tick_clock()
+        self.logger.info(f"[Trinity.Connector] Starting 2PC transaction: {transaction_id}")
+
+        # Map repo names to paths
+        repo_paths = {
+            "jarvis": self._jarvis_path,
+            "prime": self._prime_path,
+            "reactor": self._reactor_path,
+        }
+
+        # Phase 1: Prepare
+        prepared: List[Dict[str, Any]] = []
+        prepare_failed = False
+
+        for change in changes:
+            repo = change.get("repo", "jarvis")
+            file_path = change.get("file")
+            content = change.get("content")
+
+            repo_path = repo_paths.get(repo)
+            if not repo_path or not repo_path.exists():
+                self.logger.error(f"[Trinity.Connector] 2PC Prepare failed: repo '{repo}' not available")
+                prepare_failed = True
+                break
+
+            # Write to staging file
+            try:
+                target = repo_path / file_path
+                staging = target.with_suffix(target.suffix + ".2pc_staging")
+
+                # Ensure parent directory exists
+                staging.parent.mkdir(parents=True, exist_ok=True)
+
+                # Write staged content
+                staging.write_text(content)
+
+                prepared.append({
+                    "repo": repo,
+                    "file": file_path,
+                    "staging": str(staging),
+                    "target": str(target),
+                })
+                self.logger.info(f"[Trinity.Connector] 2PC Prepared: {repo}/{file_path}")
+
+            except Exception as e:
+                self.logger.error(f"[Trinity.Connector] 2PC Prepare failed for {repo}/{file_path}: {e}")
+                prepare_failed = True
+                break
+
+        # Phase 2: Commit or Rollback
+        if prepare_failed:
+            # Rollback - remove staging files
+            for p in prepared:
+                try:
+                    staging = Path(p["staging"])
+                    if staging.exists():
+                        staging.unlink()
+                except Exception:
+                    pass
+
+            return {
+                "success": False,
+                "transaction_id": transaction_id,
+                "phase": "prepare",
+                "error": "Prepare phase failed",
+                "lamport_time": operation_time,
+            }
+
+        # Commit - move staging to target
+        committed: List[str] = []
+        commit_failed = False
+
+        for p in prepared:
+            try:
+                staging = Path(p["staging"])
+                target = Path(p["target"])
+
+                # Backup existing file
+                if target.exists():
+                    backup = target.with_suffix(target.suffix + ".2pc_backup")
+                    target.rename(backup)
+
+                # Move staging to target
+                staging.rename(target)
+                committed.append(f"{p['repo']}/{p['file']}")
+                self.logger.info(f"[Trinity.Connector] 2PC Committed: {p['repo']}/{p['file']}")
+
+            except Exception as e:
+                self.logger.error(f"[Trinity.Connector] 2PC Commit failed for {p['repo']}/{p['file']}: {e}")
+                commit_failed = True
+                break
+
+        if commit_failed:
+            # Attempt to restore backups
+            for p in prepared:
+                try:
+                    target = Path(p["target"])
+                    backup = target.with_suffix(target.suffix + ".2pc_backup")
+                    if backup.exists():
+                        if target.exists():
+                            target.unlink()
+                        backup.rename(target)
+                except Exception:
+                    pass
+
+            return {
+                "success": False,
+                "transaction_id": transaction_id,
+                "phase": "commit",
+                "error": "Commit phase failed",
+                "committed": committed,
+                "lamport_time": operation_time,
+            }
+
+        # Clean up backups
+        for p in prepared:
+            try:
+                target = Path(p["target"])
+                backup = target.with_suffix(target.suffix + ".2pc_backup")
+                if backup.exists():
+                    backup.unlink()
+            except Exception:
+                pass
+
+        return {
+            "success": True,
+            "transaction_id": transaction_id,
+            "committed": committed,
+            "lamport_time": operation_time,
+        }
+
+    def get_status(self) -> Dict[str, Any]:
+        """Get comprehensive Trinity connector status."""
+        status: Dict[str, Any] = {
+            "session_id": self._session_id,
+            "running": self._running,
+            "initialized": self._initialized,
+            "repositories": self._health,
+            "lamport_clock": self._lamport_clock,
+            "node_id": self._node_id,
+        }
+
+        if self._enhanced_self_improvement:
+            try:
+                status["self_improvement"] = self._enhanced_self_improvement.get_status()
+            except Exception:
+                status["self_improvement"] = {"available": True}
+
+        if self._enhanced_cross_repo:
+            try:
+                status["cross_repo"] = self._enhanced_cross_repo.get_status()
+            except Exception:
+                status["cross_repo"] = {"available": True}
+
+        status["realtime_broadcaster"] = self._realtime_broadcaster is not None
+
+        return status
+
+
+# Global Trinity connector singleton
+_trinity_connector: Optional[UnifiedTrinityConnector] = None
+
+
+def get_trinity_connector() -> UnifiedTrinityConnector:
+    """Get the global Trinity connector."""
+    global _trinity_connector
+    if _trinity_connector is None:
+        _trinity_connector = UnifiedTrinityConnector()
+    return _trinity_connector
+
+
+async def initialize_trinity_connector(
+    websocket_manager: Any = None,
+    voice_system: Any = None,
+    menu_bar: Any = None,
+    event_bus: Any = None,
+) -> bool:
+    """Initialize the Trinity connector (call from kernel startup)."""
+    connector = get_trinity_connector()
+    return await connector.initialize(
+        websocket_manager=websocket_manager,
+        voice_system=voice_system,
+        menu_bar=menu_bar,
+        event_bus=event_bus,
+    )
+
+
+async def shutdown_trinity_connector() -> None:
+    """Shutdown the Trinity connector."""
+    global _trinity_connector
+    if _trinity_connector:
+        await _trinity_connector.shutdown()
+        _trinity_connector = None
+
+
+# =============================================================================
 # ZONE 5 SELF-TEST FUNCTION
 # =============================================================================
 # Tests for Zone 5 (run with: python unified_supervisor.py --test zone5)
