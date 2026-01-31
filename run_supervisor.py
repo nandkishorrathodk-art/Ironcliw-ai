@@ -1765,14 +1765,30 @@ class BootstrapConfig:
     # =========================================================================
     # v80.0: Global Startup Timeout and Deep Health Verification
     # v86.0: Adaptive timeout based on cold vs warm start
+    # v152.0: Progressive Readiness Model (INTERACTIVE → WARMUP → FULL)
     # =========================================================================
     # Prevents infinite hangs during startup with a global timeout.
     # Deep health verification ensures components are actually functional.
+    #
+    # v152.0 PROGRESSIVE READINESS:
+    # - INTERACTIVE (30s): API ready, database connected, basic endpoints
+    # - WARMUP (120s): Frontend ready, jarvis-prime loading in background
+    # - FULL (900s): Complete system ready including 70B model inference
+    #
+    # This allows users to access the system immediately while heavy
+    # components (70B models) load in the background.
     # =========================================================================
     global_startup_timeout: float = field(default_factory=lambda: float(os.getenv("SUPERVISOR_STARTUP_TIMEOUT", "600.0")))  # v86.0: Increased to 600s for cold starts
     deep_health_enabled: bool = field(default_factory=lambda: os.getenv("DEEP_HEALTH_ENABLED", "true").lower() == "true")
     deep_health_timeout: float = field(default_factory=lambda: float(os.getenv("DEEP_HEALTH_TIMEOUT", "10.0")))
     advanced_primitives_enabled: bool = field(default_factory=lambda: os.getenv("ADVANCED_PRIMITIVES_ENABLED", "true").lower() == "true")
+
+    # v152.0: Progressive Readiness Configuration
+    progressive_readiness_enabled: bool = field(default_factory=lambda: os.getenv("JARVIS_PROGRESSIVE_READINESS", "true").lower() == "true")
+    interactive_tier_timeout: float = field(default_factory=lambda: float(os.getenv("JARVIS_INTERACTIVE_TIMEOUT", "30.0")))
+    warmup_tier_timeout: float = field(default_factory=lambda: float(os.getenv("JARVIS_WARMUP_TIMEOUT", "120.0")))
+    full_tier_timeout: float = field(default_factory=lambda: float(os.getenv("JARVIS_FULL_TIMEOUT", "900.0")))  # 15 min for 70B models
+    jarvis_prime_async_load: bool = field(default_factory=lambda: os.getenv("JARVIS_PRIME_ASYNC_LOAD", "true").lower() == "true")
     
     # AGI OS integration
     agi_os_enabled: bool = field(default_factory=lambda: os.getenv("JARVIS_AGI_OS_ENABLED", "true").lower() == "true")
@@ -5518,6 +5534,160 @@ class HotReloadWatcher:
 
 
 # =============================================================================
+# v152.0: Progressive Readiness Manager
+# =============================================================================
+# Implements three-tier readiness model:
+# - INTERACTIVE (30s): API ready, basic endpoints functional
+# - WARMUP (120s): Frontend ready, jarvis-prime loading in background
+# - FULL (900s): Complete system ready including 70B model inference
+# =============================================================================
+
+class ReadinessTier(Enum):
+    """v152.0: Progressive readiness tiers."""
+    STARTING = "starting"
+    INTERACTIVE = "interactive"  # API ready, basic endpoints
+    WARMUP = "warmup"  # Frontend ready, prime loading
+    FULL = "full"  # Complete system ready
+
+
+@dataclass
+class ReadinessState:
+    """v152.0: Current readiness state."""
+    tier: ReadinessTier = ReadinessTier.STARTING
+    interactive_at: Optional[float] = None
+    warmup_at: Optional[float] = None
+    full_at: Optional[float] = None
+    prime_loading_task: Optional[asyncio.Task] = None
+    prime_loading_progress: float = 0.0
+    prime_ready: bool = False
+    errors: List[str] = field(default_factory=list)
+
+
+class ProgressiveReadinessManager:
+    """
+    v152.0: Manages progressive readiness tiers.
+
+    This allows users to access the system immediately while heavy
+    components (70B models) load in the background.
+
+    Tiers:
+    - INTERACTIVE: API ready, can handle basic requests
+    - WARMUP: Frontend ready, prime loading in background
+    - FULL: Everything ready including model inference
+    """
+
+    def __init__(self, config: "BootstrapConfig", logger: logging.Logger):
+        self.config = config
+        self.logger = logger
+        self.state = ReadinessState()
+        self._state_file = Path.home() / ".jarvis" / "trinity" / "readiness_state.json"
+        self._state_file.parent.mkdir(parents=True, exist_ok=True)
+
+    def reach_interactive(self) -> None:
+        """Mark system as reaching INTERACTIVE tier."""
+        if self.state.tier != ReadinessTier.STARTING:
+            return  # Already past this tier
+
+        self.state.tier = ReadinessTier.INTERACTIVE
+        self.state.interactive_at = time.time()
+        os.environ["JARVIS_READINESS_TIER"] = "INTERACTIVE"
+        os.environ["JARVIS_READINESS_INTERACTIVE"] = "true"
+
+        self._write_state()
+        self.logger.info(
+            f"[v152.0] 🟢 INTERACTIVE tier reached - API ready for basic requests"
+        )
+
+    def reach_warmup(self) -> None:
+        """Mark system as reaching WARMUP tier."""
+        if self.state.tier not in (ReadinessTier.STARTING, ReadinessTier.INTERACTIVE):
+            return  # Already past this tier
+
+        self.state.tier = ReadinessTier.WARMUP
+        self.state.warmup_at = time.time()
+        os.environ["JARVIS_READINESS_TIER"] = "WARMUP"
+        os.environ["JARVIS_READINESS_WARMUP"] = "true"
+
+        self._write_state()
+        self.logger.info(
+            f"[v152.0] 🟡 WARMUP tier reached - Frontend ready, prime loading in background"
+        )
+
+    def reach_full(self) -> None:
+        """Mark system as reaching FULL tier."""
+        self.state.tier = ReadinessTier.FULL
+        self.state.full_at = time.time()
+        self.state.prime_ready = True
+        os.environ["JARVIS_READINESS_TIER"] = "FULL"
+        os.environ["JARVIS_READINESS_FULL"] = "true"
+
+        self._write_state()
+
+        # Calculate tier durations
+        startup_time = 0.0
+        if self.state.interactive_at:
+            startup_time = self.state.interactive_at
+        if self.state.warmup_at and self.state.interactive_at:
+            warmup_duration = self.state.warmup_at - self.state.interactive_at
+            self.logger.info(f"[v152.0]   WARMUP took {warmup_duration:.1f}s")
+        if self.state.full_at and self.state.warmup_at:
+            full_duration = self.state.full_at - self.state.warmup_at
+            self.logger.info(f"[v152.0]   FULL took {full_duration:.1f}s (prime loading)")
+
+        total_time = time.time() - startup_time if startup_time > 0 else 0
+        self.logger.info(
+            f"[v152.0] 🟢 FULL tier reached - Complete system ready "
+            f"(total startup: {total_time:.1f}s)"
+        )
+
+    def update_prime_progress(self, progress: float) -> None:
+        """Update jarvis-prime loading progress (0.0 to 1.0)."""
+        self.state.prime_loading_progress = progress
+        # Extend timeout if progress is being made
+        self._write_state()
+
+    def set_prime_loading_task(self, task: asyncio.Task) -> None:
+        """Set the background prime loading task."""
+        self.state.prime_loading_task = task
+
+    def is_prime_ready(self) -> bool:
+        """Check if prime is ready for inference."""
+        return self.state.prime_ready
+
+    def get_current_tier(self) -> ReadinessTier:
+        """Get current readiness tier."""
+        return self.state.tier
+
+    def get_timeout_for_tier(self, tier: ReadinessTier) -> float:
+        """Get timeout for specific tier."""
+        if tier == ReadinessTier.INTERACTIVE:
+            return self.config.interactive_tier_timeout
+        elif tier == ReadinessTier.WARMUP:
+            return self.config.warmup_tier_timeout
+        else:
+            return self.config.full_tier_timeout
+
+    def _write_state(self) -> None:
+        """Write current state to file for cross-process visibility."""
+        try:
+            state_dict = {
+                "tier": self.state.tier.value,
+                "interactive_at": self.state.interactive_at,
+                "warmup_at": self.state.warmup_at,
+                "full_at": self.state.full_at,
+                "prime_loading_progress": self.state.prime_loading_progress,
+                "prime_ready": self.state.prime_ready,
+                "updated_at": time.time(),
+                "version": "v152.0",
+            }
+            tmp_file = self._state_file.with_suffix(".tmp")
+            tmp_file.write_text(json.dumps(state_dict, indent=2))
+            tmp_file.rename(self._state_file)
+        except Exception as e:
+            self.logger.debug(f"[v152.0] Could not write readiness state: {e}")
+
+
+# =============================================================================
 # Main Orchestrator - Intelligent Startup Sequence
 # =============================================================================
 
@@ -5561,6 +5731,13 @@ class SupervisorBootstrapper:
         self._jarvis_prime_orchestrator = None
         self._jarvis_prime_client = None
         self._jarvis_prime_process: Optional[asyncio.subprocess.Process] = None
+
+        # v152.0: Progressive Readiness Manager
+        self._readiness_manager: Optional[ProgressiveReadinessManager] = None
+        self._trinity_startup_task: Optional[asyncio.Task] = None
+        if self.config.progressive_readiness_enabled:
+            self._readiness_manager = ProgressiveReadinessManager(self.config, self.logger)
+            self.logger.info("[v152.0] Progressive readiness enabled - system will be usable during startup")
         self._reactor_core_watcher = None
 
         # v101.0: Cross-Repo Process Restart Manager
@@ -6848,6 +7025,16 @@ class SupervisorBootstrapper:
             if self._frontend_process:
                 try:
                     self._frontend_process.terminate()
+                except Exception:
+                    pass
+
+            # v152.0: Cancel trinity startup task (async prime loading)
+            if self._trinity_startup_task and not self._trinity_startup_task.done():
+                self._trinity_startup_task.cancel()
+                try:
+                    await asyncio.wait_for(self._trinity_startup_task, timeout=2.0)
+                except (asyncio.CancelledError, asyncio.TimeoutError):
+                    pass
                 except Exception:
                     pass
 
@@ -8181,6 +8368,11 @@ class SupervisorBootstrapper:
                     return 1
                 self.logger.info("[v111.3] ✅ Backend running - proceeding with cross-repo orchestration")
 
+                # v152.0: Reach INTERACTIVE tier - API endpoints are now ready
+                if self._readiness_manager:
+                    self._readiness_manager.reach_interactive()
+                    TerminalUI.print_success("[v152.0] ✅ INTERACTIVE tier - API ready for basic requests")
+
                 # ═══════════════════════════════════════════════════════════════════
                 # v113.0: START FRONTEND AS BACKGROUND TASK (non-blocking)
                 # ═══════════════════════════════════════════════════════════════════
@@ -8197,6 +8389,11 @@ class SupervisorBootstrapper:
                             await self._stop_loading_server_v113()
                             self.logger.info(f"🚀 [v113.0] JARVIS is online at http://localhost:{self._frontend_port}")
                             TerminalUI.print_success(f"🚀 JARVIS ready: http://localhost:{self._frontend_port}")
+
+                            # v152.0: Reach WARMUP tier - Frontend is now ready
+                            if self._readiness_manager:
+                                self._readiness_manager.reach_warmup()
+                                TerminalUI.print_success("[v152.0] ✅ WARMUP tier - Frontend ready")
                         else:
                             # Frontend failed - keep loading server running as fallback
                             self.logger.warning("[v113.0] Frontend failed - loading page remains active on port 3001")
@@ -8236,11 +8433,19 @@ class SupervisorBootstrapper:
 
             # ═══════════════════════════════════════════════════════════════════
             # v81.0: TrinityIntegrator - Unified Cross-Repo Integration
+            # v152.0: Non-blocking async load when progressive readiness enabled
             # Provides: orphan cleanup, resilient IPC, port allocation, shutdown
             # ═══════════════════════════════════════════════════════════════════
             if self._trinity_integrator_enabled:
                 try:
                     from backend.core.trinity_integrator import TrinityIntegrator
+
+                    # v152.0: Use extended timeout when progressive readiness is enabled
+                    # This allows jarvis-prime to load 70B models without blocking startup
+                    effective_timeout = self.config.jarvis_prime_startup_timeout
+                    if self.config.progressive_readiness_enabled and self.config.jarvis_prime_async_load:
+                        effective_timeout = self.config.full_tier_timeout  # 900s for heavy models
+                        self.logger.info(f"[v152.0] Using extended timeout for async prime load: {effective_timeout}s")
 
                     # Create integrator with environment-aware configuration
                     # Environment variables JARVIS_PRIME_ENABLED and REACTOR_CORE_ENABLED
@@ -8248,45 +8453,94 @@ class SupervisorBootstrapper:
                     self._trinity_integrator = TrinityIntegrator(
                         enable_jprime=self.config.jarvis_prime_enabled,
                         enable_reactor=self.config.reactor_core_enabled,
-                        startup_timeout=self.config.jarvis_prime_startup_timeout,
+                        startup_timeout=effective_timeout,
                         health_check_interval=30.0,
                     )
 
-                    # Start the integrator (orphan cleanup, IPC, port allocation, health)
-                    TerminalUI.print_success("[v81.0] TrinityIntegrator starting...")
-                    start_success = await self._trinity_integrator.start()
+                    # v152.0: Non-blocking async prime load for progressive readiness
+                    if self.config.progressive_readiness_enabled and self.config.jarvis_prime_async_load:
+                        # Start integrator as background task - don't block startup
+                        async def _trinity_startup_background():
+                            """Background task for Trinity startup with prime loading."""
+                            try:
+                                self.logger.info("[v152.0] Starting Trinity integrator in background...")
+                                start_success = await self._trinity_integrator.start()
 
-                    if start_success:
-                        # Register shutdown hooks with supervisor signals
-                        await self._register_trinity_shutdown_hooks()
+                                if start_success:
+                                    await self._register_trinity_shutdown_hooks()
+                                    state = self._trinity_integrator.state.value
+                                    self.logger.info(f"[v152.0] ✅ TrinityIntegrator ready (state={state})")
 
-                        state = self._trinity_integrator.state.value
-                        TerminalUI.print_success(f"[v81.0] TrinityIntegrator ready (state={state})")
-                        self.logger.info(f"[v81.0] ✅ TrinityIntegrator started successfully (state={state})")
+                                    # v152.0: Reach FULL tier - prime is now ready
+                                    if self._readiness_manager:
+                                        self._readiness_manager.reach_full()
+                                        TerminalUI.print_success("[v152.0] ✅ FULL tier - Prime ready for inference")
 
-                        # ═══════════════════════════════════════════════════════════════
-                        # v85.0: Comprehensive Startup Verification
-                        # Verifies all Trinity components are truly functional:
-                        # - Heartbeat files exist and are fresh
-                        # - Health endpoints respond (if applicable)
-                        # - Cross-repo discovery succeeded
-                        # ═══════════════════════════════════════════════════════════════
-                        try:
-                            verification_results = await self._verify_trinity_startup_v85()
-                            if verification_results["all_verified"]:
-                                TerminalUI.print_success("[v85.0] All Trinity components verified and healthy")
-                                self.logger.info("[v85.0] ✅ Cross-repo verification complete")
-                            else:
-                                failed = [k for k, v in verification_results.get("components", {}).items() if not v]
-                                if failed:
-                                    self.logger.warning(f"[v85.0] Some components not verified: {failed}")
-                                    TerminalUI.print_warning(f"[v85.0] Components pending: {', '.join(failed)}")
-                        except Exception as verify_err:
-                            self.logger.debug(f"[v85.0] Verification check skipped: {verify_err}")
+                                    # Run verification
+                                    try:
+                                        verification_results = await self._verify_trinity_startup_v85()
+                                        if verification_results["all_verified"]:
+                                            self.logger.info("[v152.0] All Trinity components verified")
+                                    except Exception as verify_err:
+                                        self.logger.debug(f"[v152.0] Verification skipped: {verify_err}")
+                                else:
+                                    self.logger.warning("[v152.0] TrinityIntegrator start returned false")
+                                    self._trinity_integrator = None
+                            except asyncio.CancelledError:
+                                self.logger.info("[v152.0] Trinity startup cancelled")
+                            except Exception as e:
+                                self.logger.warning(f"[v152.0] Trinity startup error: {e}")
+
+                        # Start Trinity in background (non-blocking)
+                        self._trinity_startup_task = asyncio.create_task(
+                            _trinity_startup_background(),
+                            name="trinity-startup-v152"
+                        )
+                        if self._readiness_manager:
+                            self._readiness_manager.set_prime_loading_task(self._trinity_startup_task)
+                        TerminalUI.print_success("[v152.0] Trinity startup initiated (background - non-blocking)")
+                        self.logger.info("[v152.0] Prime loading in background - system usable immediately")
 
                     else:
-                        self.logger.warning("[v81.0] TrinityIntegrator start returned false - continuing with fallback")
-                        self._trinity_integrator = None
+                        # Standard blocking startup
+                        TerminalUI.print_success("[v81.0] TrinityIntegrator starting...")
+                        start_success = await self._trinity_integrator.start()
+
+                        if start_success:
+                            # Register shutdown hooks with supervisor signals
+                            await self._register_trinity_shutdown_hooks()
+
+                            state = self._trinity_integrator.state.value
+                            TerminalUI.print_success(f"[v81.0] TrinityIntegrator ready (state={state})")
+                            self.logger.info(f"[v81.0] ✅ TrinityIntegrator started successfully (state={state})")
+
+                            # v152.0: Reach FULL tier if readiness manager exists
+                            if self._readiness_manager:
+                                self._readiness_manager.reach_full()
+
+                            # ═══════════════════════════════════════════════════════════════
+                            # v85.0: Comprehensive Startup Verification
+                            # Verifies all Trinity components are truly functional:
+                            # - Heartbeat files exist and are fresh
+                            # - Health endpoints respond (if applicable)
+                            # - Cross-repo discovery succeeded
+                            # ═══════════════════════════════════════════════════════════════
+                            try:
+                                verification_results = await self._verify_trinity_startup_v85()
+                                if verification_results["all_verified"]:
+                                    TerminalUI.print_success("[v85.0] All Trinity components verified and healthy")
+                                    self.logger.info("[v85.0] ✅ Cross-repo verification complete")
+                                else:
+                                    failed = [k for k, v in verification_results.get("components", {}).items() if not v]
+                                    if failed:
+                                        self.logger.warning(f"[v85.0] Some components not verified: {failed}")
+                                        TerminalUI.print_warning(f"[v85.0] Components pending: {', '.join(failed)}")
+                            except Exception as verify_err:
+                                self.logger.debug(f"[v85.0] Verification check skipped: {verify_err}")
+
+                        else:
+                            self.logger.warning("[v81.0] TrinityIntegrator start returned false - continuing with fallback")
+                            self._trinity_integrator = None
 
                 except ImportError as e:
                     self.logger.warning(f"[v81.0] TrinityIntegrator not available: {e}")

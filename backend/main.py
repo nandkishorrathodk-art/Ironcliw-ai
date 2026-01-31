@@ -5708,6 +5708,76 @@ async def health_ready():
     }
 
 
+# v152.0: Progressive Readiness Tier endpoint
+@app.api_route("/health/readiness-tier", methods=["GET", "HEAD"])
+async def health_readiness_tier():
+    """
+    v152.0: Returns the current progressive readiness tier.
+
+    Progressive readiness tiers:
+    - STARTING: System is starting up
+    - INTERACTIVE: API ready, basic endpoints functional (~30s target)
+    - WARMUP: Frontend ready, jarvis-prime loading in background (~120s target)
+    - FULL: Complete system ready including 70B model inference (~900s possible)
+
+    This allows clients to determine what capabilities are available
+    and whether the system can handle their request.
+    """
+    import json
+    from pathlib import Path
+
+    # Read readiness state from shared file
+    state_file = Path.home() / ".jarvis" / "trinity" / "readiness_state.json"
+
+    tier = "STARTING"
+    tier_details = {
+        "interactive_at": None,
+        "warmup_at": None,
+        "full_at": None,
+        "prime_loading_progress": 0.0,
+        "prime_ready": False,
+    }
+
+    try:
+        if state_file.exists():
+            state_data = json.loads(state_file.read_text())
+            tier = state_data.get("tier", "starting").upper()
+            tier_details["interactive_at"] = state_data.get("interactive_at")
+            tier_details["warmup_at"] = state_data.get("warmup_at")
+            tier_details["full_at"] = state_data.get("full_at")
+            tier_details["prime_loading_progress"] = state_data.get("prime_loading_progress", 0.0)
+            tier_details["prime_ready"] = state_data.get("prime_ready", False)
+    except Exception:
+        pass
+
+    # Also check environment variables (set by supervisor)
+    env_tier = os.getenv("JARVIS_READINESS_TIER", "").upper()
+    if env_tier and env_tier != tier:
+        tier = env_tier
+
+    # Determine capabilities based on tier
+    capabilities = {
+        "api_ready": tier in ("INTERACTIVE", "WARMUP", "FULL"),
+        "frontend_ready": tier in ("WARMUP", "FULL"),
+        "prime_inference_ready": tier == "FULL",
+        "full_features_ready": tier == "FULL",
+    }
+
+    return {
+        "status": "ok",
+        "tier": tier,
+        "capabilities": capabilities,
+        "details": tier_details,
+        "env_vars": {
+            "JARVIS_READINESS_TIER": os.getenv("JARVIS_READINESS_TIER", ""),
+            "JARVIS_READINESS_INTERACTIVE": os.getenv("JARVIS_READINESS_INTERACTIVE", ""),
+            "JARVIS_READINESS_WARMUP": os.getenv("JARVIS_READINESS_WARMUP", ""),
+            "JARVIS_READINESS_FULL": os.getenv("JARVIS_READINESS_FULL", ""),
+        },
+        "version": "v152.0",
+    }
+
+
 # Full Health check endpoint (comprehensive but slower)
 @app.api_route("/health", methods=["GET", "HEAD"])
 async def health_check():
