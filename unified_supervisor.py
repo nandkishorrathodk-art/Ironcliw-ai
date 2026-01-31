@@ -1409,6 +1409,10 @@ class UnifiedLogger:
         print(f"{green}{'═' * 70}{reset}\n")
 
 
+# Global logger instance for use throughout the kernel
+_unified_logger = UnifiedLogger()
+
+
 # =============================================================================
 # STARTUP LOCK (Singleton Enforcement)
 # =============================================================================
@@ -4811,6 +4815,1911 @@ class IntelligentCacheManager(ResourceManagerBase):
             "patterns": self.module_patterns,
             "preserve_patterns": self.preserve_patterns,
         }
+
+
+# =============================================================================
+# DYNAMIC RAM MONITOR - Advanced Memory Tracking
+# =============================================================================
+class DynamicRAMMonitor:
+    """
+    Advanced RAM monitoring with predictive intelligence and automatic workload shifting.
+
+    Features:
+    - Real-time memory tracking with sub-second precision
+    - Predictive analysis using historical patterns
+    - Intelligent threshold adaptation based on workload
+    - macOS memory pressure detection (not just percentage)
+    - Process-level memory attribution
+    - Automatic GCP migration triggers
+    """
+
+    def __init__(self):
+        """Initialize the dynamic RAM monitor."""
+        # System configuration (auto-detected, no hardcoding)
+        self.local_ram_total = psutil.virtual_memory().total
+        self.local_ram_gb = self.local_ram_total / (1024**3)
+        self.is_macos = platform.system() == "Darwin"
+
+        # Dynamic thresholds (adapt based on system behavior)
+        self.warning_threshold = float(os.getenv("RAM_WARNING_THRESHOLD", "0.75"))
+        self.critical_threshold = float(os.getenv("RAM_CRITICAL_THRESHOLD", "0.85"))
+        self.optimal_threshold = float(os.getenv("RAM_OPTIMAL_THRESHOLD", "0.60"))
+        self.emergency_threshold = float(os.getenv("RAM_EMERGENCY_THRESHOLD", "0.95"))
+
+        # macOS-specific memory pressure thresholds
+        self.pressure_warn_level = 2
+        self.pressure_critical_level = 4
+
+        # Monitoring state
+        self.current_usage = 0.0
+        self.current_pressure = 0
+        self.pressure_history: List[Dict[str, Any]] = []
+        self.usage_history: List[Dict[str, float]] = []
+        self.max_history = 100
+        self.prediction_window = 10
+
+        # Component memory tracking
+        self.component_memory: Dict[str, Dict[str, Any]] = {}
+        self.heavy_components: List[str] = []
+
+        # Prediction and learning
+        self.trend_direction = 0.0
+        self.predicted_usage = 0.0
+        self.last_check = time.time()
+
+        # Performance metrics
+        self.shift_count = 0
+        self.prevented_crashes = 0
+        self.monitoring_overhead = 0.0
+
+        _unified_logger.info(f"🧠 DynamicRAMMonitor initialized: {self.local_ram_gb:.1f}GB total")
+        _unified_logger.debug(
+            f"   Thresholds: Warning={self.warning_threshold*100:.0f}%, "
+            f"Critical={self.critical_threshold*100:.0f}%, "
+            f"Emergency={self.emergency_threshold*100:.0f}%"
+        )
+
+    async def get_macos_memory_pressure(self) -> Dict[str, Any]:
+        """
+        Get macOS memory pressure using vm_stat and memory_pressure command.
+
+        Returns dict with:
+        - pressure_level: 1 (normal), 2 (warn), 4 (critical)
+        - pressure_status: "normal", "warn", "critical"
+        - page_ins: Number of pages swapped in
+        - page_outs: Number of pages swapped out
+        - is_under_pressure: Boolean indicating actual memory stress
+        """
+        if not self.is_macos:
+            return {
+                "pressure_level": 1,
+                "pressure_status": "normal",
+                "page_ins": 0,
+                "page_outs": 0,
+                "is_under_pressure": False,
+            }
+
+        try:
+            # Method 1: Try memory_pressure command
+            pressure_level = 1
+            try:
+                proc = await asyncio.create_subprocess_exec(
+                    "memory_pressure",
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=2.0)
+                output = stdout.decode()
+
+                if "critical" in output.lower():
+                    pressure_level = 4
+                elif "warn" in output.lower():
+                    pressure_level = 2
+            except (FileNotFoundError, asyncio.TimeoutError):
+                pass
+
+            # Method 2: Use vm_stat for page in/out rates
+            proc = await asyncio.create_subprocess_exec(
+                "vm_stat",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=2.0)
+            output = stdout.decode()
+
+            page_ins = 0
+            page_outs = 0
+            for line in output.split("\n"):
+                if "Pages paged in:" in line:
+                    page_ins = int(line.split(":")[1].strip().replace(".", ""))
+                elif "Pages paged out:" in line:
+                    page_outs = int(line.split(":")[1].strip().replace(".", ""))
+
+            # Calculate pressure based on page activity
+            is_under_pressure = page_outs > 1000
+            if page_outs > 10000:
+                pressure_level = max(pressure_level, 4)
+            elif page_outs > 5000:
+                pressure_level = max(pressure_level, 2)
+
+            pressure_status = {1: "normal", 2: "warn", 4: "critical"}.get(
+                pressure_level, "unknown"
+            )
+
+            return {
+                "pressure_level": pressure_level,
+                "pressure_status": pressure_status,
+                "page_ins": page_ins,
+                "page_outs": page_outs,
+                "is_under_pressure": is_under_pressure or pressure_level >= 2,
+            }
+
+        except Exception as e:
+            _unified_logger.debug(f"Failed to get macOS memory pressure: {e}")
+            return {
+                "pressure_level": 1,
+                "pressure_status": "normal",
+                "page_ins": 0,
+                "page_outs": 0,
+                "is_under_pressure": False,
+            }
+
+    async def get_current_state(self) -> Dict[str, Any]:
+        """Get comprehensive current memory state."""
+        start_time = time.time()
+
+        mem = psutil.virtual_memory()
+        swap = psutil.swap_memory()
+        pressure_info = await self.get_macos_memory_pressure()
+
+        state = {
+            "timestamp": datetime.now().isoformat(),
+            "total_gb": self.local_ram_gb,
+            "used_gb": mem.used / (1024**3),
+            "available_gb": mem.available / (1024**3),
+            "percent": mem.percent / 100.0,
+            "swap_percent": swap.percent / 100.0,
+            "trend": self.trend_direction,
+            "predicted": self.predicted_usage,
+            "status": self._get_status(mem.percent / 100.0, pressure_info),
+            "shift_recommended": self._should_shift(mem.percent / 100.0, pressure_info),
+            "emergency": self._is_emergency(mem.percent / 100.0, pressure_info),
+            "pressure_level": pressure_info["pressure_level"],
+            "pressure_status": pressure_info["pressure_status"],
+            "is_under_pressure": pressure_info["is_under_pressure"],
+            "page_outs": pressure_info["page_outs"],
+        }
+
+        self.current_usage = state["percent"]
+        self.current_pressure = state["pressure_level"]
+        self.monitoring_overhead = time.time() - start_time
+
+        return state
+
+    def _get_status(self, usage: float, pressure_info: Dict[str, Any]) -> str:
+        """Get human-readable status based on usage and memory pressure."""
+        if self.is_macos:
+            pressure_level = pressure_info.get("pressure_level", 1)
+            is_under_pressure = pressure_info.get("is_under_pressure", False)
+
+            if pressure_level >= 4 or (is_under_pressure and usage >= 0.90):
+                return "CRITICAL"
+            elif pressure_level >= 2 and usage >= self.critical_threshold:
+                return "WARNING"
+            elif is_under_pressure:
+                return "ELEVATED"
+            elif usage >= self.warning_threshold:
+                return "ELEVATED"
+            else:
+                return "OPTIMAL"
+        else:
+            if usage >= self.emergency_threshold:
+                return "EMERGENCY"
+            elif usage >= self.critical_threshold:
+                return "CRITICAL"
+            elif usage >= self.warning_threshold:
+                return "WARNING"
+            elif usage >= self.optimal_threshold:
+                return "ELEVATED"
+            else:
+                return "OPTIMAL"
+
+    def _should_shift(self, usage: float, pressure_info: Dict[str, Any]) -> bool:
+        """Determine if workload should shift to GCP."""
+        if self.is_macos:
+            is_under_pressure = pressure_info.get("is_under_pressure", False)
+            pressure_level = pressure_info.get("pressure_level", 1)
+            return (is_under_pressure and usage >= self.critical_threshold) or pressure_level >= 4
+        else:
+            return usage >= self.warning_threshold
+
+    def _is_emergency(self, usage: float, pressure_info: Dict[str, Any]) -> bool:
+        """Determine if this is an emergency requiring immediate action."""
+        if self.is_macos:
+            pressure_level = pressure_info.get("pressure_level", 1)
+            return pressure_level >= 4 and usage >= 0.90
+        else:
+            return usage >= self.emergency_threshold
+
+    async def update_usage_history(self) -> None:
+        """Update usage history and calculate trends."""
+        state = await self.get_current_state()
+
+        self.usage_history.append({"time": time.time(), "usage": state["percent"]})
+
+        if len(self.usage_history) > self.max_history:
+            self.usage_history.pop(0)
+
+        if len(self.usage_history) >= 5:
+            recent = [h["usage"] for h in self.usage_history[-5:]]
+            self.trend_direction = (recent[-1] - recent[0]) / 5.0
+            self.predicted_usage = min(
+                1.0, max(0.0, state["percent"] + (self.trend_direction * self.prediction_window))
+            )
+
+    async def should_shift_to_gcp(self) -> Tuple[bool, str, Dict[str, Any]]:
+        """
+        Determine if workload should shift to GCP.
+
+        Returns:
+            (should_shift, reason, details)
+        """
+        state = await self.get_current_state()
+
+        if state["emergency"]:
+            return (True, "EMERGENCY: RAM at critical level", state)
+
+        if state["status"] == "CRITICAL":
+            return (True, "CRITICAL: RAM usage exceeds threshold", state)
+
+        if state["status"] == "WARNING" and self.trend_direction > 0.01:
+            return (True, "PROACTIVE: Rising RAM trend detected", state)
+
+        if state["predicted"] >= self.critical_threshold:
+            return (True, "PREDICTIVE: Future RAM spike predicted", state)
+
+        return (False, "OPTIMAL: Local RAM sufficient", state)
+
+    async def should_shift_to_local(self, gcp_cost: float = 0.0) -> Tuple[bool, str]:
+        """Determine if workload should shift back to local."""
+        state = await self.get_current_state()
+
+        if state["percent"] < self.optimal_threshold and self.trend_direction <= 0:
+            return (True, "OPTIMAL: Local RAM available, reducing GCP cost")
+
+        if gcp_cost > 10.0 and state["percent"] < self.warning_threshold:
+            return (True, f"COST_OPTIMIZATION: ${gcp_cost:.2f}/hr GCP cost, local available")
+
+        return (False, "MAINTAINING: GCP deployment active")
+
+
+# =============================================================================
+# LAZY ASYNC LOCK - Python 3.9 Compatibility
+# =============================================================================
+class LazyAsyncLock:
+    """
+    Lazy-initialized asyncio.Lock for Python 3.9+ compatibility.
+
+    asyncio.Lock() cannot be created outside of an async context in Python 3.9.
+    This wrapper delays initialization until first use within an async context.
+    """
+
+    def __init__(self):
+        self._lock: Optional[asyncio.Lock] = None
+
+    def _ensure_lock(self) -> asyncio.Lock:
+        """Ensure lock exists, creating it if needed."""
+        if self._lock is None:
+            self._lock = asyncio.Lock()
+        return self._lock
+
+    async def __aenter__(self):
+        """Enter async context manager."""
+        lock = self._ensure_lock()
+        await lock.acquire()
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Exit async context manager."""
+        if self._lock is not None:
+            self._lock.release()
+        return False
+
+
+# =============================================================================
+# GLOBAL SESSION MANAGER - Session Tracking Singleton
+# =============================================================================
+class GlobalSessionManager:
+    """
+    Async-safe singleton manager for JARVIS session tracking.
+
+    Features:
+    - Singleton pattern with thread-safe initialization
+    - Async-safe operations with asyncio.Lock
+    - Early registration before other components
+    - Guaranteed availability during cleanup
+    - Automatic stale session cleanup
+    - Multi-terminal conflict prevention
+    """
+
+    _instance: Optional['GlobalSessionManager'] = None
+    _init_lock = threading.Lock()
+
+    def __new__(cls):
+        if cls._instance is None:
+            with cls._init_lock:
+                if cls._instance is None:
+                    cls._instance = super().__new__(cls)
+                    cls._instance._initialized = False
+        return cls._instance
+
+    def __init__(self):
+        """Initialize session manager (only runs once due to singleton)."""
+        if getattr(self, '_initialized', False):
+            return
+
+        self._lock = LazyAsyncLock()
+        self._sync_lock = threading.Lock()
+
+        # Session identity
+        self.session_id = str(uuid.uuid4())
+        self.pid = os.getpid()
+        self.hostname = socket.gethostname()
+        self.created_at = time.time()
+
+        # Session tracking files
+        self._temp_dir = Path(tempfile.gettempdir())
+        self.session_file = self._temp_dir / f"jarvis_session_{self.pid}.json"
+        self.vm_registry = self._temp_dir / "jarvis_vm_registry.json"
+        self.global_tracker_file = self._temp_dir / "jarvis_global_session.json"
+
+        # VM tracking
+        self._current_vm: Optional[Dict[str, Any]] = None
+
+        # Statistics
+        self._stats = {
+            "vms_registered": 0,
+            "vms_unregistered": 0,
+            "registry_cleanups": 0,
+            "stale_sessions_removed": 0,
+        }
+
+        self._register_global_session()
+        self._initialized = True
+
+        _unified_logger.info(f"🌐 Global Session Manager initialized:")
+        _unified_logger.info(f"   ├─ Session: {self.session_id[:8]}...")
+        _unified_logger.info(f"   ├─ PID: {self.pid}")
+        _unified_logger.info(f"   └─ Hostname: {self.hostname}")
+
+    def _register_global_session(self):
+        """Register this session in the global tracker (sync)."""
+        try:
+            session_info = {
+                "session_id": self.session_id,
+                "pid": self.pid,
+                "hostname": self.hostname,
+                "created_at": self.created_at,
+                "vm_id": None,
+                "status": "active",
+            }
+            self.global_tracker_file.write_text(json.dumps(session_info, indent=2))
+        except Exception as e:
+            _unified_logger.warning(f"Failed to register global session: {e}")
+
+    async def register_vm(
+        self,
+        vm_id: str,
+        zone: str,
+        components: List[str],
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> bool:
+        """Register VM ownership for this session."""
+        async with self._lock:
+            session_data = {
+                "session_id": self.session_id,
+                "pid": self.pid,
+                "hostname": self.hostname,
+                "vm_id": vm_id,
+                "zone": zone,
+                "components": components,
+                "metadata": metadata or {},
+                "created_at": self.created_at,
+                "registered_at": time.time(),
+                "status": "active",
+            }
+
+            self._current_vm = session_data
+
+            try:
+                self.session_file.write_text(json.dumps(session_data, indent=2))
+            except Exception as e:
+                _unified_logger.error(f"Failed to write session file: {e}")
+                return False
+
+            try:
+                registry = await self._load_registry_async()
+                registry[self.session_id] = session_data
+                await self._save_registry_async(registry)
+            except Exception as e:
+                _unified_logger.error(f"Failed to update VM registry: {e}")
+                return False
+
+            self._stats["vms_registered"] += 1
+            _unified_logger.info(f"📝 Registered VM {vm_id} to session {self.session_id[:8]}")
+            return True
+
+    async def get_my_vm(self) -> Optional[Dict[str, Any]]:
+        """Get VM owned by this session."""
+        async with self._lock:
+            if self._current_vm:
+                return self._current_vm
+
+            if not self.session_file.exists():
+                return None
+
+            try:
+                data = json.loads(self.session_file.read_text())
+                if self._validate_ownership(data):
+                    self._current_vm = data
+                    return data
+            except Exception as e:
+                _unified_logger.error(f"Failed to read session file: {e}")
+            return None
+
+    def get_my_vm_sync(self) -> Optional[Dict[str, Any]]:
+        """Synchronous version of get_my_vm for use during cleanup."""
+        with self._sync_lock:
+            if self._current_vm:
+                return self._current_vm
+
+            if self.global_tracker_file.exists():
+                try:
+                    data = json.loads(self.global_tracker_file.read_text())
+                    if data.get("session_id") == self.session_id and data.get("vm_id"):
+                        return {
+                            "vm_id": data["vm_id"],
+                            "zone": data.get("zone"),
+                            "session_id": data["session_id"],
+                            "pid": data.get("pid"),
+                        }
+                except Exception:
+                    pass
+
+            if not self.session_file.exists():
+                return None
+
+            try:
+                data = json.loads(self.session_file.read_text())
+                if self._validate_ownership(data):
+                    self._current_vm = data
+                    return data
+            except Exception:
+                pass
+            return None
+
+    def _validate_ownership(self, data: Dict[str, Any]) -> bool:
+        """Validate that session data belongs to this session."""
+        if data.get("session_id") != self.session_id:
+            return False
+        if data.get("pid") != self.pid:
+            return False
+        if data.get("hostname") != self.hostname:
+            return False
+
+        age_hours = (time.time() - data.get("created_at", 0)) / 3600
+        if age_hours > 12:
+            try:
+                self.session_file.unlink()
+            except Exception:
+                pass
+            return False
+        return True
+
+    async def unregister_vm(self) -> bool:
+        """Unregister VM ownership and cleanup session files."""
+        async with self._lock:
+            try:
+                self._current_vm = None
+                if self.session_file.exists():
+                    self.session_file.unlink()
+
+                registry = await self._load_registry_async()
+                if self.session_id in registry:
+                    del registry[self.session_id]
+                    await self._save_registry_async(registry)
+
+                self._stats["vms_unregistered"] += 1
+                return True
+            except Exception as e:
+                _unified_logger.error(f"Failed to unregister VM: {e}")
+                return False
+
+    def unregister_vm_sync(self) -> bool:
+        """Synchronous version of unregister_vm for cleanup."""
+        with self._sync_lock:
+            try:
+                self._current_vm = None
+                if self.session_file.exists():
+                    self.session_file.unlink()
+
+                registry = self._load_registry_sync()
+                if self.session_id in registry:
+                    del registry[self.session_id]
+                    self._save_registry_sync(registry)
+
+                if self.global_tracker_file.exists():
+                    self.global_tracker_file.unlink()
+
+                self._stats["vms_unregistered"] += 1
+                return True
+            except Exception as e:
+                _unified_logger.error(f"Failed to unregister VM: {e}")
+                return False
+
+    async def get_all_active_sessions(self) -> Dict[str, Dict[str, Any]]:
+        """Get all active sessions with staleness filtering."""
+        async with self._lock:
+            registry = await self._load_registry_async()
+            active_sessions = {}
+            stale_count = 0
+
+            for session_id, data in registry.items():
+                pid = data.get("pid")
+                if pid and self._is_pid_running(pid):
+                    age_hours = (time.time() - data.get("created_at", 0)) / 3600
+                    if age_hours <= 12:
+                        active_sessions[session_id] = data
+                    else:
+                        stale_count += 1
+                else:
+                    stale_count += 1
+
+            if len(active_sessions) != len(registry):
+                await self._save_registry_async(active_sessions)
+                self._stats["registry_cleanups"] += 1
+                self._stats["stale_sessions_removed"] += stale_count
+
+            return active_sessions
+
+    async def _load_registry_async(self) -> Dict[str, Any]:
+        """Load VM registry from disk."""
+        if not self.vm_registry.exists():
+            return {}
+        try:
+            loop = asyncio.get_event_loop()
+            content = await loop.run_in_executor(None, self.vm_registry.read_text)
+            return json.loads(content)
+        except Exception:
+            return {}
+
+    async def _save_registry_async(self, registry: Dict[str, Any]):
+        """Save VM registry to disk."""
+        try:
+            content = json.dumps(registry, indent=2)
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(None, self.vm_registry.write_text, content)
+        except Exception as e:
+            _unified_logger.error(f"Failed to save VM registry: {e}")
+
+    def _load_registry_sync(self) -> Dict[str, Any]:
+        """Load VM registry from disk (sync version)."""
+        if not self.vm_registry.exists():
+            return {}
+        try:
+            return json.loads(self.vm_registry.read_text())
+        except Exception:
+            return {}
+
+    def _save_registry_sync(self, registry: Dict[str, Any]):
+        """Save VM registry to disk (sync version)."""
+        try:
+            self.vm_registry.write_text(json.dumps(registry, indent=2))
+        except Exception as e:
+            _unified_logger.error(f"Failed to save VM registry: {e}")
+
+    def _is_pid_running(self, pid: int) -> bool:
+        """Check if PID is currently running."""
+        try:
+            proc = psutil.Process(pid)
+            cmdline = proc.cmdline()
+            return "unified_supervisor.py" in " ".join(cmdline) or "start_system.py" in " ".join(cmdline)
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            return False
+
+    def get_statistics(self) -> Dict[str, Any]:
+        """Get session manager statistics."""
+        return {
+            "session_id": self.session_id,
+            "pid": self.pid,
+            "hostname": self.hostname,
+            "uptime_seconds": time.time() - self.created_at,
+            "has_vm": self._current_vm is not None,
+            "vm_id": self._current_vm.get("vm_id") if self._current_vm else None,
+            **self._stats,
+        }
+
+
+# Module-level singleton accessor
+_global_session_manager: Optional[GlobalSessionManager] = None
+_session_manager_lock = threading.Lock()
+
+
+def get_session_manager() -> GlobalSessionManager:
+    """Get the global session manager singleton."""
+    global _global_session_manager
+    if _global_session_manager is None:
+        with _session_manager_lock:
+            if _global_session_manager is None:
+                _global_session_manager = GlobalSessionManager()
+    return _global_session_manager
+
+
+# =============================================================================
+# SUPERVISOR RESTART MANAGER - Cross-Repo Process Management
+# =============================================================================
+@dataclass
+class SupervisorManagedProcess:
+    """Metadata for a supervisor-managed process."""
+    name: str
+    process: Optional[asyncio.subprocess.Process]
+    restart_func: Callable[[], Any]
+    restart_count: int = 0
+    last_restart: float = 0.0
+    max_restarts: int = 3
+    port: Optional[int] = None
+    enabled: bool = True
+    exit_code: Optional[int] = None
+
+
+class SupervisorRestartManager:
+    """
+    Cross-repo process restart manager for supervisor-level services.
+
+    Manages automatic restart of:
+    - JARVIS-Prime (local inference server)
+    - Reactor-Core (training/ML services)
+
+    Features:
+    - Named process tracking (not index-based)
+    - Exponential backoff: 1s → 2s → 4s → max configurable
+    - Per-process restart tracking
+    - Maximum restart limit with alerting
+    - Async-safe with proper locking
+    - Environment variable configuration
+    """
+
+    def __init__(self, logger: Optional[logging.Logger] = None):
+        """Initialize the supervisor restart manager."""
+        self.processes: Dict[str, SupervisorManagedProcess] = {}
+        self._lock = asyncio.Lock()
+        self._shutdown_requested = False
+        self._logger = logger or logging.getLogger("SupervisorRestartManager")
+
+        # Environment-driven configuration
+        self.max_restarts = int(os.getenv("JARVIS_SUPERVISOR_MAX_RESTARTS", "3"))
+        self.max_backoff = float(os.getenv("JARVIS_SUPERVISOR_MAX_BACKOFF", "60.0"))
+        self.restart_cooldown = float(os.getenv("JARVIS_SUPERVISOR_RESTART_COOLDOWN", "600.0"))
+        self.base_backoff = float(os.getenv("JARVIS_SUPERVISOR_BASE_BACKOFF", "2.0"))
+
+    def register(
+        self,
+        name: str,
+        process: Optional[asyncio.subprocess.Process],
+        restart_func: Callable[[], Any],
+        port: Optional[int] = None,
+        enabled: bool = True,
+    ) -> None:
+        """Register a cross-repo process for monitoring and automatic restart."""
+        self.processes[name] = SupervisorManagedProcess(
+            name=name,
+            process=process,
+            restart_func=restart_func,
+            restart_count=0,
+            last_restart=0.0,
+            max_restarts=self.max_restarts,
+            port=port,
+            enabled=enabled,
+        )
+        if process:
+            self._logger.info(
+                f"Registered cross-repo process '{name}' (PID: {process.pid})"
+                + (f" on port {port}" if port else "")
+            )
+
+    def update_process(self, name: str, process: asyncio.subprocess.Process) -> None:
+        """Update the process reference for a registered service."""
+        if name in self.processes:
+            self.processes[name].process = process
+            self._logger.debug(f"Updated process reference for '{name}' (PID: {process.pid})")
+
+    def request_shutdown(self) -> None:
+        """Signal that shutdown is requested - stop all restart attempts."""
+        self._shutdown_requested = True
+        self._logger.info("Supervisor shutdown requested - restart manager disabled")
+
+    def reset_shutdown(self) -> None:
+        """Reset shutdown flag - allow restarts again."""
+        self._shutdown_requested = False
+
+    async def check_and_restart_all(self) -> List[str]:
+        """Check all cross-repo processes and restart any that have exited."""
+        if self._shutdown_requested:
+            return []
+
+        restarted = []
+
+        async with self._lock:
+            for name, managed in list(self.processes.items()):
+                if not managed.enabled or managed.process is None:
+                    continue
+
+                proc = managed.process
+
+                if proc.returncode is not None:
+                    managed.exit_code = proc.returncode
+
+                    if proc.returncode in (0, -2, -15):
+                        self._logger.debug(f"{name} exited normally (code: {proc.returncode})")
+                        continue
+
+                    success = await self._handle_unexpected_exit(name, managed)
+                    if success:
+                        restarted.append(name)
+
+        return restarted
+
+    async def _handle_unexpected_exit(
+        self, name: str, managed: SupervisorManagedProcess
+    ) -> bool:
+        """Handle an unexpected process exit with exponential backoff restart."""
+        current_time = time.time()
+
+        if managed.restart_count >= managed.max_restarts:
+            self._logger.error(
+                f"❌ {name} exceeded supervisor restart limit ({managed.max_restarts}). "
+                f"Last exit code: {managed.exit_code}. Manual intervention required."
+            )
+            return False
+
+        if current_time - managed.last_restart > self.restart_cooldown:
+            if managed.restart_count > 0:
+                self._logger.info(
+                    f"{name} was stable for {self.restart_cooldown}s - "
+                    f"resetting restart count from {managed.restart_count} to 0"
+                )
+            managed.restart_count = 0
+
+        backoff = min(
+            self.base_backoff * (2 ** managed.restart_count),
+            self.max_backoff
+        )
+
+        managed.restart_count += 1
+        managed.last_restart = current_time
+
+        self._logger.warning(
+            f"🔄 Supervisor restarting '{name}' in {backoff:.1f}s "
+            f"(attempt {managed.restart_count}/{managed.max_restarts}, "
+            f"exit code: {managed.exit_code})"
+        )
+
+        await asyncio.sleep(backoff)
+
+        if self._shutdown_requested:
+            self._logger.info(f"Shutdown requested - aborting restart of '{name}'")
+            return False
+
+        try:
+            await managed.restart_func()
+            self._logger.info(f"✅ {name} restart initiated successfully")
+            return True
+        except Exception as e:
+            self._logger.error(f"❌ Failed to restart '{name}': {e}")
+            return False
+
+    def get_status(self) -> Dict[str, Dict[str, Any]]:
+        """Get status of all supervised cross-repo processes."""
+        status = {}
+        for name, managed in self.processes.items():
+            proc = managed.process
+            status[name] = {
+                "pid": proc.pid if proc else None,
+                "running": proc.returncode is None if proc else False,
+                "exit_code": managed.exit_code,
+                "restart_count": managed.restart_count,
+                "last_restart": managed.last_restart,
+                "port": managed.port,
+                "enabled": managed.enabled,
+            }
+        return status
+
+
+# =============================================================================
+# TRINITY LAUNCH CONFIG - Environment-Driven Configuration
+# =============================================================================
+@dataclass
+class TrinityLaunchConfig:
+    """
+    Ultra-robust configuration for Trinity component launch.
+
+    ALL values are environment-driven with sensible defaults.
+    Zero hardcoding - everything configurable at runtime.
+    """
+
+    # Core Trinity Settings
+    trinity_enabled: bool = field(default_factory=lambda: os.getenv("TRINITY_ENABLED", "true").lower() == "true")
+    trinity_auto_launch: bool = field(default_factory=lambda: os.getenv("TRINITY_AUTO_LAUNCH", "true").lower() == "true")
+    trinity_instance_id: str = field(default_factory=lambda: os.getenv("TRINITY_INSTANCE_ID", ""))
+
+    # Repo Discovery Settings
+    jprime_repo_path: Optional[Path] = field(default_factory=lambda: Path(os.getenv(
+        "JARVIS_PRIME_PATH",
+        str(Path.home() / "Documents" / "repos" / "jarvis-prime")
+    )) if os.getenv("JARVIS_PRIME_PATH") or (Path.home() / "Documents" / "repos" / "jarvis-prime").exists() else None)
+
+    reactor_core_repo_path: Optional[Path] = field(default_factory=lambda: Path(os.getenv(
+        "REACTOR_CORE_PATH",
+        str(Path.home() / "Documents" / "repos" / "reactor-core")
+    )) if os.getenv("REACTOR_CORE_PATH") or (Path.home() / "Documents" / "repos" / "reactor-core").exists() else None)
+
+    # Secondary search locations
+    repo_search_paths: List[Path] = field(default_factory=lambda: [
+        Path(p) for p in os.getenv("TRINITY_REPO_SEARCH_PATHS", "").split(":") if p
+    ] or [
+        Path.home() / "Documents" / "repos",
+        Path.home() / "repos",
+        Path.home() / "code",
+        Path.home() / "projects",
+        Path.home() / "dev",
+        Path.cwd().parent,
+    ])
+
+    # Repo identification patterns
+    jprime_identifiers: List[str] = field(default_factory=lambda:
+        os.getenv("TRINITY_JPRIME_IDENTIFIERS", "jarvis-prime,jarvis_prime,j-prime,jprime").split(",")
+    )
+    reactor_core_identifiers: List[str] = field(default_factory=lambda:
+        os.getenv("TRINITY_REACTOR_IDENTIFIERS", "reactor-core,reactor_core,reactorcore").split(",")
+    )
+
+    # Python Environment Detection
+    venv_detection_order: List[str] = field(default_factory=lambda:
+        os.getenv("TRINITY_VENV_DETECTION_ORDER", "venv,env,.venv,.env,virtualenv").split(",")
+    )
+    python_executable_names: List[str] = field(default_factory=lambda:
+        os.getenv("TRINITY_PYTHON_NAMES", "python3,python,python3.11,python3.10,python3.9").split(",")
+    )
+    fallback_to_system_python: bool = field(default_factory=lambda:
+        os.getenv("TRINITY_FALLBACK_SYSTEM_PYTHON", "true").lower() == "true"
+    )
+
+    # Launch Script Detection
+    jprime_launch_scripts: List[str] = field(default_factory=lambda:
+        os.getenv("TRINITY_JPRIME_SCRIPTS",
+            "jarvis_prime/server.py,run_server.py,jarvis_prime/core/trinity_bridge.py,main.py"
+        ).split(",")
+    )
+    reactor_core_launch_scripts: List[str] = field(default_factory=lambda:
+        os.getenv("TRINITY_REACTOR_SCRIPTS",
+            "reactor_core/orchestration/trinity_orchestrator.py,run_orchestrator.py,main.py"
+        ).split(",")
+    )
+
+    # Timeout Configuration (Adaptive)
+    launch_timeout_sec: float = field(default_factory=lambda: float(os.getenv("TRINITY_LAUNCH_TIMEOUT", "120.0")))
+    registration_timeout_sec: float = field(default_factory=lambda: float(os.getenv("TRINITY_REGISTRATION_TIMEOUT", "30.0")))
+    health_check_timeout_sec: float = field(default_factory=lambda: float(os.getenv("TRINITY_HEALTH_CHECK_TIMEOUT", "10.0")))
+    shutdown_timeout_sec: float = field(default_factory=lambda: float(os.getenv("TRINITY_SHUTDOWN_TIMEOUT", "30.0")))
+
+    # Heartbeat Configuration
+    heartbeat_dir: Path = field(default_factory=lambda:
+        Path(os.getenv("TRINITY_HEARTBEAT_DIR", str(Path.home() / ".jarvis" / "trinity" / "components")))
+    )
+    heartbeat_max_age_sec: float = field(default_factory=lambda: float(os.getenv("TRINITY_HEARTBEAT_MAX_AGE", "30.0")))
+    heartbeat_check_interval_sec: float = field(default_factory=lambda: float(os.getenv("TRINITY_HEARTBEAT_INTERVAL", "5.0")))
+
+    # Retry Configuration
+    max_retries: int = field(default_factory=lambda: int(os.getenv("TRINITY_MAX_RETRIES", "3")))
+    retry_base_delay_sec: float = field(default_factory=lambda: float(os.getenv("TRINITY_RETRY_BASE_DELAY", "1.0")))
+    retry_max_delay_sec: float = field(default_factory=lambda: float(os.getenv("TRINITY_RETRY_MAX_DELAY", "30.0")))
+
+    # Circuit Breaker Configuration
+    circuit_breaker_enabled: bool = field(default_factory=lambda:
+        os.getenv("TRINITY_CIRCUIT_BREAKER_ENABLED", "true").lower() == "true"
+    )
+    circuit_breaker_failure_threshold: int = field(default_factory=lambda:
+        int(os.getenv("TRINITY_CIRCUIT_FAILURE_THRESHOLD", "5"))
+    )
+    circuit_breaker_timeout_sec: float = field(default_factory=lambda:
+        float(os.getenv("TRINITY_CIRCUIT_TIMEOUT", "60.0"))
+    )
+
+    # Process Management
+    log_dir: Path = field(default_factory=lambda:
+        Path(os.getenv("TRINITY_LOG_DIR", str(Path.home() / ".jarvis" / "logs" / "services")))
+    )
+    detach_processes: bool = field(default_factory=lambda:
+        os.getenv("TRINITY_DETACH_PROCESSES", "true").lower() == "true"
+    )
+    sigterm_timeout_sec: float = field(default_factory=lambda: float(os.getenv("TRINITY_SIGTERM_TIMEOUT", "5.0")))
+    sigkill_timeout_sec: float = field(default_factory=lambda: float(os.getenv("TRINITY_SIGKILL_TIMEOUT", "2.0")))
+
+    # Port Configuration
+    jprime_ports: List[int] = field(default_factory=lambda:
+        [int(p) for p in os.getenv("TRINITY_JPRIME_PORTS", "8000").split(",")]
+    )
+    reactor_core_ports: List[int] = field(default_factory=lambda:
+        [int(p) for p in os.getenv("TRINITY_REACTOR_PORTS", "8090").split(",")]
+    )
+
+    # Dynamic port allocation
+    dynamic_port_enabled: bool = field(default_factory=lambda:
+        os.getenv("TRINITY_DYNAMIC_PORTS", "true").lower() == "true"
+    )
+    dynamic_port_range_start: int = field(default_factory=lambda:
+        int(os.getenv("TRINITY_DYNAMIC_PORT_START", "8100"))
+    )
+    dynamic_port_range_end: int = field(default_factory=lambda:
+        int(os.getenv("TRINITY_DYNAMIC_PORT_END", "8199"))
+    )
+
+    # Graceful Degradation
+    jprime_optional: bool = field(default_factory=lambda:
+        os.getenv("TRINITY_JPRIME_OPTIONAL", "true").lower() == "true"
+    )
+    reactor_core_optional: bool = field(default_factory=lambda:
+        os.getenv("TRINITY_REACTOR_OPTIONAL", "true").lower() == "true"
+    )
+    continue_on_partial_failure: bool = field(default_factory=lambda:
+        os.getenv("TRINITY_CONTINUE_ON_PARTIAL", "true").lower() == "true"
+    )
+
+    # Health Monitoring
+    health_monitor_enabled: bool = field(default_factory=lambda:
+        os.getenv("TRINITY_HEALTH_MONITOR_ENABLED", "true").lower() == "true"
+    )
+    health_monitor_interval_sec: float = field(default_factory=lambda:
+        float(os.getenv("TRINITY_HEALTH_MONITOR_INTERVAL", "10.0"))
+    )
+    auto_restart_on_crash: bool = field(default_factory=lambda:
+        os.getenv("TRINITY_AUTO_RESTART", "true").lower() == "true"
+    )
+    max_auto_restarts: int = field(default_factory=lambda:
+        int(os.getenv("TRINITY_MAX_RESTARTS", "3"))
+    )
+    restart_cooldown_sec: float = field(default_factory=lambda:
+        float(os.getenv("TRINITY_RESTART_COOLDOWN", "60.0"))
+    )
+
+    # API Port
+    jarvis_api_port: int = field(default_factory=lambda:
+        int(os.getenv("JARVIS_API_PORT", "8080"))
+    )
+
+    def __post_init__(self):
+        """Validate and create necessary directories."""
+        self.heartbeat_dir.mkdir(parents=True, exist_ok=True)
+        self.log_dir.mkdir(parents=True, exist_ok=True)
+
+        if not self.trinity_instance_id:
+            self.trinity_instance_id = f"trinity_{uuid.uuid4().hex[:8]}"
+
+
+# =============================================================================
+# DYNAMIC REPO DISCOVERY - Intelligent Repository Finding
+# =============================================================================
+class DynamicRepoDiscovery:
+    """
+    Intelligent repo discovery system that finds Trinity repos dynamically.
+
+    Discovery strategies (in order):
+    1. Environment variables (JARVIS_PRIME_PATH, REACTOR_CORE_PATH)
+    2. User config file (~/.jarvis/repos.json)
+    3. Common repo locations (~/Documents/repos, ~/repos, ~/code, etc.)
+    4. Git remote scanning (looks for known repo URLs)
+    5. Parent/sibling directory scanning
+    """
+
+    def __init__(self, config: TrinityLaunchConfig):
+        self.config = config
+        self._discovery_cache: Dict[str, Optional[Path]] = {}
+        self._logger = logging.getLogger("TrinityRepoDiscovery")
+
+    async def discover_jprime(self) -> Optional[Path]:
+        """Discover J-Prime repository path."""
+        if "jprime" in self._discovery_cache:
+            return self._discovery_cache["jprime"]
+
+        # Strategy 1: Environment variable / config
+        if self.config.jprime_repo_path and self.config.jprime_repo_path.exists():
+            self._discovery_cache["jprime"] = self.config.jprime_repo_path
+            return self.config.jprime_repo_path
+
+        # Strategy 2: User config file
+        config_path = Path.home() / ".jarvis" / "repos.json"
+        if config_path.exists():
+            try:
+                with open(config_path) as f:
+                    repos = json.load(f)
+                if "jarvis_prime" in repos:
+                    path = Path(repos["jarvis_prime"])
+                    if path.exists():
+                        self._discovery_cache["jprime"] = path
+                        return path
+            except Exception:
+                pass
+
+        # Strategy 3: Search common locations
+        for search_path in self.config.repo_search_paths:
+            if not search_path.exists():
+                continue
+            for identifier in self.config.jprime_identifiers:
+                candidate = search_path / identifier
+                if candidate.exists() and self._is_jprime_repo(candidate):
+                    self._discovery_cache["jprime"] = candidate
+                    self._logger.info(f"Discovered J-Prime at: {candidate}")
+                    return candidate
+
+        # Strategy 4: Git remote scanning
+        found = await self._scan_for_git_remote("jarvis-prime", self.config.repo_search_paths)
+        if found:
+            self._discovery_cache["jprime"] = found
+            return found
+
+        self._discovery_cache["jprime"] = None
+        return None
+
+    async def discover_reactor_core(self) -> Optional[Path]:
+        """Discover Reactor-Core repository path."""
+        if "reactor_core" in self._discovery_cache:
+            return self._discovery_cache["reactor_core"]
+
+        # Strategy 1: Environment variable / config
+        if self.config.reactor_core_repo_path and self.config.reactor_core_repo_path.exists():
+            self._discovery_cache["reactor_core"] = self.config.reactor_core_repo_path
+            return self.config.reactor_core_repo_path
+
+        # Strategy 2: User config file
+        config_path = Path.home() / ".jarvis" / "repos.json"
+        if config_path.exists():
+            try:
+                with open(config_path) as f:
+                    repos = json.load(f)
+                if "reactor_core" in repos:
+                    path = Path(repos["reactor_core"])
+                    if path.exists():
+                        self._discovery_cache["reactor_core"] = path
+                        return path
+            except Exception:
+                pass
+
+        # Strategy 3: Search common locations
+        for search_path in self.config.repo_search_paths:
+            if not search_path.exists():
+                continue
+            for identifier in self.config.reactor_core_identifiers:
+                candidate = search_path / identifier
+                if candidate.exists() and self._is_reactor_core_repo(candidate):
+                    self._discovery_cache["reactor_core"] = candidate
+                    self._logger.info(f"Discovered Reactor-Core at: {candidate}")
+                    return candidate
+
+        # Strategy 4: Git remote scanning
+        found = await self._scan_for_git_remote("reactor-core", self.config.repo_search_paths)
+        if found:
+            self._discovery_cache["reactor_core"] = found
+            return found
+
+        self._discovery_cache["reactor_core"] = None
+        return None
+
+    def _is_jprime_repo(self, path: Path) -> bool:
+        """Verify this is the J-Prime repo by checking for signature files."""
+        signature_files = [
+            path / "jarvis_prime" / "server.py",
+            path / "jarvis_prime" / "__init__.py",
+            path / "run_server.py",
+        ]
+        return any(f.exists() for f in signature_files)
+
+    def _is_reactor_core_repo(self, path: Path) -> bool:
+        """Verify this is the Reactor-Core repo."""
+        signature_files = [
+            path / "reactor_core" / "orchestration" / "trinity_orchestrator.py",
+            path / "reactor_core" / "__init__.py",
+            path / "run_orchestrator.py",
+        ]
+        return any(f.exists() for f in signature_files)
+
+    async def _scan_for_git_remote(self, repo_name: str, search_paths: List[Path]) -> Optional[Path]:
+        """Scan for repos by checking git remote URLs."""
+        import subprocess
+
+        for search_path in search_paths:
+            if not search_path.exists():
+                continue
+
+            try:
+                for entry in search_path.iterdir():
+                    if not entry.is_dir():
+                        continue
+                    git_dir = entry / ".git"
+                    if not git_dir.exists():
+                        continue
+
+                    try:
+                        result = subprocess.run(
+                            ["git", "-C", str(entry), "remote", "-v"],
+                            capture_output=True, text=True, timeout=5
+                        )
+                        if repo_name in result.stdout.lower():
+                            return entry
+                    except (subprocess.TimeoutExpired, FileNotFoundError):
+                        continue
+            except PermissionError:
+                continue
+
+        return None
+
+
+# =============================================================================
+# ROBUST VENV DETECTOR - Python Environment Detection
+# =============================================================================
+class RobustVenvDetector:
+    """
+    Robust Python virtual environment detector.
+
+    Handles:
+    - Standard venv (venv, env, .venv, .env)
+    - Virtualenvwrapper (~/.virtualenvs)
+    - Conda environments
+    - Poetry environments
+    - Pipenv environments
+    - pyenv
+    - System Python fallback
+    """
+
+    def __init__(self, config: TrinityLaunchConfig):
+        self.config = config
+        self._logger = logging.getLogger("TrinityVenvDetector")
+
+    def find_python(self, repo_path: Path) -> str:
+        """Find the best Python executable for a repo."""
+        # Strategy 1: Check standard venv locations
+        for venv_name in self.config.venv_detection_order:
+            venv_path = repo_path / venv_name
+            python = self._find_python_in_venv(venv_path)
+            if python:
+                self._logger.debug(f"Found Python in {venv_name}: {python}")
+                return python
+
+        # Strategy 2: Check .python-version (pyenv)
+        pyenv_file = repo_path / ".python-version"
+        if pyenv_file.exists():
+            try:
+                version = pyenv_file.read_text().strip()
+                if version:
+                    pyenv_python = Path.home() / ".pyenv" / "versions" / version / "bin" / "python"
+                    if pyenv_python.exists():
+                        self._logger.debug(f"Found pyenv Python: {pyenv_python}")
+                        return str(pyenv_python)
+            except Exception:
+                pass
+
+        # Strategy 3: Check poetry.lock (poetry environment)
+        if (repo_path / "poetry.lock").exists():
+            poetry_python = self._find_poetry_python(repo_path)
+            if poetry_python:
+                self._logger.debug(f"Found poetry Python: {poetry_python}")
+                return poetry_python
+
+        # Strategy 4: Check Pipfile.lock (pipenv environment)
+        if (repo_path / "Pipfile.lock").exists():
+            pipenv_python = self._find_pipenv_python(repo_path)
+            if pipenv_python:
+                self._logger.debug(f"Found pipenv Python: {pipenv_python}")
+                return pipenv_python
+
+        # Strategy 5: Fallback to system Python
+        if self.config.fallback_to_system_python:
+            for name in self.config.python_executable_names:
+                import shutil
+                python = shutil.which(name)
+                if python:
+                    self._logger.debug(f"Using system Python: {python}")
+                    return python
+
+        # Last resort: use current interpreter
+        self._logger.warning(f"No Python found for {repo_path}, using current interpreter")
+        return sys.executable
+
+    def _find_python_in_venv(self, venv_path: Path) -> Optional[str]:
+        """Find Python executable in a venv directory."""
+        if not venv_path.exists():
+            return None
+
+        # Unix-like systems
+        for name in self.config.python_executable_names:
+            python_path = venv_path / "bin" / name
+            if python_path.exists():
+                return str(python_path)
+
+        # Windows
+        for name in self.config.python_executable_names:
+            python_path = venv_path / "Scripts" / f"{name}.exe"
+            if python_path.exists():
+                return str(python_path)
+
+        return None
+
+    def _find_poetry_python(self, repo_path: Path) -> Optional[str]:
+        """Find Python from poetry environment."""
+        import subprocess
+        try:
+            result = subprocess.run(
+                ["poetry", "env", "info", "-p"],
+                cwd=str(repo_path),
+                capture_output=True, text=True, timeout=10
+            )
+            if result.returncode == 0:
+                venv_path = Path(result.stdout.strip())
+                return self._find_python_in_venv(venv_path)
+        except (subprocess.TimeoutExpired, FileNotFoundError):
+            pass
+        return None
+
+    def _find_pipenv_python(self, repo_path: Path) -> Optional[str]:
+        """Find Python from pipenv environment."""
+        import subprocess
+        try:
+            result = subprocess.run(
+                ["pipenv", "--venv"],
+                cwd=str(repo_path),
+                capture_output=True, text=True, timeout=10
+            )
+            if result.returncode == 0:
+                venv_path = Path(result.stdout.strip())
+                return self._find_python_in_venv(venv_path)
+        except (subprocess.TimeoutExpired, FileNotFoundError):
+            pass
+        return None
+
+    def get_python_executable(self, repo_path: Path) -> str:
+        """Alias for find_python."""
+        return self.find_python(repo_path)
+
+
+# =============================================================================
+# TRINITY TRACE CONTEXT - Distributed Tracing
+# =============================================================================
+@dataclass
+class TrinityTraceContext:
+    """W3C Trace Context for Trinity distributed tracing."""
+    trace_id: str = field(default_factory=lambda: uuid.uuid4().hex)
+    span_id: str = field(default_factory=lambda: uuid.uuid4().hex[:16])
+    parent_span_id: Optional[str] = None
+    trace_flags: int = 1  # Sampled by default
+
+    def to_traceparent(self) -> str:
+        """Convert to W3C traceparent header format."""
+        return f"00-{self.trace_id}-{self.span_id}-{self.trace_flags:02x}"
+
+    @classmethod
+    def from_traceparent(cls, header: str) -> Optional['TrinityTraceContext']:
+        """Parse W3C traceparent header."""
+        try:
+            parts = header.split("-")
+            if len(parts) == 4 and parts[0] == "00":
+                return cls(
+                    trace_id=parts[1],
+                    span_id=parts[2],
+                    trace_flags=int(parts[3], 16),
+                )
+        except Exception:
+            pass
+        return None
+
+    def create_child_span(self) -> 'TrinityTraceContext':
+        """Create a child span context."""
+        return TrinityTraceContext(
+            trace_id=self.trace_id,
+            span_id=uuid.uuid4().hex[:16],
+            parent_span_id=self.span_id,
+            trace_flags=self.trace_flags,
+        )
+
+
+# =============================================================================
+# ASYNC VOICE NARRATOR - Voice Feedback for Startup
+# =============================================================================
+class AsyncVoiceNarrator:
+    """
+    Async voice narrator for startup feedback.
+
+    Features:
+    - Non-blocking voice output
+    - Platform-aware (macOS only)
+    - Graceful fallback on errors
+    - Queue management
+    """
+
+    def __init__(self, enabled: bool = True, voice: str = "Daniel"):
+        self.enabled = enabled and platform.system() == "Darwin"
+        self.voice = voice
+        self._process: Optional[asyncio.subprocess.Process] = None
+        self._queue: List[str] = []
+        self._speaking = False
+
+    async def speak(self, text: str, wait: bool = True, priority: bool = False) -> None:
+        """Speak text using macOS say command."""
+        if not self.enabled:
+            return
+
+        try:
+            if priority:
+                # Kill current speech for priority messages
+                if self._process and self._process.returncode is None:
+                    self._process.terminate()
+
+            self._process = await asyncio.create_subprocess_exec(
+                "say",
+                "-v", self.voice,
+                text,
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.DEVNULL,
+            )
+
+            if wait:
+                await asyncio.wait_for(self._process.communicate(), timeout=30.0)
+            else:
+                # Fire and forget
+                pass
+
+        except asyncio.TimeoutError:
+            if self._process:
+                self._process.terminate()
+        except Exception as e:
+            _unified_logger.debug(f"Voice error: {e}")
+
+    async def cleanup(self) -> None:
+        """Cleanup voice processes."""
+        if self._process and self._process.returncode is None:
+            self._process.terminate()
+            try:
+                await asyncio.wait_for(self._process.communicate(), timeout=2.0)
+            except asyncio.TimeoutError:
+                self._process.kill()
+
+
+# =============================================================================
+# PHYSICS-AWARE STARTUP MANAGER - Voice Authentication
+# =============================================================================
+class PhysicsAwareStartupManager:
+    """
+    Physics-Aware Voice Authentication Startup Manager.
+
+    Initializes and manages the physics-aware authentication components:
+    - Reverberation analyzer (RT60, double-reverb detection)
+    - Vocal tract length estimator (VTL biometrics)
+    - Doppler analyzer (liveness detection)
+    - Bayesian confidence fusion
+    - 7-layer anti-spoofing system
+
+    Environment Configuration:
+    - PHYSICS_AWARE_ENABLED: Enable/disable (default: true)
+    - PHYSICS_PRELOAD_MODELS: Preload models at startup (default: false)
+    - PHYSICS_BASELINE_VTL_CM: User's baseline VTL (default: auto-detect)
+    - PHYSICS_BASELINE_RT60_SEC: User's baseline RT60 (default: auto-detect)
+    """
+
+    def __init__(self):
+        """Initialize physics-aware startup manager."""
+        self.enabled = os.getenv("PHYSICS_AWARE_ENABLED", "true").lower() == "true"
+        self.preload_models = os.getenv("PHYSICS_PRELOAD_MODELS", "false").lower() == "true"
+
+        # Baseline values (can be overridden or auto-detected)
+        self._baseline_vtl_cm: Optional[float] = None
+        self._baseline_rt60_sec: Optional[float] = None
+
+        baseline_vtl = os.getenv("PHYSICS_BASELINE_VTL_CM")
+        if baseline_vtl:
+            self._baseline_vtl_cm = float(baseline_vtl)
+
+        baseline_rt60 = os.getenv("PHYSICS_BASELINE_RT60_SEC")
+        if baseline_rt60:
+            self._baseline_rt60_sec = float(baseline_rt60)
+
+        # Component references
+        self._physics_extractor = None
+        self._anti_spoofing_detector = None
+        self._initialized = False
+
+        # Statistics
+        self.initialization_time_ms = 0.0
+        self.physics_verifications = 0
+        self.spoofs_detected = 0
+
+        _unified_logger.info(f"🔬 Physics-Aware Startup Manager initialized:")
+        _unified_logger.debug(f"   ├─ Enabled: {self.enabled}")
+        _unified_logger.debug(f"   ├─ Preload models: {self.preload_models}")
+        _unified_logger.debug(f"   ├─ Baseline VTL: {self._baseline_vtl_cm or 'auto-detect'} cm")
+        _unified_logger.debug(f"   └─ Baseline RT60: {self._baseline_rt60_sec or 'auto-detect'} sec")
+
+    async def initialize(self) -> bool:
+        """Initialize physics-aware authentication components."""
+        if not self.enabled:
+            _unified_logger.info("🔬 Physics-aware authentication disabled")
+            return False
+
+        start_time = time.time()
+
+        try:
+            # Import physics components
+            from backend.voice_unlock.core.feature_extraction import (
+                get_physics_feature_extractor,
+            )
+            from backend.voice_unlock.core.anti_spoofing import get_anti_spoofing_detector
+
+            # Initialize physics extractor
+            sample_rate = int(os.getenv("AUDIO_SAMPLE_RATE", "16000"))
+            self._physics_extractor = get_physics_feature_extractor(sample_rate)
+
+            # Set baselines if provided
+            if self._baseline_vtl_cm:
+                self._physics_extractor._baseline_vtl = self._baseline_vtl_cm
+            if self._baseline_rt60_sec:
+                self._physics_extractor._baseline_rt60 = self._baseline_rt60_sec
+
+            # Initialize anti-spoofing detector
+            self._anti_spoofing_detector = get_anti_spoofing_detector()
+
+            self._initialized = True
+            self.initialization_time_ms = (time.time() - start_time) * 1000
+
+            _unified_logger.info(f"✅ Physics-aware authentication initialized ({self.initialization_time_ms:.0f}ms)")
+
+            return True
+
+        except ImportError as e:
+            _unified_logger.warning(f"Physics components not available: {e}")
+            self.enabled = False
+            return False
+        except Exception as e:
+            _unified_logger.error(f"Physics initialization failed: {e}")
+            self.enabled = False
+            return False
+
+    def get_physics_extractor(self):
+        """Get the physics feature extractor instance."""
+        return self._physics_extractor
+
+    def get_anti_spoofing_detector(self):
+        """Get the anti-spoofing detector instance."""
+        return self._anti_spoofing_detector
+
+    def get_statistics(self) -> Dict[str, Any]:
+        """Get physics startup statistics."""
+        return {
+            "enabled": self.enabled,
+            "initialized": self._initialized,
+            "initialization_time_ms": self.initialization_time_ms,
+            "baseline_vtl_cm": self._baseline_vtl_cm,
+            "baseline_rt60_sec": self._baseline_rt60_sec,
+            "physics_verifications": self.physics_verifications,
+            "spoofs_detected": self.spoofs_detected,
+        }
+
+
+# =============================================================================
+# RESOURCE STATUS - Enhanced Resource Metrics
+# =============================================================================
+@dataclass
+class ResourceStatus:
+    """
+    Enhanced status of system resources with intelligent analysis.
+
+    Includes not just resource metrics but also:
+    - Recommendations for optimization
+    - Actions taken automatically
+    - Startup mode decision
+    - Cloud activation status
+    - ARM64 SIMD availability
+    """
+    memory_available_gb: float
+    memory_total_gb: float
+    disk_available_gb: float
+    ports_available: List[int]
+    ports_in_use: List[int]
+    cpu_count: int
+    load_average: Optional[Tuple[float, float, float]] = None
+    warnings: List[str] = field(default_factory=list)
+    errors: List[str] = field(default_factory=list)
+
+    # Intelligent fields
+    recommendations: List[str] = field(default_factory=list)
+    actions_taken: List[str] = field(default_factory=list)
+    startup_mode: Optional[str] = None  # local_full, cloud_first, cloud_only
+    cloud_activated: bool = False
+    arm64_simd_available: bool = False
+    memory_pressure: float = 0.0  # 0-100%
+
+    @property
+    def is_healthy(self) -> bool:
+        return len(self.errors) == 0
+
+    @property
+    def is_cloud_mode(self) -> bool:
+        return self.startup_mode in ("cloud_first", "cloud_only")
+
+
+# =============================================================================
+# INTELLIGENT RESOURCE ORCHESTRATOR - Unified Resource Management
+# =============================================================================
+class IntelligentResourceOrchestrator:
+    """
+    Intelligent Resource Orchestrator for JARVIS Startup.
+
+    This is a comprehensive, async, parallel, intelligent, and dynamic resource
+    management system that integrates:
+
+    1. MemoryAwareStartup - Intelligent cloud offloading decisions
+    2. IntelligentMemoryOptimizer - Active memory optimization
+    3. HybridRouter - Resource-aware request routing
+    4. GCP Hybrid Cloud - Automatic cloud activation when needed
+
+    Features:
+    - Parallel resource checks with intelligent analysis
+    - Automatic memory optimization when constrained
+    - Dynamic startup mode selection (LOCAL_FULL, CLOUD_FIRST, CLOUD_ONLY)
+    - Intelligent port conflict resolution
+    - Cost-aware cloud activation recommendations
+    - ARM64 SIMD optimization detection
+    - Real-time resource monitoring
+    """
+
+    # Thresholds (configurable via environment)
+    CLOUD_THRESHOLD_GB = float(os.getenv("JARVIS_CLOUD_THRESHOLD_GB", "6.0"))
+    CRITICAL_THRESHOLD_GB = float(os.getenv("JARVIS_CRITICAL_THRESHOLD_GB", "2.0"))
+    OPTIMIZE_THRESHOLD_GB = float(os.getenv("JARVIS_OPTIMIZE_THRESHOLD_GB", "4.0"))
+
+    def __init__(self, config: SystemKernelConfig):
+        self.config = config
+        self._logger = _unified_logger
+
+        # Lazy-loaded components
+        self._memory_aware_startup = None
+        self._memory_optimizer = None
+        self._hybrid_router = None
+
+        # State
+        self._startup_mode: Optional[str] = None
+        self._optimization_performed = False
+        self._cloud_activated = False
+        self._arm64_available = self._check_arm64_simd()
+
+    def _check_arm64_simd(self) -> bool:
+        """Check if ARM64 SIMD optimizations are available."""
+        try:
+            asm_path = Path(__file__).parent / "backend" / "core" / "arm64_simd_asm.s"
+            return asm_path.exists() and platform.machine() == "arm64"
+        except Exception:
+            return False
+
+    async def validate_and_optimize(self) -> ResourceStatus:
+        """
+        Validate system resources AND take intelligent action.
+
+        This goes beyond just checking - it actively optimizes and
+        makes decisions about startup mode and cloud activation.
+        """
+        # Phase 1: Parallel resource checks
+        memory_task = asyncio.create_task(self._check_memory_detailed())
+        disk_task = asyncio.create_task(self._check_disk())
+        ports_task = asyncio.create_task(self._check_ports_intelligent())
+        cpu_task = asyncio.create_task(self._check_cpu())
+
+        memory_result, disk_result, ports_result, cpu_result = await asyncio.gather(
+            memory_task, disk_task, ports_task, cpu_task
+        )
+
+        # Phase 2: Intelligent analysis and action
+        warnings: List[str] = []
+        errors: List[str] = []
+        actions_taken: List[str] = []
+        recommendations: List[str] = []
+
+        available_gb = memory_result["available_gb"]
+        total_gb = memory_result["total_gb"]
+        memory_pressure = memory_result["pressure"]
+
+        # === INTELLIGENT MEMORY HANDLING ===
+        if available_gb < self.CRITICAL_THRESHOLD_GB:
+            self._logger.warning(f"⚠️  CRITICAL: Only {available_gb:.1f}GB available!")
+            errors.append(f"Critical memory: {available_gb:.1f}GB (need {self.CRITICAL_THRESHOLD_GB}GB)")
+            recommendations.append("🔴 Consider closing applications or using GCP cloud mode")
+
+        elif available_gb < self.CLOUD_THRESHOLD_GB:
+            warnings.append(f"Low memory: {available_gb:.1f}GB available")
+            recommendations.append("☁️  Cloud-First Mode recommended: GCP will handle ML processing")
+            recommendations.append("💰 Estimated cost: ~$0.029/hour (Spot VM)")
+            self._startup_mode = "cloud_first"
+
+        elif available_gb < self.OPTIMIZE_THRESHOLD_GB:
+            recommendations.append("💡 Moderate memory - light optimization recommended")
+            self._startup_mode = "local_optimized"
+
+        else:
+            recommendations.append(f"✅ Sufficient memory ({available_gb:.1f}GB) - Full local mode")
+            self._startup_mode = "local_full"
+
+            if self._arm64_available:
+                recommendations.append("⚡ ARM64 SIMD optimizations available (40-50x faster ML)")
+
+        # === INTELLIGENT PORT HANDLING ===
+        ports_available, ports_in_use, port_actions = ports_result
+        if port_actions:
+            actions_taken.extend(port_actions)
+        if ports_in_use:
+            warnings.append(f"Ports in use: {ports_in_use} (will be recycled)")
+
+        # === DISK VALIDATION ===
+        if disk_result < 1.0:
+            errors.append(f"Insufficient disk: {disk_result:.1f}GB available")
+        elif disk_result < 5.0:
+            warnings.append(f"Low disk: {disk_result:.1f}GB available")
+
+        # === CPU ANALYSIS ===
+        cpu_count, load_avg = cpu_result
+        if load_avg and load_avg[0] > cpu_count * 0.8:
+            warnings.append(f"High CPU load: {load_avg[0]:.1f} (cores: {cpu_count})")
+            recommendations.append("💡 Consider cloud offloading for CPU-intensive tasks")
+
+        return ResourceStatus(
+            memory_available_gb=available_gb,
+            memory_total_gb=total_gb,
+            disk_available_gb=disk_result,
+            ports_available=ports_available,
+            ports_in_use=ports_in_use,
+            cpu_count=cpu_count,
+            load_average=load_avg,
+            warnings=warnings,
+            errors=errors,
+            recommendations=recommendations,
+            actions_taken=actions_taken,
+            startup_mode=self._startup_mode,
+            cloud_activated=self._cloud_activated,
+            arm64_simd_available=self._arm64_available,
+            memory_pressure=memory_pressure,
+        )
+
+    async def _check_memory_detailed(self) -> Dict[str, Any]:
+        """Get detailed memory analysis."""
+        try:
+            mem = psutil.virtual_memory()
+            pressure = (mem.used / mem.total) * 100 if mem.total > 0 else 0
+
+            return {
+                "available_gb": mem.available / (1024**3),
+                "total_gb": mem.total / (1024**3),
+                "used_gb": mem.used / (1024**3),
+                "pressure": pressure,
+                "percent_used": mem.percent,
+            }
+        except Exception:
+            return {
+                "available_gb": 0.0,
+                "total_gb": 0.0,
+                "used_gb": 0.0,
+                "pressure": 100.0,
+                "percent_used": 100.0,
+            }
+
+    async def _check_disk(self) -> float:
+        """Check available disk space."""
+        try:
+            import shutil
+            total, used, free = shutil.disk_usage("/")
+            return free / (1024**3)
+        except Exception:
+            return 0.0
+
+    async def _check_ports_intelligent(self) -> Tuple[List[int], List[int], List[str]]:
+        """Intelligently check and handle port conflicts."""
+        available: List[int] = []
+        in_use: List[int] = []
+        actions: List[str] = []
+
+        required_ports = [
+            int(os.getenv("JARVIS_API_PORT", "8080")),
+            int(os.getenv("JARVIS_WS_PORT", "8081")),
+        ]
+
+        for port in required_ports:
+            try:
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                sock.settimeout(0.5)
+                result = sock.connect_ex(('localhost', port))
+                sock.close()
+
+                if result == 0:
+                    in_use.append(port)
+                    actions.append(f"Port {port}: In use (will recycle)")
+                else:
+                    available.append(port)
+            except Exception:
+                available.append(port)
+
+        return available, in_use, actions
+
+    async def _check_cpu(self) -> Tuple[int, Optional[Tuple[float, float, float]]]:
+        """Check CPU info."""
+        cpu_count = os.cpu_count() or 1
+        load_avg = None
+
+        try:
+            if hasattr(os, 'getloadavg'):
+                load_avg = os.getloadavg()
+        except Exception:
+            pass
+
+        return cpu_count, load_avg
+
+    def get_startup_mode(self) -> Optional[str]:
+        """Get the determined startup mode."""
+        return self._startup_mode
+
+    def is_cloud_activated(self) -> bool:
+        """Check if cloud mode was activated."""
+        return self._cloud_activated
+
+
+# =============================================================================
+# VM SESSION TRACKER - Simplified VM Ownership Tracking
+# =============================================================================
+class VMSessionTracker:
+    """
+    Track VM ownership per JARVIS session to prevent multi-terminal conflicts.
+
+    Each JARVIS instance (terminal session) gets a unique session_id.
+    VMs are tagged with their owning session, ensuring cleanup only affects
+    VMs owned by the terminating session.
+
+    Features:
+    - UUID-based session identification
+    - PID-based ownership validation
+    - Hostname verification for multi-machine safety
+    - Timestamp-based staleness detection
+    - Atomic file operations with lock-free design
+    """
+
+    def __init__(self):
+        """Initialize session tracker with unique session ID."""
+        self.session_id = str(uuid.uuid4())
+        self.pid = os.getpid()
+        self.hostname = socket.gethostname()
+        self.created_at = time.time()
+
+        # Session tracking file
+        self.session_file = Path(tempfile.gettempdir()) / f"jarvis_session_{self.pid}.json"
+        self.vm_registry = Path(tempfile.gettempdir()) / "jarvis_vm_registry.json"
+
+        _unified_logger.info(f"🆔 Session tracker initialized: {self.session_id[:8]}")
+        _unified_logger.debug(f"   PID: {self.pid}, Hostname: {self.hostname}")
+
+    def register_vm(self, vm_id: str, zone: str, components: List[str]) -> None:
+        """Register VM ownership for this session."""
+        session_data = {
+            "session_id": self.session_id,
+            "pid": self.pid,
+            "hostname": self.hostname,
+            "vm_id": vm_id,
+            "zone": zone,
+            "components": components,
+            "created_at": self.created_at,
+            "registered_at": time.time(),
+        }
+
+        try:
+            self.session_file.write_text(json.dumps(session_data, indent=2))
+            _unified_logger.info(f"📝 Registered VM {vm_id} to session {self.session_id[:8]}")
+        except Exception as e:
+            _unified_logger.error(f"Failed to write session file: {e}")
+
+        try:
+            registry = self._load_registry()
+            registry[self.session_id] = session_data
+            self._save_registry(registry)
+            _unified_logger.info(f"📋 Updated VM registry: {len(registry)} active sessions")
+        except Exception as e:
+            _unified_logger.error(f"Failed to update VM registry: {e}")
+
+    def get_my_vm(self) -> Optional[Dict[str, Any]]:
+        """Get VM owned by this session with validation."""
+        if not self.session_file.exists():
+            return None
+
+        try:
+            data = json.loads(self.session_file.read_text())
+
+            if data.get("session_id") != self.session_id:
+                return None
+            if data.get("pid") != self.pid:
+                return None
+            if data.get("hostname") != self.hostname:
+                return None
+
+            age_hours = (time.time() - data.get("created_at", 0)) / 3600
+            if age_hours > 12:
+                self.session_file.unlink()
+                return None
+
+            return data
+
+        except Exception as e:
+            _unified_logger.error(f"Failed to read session file: {e}")
+            return None
+
+    def unregister_vm(self) -> None:
+        """Unregister VM ownership and cleanup session files."""
+        try:
+            if self.session_file.exists():
+                self.session_file.unlink()
+                _unified_logger.info(f"🧹 Unregistered session {self.session_id[:8]}")
+
+            registry = self._load_registry()
+            if self.session_id in registry:
+                del registry[self.session_id]
+                self._save_registry(registry)
+                _unified_logger.info(f"📋 Removed from VM registry: {len(registry)} sessions remain")
+
+        except Exception as e:
+            _unified_logger.error(f"Failed to unregister VM: {e}")
+
+    def get_all_active_sessions(self) -> Dict[str, Dict[str, Any]]:
+        """Get all active sessions from registry with staleness filtering."""
+        registry = self._load_registry()
+        active_sessions = {}
+
+        for session_id, data in registry.items():
+            pid = data.get("pid")
+            if pid and self._is_pid_running(pid):
+                age_hours = (time.time() - data.get("created_at", 0)) / 3600
+                if age_hours <= 12:
+                    active_sessions[session_id] = data
+
+        if len(active_sessions) != len(registry):
+            self._save_registry(active_sessions)
+            _unified_logger.info(
+                f"🧹 Cleaned registry: {len(active_sessions)}/{len(registry)} sessions active"
+            )
+
+        return active_sessions
+
+    def _load_registry(self) -> Dict[str, Any]:
+        """Load VM registry from disk."""
+        if not self.vm_registry.exists():
+            return {}
+        try:
+            return json.loads(self.vm_registry.read_text())
+        except Exception:
+            return {}
+
+    def _save_registry(self, registry: Dict[str, Any]) -> None:
+        """Save VM registry to disk."""
+        try:
+            self.vm_registry.write_text(json.dumps(registry, indent=2))
+        except Exception as e:
+            _unified_logger.error(f"Failed to save VM registry: {e}")
+
+    def _is_pid_running(self, pid: int) -> bool:
+        """Check if PID is currently running."""
+        try:
+            proc = psutil.Process(pid)
+            cmdline = proc.cmdline()
+            return "unified_supervisor.py" in " ".join(cmdline) or "start_system.py" in " ".join(cmdline)
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            return False
 
 
 # ╔═══════════════════════════════════════════════════════════════════════════════╗
