@@ -7025,12 +7025,14 @@ def mount_routers():
         logger.info("   • GET  /context/summary - Workspace intelligence summary")
         logger.info("   • POST /context/ocr_update - Vision system integration")
 
-    # Unified WebSocket API - replaces individual WebSocket endpoints
+    # Unified WebSocket API - secondary route inclusion (primary is direct @app.websocket("/ws"))
+    # v154.0: The direct endpoint at line ~7453 is the primary handler, this is for redundancy
     try:
         from api.unified_websocket import router as unified_ws_router
 
+        # NOTE: This may create a duplicate /ws route, but the direct @app.websocket route takes precedence
         app.include_router(unified_ws_router, tags=["websocket"])
-        logger.info("✅ Unified WebSocket API mounted at /ws")
+        logger.info("✅ Unified WebSocket router included (secondary to direct /ws endpoint)")
 
         # v2.0: Flag that WebSocket is mounted - readiness will be marked in lifespan
         app.state.websocket_mounted = True
@@ -7438,8 +7440,74 @@ async def root():
     }
 
 
-# Note: Main WebSocket endpoint is now handled by unified_websocket router at /ws
-# This provides a single endpoint for all WebSocket communication
+# =============================================================================
+# v154.0: DIRECT /ws ENDPOINT - Fixes 403 Forbidden errors
+# =============================================================================
+# The unified_websocket router may fail to mount properly in some conditions,
+# causing 403 errors on /ws. This direct endpoint ensures /ws is ALWAYS available.
+# This is the same pattern used for /audio/ml/stream which works reliably.
+# =============================================================================
+
+@app.websocket("/ws")
+async def main_websocket_endpoint(websocket: WebSocket):
+    """
+    v154.0: Direct unified WebSocket endpoint - fixes 403 Forbidden errors.
+
+    This endpoint delegates to the unified_websocket handler but is mounted
+    directly on the app (like /audio/ml/stream) to bypass router mounting issues.
+    """
+    try:
+        # Import unified websocket handler
+        from api.unified_websocket import unified_websocket_endpoint
+
+        # Delegate to the unified handler
+        await unified_websocket_endpoint(websocket)
+
+    except ImportError as e:
+        # Fallback if unified_websocket module not available
+        logger.warning(f"[WS] unified_websocket import failed: {e}, using fallback")
+        await websocket.accept()
+
+        try:
+            from datetime import datetime
+
+            # Send welcome message
+            await websocket.send_json({
+                "type": "connection_established",
+                "server_time": datetime.now().isoformat(),
+                "message": "WebSocket connected (fallback mode)",
+                "capabilities": ["ping", "echo"]
+            })
+
+            while True:
+                data = await websocket.receive_json()
+
+                # Handle ping/pong
+                if data.get("type") == "ping":
+                    await websocket.send_json({
+                        "type": "pong",
+                        "timestamp": data.get("timestamp"),
+                        "server_time": datetime.now().isoformat()
+                    })
+                else:
+                    # Echo back with acknowledgment
+                    await websocket.send_json({
+                        "type": "ack",
+                        "received": data,
+                        "server_time": datetime.now().isoformat()
+                    })
+
+        except WebSocketDisconnect:
+            logger.info("[WS] WebSocket disconnected (fallback mode)")
+        except Exception as inner_e:
+            logger.error(f"[WS] WebSocket error in fallback: {inner_e}")
+
+    except Exception as e:
+        logger.error(f"[WS] WebSocket error: {e}")
+        try:
+            await websocket.close(code=1011, reason=str(e))
+        except Exception:
+            pass
 
 
 # ML Audio WebSocket compatibility endpoint
