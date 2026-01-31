@@ -40,6 +40,7 @@ class RecoveryPhase(Enum):
 
 class RecoveryStrategy(Enum):
     """How to handle the error."""
+    RETRY = "retry"                      # Simple retry (for transient errors)
     FULL_RESTART = "full_restart"        # Restart the component
     FALLBACK_MODE = "fallback_mode"      # Use fallback capability
     DISABLE_AND_CONTINUE = "disable"     # Disable and continue without
