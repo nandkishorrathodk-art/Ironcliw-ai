@@ -3880,7 +3880,27 @@ class ParallelProcessCleaner:
         except Exception as e:
             self.logger.debug(f"[v152.0] Could not read orchestrator state: {e}")
 
-        # Check 4: Try IPC ping (last resort)
+        # Check 4: v153.0 - GCP recovery state (supervisor in recovery cascade)
+        gcp_recovery_file = Path.home() / ".jarvis" / "trinity" / "gcp_recovery_state.json"
+        try:
+            if gcp_recovery_file.exists():
+                recovery_data = json.loads(gcp_recovery_file.read_text())
+                recovery_updated = recovery_data.get("updated_at", 0)
+                recovery_age = now - recovery_updated
+
+                # If recovery state was updated recently, system is in recovery mode
+                if recovery_age < 300:  # 5 minutes - recovery can take time
+                    cascade_pos = recovery_data.get("cascade_position", 0)
+                    if cascade_pos > 0:
+                        self.logger.debug(
+                            f"[v153.0] PID {holder_pid} in GCP recovery cascade "
+                            f"(position={cascade_pos}, age={recovery_age:.1f}s)"
+                        )
+                        return False
+        except Exception as e:
+            self.logger.debug(f"[v153.0] Could not read GCP recovery state: {e}")
+
+        # Check 5: Try IPC ping (last resort)
         try:
             # Quick IPC ping attempt
             ipc_socket = Path.home() / ".jarvis" / "ipc" / "supervisor.sock"
@@ -3902,8 +3922,8 @@ class ParallelProcessCleaner:
 
         # All checks failed - supervisor is truly stale
         self.logger.info(
-            f"[v152.0] PID {holder_pid} determined to be truly stale "
-            f"(no recent heartbeat, no readiness update, no IPC response)"
+            f"[v153.0] PID {holder_pid} determined to be truly stale "
+            f"(no recent heartbeat, no readiness update, no GCP recovery, no IPC response)"
         )
         return True
 
@@ -5715,6 +5735,72 @@ class ProgressiveReadinessManager:
         self._state_file = Path.home() / ".jarvis" / "trinity" / "readiness_state.json"
         self._state_file.parent.mkdir(parents=True, exist_ok=True)
 
+        # v153.0: Heartbeat loop for staleness detection
+        self._heartbeat_task: Optional[asyncio.Task] = None
+        self._heartbeat_interval = 15.0  # Write heartbeat every 15 seconds
+        self._shutdown_event = asyncio.Event()
+
+    async def start_heartbeat_loop(self) -> None:
+        """
+        v153.0: Start background heartbeat loop.
+
+        This ensures the supervisor heartbeat file is updated regularly,
+        preventing false staleness detection during model loading.
+        """
+        if self._heartbeat_task is not None:
+            return  # Already running
+
+        self._heartbeat_task = asyncio.create_task(
+            self._heartbeat_loop(),
+            name="supervisor-heartbeat-v153"
+        )
+        self.logger.info("[v153.0] Started supervisor heartbeat loop")
+
+    async def stop_heartbeat_loop(self) -> None:
+        """v153.0: Stop the background heartbeat loop."""
+        self._shutdown_event.set()
+        if self._heartbeat_task:
+            self._heartbeat_task.cancel()
+            try:
+                await self._heartbeat_task
+            except asyncio.CancelledError:
+                pass
+            self._heartbeat_task = None
+        self.logger.info("[v153.0] Stopped supervisor heartbeat loop")
+
+    async def _heartbeat_loop(self) -> None:
+        """
+        v153.0: Background loop that continuously updates supervisor heartbeat.
+
+        This is critical for preventing false staleness detection when:
+        - Model loading takes 5-15+ minutes
+        - System is idle but healthy
+        - GCP provisioning is in progress
+        """
+        import random
+        consecutive_errors = 0
+
+        while not self._shutdown_event.is_set():
+            try:
+                # Add jitter (±10%) to prevent thundering herd
+                jitter = self._heartbeat_interval * 0.1 * (2 * random.random() - 1)
+                await asyncio.sleep(self._heartbeat_interval + jitter)
+
+                # Write heartbeat
+                self._write_supervisor_heartbeat()
+                consecutive_errors = 0
+
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                consecutive_errors += 1
+                if consecutive_errors <= 3:
+                    self.logger.debug(f"[v153.0] Heartbeat error (attempt {consecutive_errors}): {e}")
+                if consecutive_errors >= 10:
+                    self.logger.warning("[v153.0] Too many heartbeat errors, backing off")
+                    await asyncio.sleep(60.0)  # Back off for 1 minute
+                    consecutive_errors = 0
+
     def reach_interactive(self) -> None:
         """Mark system as reaching INTERACTIVE tier."""
         if self.state.tier != ReadinessTier.STARTING:
@@ -5801,6 +5887,7 @@ class ProgressiveReadinessManager:
 
     def _write_state(self) -> None:
         """Write current state to file for cross-process visibility."""
+        now = time.time()
         try:
             state_dict = {
                 "tier": self.state.tier.value,
@@ -5809,14 +5896,49 @@ class ProgressiveReadinessManager:
                 "full_at": self.state.full_at,
                 "prime_loading_progress": self.state.prime_loading_progress,
                 "prime_ready": self.state.prime_ready,
-                "updated_at": time.time(),
-                "version": "v152.0",
+                "updated_at": now,
+                "version": "v153.0",
             }
             tmp_file = self._state_file.with_suffix(".tmp")
             tmp_file.write_text(json.dumps(state_dict, indent=2))
             tmp_file.rename(self._state_file)
         except Exception as e:
             self.logger.debug(f"[v152.0] Could not write readiness state: {e}")
+
+        # v153.0: Also write supervisor heartbeat for staleness detection
+        # This file is checked by cleanup_stale_lock_holders() to determine
+        # if a supervisor is actively loading models or truly stale
+        self._write_supervisor_heartbeat(now)
+
+    def _write_supervisor_heartbeat(self, timestamp: Optional[float] = None) -> None:
+        """
+        v153.0: Write supervisor heartbeat file for staleness detection.
+
+        This heartbeat is checked by new supervisor instances to determine
+        if an existing supervisor is actively working or truly stale.
+        A supervisor is considered alive if heartbeat was updated within 60s.
+        """
+        try:
+            heartbeat_dir = Path.home() / ".jarvis" / "trinity" / "heartbeats"
+            heartbeat_dir.mkdir(parents=True, exist_ok=True)
+            heartbeat_file = heartbeat_dir / "supervisor.json"
+
+            now = timestamp or time.time()
+            heartbeat_data = {
+                "pid": os.getpid(),
+                "timestamp": now,
+                "tier": self.state.tier.value,
+                "prime_loading": not self.state.prime_ready,
+                "prime_progress": self.state.prime_loading_progress,
+                "version": "v153.0",
+            }
+
+            # Atomic write
+            tmp_file = heartbeat_file.with_suffix(".tmp")
+            tmp_file.write_text(json.dumps(heartbeat_data, indent=2))
+            tmp_file.rename(heartbeat_file)
+        except Exception as e:
+            self.logger.debug(f"[v153.0] Could not write supervisor heartbeat: {e}")
 
 
 # =============================================================================
@@ -7170,6 +7292,13 @@ class SupervisorBootstrapper:
                 except Exception:
                     pass
 
+            # v153.0: Stop readiness manager heartbeat loop
+            if self._readiness_manager:
+                try:
+                    await self._readiness_manager.stop_heartbeat_loop()
+                except Exception:
+                    pass
+
             # v113.0: Cancel frontend startup task
             if self._frontend_startup_task and not self._frontend_startup_task.done():
                 self._frontend_startup_task.cancel()
@@ -8503,6 +8632,8 @@ class SupervisorBootstrapper:
                 # v152.0: Reach INTERACTIVE tier - API endpoints are now ready
                 if self._readiness_manager:
                     self._readiness_manager.reach_interactive()
+                    # v153.0: Start heartbeat loop for staleness detection
+                    await self._readiness_manager.start_heartbeat_loop()
                     TerminalUI.print_success("[v152.0] ✅ INTERACTIVE tier - API ready for basic requests")
 
                 # ═══════════════════════════════════════════════════════════════════
