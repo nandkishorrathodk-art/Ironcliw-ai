@@ -1225,9 +1225,10 @@ class HybridDatabaseSync:
             self.circuit_breaker.record_failure()
             self.metrics.cloudsql_available = False
 
-        # Phase 2: Start Prometheus metrics server (non-blocking)
+        # Phase 2: Start Prometheus metrics server - OFF THE EVENT LOOP
+        # v114.0: Run in thread to not block Phase 6 enterprise init
         if self.prometheus:
-            self.prometheus.start_server()
+            await asyncio.to_thread(self.prometheus.start_server)
 
         # Phase 2: Connect to Redis with timeout
         if self.redis:

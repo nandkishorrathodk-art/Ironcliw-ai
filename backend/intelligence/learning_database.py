@@ -3451,7 +3451,12 @@ class JARVISLearningDatabase:
             self._sync_enabled = False
 
     async def _init_chromadb(self):
-        """Initialize ChromaDB for embeddings and semantic search"""
+        """
+        Initialize ChromaDB for embeddings and semantic search.
+
+        v121.0: Refactored to run synchronous ChromaDB operations off the event loop
+        using asyncio.to_thread() to prevent blocking during Phase 6 enterprise init.
+        """
         try:
             # Disable ChromaDB telemetry via environment variable (belt and suspenders)
             import os
@@ -3481,39 +3486,45 @@ class JARVISLearningDatabase:
             except (ImportError, AttributeError):
                 pass  # Telemetry module not available or already disabled
 
-            # Initialize ChromaDB client with persistent storage
-            try:
-                self.chroma_client = chromadb.PersistentClient(
-                    path=str(self.chroma_path),
+            # v121.0: Run synchronous ChromaDB init in thread to not block event loop
+            def _init_chromadb_sync(chroma_path: Path):
+                """Synchronous ChromaDB initialization - runs in executor thread."""
+                client = chromadb.PersistentClient(
+                    path=str(chroma_path),
                     settings=Settings(anonymized_telemetry=False, allow_reset=True),
                 )
-
-                # Create or get collections with metadata
-                self.goal_collection = self.chroma_client.get_or_create_collection(
+                goal_coll = client.get_or_create_collection(
                     name="goal_embeddings",
                     metadata={
                         "description": "Goal context embeddings for similarity search",
                         "created": datetime.now().isoformat(),
                     },
                 )
-
-                self.pattern_collection = self.chroma_client.get_or_create_collection(
+                pattern_coll = client.get_or_create_collection(
                     name="pattern_embeddings",
                     metadata={
                         "description": "Pattern embeddings for matching",
                         "created": datetime.now().isoformat(),
                     },
                 )
-
-                self.context_collection = self.chroma_client.get_or_create_collection(
+                context_coll = client.get_or_create_collection(
                     name="context_embeddings",
                     metadata={
                         "description": "Context state embeddings for prediction",
                         "created": datetime.now().isoformat(),
                     },
                 )
+                return client, goal_coll, pattern_coll, context_coll
 
-                logger.info("ChromaDB initialized for semantic search")
+            # Initialize ChromaDB client with persistent storage - OFF THE EVENT LOOP
+            try:
+                (
+                    self.chroma_client,
+                    self.goal_collection,
+                    self.pattern_collection,
+                    self.context_collection,
+                ) = await asyncio.to_thread(_init_chromadb_sync, self.chroma_path)
+                # Collections already created by _init_chromadb_sync
 
             except Exception as chroma_error:
                 # Check if it's a schema error
@@ -3521,46 +3532,22 @@ class JARVISLearningDatabase:
                     logger.warning(f"ChromaDB schema mismatch detected: {chroma_error}")
                     logger.info("Resetting ChromaDB to fix schema issue...")
 
-                    # Reset and recreate the client
-                    try:
+                    # v121.0: Reset and recreate using thread to avoid blocking
+                    def _reset_chromadb_sync(chroma_path: Path):
+                        """Synchronous ChromaDB reset - runs in executor thread."""
                         import shutil
-                        if self.chroma_path.exists():
-                            # Backup old database
-                            backup_path = self.chroma_path.parent / f"chroma_embeddings_backup_{int(time.time())}"
-                            shutil.move(str(self.chroma_path), str(backup_path))
-                            logger.info(f"Backed up old ChromaDB to: {backup_path}")
+                        if chroma_path.exists():
+                            backup_path = chroma_path.parent / f"chroma_embeddings_backup_{int(time.time())}"
+                            shutil.move(str(chroma_path), str(backup_path))
+                        return _init_chromadb_sync(chroma_path)
 
-                        # Create fresh ChromaDB instance
-                        self.chroma_client = chromadb.PersistentClient(
-                            path=str(self.chroma_path),
-                            settings=Settings(anonymized_telemetry=False, allow_reset=True),
-                        )
-
-                        # Create collections
-                        self.goal_collection = self.chroma_client.get_or_create_collection(
-                            name="goal_embeddings",
-                            metadata={
-                                "description": "Goal context embeddings for similarity search",
-                                "created": datetime.now().isoformat(),
-                            },
-                        )
-
-                        self.pattern_collection = self.chroma_client.get_or_create_collection(
-                            name="pattern_embeddings",
-                            metadata={
-                                "description": "Pattern embeddings for matching",
-                                "created": datetime.now().isoformat(),
-                            },
-                        )
-
-                        self.context_collection = self.chroma_client.get_or_create_collection(
-                            name="context_embeddings",
-                            metadata={
-                                "description": "Context state embeddings for prediction",
-                                "created": datetime.now().isoformat(),
-                            },
-                        )
-
+                    try:
+                        (
+                            self.chroma_client,
+                            self.goal_collection,
+                            self.pattern_collection,
+                            self.context_collection,
+                        ) = await asyncio.to_thread(_reset_chromadb_sync, self.chroma_path)
                         logger.info("ChromaDB reset complete - fresh database created")
                     except Exception as reset_error:
                         logger.error(f"Failed to reset ChromaDB: {reset_error}")

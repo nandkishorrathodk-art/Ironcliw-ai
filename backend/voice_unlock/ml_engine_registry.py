@@ -794,9 +794,17 @@ class ECAPATDNNWrapper(MLEngineWrapper):
                 return False
 
         try:
-            # Run synchronously
-            result = _warmup_sync()
-            return result
+            # v122.0: Run warmup in dedicated PyTorch thread to avoid blocking event loop
+            # while maintaining thread safety for Apple Silicon
+            try:
+                from core.pytorch_executor import pytorch_executor
+                result = await pytorch_executor.run(_warmup_sync, timeout=30.0)
+                return result
+            except ImportError:
+                # Fallback: run synchronously if pytorch_executor not available
+                logger.debug(f"   [{self.name}] pytorch_executor not available, running sync")
+                result = _warmup_sync()
+                return result
         except Exception as e:
             logger.warning(f"   [{self.name}] Warmup wrapper failed: {e}")
             return False
