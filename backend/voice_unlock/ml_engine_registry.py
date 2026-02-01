@@ -801,9 +801,10 @@ class ECAPATDNNWrapper(MLEngineWrapper):
                 result = await pytorch_executor.run(_warmup_sync, timeout=30.0)
                 return result
             except ImportError:
-                # Fallback: run synchronously if pytorch_executor not available
-                logger.debug(f"   [{self.name}] pytorch_executor not available, running sync")
-                result = _warmup_sync()
+                # Fallback: run in thread pool to avoid blocking event loop
+                # v123.0: Fixed - was running sync on event loop, now properly async
+                logger.debug(f"   [{self.name}] pytorch_executor not available, using to_thread")
+                result = await asyncio.to_thread(_warmup_sync)
                 return result
         except Exception as e:
             logger.warning(f"   [{self.name}] Warmup wrapper failed: {e}")

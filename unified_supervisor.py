@@ -905,6 +905,7 @@ class SystemKernelConfig:
     backend_host: str = field(default_factory=lambda: os.environ.get("JARVIS_HOST", "0.0.0.0"))
     backend_port: int = field(default_factory=lambda: _get_env_int("JARVIS_BACKEND_PORT", 0))
     websocket_port: int = field(default_factory=lambda: _get_env_int("JARVIS_WEBSOCKET_PORT", 0))
+    websocket_enabled: bool = field(default_factory=lambda: _get_env_bool("JARVIS_WEBSOCKET_ENABLED", False))
     loading_server_port: int = field(default_factory=lambda: _get_env_int("JARVIS_LOADING_PORT", 0))
 
     # ═══════════════════════════════════════════════════════════════════════════
@@ -992,7 +993,8 @@ class SystemKernelConfig:
         """Post-initialization: resolve dynamic ports if not set."""
         if self.backend_port == 0:
             self.backend_port = _detect_best_port(*BACKEND_PORT_RANGE)
-        if self.websocket_port == 0:
+        # Only auto-detect websocket port if websocket is enabled
+        if self.websocket_enabled and self.websocket_port == 0:
             self.websocket_port = _detect_best_port(*WEBSOCKET_PORT_RANGE)
         if self.loading_server_port == 0:
             self.loading_server_port = _detect_best_port(*LOADING_SERVER_PORT_RANGE)
@@ -50719,7 +50721,7 @@ class JarvisSystemKernel:
         self.logger.info("[CloudSQL] Initializing Cloud SQL proxy...")
 
         try:
-            # Load database config
+            # Load database config (async - doesn't block event loop)
             config_path = self.config.jarvis_home / "gcp" / "database_config.json"
             if not config_path.exists():
                 self.logger.warning("[CloudSQL] Config not found, falling back to SQLite")
@@ -50727,8 +50729,12 @@ class JarvisSystemKernel:
                 return result
 
             import json
-            with open(config_path, "r") as f:
-                db_config = json.load(f)
+
+            def _load_db_config():
+                with open(config_path, "r") as f:
+                    return json.load(f)
+
+            db_config = await asyncio.to_thread(_load_db_config)
 
             cloud_sql_config = db_config.get("cloud_sql", {})
             result["connection_name"] = cloud_sql_config.get("connection_name")
@@ -50898,19 +50904,20 @@ class JarvisSystemKernel:
             cache_dir = self.config.jarvis_home / "cache" / "voice_embeddings"
             cache_dir.mkdir(parents=True, exist_ok=True)
 
-            # Create ChromaDB client
-            client = chromadb.PersistentClient(
-                path=str(cache_dir),
-                settings=Settings(anonymized_telemetry=False)
-            )
+            # Initialize ChromaDB in thread pool (blocking operations - don't block event loop)
+            def _init_chromadb_sync():
+                """Sync ChromaDB initialization - runs in thread pool."""
+                client = chromadb.PersistentClient(
+                    path=str(cache_dir),
+                    settings=Settings(anonymized_telemetry=False)
+                )
+                collection = client.get_or_create_collection(
+                    name=result["collection_name"],
+                    metadata={"description": "Voice embedding cache for ECAPA-TDNN"}
+                )
+                return collection.count()
 
-            # Get or create collection
-            collection = client.get_or_create_collection(
-                name=result["collection_name"],
-                metadata={"description": "Voice embedding cache for ECAPA-TDNN"}
-            )
-
-            result["cached_count"] = collection.count()
+            result["cached_count"] = await asyncio.to_thread(_init_chromadb_sync)
             result["enabled"] = True
             result["initialized"] = True
 
@@ -51046,8 +51053,12 @@ class JarvisSystemKernel:
             return status
 
         async def check_websocket() -> Dict[str, Any]:
-            port = self.config.websocket_port
             status: Dict[str, Any] = {"healthy": False, "name": "websocket"}
+            # Only check if websocket is explicitly enabled (kernel doesn't start one by default)
+            if not self.config.websocket_enabled:
+                status["note"] = "WebSocket not enabled"
+                return status
+            port = self.config.websocket_port
             if port == 0:
                 status["note"] = "WebSocket port not configured"
                 return status
@@ -51675,8 +51686,10 @@ class JarvisSystemKernel:
         """
         services = [
             ("backend", f"http://localhost:{self.config.backend_port}/health"),
-            ("websocket", f"ws://localhost:{self.config.websocket_port}"),
         ]
+        # Only include websocket if explicitly enabled
+        if self.config.websocket_enabled and self.config.websocket_port:
+            services.append(("websocket", f"ws://localhost:{self.config.websocket_port}"))
 
         async def check_http_service(name: str, url: str) -> Dict[str, Any]:
             """Check an HTTP service health endpoint."""
@@ -52157,7 +52170,12 @@ Environment Variables:
         "--websocket-port",
         type=int,
         metavar="PORT",
-        help="WebSocket server port (default: auto-detected)",
+        help="WebSocket server port (default: auto-detected when enabled)",
+    )
+    network.add_argument(
+        "--enable-websocket",
+        action="store_true",
+        help="Enable WebSocket server (disabled by default)",
     )
 
     # =========================================================================
@@ -52625,8 +52643,16 @@ def apply_cli_to_config(args: argparse.Namespace, config: SystemKernelConfig) ->
         config.backend_port = args.port
     if args.host:
         config.backend_host = args.host
+    if hasattr(args, 'enable_websocket') and args.enable_websocket:
+        config.websocket_enabled = True
+        # Auto-detect port if enabled but not set
+        if config.websocket_port == 0:
+            from unified_supervisor import _detect_best_port, WEBSOCKET_PORT_RANGE
+            config.websocket_port = _detect_best_port(*WEBSOCKET_PORT_RANGE)
     if hasattr(args, 'websocket_port') and args.websocket_port:
         config.websocket_port = args.websocket_port
+        # Implicitly enable websocket if port is explicitly set
+        config.websocket_enabled = True
 
     # Docker
     if args.skip_docker:

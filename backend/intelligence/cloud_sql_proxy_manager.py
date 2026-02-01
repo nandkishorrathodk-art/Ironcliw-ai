@@ -201,9 +201,13 @@ class CloudSQLProxyManager:
         raise FileNotFoundError(error_msg)
 
     def _is_port_in_use(self, port: int) -> bool:
-        """Check if port is already in use."""
+        """Check if port is already in use (sync version for non-async contexts)."""
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             return s.connect_ex(("127.0.0.1", port)) == 0
+
+    async def _is_port_in_use_async(self, port: int) -> bool:
+        """Check if port is already in use (async version - doesn't block event loop)."""
+        return await asyncio.to_thread(self._is_port_in_use, port)
 
     def _get_process_name_from_pid(self, pid: int) -> Optional[str]:
         """
@@ -521,6 +525,116 @@ class CloudSQLProxyManager:
 
         return result
 
+    async def detect_zombie_state_async(self, retry_on_zombie: bool = True) -> Dict:
+        """
+        Detect zombie proxy state - port held but not by our proxy (async version).
+
+        This version doesn't block the event loop, making it safe for async contexts.
+        Uses asyncio.sleep instead of time.sleep and async subprocess for process detection.
+
+        Args:
+            retry_on_zombie: If True, retry detection once after 500ms delay when zombie
+                           is suspected. This prevents false positives during startup.
+
+        Returns:
+            Same as detect_zombie_state() - Dict with zombie detection results.
+        """
+        port = self.config["cloud_sql"]["port"]
+        result = {
+            'port': port,
+            'is_zombie': False,
+            'port_in_use': False,
+            'pid_on_port': None,
+            'is_cloud_sql_proxy': False,
+            'our_pid_valid': False,
+            'recommendation': 'none',
+            'verified': False
+        }
+
+        # Check if port is in use (async)
+        result['port_in_use'] = await self._is_port_in_use_async(port)
+
+        if not result['port_in_use']:
+            result['recommendation'] = 'start_proxy'
+            return result
+
+        # Port is in use - find out who (run in thread to avoid blocking)
+        pid_on_port = await asyncio.to_thread(self._get_pid_using_port, port)
+        result['pid_on_port'] = pid_on_port
+
+        if pid_on_port:
+            # Check if it's a cloud-sql-proxy process (run in thread)
+            result['is_cloud_sql_proxy'] = await asyncio.to_thread(
+                self._is_cloud_sql_proxy_process, pid_on_port
+            )
+
+        # Check our PID file (run file I/O in thread)
+        if self.pid_path.exists():
+            try:
+                our_pid = await asyncio.to_thread(
+                    lambda: int(self.pid_path.read_text().strip())
+                )
+                # Check if our PID is still alive and is cloud-sql-proxy
+                try:
+                    os.kill(our_pid, 0)  # Check if alive (fast, doesn't need thread)
+                    if await asyncio.to_thread(self._is_cloud_sql_proxy_process, our_pid):
+                        result['our_pid_valid'] = True
+                except ProcessLookupError:
+                    logger.warning(f"[ProxyManager] Stale PID file detected (PID {our_pid} dead)")
+                    await asyncio.to_thread(lambda: self.pid_path.unlink(missing_ok=True))
+            except (ValueError, OSError):
+                logger.warning("[ProxyManager] Corrupted PID file - removing")
+                await asyncio.to_thread(lambda: self.pid_path.unlink(missing_ok=True))
+
+        # Determine zombie state
+        if result['port_in_use'] and not result['is_cloud_sql_proxy']:
+            if retry_on_zombie:
+                logger.debug(
+                    f"[ProxyManager] Potential zombie detected on port {port} "
+                    f"(PID {pid_on_port}), verifying with 500ms delay..."
+                )
+                await asyncio.sleep(0.5)  # Non-blocking sleep
+
+                # Re-check without retry to avoid infinite loop
+                verification = await self.detect_zombie_state_async(retry_on_zombie=False)
+
+                if verification['is_cloud_sql_proxy']:
+                    logger.info(
+                        f"[ProxyManager] Zombie false positive resolved: "
+                        f"PID {verification['pid_on_port']} is now recognized as cloud-sql-proxy"
+                    )
+                    verification['verified'] = True
+                    return verification
+                else:
+                    result['is_zombie'] = True
+                    result['verified'] = True
+                    result['recommendation'] = 'kill_conflicting'
+                    logger.warning(
+                        f"[ProxyManager] ZOMBIE CONFIRMED: Port {port} held by PID {pid_on_port} "
+                        f"which is NOT cloud-sql-proxy (verified after retry)"
+                    )
+            else:
+                result['is_zombie'] = True
+                result['recommendation'] = 'kill_conflicting'
+                logger.warning(
+                    f"[ProxyManager] ZOMBIE detected: Port {port} held by PID {pid_on_port} "
+                    f"which is NOT cloud-sql-proxy"
+                )
+        elif result['port_in_use'] and result['is_cloud_sql_proxy'] and not result['our_pid_valid']:
+            result['recommendation'] = 'adopt_or_restart'
+            result['verified'] = True
+            logger.info(
+                f"[ProxyManager] Orphan proxy detected: cloud-sql-proxy on port {port} "
+                f"(PID {pid_on_port}) not managed by us"
+            )
+        elif result['port_in_use'] and result['is_cloud_sql_proxy'] and result['our_pid_valid']:
+            result['recommendation'] = 'healthy'
+            result['verified'] = True
+        else:
+            result['recommendation'] = 'investigate'
+
+        return result
+
     def _find_proxy_processes(self) -> list:
         """Find all running cloud-sql-proxy processes."""
         try:
@@ -552,6 +666,81 @@ class CloudSQLProxyManager:
             logger.debug(f"Error finding proxy processes: {e}")
 
         return []
+
+    async def _find_proxy_processes_async(self) -> list:
+        """Find all running cloud-sql-proxy processes (async - doesn't block event loop)."""
+        try:
+            if self.system == "Darwin" or self.system == "Linux":
+                proc = await asyncio.create_subprocess_exec(
+                    "pgrep", "-f", "cloud-sql-proxy",
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                stdout, _ = await proc.communicate()
+                if proc.returncode == 0:
+                    return [int(pid) for pid in stdout.decode().strip().split()]
+            elif self.system == "Windows":
+                proc = await asyncio.create_subprocess_exec(
+                    "tasklist", "/FI", "IMAGENAME eq cloud-sql-proxy*",
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                stdout, _ = await proc.communicate()
+                # Parse Windows tasklist output
+                pids = []
+                for line in stdout.decode().split("\n")[3:]:
+                    parts = line.split()
+                    if len(parts) >= 2:
+                        try:
+                            pids.append(int(parts[1]))
+                        except ValueError:
+                            pass
+                return pids
+        except Exception as e:
+            logger.debug(f"Error finding proxy processes: {e}")
+        return []
+
+    async def _get_process_name_from_pid_async(self, pid: int) -> Optional[str]:
+        """Get process name from PID (async - doesn't block event loop)."""
+        try:
+            if self.system == "Darwin":
+                proc = await asyncio.create_subprocess_exec(
+                    "ps", "-p", str(pid), "-o", "args=",
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=5)
+                if proc.returncode == 0 and stdout.decode().strip():
+                    return stdout.decode().strip()
+                # Fallback to short name
+                proc = await asyncio.create_subprocess_exec(
+                    "ps", "-p", str(pid), "-o", "comm=",
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=5)
+                if proc.returncode == 0 and stdout.decode().strip():
+                    return stdout.decode().strip()
+            elif self.system == "Linux":
+                cmdline_path = Path(f"/proc/{pid}/cmdline")
+                if cmdline_path.exists():
+                    # Use to_thread for file I/O
+                    cmdline = await asyncio.to_thread(lambda: cmdline_path.read_text().replace('\x00', ' ').strip())
+                    return cmdline
+            elif self.system == "Windows":
+                proc = await asyncio.create_subprocess_exec(
+                    "tasklist", "/FI", f"PID eq {pid}", "/FO", "CSV", "/NH",
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=5)
+                if proc.returncode == 0 and stdout.decode().strip():
+                    parts = stdout.decode().strip().split(',')
+                    if len(parts) >= 1:
+                        return parts[0].strip('"')
+        except Exception as e:
+            logger.debug(f"[ProxyManager] Failed to get process name for PID {pid}: {e}")
+        return None
 
     def is_running(self, strict: bool = False) -> bool:
         """
@@ -690,6 +879,37 @@ class CloudSQLProxyManager:
         else:
             logger.error(f"❌ Failed to free port {port}")
 
+    async def _kill_conflicting_processes_async(self):
+        """Kill any conflicting proxy processes (async - doesn't block event loop)."""
+        port = self.config["cloud_sql"]["port"]
+
+        if not await self._is_port_in_use_async(port):
+            return
+
+        logger.warning(f"⚠️  Port {port} in use, killing conflicting processes...")
+        pids = await self._find_proxy_processes_async()
+
+        for pid in pids:
+            try:
+                logger.info(f"🔪 Killing proxy process: PID {pid}")
+                os.kill(pid, signal.SIGTERM)
+                await asyncio.sleep(0.5)  # Non-blocking sleep
+                # Force kill if still alive
+                try:
+                    os.kill(pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+            except Exception as e:
+                logger.debug(f"Error killing PID {pid}: {e}")
+
+        # Wait for port to become available (non-blocking)
+        for _ in range(10):
+            if not await self._is_port_in_use_async(port):
+                break
+            await asyncio.sleep(0.5)  # Non-blocking sleep
+        else:
+            logger.error(f"❌ Failed to free port {port}")
+
     async def start(self, force_restart: bool = False, max_retries: int = 3) -> bool:
         """
         Start Cloud SQL proxy with health monitoring and auto-recovery.
@@ -735,9 +955,9 @@ class CloudSQLProxyManager:
                     logger.info("✅ Cloud SQL proxy already running")
                     return True
 
-                # Kill conflicting processes if needed
+                # Kill conflicting processes if needed (async - doesn't block event loop)
                 if force_restart or attempt > 0:
-                    self._kill_conflicting_processes()
+                    await self._kill_conflicting_processes_async()
 
                 # Build proxy command (no hardcoding!)
                 cloud_sql = self.config["cloud_sql"]
@@ -955,15 +1175,15 @@ class CloudSQLProxyManager:
                         except Exception as e:
                             logger.debug(f"[CloudSQL] Failed to notify gate: {e}")
 
-                    # v86.0: Check for zombie state before recovery
-                    zombie_state = self.detect_zombie_state()
+                    # v86.0: Check for zombie state before recovery (async - doesn't block event loop)
+                    zombie_state = await self.detect_zombie_state_async()
                     if zombie_state['is_zombie']:
                         logger.warning(
                             f"[CloudSQL] Zombie detected: port {zombie_state['port']} held by "
                             f"non-proxy process (PID {zombie_state['pid_on_port']})"
                         )
-                        # Kill the zombie before attempting recovery
-                        self._kill_conflicting_processes()
+                        # Kill the zombie before attempting recovery (async - doesn't block event loop)
+                        await self._kill_conflicting_processes_async()
                         await asyncio.sleep(1)  # Wait for port to be freed
 
                     if consecutive_failures <= max_recovery_attempts:

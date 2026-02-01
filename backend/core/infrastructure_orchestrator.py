@@ -812,10 +812,8 @@ class InfrastructureOrchestrator:
     # =========================================================================
 
     async def _save_state(self):
-        """Save state to disk."""
+        """Save state to disk (async - doesn't block event loop)."""
         try:
-            self.config.state_file.parent.mkdir(parents=True, exist_ok=True)
-
             state_dict = {
                 "session_started_at": self.state.session_started_at,
                 "total_cost_this_session_usd": self.state.total_cost_this_session_usd,
@@ -835,23 +833,33 @@ class InfrastructureOrchestrator:
                 },
             }
 
-            with open(self.config.state_file, "w") as f:
-                json.dump(state_dict, f, indent=2)
+            def _write_state_sync():
+                """Sync file write operation - runs in thread pool."""
+                self.config.state_file.parent.mkdir(parents=True, exist_ok=True)
+                with open(self.config.state_file, "w") as f:
+                    json.dump(state_dict, f, indent=2)
+
+            await asyncio.to_thread(_write_state_sync)
 
         except Exception as e:
             logger.debug(f"[InfraOrchestrator] State save failed: {e}")
 
     async def _load_state(self):
-        """Load state from disk."""
+        """Load state from disk (async - doesn't block event loop)."""
         try:
-            if self.config.state_file.exists():
-                with open(self.config.state_file) as f:
-                    state_dict = json.load(f)
+            def _read_state_sync():
+                """Sync file read operation - runs in thread pool."""
+                if self.config.state_file.exists():
+                    with open(self.config.state_file) as f:
+                        return json.load(f)
+                return None
 
+            state_dict = await asyncio.to_thread(_read_state_sync)
+
+            if state_dict:
                 # Only restore relevant state (not resources - they need fresh sync)
                 self.state.terraform_apply_count = state_dict.get("terraform_apply_count", 0)
                 self.state.terraform_destroy_count = state_dict.get("terraform_destroy_count", 0)
-
                 logger.debug("[InfraOrchestrator] Loaded state from disk")
         except Exception as e:
             logger.debug(f"[InfraOrchestrator] State load failed: {e}")
