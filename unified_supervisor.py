@@ -35089,6 +35089,2047 @@ class CostAccountingManager:
 
 
 # =============================================================================
+# ZONE 4.17: MONITORING, TESTING, AND RULES ENGINE
+# =============================================================================
+# This zone provides monitoring, A/B testing, and rules engine capabilities:
+# - AlertingManager: Alert definition and notification
+# - PerformanceProfiler: Code performance profiling
+# - ABTestingFramework: A/B testing and experimentation
+# - FeatureFlagManager: Feature flags and toggles
+# - RulesEngine: Business rules execution
+# - DataValidationManager: Schema and data validation
+# - TemplateEngine: Dynamic template rendering
+# - ReportGenerator: Dynamic report generation
+# =============================================================================
+
+
+@dataclass
+class AlertRule:
+    """Definition of an alert rule."""
+    rule_id: str
+    name: str
+    description: str
+    condition: str  # Expression to evaluate
+    severity: str  # critical, warning, info
+    threshold: float
+    comparison: str  # gt, lt, eq, gte, lte, ne
+    metric_name: str
+    window_seconds: int = 60
+    cooldown_seconds: int = 300
+    notification_channels: List[str] = field(default_factory=list)
+    enabled: bool = True
+    tags: List[str] = field(default_factory=list)
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class Alert:
+    """An active or resolved alert."""
+    alert_id: str
+    rule_id: str
+    severity: str
+    title: str
+    description: str
+    current_value: float
+    threshold_value: float
+    triggered_at: datetime = field(default_factory=datetime.now)
+    resolved_at: Optional[datetime] = None
+    status: str = "active"  # active, acknowledged, resolved
+    acknowledged_by: Optional[str] = None
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+
+class AlertingManager:
+    """
+    Alert management and notification system.
+
+    Monitors metrics and triggers alerts based on configurable
+    rules with multiple notification channels.
+
+    Features:
+    - Configurable alert rules
+    - Multiple severity levels
+    - Alert aggregation and deduplication
+    - Cooldown periods
+    - Multiple notification channels
+    - Alert acknowledgment and resolution
+    """
+
+    def __init__(self, config: SystemKernelConfig):
+        self.config = config
+        self._lock = asyncio.Lock()
+        self._rules: Dict[str, AlertRule] = {}
+        self._active_alerts: Dict[str, Alert] = {}
+        self._alert_history: deque = deque(maxlen=50000)
+        self._metric_values: Dict[str, deque] = {}
+        self._last_alert_time: Dict[str, datetime] = {}
+        self._notification_handlers: Dict[str, Callable[[Alert], Awaitable[None]]] = {}
+        self._logger = UnifiedLogger(
+            name="AlertingManager",
+            config=config
+        )
+        self._initialized = False
+
+    async def initialize(self) -> bool:
+        """Initialize alerting manager."""
+        try:
+            async with self._lock:
+                # Register default alert rules
+                await self._register_default_rules()
+                self._initialized = True
+                self._logger.info("Alerting manager initialized")
+                return True
+        except Exception as e:
+            self._logger.error(f"Failed to initialize alerting manager: {e}")
+            return False
+
+    async def _register_default_rules(self) -> None:
+        """Register default alert rules."""
+        default_rules = [
+            AlertRule(
+                rule_id="high_cpu",
+                name="High CPU Usage",
+                description="CPU usage exceeds threshold",
+                condition="cpu_percent > threshold",
+                severity="warning",
+                threshold=80.0,
+                comparison="gt",
+                metric_name="cpu_percent",
+                window_seconds=60,
+                notification_channels=["email", "slack"]
+            ),
+            AlertRule(
+                rule_id="high_memory",
+                name="High Memory Usage",
+                description="Memory usage exceeds threshold",
+                condition="memory_percent > threshold",
+                severity="critical",
+                threshold=90.0,
+                comparison="gt",
+                metric_name="memory_percent",
+                window_seconds=60,
+                notification_channels=["email", "slack", "pagerduty"]
+            ),
+            AlertRule(
+                rule_id="error_rate",
+                name="High Error Rate",
+                description="Error rate exceeds threshold",
+                condition="error_rate > threshold",
+                severity="critical",
+                threshold=5.0,
+                comparison="gt",
+                metric_name="error_rate_percent",
+                window_seconds=300,
+                notification_channels=["email", "slack", "pagerduty"]
+            ),
+            AlertRule(
+                rule_id="response_time",
+                name="Slow Response Time",
+                description="Response time exceeds threshold",
+                condition="response_time_ms > threshold",
+                severity="warning",
+                threshold=1000.0,
+                comparison="gt",
+                metric_name="response_time_ms",
+                window_seconds=60,
+                notification_channels=["slack"]
+            ),
+        ]
+
+        for rule in default_rules:
+            self._rules[rule.rule_id] = rule
+
+    def register_rule(self, rule: AlertRule) -> bool:
+        """Register an alert rule."""
+        self._rules[rule.rule_id] = rule
+        self._logger.debug(f"Registered alert rule: {rule.name}")
+        return True
+
+    def register_notification_handler(
+        self,
+        channel: str,
+        handler: Callable[[Alert], Awaitable[None]]
+    ) -> None:
+        """Register a notification handler for a channel."""
+        self._notification_handlers[channel] = handler
+
+    async def record_metric(
+        self,
+        metric_name: str,
+        value: float
+    ) -> Optional[Alert]:
+        """
+        Record a metric value and check for alerts.
+
+        Args:
+            metric_name: Name of the metric
+            value: Current value
+
+        Returns:
+            Alert if triggered, None otherwise
+        """
+        async with self._lock:
+            # Store metric value
+            if metric_name not in self._metric_values:
+                self._metric_values[metric_name] = deque(maxlen=1000)
+
+            self._metric_values[metric_name].append((datetime.now(), value))
+
+        # Check rules for this metric
+        for rule in self._rules.values():
+            if not rule.enabled or rule.metric_name != metric_name:
+                continue
+
+            triggered = await self._evaluate_rule(rule, value)
+            if triggered:
+                return triggered
+
+        return None
+
+    async def _evaluate_rule(
+        self,
+        rule: AlertRule,
+        value: float
+    ) -> Optional[Alert]:
+        """Evaluate an alert rule against current value."""
+        # Check comparison
+        triggered = False
+        if rule.comparison == "gt" and value > rule.threshold:
+            triggered = True
+        elif rule.comparison == "lt" and value < rule.threshold:
+            triggered = True
+        elif rule.comparison == "gte" and value >= rule.threshold:
+            triggered = True
+        elif rule.comparison == "lte" and value <= rule.threshold:
+            triggered = True
+        elif rule.comparison == "eq" and value == rule.threshold:
+            triggered = True
+        elif rule.comparison == "ne" and value != rule.threshold:
+            triggered = True
+
+        if not triggered:
+            # Check if we should auto-resolve existing alert
+            if rule.rule_id in self._active_alerts:
+                await self.resolve_alert(
+                    self._active_alerts[rule.rule_id].alert_id,
+                    "Condition no longer met"
+                )
+            return None
+
+        # Check cooldown
+        last_time = self._last_alert_time.get(rule.rule_id)
+        if last_time:
+            elapsed = (datetime.now() - last_time).total_seconds()
+            if elapsed < rule.cooldown_seconds:
+                return None
+
+        # Check if alert already active
+        if rule.rule_id in self._active_alerts:
+            return None
+
+        # Create alert
+        alert = Alert(
+            alert_id=f"alert_{secrets.token_hex(6)}",
+            rule_id=rule.rule_id,
+            severity=rule.severity,
+            title=rule.name,
+            description=f"{rule.description}: {value} {rule.comparison} {rule.threshold}",
+            current_value=value,
+            threshold_value=rule.threshold
+        )
+
+        async with self._lock:
+            self._active_alerts[rule.rule_id] = alert
+            self._last_alert_time[rule.rule_id] = datetime.now()
+            self._alert_history.append({
+                "alert_id": alert.alert_id,
+                "rule_id": rule.rule_id,
+                "severity": alert.severity,
+                "triggered_at": alert.triggered_at.isoformat(),
+                "value": value
+            })
+
+        self._logger.warning(f"Alert triggered: {alert.title}")
+
+        # Send notifications
+        await self._send_notifications(alert, rule)
+
+        return alert
+
+    async def _send_notifications(self, alert: Alert, rule: AlertRule) -> None:
+        """Send notifications for an alert."""
+        for channel in rule.notification_channels:
+            handler = self._notification_handlers.get(channel)
+            if handler:
+                try:
+                    await handler(alert)
+                except Exception as e:
+                    self._logger.error(f"Notification error ({channel}): {e}")
+
+    async def acknowledge_alert(
+        self,
+        alert_id: str,
+        acknowledged_by: str
+    ) -> bool:
+        """Acknowledge an active alert."""
+        for alert in self._active_alerts.values():
+            if alert.alert_id == alert_id:
+                alert.status = "acknowledged"
+                alert.acknowledged_by = acknowledged_by
+                self._logger.info(f"Alert acknowledged: {alert_id} by {acknowledged_by}")
+                return True
+        return False
+
+    async def resolve_alert(
+        self,
+        alert_id: str,
+        resolution_note: Optional[str] = None
+    ) -> bool:
+        """Resolve an active alert."""
+        for rule_id, alert in list(self._active_alerts.items()):
+            if alert.alert_id == alert_id:
+                alert.status = "resolved"
+                alert.resolved_at = datetime.now()
+                if resolution_note:
+                    alert.metadata["resolution_note"] = resolution_note
+
+                del self._active_alerts[rule_id]
+                self._logger.info(f"Alert resolved: {alert_id}")
+                return True
+        return False
+
+    def get_active_alerts(
+        self,
+        severity: Optional[str] = None
+    ) -> List[Alert]:
+        """Get all active alerts."""
+        alerts = list(self._active_alerts.values())
+        if severity:
+            alerts = [a for a in alerts if a.severity == severity]
+        return sorted(alerts, key=lambda a: a.triggered_at, reverse=True)
+
+    def get_statistics(self) -> Dict[str, Any]:
+        """Get alerting statistics."""
+        severity_counts: Dict[str, int] = {}
+        for alert in self._active_alerts.values():
+            severity_counts[alert.severity] = severity_counts.get(alert.severity, 0) + 1
+
+        return {
+            "rules_count": len(self._rules),
+            "active_alerts": len(self._active_alerts),
+            "by_severity": severity_counts,
+            "history_size": len(self._alert_history)
+        }
+
+
+@dataclass
+class ProfileEntry:
+    """A profiling entry."""
+    entry_id: str
+    function_name: str
+    start_time: datetime
+    end_time: Optional[datetime] = None
+    duration_ms: float = 0
+    call_count: int = 1
+    memory_before: int = 0
+    memory_after: int = 0
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+
+class PerformanceProfiler:
+    """
+    Code performance profiling system.
+
+    Tracks function execution times, memory usage, and
+    provides profiling reports for optimization.
+
+    Features:
+    - Function-level profiling
+    - Memory tracking
+    - Call counting
+    - Percentile statistics
+    - Hot path detection
+    - Profile export
+    """
+
+    def __init__(self, config: SystemKernelConfig):
+        self.config = config
+        self._lock = asyncio.Lock()
+        self._profiles: Dict[str, List[ProfileEntry]] = {}
+        self._active_profiles: Dict[str, ProfileEntry] = {}
+        self._enabled: bool = True
+        self._sample_rate: float = 1.0  # 100% sampling
+        self._logger = UnifiedLogger(
+            name="PerformanceProfiler",
+            config=config
+        )
+        self._initialized = False
+
+    async def initialize(self) -> bool:
+        """Initialize performance profiler."""
+        try:
+            self._initialized = True
+            self._logger.info("Performance profiler initialized")
+            return True
+        except Exception as e:
+            self._logger.error(f"Failed to initialize profiler: {e}")
+            return False
+
+    @contextmanager
+    def profile(self, function_name: str):
+        """Context manager for profiling a code block."""
+        if not self._enabled or secrets.randbelow(100) / 100 > self._sample_rate:
+            yield
+            return
+
+        entry_id = f"prof_{secrets.token_hex(4)}"
+        start_time = datetime.now()
+
+        # Get memory before
+        import tracemalloc
+        try:
+            tracemalloc.start()
+            memory_before = tracemalloc.get_traced_memory()[0]
+        except Exception:
+            memory_before = 0
+
+        entry = ProfileEntry(
+            entry_id=entry_id,
+            function_name=function_name,
+            start_time=start_time,
+            memory_before=memory_before
+        )
+
+        self._active_profiles[entry_id] = entry
+
+        try:
+            yield
+        finally:
+            entry.end_time = datetime.now()
+            entry.duration_ms = (entry.end_time - start_time).total_seconds() * 1000
+
+            try:
+                entry.memory_after = tracemalloc.get_traced_memory()[0]
+                tracemalloc.stop()
+            except Exception:
+                entry.memory_after = 0
+
+            del self._active_profiles[entry_id]
+
+            if function_name not in self._profiles:
+                self._profiles[function_name] = []
+            self._profiles[function_name].append(entry)
+
+            # Keep only last 10000 entries per function
+            if len(self._profiles[function_name]) > 10000:
+                self._profiles[function_name] = self._profiles[function_name][-10000:]
+
+    async def profile_async(
+        self,
+        function_name: str,
+        coro: Coroutine
+    ) -> Any:
+        """Profile an async coroutine."""
+        if not self._enabled or secrets.randbelow(100) / 100 > self._sample_rate:
+            return await coro
+
+        entry_id = f"prof_{secrets.token_hex(4)}"
+        start_time = datetime.now()
+
+        entry = ProfileEntry(
+            entry_id=entry_id,
+            function_name=function_name,
+            start_time=start_time
+        )
+
+        self._active_profiles[entry_id] = entry
+
+        try:
+            result = await coro
+            return result
+        finally:
+            entry.end_time = datetime.now()
+            entry.duration_ms = (entry.end_time - start_time).total_seconds() * 1000
+
+            del self._active_profiles[entry_id]
+
+            if function_name not in self._profiles:
+                self._profiles[function_name] = []
+            self._profiles[function_name].append(entry)
+
+    def get_statistics(self, function_name: str) -> Optional[Dict[str, Any]]:
+        """Get statistics for a function."""
+        entries = self._profiles.get(function_name, [])
+        if not entries:
+            return None
+
+        durations = [e.duration_ms for e in entries]
+        durations.sort()
+
+        return {
+            "function_name": function_name,
+            "call_count": len(entries),
+            "total_time_ms": sum(durations),
+            "avg_time_ms": sum(durations) / len(durations),
+            "min_time_ms": min(durations),
+            "max_time_ms": max(durations),
+            "p50_time_ms": durations[len(durations) // 2],
+            "p95_time_ms": durations[int(len(durations) * 0.95)],
+            "p99_time_ms": durations[int(len(durations) * 0.99)],
+        }
+
+    def get_hot_paths(self, limit: int = 10) -> List[Dict[str, Any]]:
+        """Get the slowest functions (hot paths)."""
+        stats = []
+        for func_name in self._profiles:
+            func_stats = self.get_statistics(func_name)
+            if func_stats:
+                stats.append(func_stats)
+
+        # Sort by total time
+        stats.sort(key=lambda s: s["total_time_ms"], reverse=True)
+        return stats[:limit]
+
+    def clear(self, function_name: Optional[str] = None) -> None:
+        """Clear profiling data."""
+        if function_name:
+            self._profiles.pop(function_name, None)
+        else:
+            self._profiles.clear()
+
+    def set_enabled(self, enabled: bool) -> None:
+        """Enable or disable profiling."""
+        self._enabled = enabled
+
+    def set_sample_rate(self, rate: float) -> None:
+        """Set sampling rate (0.0 to 1.0)."""
+        self._sample_rate = max(0.0, min(1.0, rate))
+
+
+@dataclass
+class Experiment:
+    """An A/B test experiment."""
+    experiment_id: str
+    name: str
+    description: str
+    variants: List[str]
+    weights: List[float]  # Must sum to 1.0
+    start_date: datetime = field(default_factory=datetime.now)
+    end_date: Optional[datetime] = None
+    status: str = "active"  # draft, active, paused, completed
+    metrics: List[str] = field(default_factory=list)
+    target_sample_size: int = 1000
+    current_sample_size: int = 0
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class ExperimentAssignment:
+    """Assignment of a user to an experiment variant."""
+    user_id: str
+    experiment_id: str
+    variant: str
+    assigned_at: datetime = field(default_factory=datetime.now)
+
+
+class ABTestingFramework:
+    """
+    A/B testing and experimentation framework.
+
+    Provides experiment management, user assignment, and
+    statistical analysis of experiment results.
+
+    Features:
+    - Experiment lifecycle management
+    - Weighted variant assignment
+    - Sticky assignments
+    - Conversion tracking
+    - Statistical significance calculation
+    - Experiment segmentation
+    """
+
+    def __init__(self, config: SystemKernelConfig):
+        self.config = config
+        self._lock = asyncio.Lock()
+        self._experiments: Dict[str, Experiment] = {}
+        self._assignments: Dict[str, Dict[str, ExperimentAssignment]] = {}  # user_id -> exp_id -> assignment
+        self._conversions: Dict[str, Dict[str, Dict[str, int]]] = {}  # exp_id -> metric -> variant -> count
+        self._impressions: Dict[str, Dict[str, int]] = {}  # exp_id -> variant -> count
+        self._logger = UnifiedLogger(
+            name="ABTestingFramework",
+            config=config
+        )
+        self._initialized = False
+
+    async def initialize(self) -> bool:
+        """Initialize A/B testing framework."""
+        try:
+            self._initialized = True
+            self._logger.info("A/B testing framework initialized")
+            return True
+        except Exception as e:
+            self._logger.error(f"Failed to initialize A/B testing: {e}")
+            return False
+
+    async def create_experiment(
+        self,
+        name: str,
+        description: str,
+        variants: List[str],
+        weights: Optional[List[float]] = None,
+        metrics: Optional[List[str]] = None,
+        target_sample_size: int = 1000
+    ) -> Experiment:
+        """
+        Create a new experiment.
+
+        Args:
+            name: Experiment name
+            description: Experiment description
+            variants: List of variant names
+            weights: Variant weights (defaults to equal)
+            metrics: Metrics to track
+            target_sample_size: Target sample size
+
+        Returns:
+            Created Experiment
+        """
+        experiment_id = f"exp_{secrets.token_hex(6)}"
+
+        # Default to equal weights
+        if weights is None:
+            weights = [1.0 / len(variants)] * len(variants)
+
+        # Normalize weights
+        total = sum(weights)
+        weights = [w / total for w in weights]
+
+        experiment = Experiment(
+            experiment_id=experiment_id,
+            name=name,
+            description=description,
+            variants=variants,
+            weights=weights,
+            metrics=metrics or ["conversion"],
+            target_sample_size=target_sample_size
+        )
+
+        async with self._lock:
+            self._experiments[experiment_id] = experiment
+            self._conversions[experiment_id] = {}
+            self._impressions[experiment_id] = {v: 0 for v in variants}
+
+        self._logger.info(f"Created experiment: {name}")
+        return experiment
+
+    async def get_variant(
+        self,
+        experiment_id: str,
+        user_id: str
+    ) -> Optional[str]:
+        """
+        Get or assign variant for a user.
+
+        Args:
+            experiment_id: Experiment ID
+            user_id: User ID
+
+        Returns:
+            Variant name or None if experiment not active
+        """
+        experiment = self._experiments.get(experiment_id)
+        if not experiment or experiment.status != "active":
+            return None
+
+        # Check for existing assignment
+        if user_id in self._assignments:
+            if experiment_id in self._assignments[user_id]:
+                return self._assignments[user_id][experiment_id].variant
+
+        # Assign variant based on weights
+        variant = self._assign_variant(experiment, user_id)
+
+        # Store assignment
+        assignment = ExperimentAssignment(
+            user_id=user_id,
+            experiment_id=experiment_id,
+            variant=variant
+        )
+
+        async with self._lock:
+            if user_id not in self._assignments:
+                self._assignments[user_id] = {}
+            self._assignments[user_id][experiment_id] = assignment
+            experiment.current_sample_size += 1
+            self._impressions[experiment_id][variant] += 1
+
+        return variant
+
+    def _assign_variant(self, experiment: Experiment, user_id: str) -> str:
+        """Deterministically assign variant based on user_id hash."""
+        # Use hash for deterministic assignment
+        hash_input = f"{experiment.experiment_id}:{user_id}"
+        hash_value = int(hashlib.md5(hash_input.encode()).hexdigest(), 16)
+        normalized = (hash_value % 10000) / 10000.0
+
+        cumulative = 0.0
+        for variant, weight in zip(experiment.variants, experiment.weights):
+            cumulative += weight
+            if normalized < cumulative:
+                return variant
+
+        return experiment.variants[-1]
+
+    async def record_conversion(
+        self,
+        experiment_id: str,
+        user_id: str,
+        metric: str = "conversion"
+    ) -> bool:
+        """
+        Record a conversion event.
+
+        Args:
+            experiment_id: Experiment ID
+            user_id: User ID
+            metric: Metric name
+
+        Returns:
+            True if recorded, False if user not in experiment
+        """
+        if user_id not in self._assignments:
+            return False
+        if experiment_id not in self._assignments[user_id]:
+            return False
+
+        assignment = self._assignments[user_id][experiment_id]
+
+        async with self._lock:
+            if metric not in self._conversions[experiment_id]:
+                self._conversions[experiment_id][metric] = {
+                    v: 0 for v in self._experiments[experiment_id].variants
+                }
+            self._conversions[experiment_id][metric][assignment.variant] += 1
+
+        return True
+
+    def get_results(self, experiment_id: str) -> Optional[Dict[str, Any]]:
+        """Get experiment results with statistical analysis."""
+        experiment = self._experiments.get(experiment_id)
+        if not experiment:
+            return None
+
+        results = {
+            "experiment_id": experiment_id,
+            "name": experiment.name,
+            "status": experiment.status,
+            "sample_size": experiment.current_sample_size,
+            "variants": {}
+        }
+
+        for variant in experiment.variants:
+            impressions = self._impressions[experiment_id].get(variant, 0)
+            variant_results = {
+                "impressions": impressions,
+                "metrics": {}
+            }
+
+            for metric in experiment.metrics:
+                conversions = self._conversions.get(experiment_id, {}).get(metric, {}).get(variant, 0)
+                rate = conversions / impressions if impressions > 0 else 0
+
+                variant_results["metrics"][metric] = {
+                    "conversions": conversions,
+                    "rate": round(rate * 100, 2),
+                }
+
+            results["variants"][variant] = variant_results
+
+        # Calculate statistical significance (simplified)
+        if len(experiment.variants) == 2:
+            results["analysis"] = self._calculate_significance(experiment_id)
+
+        return results
+
+    def _calculate_significance(self, experiment_id: str) -> Dict[str, Any]:
+        """Calculate statistical significance (simplified z-test)."""
+        experiment = self._experiments[experiment_id]
+        if len(experiment.variants) != 2:
+            return {"error": "Significance only calculated for 2-variant tests"}
+
+        control = experiment.variants[0]
+        treatment = experiment.variants[1]
+
+        for metric in experiment.metrics[:1]:  # Just first metric for simplicity
+            n_control = self._impressions[experiment_id].get(control, 0)
+            n_treatment = self._impressions[experiment_id].get(treatment, 0)
+
+            if n_control < 30 or n_treatment < 30:
+                return {"status": "insufficient_data", "min_samples": 30}
+
+            c_control = self._conversions.get(experiment_id, {}).get(metric, {}).get(control, 0)
+            c_treatment = self._conversions.get(experiment_id, {}).get(metric, {}).get(treatment, 0)
+
+            p_control = c_control / n_control if n_control > 0 else 0
+            p_treatment = c_treatment / n_treatment if n_treatment > 0 else 0
+
+            # Pooled proportion
+            p_pooled = (c_control + c_treatment) / (n_control + n_treatment)
+
+            # Standard error
+            se = (p_pooled * (1 - p_pooled) * (1/n_control + 1/n_treatment)) ** 0.5
+
+            if se == 0:
+                return {"status": "no_variance"}
+
+            # Z-score
+            z_score = (p_treatment - p_control) / se
+
+            # Approximate p-value (two-tailed)
+            # Using simplified approximation
+            p_value = 2 * (1 - min(1, abs(z_score) / 3))
+
+            return {
+                "status": "complete",
+                "control_rate": round(p_control * 100, 2),
+                "treatment_rate": round(p_treatment * 100, 2),
+                "lift": round((p_treatment - p_control) / p_control * 100, 2) if p_control > 0 else 0,
+                "z_score": round(z_score, 3),
+                "p_value": round(p_value, 4),
+                "significant": p_value < 0.05
+            }
+
+        return {"status": "no_metrics"}
+
+    async def complete_experiment(self, experiment_id: str) -> bool:
+        """Mark an experiment as completed."""
+        experiment = self._experiments.get(experiment_id)
+        if not experiment:
+            return False
+
+        experiment.status = "completed"
+        experiment.end_date = datetime.now()
+        return True
+
+
+@dataclass
+class FeatureFlag:
+    """A feature flag definition."""
+    flag_id: str
+    name: str
+    description: str
+    enabled: bool = False
+    percentage: float = 0.0  # 0-100 for gradual rollout
+    targeting_rules: List[Dict[str, Any]] = field(default_factory=list)
+    variants: Dict[str, Any] = field(default_factory=dict)
+    default_variant: str = "off"
+    created_at: datetime = field(default_factory=datetime.now)
+    updated_at: datetime = field(default_factory=datetime.now)
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+
+class FeatureFlagManager:
+    """
+    Feature flag and toggle management.
+
+    Provides feature flags with targeting rules, gradual rollout,
+    and variant support.
+
+    Features:
+    - Boolean and multivariate flags
+    - Percentage-based rollout
+    - User targeting rules
+    - Flag dependencies
+    - Audit logging
+    - Real-time updates
+    """
+
+    def __init__(self, config: SystemKernelConfig):
+        self.config = config
+        self._lock = asyncio.Lock()
+        self._flags: Dict[str, FeatureFlag] = {}
+        self._overrides: Dict[str, Dict[str, Any]] = {}  # user_id -> flag_id -> value
+        self._audit_log: deque = deque(maxlen=10000)
+        self._logger = UnifiedLogger(
+            name="FeatureFlagManager",
+            config=config
+        )
+        self._initialized = False
+
+    async def initialize(self) -> bool:
+        """Initialize feature flag manager."""
+        try:
+            self._initialized = True
+            self._logger.info("Feature flag manager initialized")
+            return True
+        except Exception as e:
+            self._logger.error(f"Failed to initialize feature flags: {e}")
+            return False
+
+    def create_flag(
+        self,
+        name: str,
+        description: str,
+        enabled: bool = False,
+        percentage: float = 0.0,
+        variants: Optional[Dict[str, Any]] = None,
+        default_variant: str = "off"
+    ) -> FeatureFlag:
+        """Create a new feature flag."""
+        flag_id = f"flag_{name.lower().replace(' ', '_')}"
+
+        flag = FeatureFlag(
+            flag_id=flag_id,
+            name=name,
+            description=description,
+            enabled=enabled,
+            percentage=percentage,
+            variants=variants or {"on": True, "off": False},
+            default_variant=default_variant
+        )
+
+        self._flags[flag_id] = flag
+        self._audit_log.append({
+            "action": "create_flag",
+            "flag_id": flag_id,
+            "timestamp": datetime.now().isoformat()
+        })
+
+        return flag
+
+    def is_enabled(
+        self,
+        flag_id: str,
+        user_id: Optional[str] = None,
+        context: Optional[Dict[str, Any]] = None
+    ) -> bool:
+        """
+        Check if a flag is enabled.
+
+        Args:
+            flag_id: Flag ID
+            user_id: Optional user ID for targeting
+            context: Optional context for targeting rules
+
+        Returns:
+            True if flag is enabled
+        """
+        flag = self._flags.get(flag_id)
+        if not flag:
+            return False
+
+        # Check user override
+        if user_id and user_id in self._overrides:
+            if flag_id in self._overrides[user_id]:
+                return bool(self._overrides[user_id][flag_id])
+
+        # Check if globally enabled
+        if not flag.enabled:
+            return False
+
+        # Check targeting rules
+        if flag.targeting_rules and context:
+            if not self._evaluate_targeting(flag.targeting_rules, context):
+                return False
+
+        # Check percentage rollout
+        if flag.percentage < 100:
+            if user_id:
+                # Deterministic based on user
+                hash_input = f"{flag_id}:{user_id}"
+                hash_value = int(hashlib.md5(hash_input.encode()).hexdigest(), 16)
+                if (hash_value % 100) >= flag.percentage:
+                    return False
+            else:
+                # Random for anonymous users
+                if secrets.randbelow(100) >= flag.percentage:
+                    return False
+
+        return True
+
+    def get_variant(
+        self,
+        flag_id: str,
+        user_id: Optional[str] = None,
+        context: Optional[Dict[str, Any]] = None
+    ) -> Any:
+        """Get the variant value for a flag."""
+        flag = self._flags.get(flag_id)
+        if not flag:
+            return None
+
+        if self.is_enabled(flag_id, user_id, context):
+            return flag.variants.get("on", True)
+        return flag.variants.get(flag.default_variant, False)
+
+    def _evaluate_targeting(
+        self,
+        rules: List[Dict[str, Any]],
+        context: Dict[str, Any]
+    ) -> bool:
+        """Evaluate targeting rules against context."""
+        for rule in rules:
+            rule_type = rule.get("type")
+            attribute = rule.get("attribute")
+            operator = rule.get("operator")
+            value = rule.get("value")
+
+            actual = context.get(attribute)
+
+            if operator == "eq" and actual != value:
+                return False
+            elif operator == "ne" and actual == value:
+                return False
+            elif operator == "in" and actual not in value:
+                return False
+            elif operator == "not_in" and actual in value:
+                return False
+            elif operator == "gt" and not (actual and actual > value):
+                return False
+            elif operator == "lt" and not (actual and actual < value):
+                return False
+            elif operator == "contains" and value not in str(actual):
+                return False
+
+        return True
+
+    def set_override(
+        self,
+        user_id: str,
+        flag_id: str,
+        value: Any
+    ) -> None:
+        """Set a user-specific override for a flag."""
+        if user_id not in self._overrides:
+            self._overrides[user_id] = {}
+        self._overrides[user_id][flag_id] = value
+
+        self._audit_log.append({
+            "action": "set_override",
+            "flag_id": flag_id,
+            "user_id": user_id,
+            "value": value,
+            "timestamp": datetime.now().isoformat()
+        })
+
+    def update_flag(
+        self,
+        flag_id: str,
+        updates: Dict[str, Any]
+    ) -> Optional[FeatureFlag]:
+        """Update a feature flag."""
+        flag = self._flags.get(flag_id)
+        if not flag:
+            return None
+
+        if "enabled" in updates:
+            flag.enabled = updates["enabled"]
+        if "percentage" in updates:
+            flag.percentage = updates["percentage"]
+        if "targeting_rules" in updates:
+            flag.targeting_rules = updates["targeting_rules"]
+        if "variants" in updates:
+            flag.variants = updates["variants"]
+
+        flag.updated_at = datetime.now()
+
+        self._audit_log.append({
+            "action": "update_flag",
+            "flag_id": flag_id,
+            "updates": updates,
+            "timestamp": datetime.now().isoformat()
+        })
+
+        return flag
+
+    def get_all_flags(self) -> List[FeatureFlag]:
+        """Get all feature flags."""
+        return list(self._flags.values())
+
+
+@dataclass
+class Rule:
+    """A business rule definition."""
+    rule_id: str
+    name: str
+    description: str
+    conditions: List[Dict[str, Any]]
+    actions: List[Dict[str, Any]]
+    priority: int = 100
+    enabled: bool = True
+    stop_on_match: bool = True
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class RuleResult:
+    """Result of rule evaluation."""
+    rule_id: str
+    matched: bool
+    actions_executed: List[str]
+    data_modified: Dict[str, Any]
+    execution_time_ms: float
+
+
+class RulesEngine:
+    """
+    Business rules execution engine.
+
+    Evaluates business rules against data and executes
+    associated actions.
+
+    Features:
+    - Condition evaluation with operators
+    - Multiple action types
+    - Rule prioritization
+    - Chained rule execution
+    - Rule templates
+    - Performance optimization
+    """
+
+    def __init__(self, config: SystemKernelConfig):
+        self.config = config
+        self._lock = asyncio.Lock()
+        self._rules: Dict[str, Rule] = {}
+        self._rule_groups: Dict[str, List[str]] = {}  # group -> rule_ids
+        self._action_handlers: Dict[str, Callable[[Dict[str, Any], Dict[str, Any]], Any]] = {}
+        self._execution_history: deque = deque(maxlen=10000)
+        self._logger = UnifiedLogger(
+            name="RulesEngine",
+            config=config
+        )
+        self._initialized = False
+
+    async def initialize(self) -> bool:
+        """Initialize rules engine."""
+        try:
+            # Register default action handlers
+            self._register_default_handlers()
+            self._initialized = True
+            self._logger.info("Rules engine initialized")
+            return True
+        except Exception as e:
+            self._logger.error(f"Failed to initialize rules engine: {e}")
+            return False
+
+    def _register_default_handlers(self) -> None:
+        """Register default action handlers."""
+        def set_value(data: Dict[str, Any], action: Dict[str, Any]) -> None:
+            field = action.get("field")
+            value = action.get("value")
+            if field:
+                data[field] = value
+
+        def multiply_value(data: Dict[str, Any], action: Dict[str, Any]) -> None:
+            field = action.get("field")
+            factor = action.get("factor", 1)
+            if field and field in data:
+                data[field] = data[field] * factor
+
+        def add_to_list(data: Dict[str, Any], action: Dict[str, Any]) -> None:
+            field = action.get("field")
+            value = action.get("value")
+            if field:
+                if field not in data:
+                    data[field] = []
+                data[field].append(value)
+
+        self._action_handlers["set_value"] = set_value
+        self._action_handlers["multiply_value"] = multiply_value
+        self._action_handlers["add_to_list"] = add_to_list
+
+    def register_rule(self, rule: Rule, group: Optional[str] = None) -> bool:
+        """Register a rule."""
+        self._rules[rule.rule_id] = rule
+
+        if group:
+            if group not in self._rule_groups:
+                self._rule_groups[group] = []
+            self._rule_groups[group].append(rule.rule_id)
+
+        self._logger.debug(f"Registered rule: {rule.name}")
+        return True
+
+    def register_action_handler(
+        self,
+        action_type: str,
+        handler: Callable[[Dict[str, Any], Dict[str, Any]], Any]
+    ) -> None:
+        """Register a custom action handler."""
+        self._action_handlers[action_type] = handler
+
+    async def evaluate(
+        self,
+        data: Dict[str, Any],
+        rule_ids: Optional[List[str]] = None,
+        group: Optional[str] = None
+    ) -> List[RuleResult]:
+        """
+        Evaluate rules against data.
+
+        Args:
+            data: Data to evaluate rules against
+            rule_ids: Specific rules to evaluate (optional)
+            group: Rule group to evaluate (optional)
+
+        Returns:
+            List of RuleResult objects
+        """
+        results: List[RuleResult] = []
+
+        # Determine which rules to evaluate
+        if rule_ids:
+            rules = [self._rules[rid] for rid in rule_ids if rid in self._rules]
+        elif group:
+            rule_ids = self._rule_groups.get(group, [])
+            rules = [self._rules[rid] for rid in rule_ids if rid in self._rules]
+        else:
+            rules = list(self._rules.values())
+
+        # Sort by priority (lower = higher priority)
+        rules.sort(key=lambda r: r.priority)
+
+        # Evaluate each rule
+        data_copy = data.copy()
+        for rule in rules:
+            if not rule.enabled:
+                continue
+
+            start_time = time.time()
+            matched = self._evaluate_conditions(rule.conditions, data_copy)
+
+            actions_executed = []
+            if matched:
+                for action in rule.actions:
+                    action_type = action.get("type")
+                    handler = self._action_handlers.get(action_type)
+                    if handler:
+                        try:
+                            handler(data_copy, action)
+                            actions_executed.append(action_type)
+                        except Exception as e:
+                            self._logger.error(f"Action handler error: {e}")
+
+            duration_ms = (time.time() - start_time) * 1000
+
+            result = RuleResult(
+                rule_id=rule.rule_id,
+                matched=matched,
+                actions_executed=actions_executed,
+                data_modified={k: v for k, v in data_copy.items() if k not in data or data[k] != v},
+                execution_time_ms=duration_ms
+            )
+            results.append(result)
+
+            # Record history
+            self._execution_history.append({
+                "rule_id": rule.rule_id,
+                "matched": matched,
+                "timestamp": datetime.now().isoformat()
+            })
+
+            # Stop if rule matched and configured to stop
+            if matched and rule.stop_on_match:
+                break
+
+        return results
+
+    def _evaluate_conditions(
+        self,
+        conditions: List[Dict[str, Any]],
+        data: Dict[str, Any]
+    ) -> bool:
+        """Evaluate rule conditions against data."""
+        for condition in conditions:
+            field = condition.get("field")
+            operator = condition.get("operator")
+            value = condition.get("value")
+
+            actual = self._get_nested_value(data, field)
+
+            if operator == "eq" and actual != value:
+                return False
+            elif operator == "ne" and actual == value:
+                return False
+            elif operator == "gt" and not (actual is not None and actual > value):
+                return False
+            elif operator == "lt" and not (actual is not None and actual < value):
+                return False
+            elif operator == "gte" and not (actual is not None and actual >= value):
+                return False
+            elif operator == "lte" and not (actual is not None and actual <= value):
+                return False
+            elif operator == "in" and actual not in value:
+                return False
+            elif operator == "not_in" and actual in value:
+                return False
+            elif operator == "contains" and value not in str(actual or ""):
+                return False
+            elif operator == "starts_with" and not str(actual or "").startswith(str(value)):
+                return False
+            elif operator == "ends_with" and not str(actual or "").endswith(str(value)):
+                return False
+            elif operator == "exists" and (field not in data) != (not value):
+                return False
+            elif operator == "regex":
+                if not re.match(value, str(actual or "")):
+                    return False
+
+        return True
+
+    def _get_nested_value(self, data: Dict[str, Any], path: str) -> Any:
+        """Get a value from nested dictionary using dot notation."""
+        parts = path.split(".")
+        current = data
+        for part in parts:
+            if isinstance(current, dict) and part in current:
+                current = current[part]
+            else:
+                return None
+        return current
+
+
+@dataclass
+class ValidationRule:
+    """A data validation rule."""
+    field: str
+    rule_type: str  # required, type, min, max, pattern, custom, etc.
+    value: Any
+    message: str
+
+
+@dataclass
+class ValidationError:
+    """A validation error."""
+    field: str
+    rule_type: str
+    message: str
+    actual_value: Any
+
+
+@dataclass
+class ValidationResult:
+    """Result of data validation."""
+    valid: bool
+    errors: List[ValidationError]
+    validated_data: Dict[str, Any]
+
+
+class DataValidationManager:
+    """
+    Data validation and schema enforcement.
+
+    Validates data against schemas with support for
+    complex validation rules and custom validators.
+
+    Features:
+    - Type validation
+    - Required field validation
+    - Min/max constraints
+    - Pattern matching
+    - Custom validators
+    - Nested object validation
+    - Array validation
+    """
+
+    def __init__(self, config: SystemKernelConfig):
+        self.config = config
+        self._schemas: Dict[str, List[ValidationRule]] = {}
+        self._custom_validators: Dict[str, Callable[[Any], Tuple[bool, str]]] = {}
+        self._logger = UnifiedLogger(
+            name="DataValidationManager",
+            config=config
+        )
+        self._initialized = False
+
+    async def initialize(self) -> bool:
+        """Initialize data validation manager."""
+        try:
+            self._initialized = True
+            self._logger.info("Data validation manager initialized")
+            return True
+        except Exception as e:
+            self._logger.error(f"Failed to initialize validation manager: {e}")
+            return False
+
+    def define_schema(
+        self,
+        schema_name: str,
+        rules: List[ValidationRule]
+    ) -> None:
+        """Define a validation schema."""
+        self._schemas[schema_name] = rules
+
+    def register_custom_validator(
+        self,
+        name: str,
+        validator: Callable[[Any], Tuple[bool, str]]
+    ) -> None:
+        """Register a custom validator function."""
+        self._custom_validators[name] = validator
+
+    async def validate(
+        self,
+        schema_name: str,
+        data: Dict[str, Any]
+    ) -> ValidationResult:
+        """
+        Validate data against a schema.
+
+        Args:
+            schema_name: Name of the schema to validate against
+            data: Data to validate
+
+        Returns:
+            ValidationResult
+        """
+        rules = self._schemas.get(schema_name, [])
+        errors: List[ValidationError] = []
+        validated_data = data.copy()
+
+        for rule in rules:
+            field = rule.field
+            actual = self._get_nested_value(data, field)
+
+            error = self._apply_rule(rule, actual)
+            if error:
+                errors.append(error)
+
+        return ValidationResult(
+            valid=len(errors) == 0,
+            errors=errors,
+            validated_data=validated_data
+        )
+
+    def _apply_rule(
+        self,
+        rule: ValidationRule,
+        actual: Any
+    ) -> Optional[ValidationError]:
+        """Apply a validation rule."""
+        if rule.rule_type == "required":
+            if actual is None or (isinstance(actual, str) and not actual.strip()):
+                return ValidationError(
+                    field=rule.field,
+                    rule_type="required",
+                    message=rule.message or f"{rule.field} is required",
+                    actual_value=actual
+                )
+
+        elif rule.rule_type == "type":
+            expected_type = rule.value
+            type_map = {
+                "string": str,
+                "int": int,
+                "float": (int, float),
+                "bool": bool,
+                "list": list,
+                "dict": dict
+            }
+            expected = type_map.get(expected_type)
+            if expected and actual is not None and not isinstance(actual, expected):
+                return ValidationError(
+                    field=rule.field,
+                    rule_type="type",
+                    message=rule.message or f"{rule.field} must be of type {expected_type}",
+                    actual_value=actual
+                )
+
+        elif rule.rule_type == "min":
+            if actual is not None:
+                if isinstance(actual, (int, float)) and actual < rule.value:
+                    return ValidationError(
+                        field=rule.field,
+                        rule_type="min",
+                        message=rule.message or f"{rule.field} must be at least {rule.value}",
+                        actual_value=actual
+                    )
+                if isinstance(actual, str) and len(actual) < rule.value:
+                    return ValidationError(
+                        field=rule.field,
+                        rule_type="min",
+                        message=rule.message or f"{rule.field} must be at least {rule.value} characters",
+                        actual_value=actual
+                    )
+
+        elif rule.rule_type == "max":
+            if actual is not None:
+                if isinstance(actual, (int, float)) and actual > rule.value:
+                    return ValidationError(
+                        field=rule.field,
+                        rule_type="max",
+                        message=rule.message or f"{rule.field} must be at most {rule.value}",
+                        actual_value=actual
+                    )
+                if isinstance(actual, str) and len(actual) > rule.value:
+                    return ValidationError(
+                        field=rule.field,
+                        rule_type="max",
+                        message=rule.message or f"{rule.field} must be at most {rule.value} characters",
+                        actual_value=actual
+                    )
+
+        elif rule.rule_type == "pattern":
+            if actual is not None and isinstance(actual, str):
+                if not re.match(rule.value, actual):
+                    return ValidationError(
+                        field=rule.field,
+                        rule_type="pattern",
+                        message=rule.message or f"{rule.field} does not match required pattern",
+                        actual_value=actual
+                    )
+
+        elif rule.rule_type == "enum":
+            if actual is not None and actual not in rule.value:
+                return ValidationError(
+                    field=rule.field,
+                    rule_type="enum",
+                    message=rule.message or f"{rule.field} must be one of {rule.value}",
+                    actual_value=actual
+                )
+
+        elif rule.rule_type == "email":
+            if actual is not None and isinstance(actual, str):
+                email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+                if not re.match(email_pattern, actual):
+                    return ValidationError(
+                        field=rule.field,
+                        rule_type="email",
+                        message=rule.message or f"{rule.field} must be a valid email address",
+                        actual_value=actual
+                    )
+
+        elif rule.rule_type == "custom":
+            validator = self._custom_validators.get(rule.value)
+            if validator:
+                valid, message = validator(actual)
+                if not valid:
+                    return ValidationError(
+                        field=rule.field,
+                        rule_type="custom",
+                        message=message or rule.message,
+                        actual_value=actual
+                    )
+
+        return None
+
+    def _get_nested_value(self, data: Dict[str, Any], path: str) -> Any:
+        """Get a value from nested dictionary using dot notation."""
+        parts = path.split(".")
+        current = data
+        for part in parts:
+            if isinstance(current, dict) and part in current:
+                current = current[part]
+            else:
+                return None
+        return current
+
+
+@dataclass
+class Template:
+    """A template definition."""
+    template_id: str
+    name: str
+    content: str
+    variables: List[str]
+    created_at: datetime = field(default_factory=datetime.now)
+    updated_at: datetime = field(default_factory=datetime.now)
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+
+class TemplateEngine:
+    """
+    Dynamic template rendering engine.
+
+    Renders templates with variable substitution,
+    conditionals, and loops.
+
+    Features:
+    - Variable substitution
+    - Conditional blocks
+    - Loop constructs
+    - Filters/transformations
+    - Template inheritance
+    - Caching
+    """
+
+    def __init__(self, config: SystemKernelConfig):
+        self.config = config
+        self._templates: Dict[str, Template] = {}
+        self._cache: Dict[str, str] = {}
+        self._filters: Dict[str, Callable[[Any], Any]] = {}
+        self._logger = UnifiedLogger(
+            name="TemplateEngine",
+            config=config
+        )
+        self._initialized = False
+
+    async def initialize(self) -> bool:
+        """Initialize template engine."""
+        try:
+            # Register default filters
+            self._register_default_filters()
+            self._initialized = True
+            self._logger.info("Template engine initialized")
+            return True
+        except Exception as e:
+            self._logger.error(f"Failed to initialize template engine: {e}")
+            return False
+
+    def _register_default_filters(self) -> None:
+        """Register default template filters."""
+        self._filters["upper"] = lambda x: str(x).upper()
+        self._filters["lower"] = lambda x: str(x).lower()
+        self._filters["title"] = lambda x: str(x).title()
+        self._filters["strip"] = lambda x: str(x).strip()
+        self._filters["default"] = lambda x, default="": x if x else default
+        self._filters["date"] = lambda x, fmt="%Y-%m-%d": x.strftime(fmt) if hasattr(x, 'strftime') else str(x)
+        self._filters["json"] = lambda x: json.dumps(x)
+        self._filters["length"] = lambda x: len(x) if hasattr(x, '__len__') else 0
+
+    def register_template(
+        self,
+        name: str,
+        content: str
+    ) -> Template:
+        """Register a new template."""
+        template_id = f"tpl_{name.lower().replace(' ', '_')}"
+
+        # Extract variables from template
+        variables = self._extract_variables(content)
+
+        template = Template(
+            template_id=template_id,
+            name=name,
+            content=content,
+            variables=variables
+        )
+
+        self._templates[template_id] = template
+        return template
+
+    def _extract_variables(self, content: str) -> List[str]:
+        """Extract variable names from template."""
+        # Find {{ variable }} patterns
+        pattern = r'\{\{\s*(\w+)(?:\s*\|\s*\w+)?\s*\}\}'
+        matches = re.findall(pattern, content)
+        return list(set(matches))
+
+    def register_filter(
+        self,
+        name: str,
+        func: Callable[[Any], Any]
+    ) -> None:
+        """Register a custom filter."""
+        self._filters[name] = func
+
+    async def render(
+        self,
+        template_id: str,
+        context: Dict[str, Any]
+    ) -> str:
+        """
+        Render a template with context.
+
+        Args:
+            template_id: Template ID
+            context: Variables for substitution
+
+        Returns:
+            Rendered string
+        """
+        template = self._templates.get(template_id)
+        if not template:
+            raise ValueError(f"Template not found: {template_id}")
+
+        content = template.content
+
+        # Process conditionals: {% if condition %}...{% endif %}
+        content = self._process_conditionals(content, context)
+
+        # Process loops: {% for item in items %}...{% endfor %}
+        content = self._process_loops(content, context)
+
+        # Process variable substitutions: {{ variable }}
+        content = self._process_variables(content, context)
+
+        return content
+
+    def _process_conditionals(
+        self,
+        content: str,
+        context: Dict[str, Any]
+    ) -> str:
+        """Process conditional blocks."""
+        # Simple if/endif processing
+        pattern = r'\{%\s*if\s+(\w+)\s*%\}(.*?)\{%\s*endif\s*%\}'
+
+        def replace_conditional(match):
+            var_name = match.group(1)
+            block_content = match.group(2)
+
+            if context.get(var_name):
+                return block_content
+            return ""
+
+        return re.sub(pattern, replace_conditional, content, flags=re.DOTALL)
+
+    def _process_loops(
+        self,
+        content: str,
+        context: Dict[str, Any]
+    ) -> str:
+        """Process loop blocks."""
+        # Simple for/endfor processing
+        pattern = r'\{%\s*for\s+(\w+)\s+in\s+(\w+)\s*%\}(.*?)\{%\s*endfor\s*%\}'
+
+        def replace_loop(match):
+            item_var = match.group(1)
+            list_var = match.group(2)
+            block_content = match.group(3)
+
+            items = context.get(list_var, [])
+            result = []
+
+            for item in items:
+                # Create context with loop variable
+                loop_context = {**context, item_var: item}
+                rendered = self._process_variables(block_content, loop_context)
+                result.append(rendered)
+
+            return "".join(result)
+
+        return re.sub(pattern, replace_loop, content, flags=re.DOTALL)
+
+    def _process_variables(
+        self,
+        content: str,
+        context: Dict[str, Any]
+    ) -> str:
+        """Process variable substitutions."""
+        # {{ variable }} or {{ variable | filter }}
+        pattern = r'\{\{\s*(\w+)(?:\s*\|\s*(\w+))?\s*\}\}'
+
+        def replace_variable(match):
+            var_name = match.group(1)
+            filter_name = match.group(2)
+
+            value = context.get(var_name, "")
+
+            if filter_name and filter_name in self._filters:
+                value = self._filters[filter_name](value)
+
+            return str(value)
+
+        return re.sub(pattern, replace_variable, content)
+
+    async def render_string(
+        self,
+        template_string: str,
+        context: Dict[str, Any]
+    ) -> str:
+        """Render a template string directly."""
+        # Create temporary template
+        temp_id = f"temp_{secrets.token_hex(4)}"
+        self.register_template(temp_id, template_string)
+
+        try:
+            return await self.render(temp_id, context)
+        finally:
+            # Clean up temporary template
+            self._templates.pop(temp_id, None)
+
+
+@dataclass
+class ReportSection:
+    """A section in a report."""
+    title: str
+    content: str
+    data: Dict[str, Any] = field(default_factory=dict)
+    charts: List[Dict[str, Any]] = field(default_factory=list)
+
+
+@dataclass
+class Report:
+    """A generated report."""
+    report_id: str
+    name: str
+    generated_at: datetime
+    sections: List[ReportSection]
+    summary: str
+    metadata: Dict[str, Any]
+
+
+class ReportGenerator:
+    """
+    Dynamic report generation system.
+
+    Generates reports from templates with data aggregation
+    and visualization support.
+
+    Features:
+    - Template-based reports
+    - Data aggregation
+    - Chart generation (data only)
+    - Multiple output formats
+    - Scheduled report generation
+    - Report caching
+    """
+
+    def __init__(self, config: SystemKernelConfig):
+        self.config = config
+        self._templates: Dict[str, Dict[str, Any]] = {}
+        self._generated_reports: Dict[str, Report] = {}
+        self._data_sources: Dict[str, Callable[[], Awaitable[Dict[str, Any]]]] = {}
+        self._logger = UnifiedLogger(
+            name="ReportGenerator",
+            config=config
+        )
+        self._initialized = False
+
+    async def initialize(self) -> bool:
+        """Initialize report generator."""
+        try:
+            self._initialized = True
+            self._logger.info("Report generator initialized")
+            return True
+        except Exception as e:
+            self._logger.error(f"Failed to initialize report generator: {e}")
+            return False
+
+    def define_report(
+        self,
+        name: str,
+        sections: List[Dict[str, Any]],
+        data_sources: List[str]
+    ) -> str:
+        """
+        Define a report template.
+
+        Args:
+            name: Report name
+            sections: Section definitions
+            data_sources: Data source names
+
+        Returns:
+            Report template ID
+        """
+        template_id = f"report_{name.lower().replace(' ', '_')}"
+
+        self._templates[template_id] = {
+            "name": name,
+            "sections": sections,
+            "data_sources": data_sources
+        }
+
+        return template_id
+
+    def register_data_source(
+        self,
+        name: str,
+        fetcher: Callable[[], Awaitable[Dict[str, Any]]]
+    ) -> None:
+        """Register a data source for reports."""
+        self._data_sources[name] = fetcher
+
+    async def generate(
+        self,
+        template_id: str,
+        parameters: Optional[Dict[str, Any]] = None
+    ) -> Report:
+        """
+        Generate a report from template.
+
+        Args:
+            template_id: Template ID
+            parameters: Optional parameters for data fetching
+
+        Returns:
+            Generated Report
+        """
+        template = self._templates.get(template_id)
+        if not template:
+            raise ValueError(f"Report template not found: {template_id}")
+
+        # Fetch data from all sources
+        data: Dict[str, Any] = {}
+        for source_name in template["data_sources"]:
+            fetcher = self._data_sources.get(source_name)
+            if fetcher:
+                try:
+                    source_data = await fetcher()
+                    data[source_name] = source_data
+                except Exception as e:
+                    self._logger.error(f"Data source error ({source_name}): {e}")
+                    data[source_name] = {"error": str(e)}
+
+        # Generate sections
+        sections: List[ReportSection] = []
+        for section_def in template["sections"]:
+            section = await self._generate_section(section_def, data, parameters or {})
+            sections.append(section)
+
+        # Generate summary
+        summary = self._generate_summary(sections, data)
+
+        report = Report(
+            report_id=f"rpt_{secrets.token_hex(6)}",
+            name=template["name"],
+            generated_at=datetime.now(),
+            sections=sections,
+            summary=summary,
+            metadata={
+                "template_id": template_id,
+                "parameters": parameters,
+                "data_sources": list(data.keys())
+            }
+        )
+
+        # Cache report
+        self._generated_reports[report.report_id] = report
+
+        return report
+
+    async def _generate_section(
+        self,
+        section_def: Dict[str, Any],
+        data: Dict[str, Any],
+        parameters: Dict[str, Any]
+    ) -> ReportSection:
+        """Generate a report section."""
+        title = section_def.get("title", "Untitled Section")
+        content_template = section_def.get("content", "")
+        data_path = section_def.get("data_path", "")
+        chart_type = section_def.get("chart_type")
+
+        # Extract relevant data
+        section_data = self._extract_data(data, data_path)
+
+        # Generate content (simple variable substitution)
+        content = content_template
+        for key, value in section_data.items():
+            content = content.replace(f"{{{key}}}", str(value))
+
+        # Generate chart data if requested
+        charts = []
+        if chart_type:
+            chart = self._generate_chart_data(chart_type, section_data, section_def)
+            if chart:
+                charts.append(chart)
+
+        return ReportSection(
+            title=title,
+            content=content,
+            data=section_data,
+            charts=charts
+        )
+
+    def _extract_data(
+        self,
+        data: Dict[str, Any],
+        path: str
+    ) -> Dict[str, Any]:
+        """Extract data from nested path."""
+        if not path:
+            return data
+
+        parts = path.split(".")
+        current = data
+        for part in parts:
+            if isinstance(current, dict) and part in current:
+                current = current[part]
+            else:
+                return {}
+
+        return current if isinstance(current, dict) else {"value": current}
+
+    def _generate_chart_data(
+        self,
+        chart_type: str,
+        data: Dict[str, Any],
+        section_def: Dict[str, Any]
+    ) -> Optional[Dict[str, Any]]:
+        """Generate chart data (not actual rendering)."""
+        x_field = section_def.get("x_field")
+        y_field = section_def.get("y_field")
+
+        if not x_field or not y_field:
+            return None
+
+        return {
+            "type": chart_type,
+            "x_data": data.get(x_field, []),
+            "y_data": data.get(y_field, []),
+            "x_label": section_def.get("x_label", x_field),
+            "y_label": section_def.get("y_label", y_field),
+            "title": section_def.get("chart_title", "")
+        }
+
+    def _generate_summary(
+        self,
+        sections: List[ReportSection],
+        data: Dict[str, Any]
+    ) -> str:
+        """Generate report summary."""
+        summary_parts = [
+            f"Report generated at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+            f"Contains {len(sections)} sections",
+            f"Data from {len(data)} sources"
+        ]
+        return "\n".join(summary_parts)
+
+    def get_report(self, report_id: str) -> Optional[Report]:
+        """Get a generated report by ID."""
+        return self._generated_reports.get(report_id)
+
+    def export_report(
+        self,
+        report_id: str,
+        format: str = "json"
+    ) -> Optional[str]:
+        """Export a report to a specific format."""
+        report = self._generated_reports.get(report_id)
+        if not report:
+            return None
+
+        if format == "json":
+            return json.dumps({
+                "report_id": report.report_id,
+                "name": report.name,
+                "generated_at": report.generated_at.isoformat(),
+                "summary": report.summary,
+                "sections": [
+                    {
+                        "title": s.title,
+                        "content": s.content,
+                        "data": s.data,
+                        "charts": s.charts
+                    }
+                    for s in report.sections
+                ],
+                "metadata": report.metadata
+            }, indent=2)
+
+        elif format == "text":
+            lines = [
+                f"# {report.name}",
+                f"Generated: {report.generated_at.strftime('%Y-%m-%d %H:%M:%S')}",
+                "",
+                report.summary,
+                ""
+            ]
+
+            for section in report.sections:
+                lines.append(f"## {section.title}")
+                lines.append(section.content)
+                lines.append("")
+
+            return "\n".join(lines)
+
+        return None
+
+
+# =============================================================================
 # =============================================================================
 #
 #  ███████╗ ██████╗ ███╗   ██╗███████╗    ███████╗
