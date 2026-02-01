@@ -2049,6 +2049,204 @@ class StartupSummaryTable:
         print()
 
 
+class StartupProgressDisplay:
+    """
+    Real-time startup progress display with animated spinners.
+
+    Provides visual feedback during startup phases:
+    - Animated spinner for current operation
+    - Phase status icons (✓ ✗ ⚠ ⏳)
+    - Duration tracking per phase
+    - Color-coded output
+
+    Usage:
+        display = StartupProgressDisplay()
+        async with display.phase("Preflight") as phase:
+            await do_preflight_work()
+            phase.update("Acquiring lock...")
+    """
+
+    # Phase status icons with colors
+    STATUS_ICONS = {
+        "pending": ("\033[90m⏳\033[0m", "PEND"),
+        "running": ("\033[36m⟳\033[0m", "RUN "),
+        "success": ("\033[32m✓\033[0m", " OK "),
+        "warning": ("\033[33m⚠\033[0m", "WARN"),
+        "error": ("\033[31m✗\033[0m", "FAIL"),
+        "skip": ("\033[90m○\033[0m", "SKIP"),
+    }
+
+    # Spinner animation frames
+    SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+
+    def __init__(self, enabled: bool = True, verbose: bool = False):
+        self.enabled = enabled and sys.stdout.isatty()
+        self.verbose = verbose
+        self._phases: List[Dict[str, Any]] = []
+        self._current_phase: Optional[str] = None
+        self._spinner_task: Optional[asyncio.Task[None]] = None
+        self._spinner_message = ""
+        self._spinner_running = False
+
+    @contextlib.asynccontextmanager
+    async def phase(self, name: str):
+        """Context manager for tracking a startup phase."""
+        phase_info = {
+            "name": name,
+            "status": "running",
+            "start_time": time.time(),
+            "end_time": None,
+            "duration_ms": 0,
+            "message": "",
+        }
+        self._phases.append(phase_info)
+        self._current_phase = name
+
+        # Create phase tracker
+        class PhaseTracker:
+            def __init__(tracker_self, parent: "StartupProgressDisplay"):
+                tracker_self._parent = parent
+                tracker_self._phase = phase_info
+
+            def update(tracker_self, message: str) -> None:
+                """Update the current phase message."""
+                tracker_self._phase["message"] = message
+                tracker_self._parent._spinner_message = message
+
+            def warn(tracker_self, message: str) -> None:
+                """Mark phase as warning."""
+                tracker_self._phase["status"] = "warning"
+                tracker_self._phase["message"] = message
+
+        tracker = PhaseTracker(self)
+
+        # Start spinner
+        if self.enabled:
+            self._start_spinner(name)
+
+        try:
+            yield tracker
+            # Mark success if not already set to warning/error
+            if phase_info["status"] == "running":
+                phase_info["status"] = "success"
+        except Exception as e:
+            phase_info["status"] = "error"
+            phase_info["message"] = str(e)[:50]
+            raise
+        finally:
+            # Stop spinner and record duration
+            if self.enabled:
+                self._stop_spinner()
+            phase_info["end_time"] = time.time()
+            phase_info["duration_ms"] = (phase_info["end_time"] - phase_info["start_time"]) * 1000
+            self._current_phase = None
+
+            # Print phase result
+            if self.enabled:
+                self._print_phase_result(phase_info)
+
+    def _start_spinner(self, phase_name: str) -> None:
+        """Start the spinner animation."""
+        self._spinner_running = True
+        self._spinner_message = phase_name
+        self._spinner_task = asyncio.create_task(self._spin_loop())
+
+    def _stop_spinner(self) -> None:
+        """Stop the spinner animation."""
+        self._spinner_running = False
+        if self._spinner_task:
+            self._spinner_task.cancel()
+            try:
+                # Clear the spinner line
+                sys.stdout.write("\r\033[K")
+                sys.stdout.flush()
+            except Exception:
+                pass
+
+    async def _spin_loop(self) -> None:
+        """Animation loop for spinner."""
+        frame_idx = 0
+        start_time = time.time()
+
+        while self._spinner_running:
+            try:
+                frame = self.SPINNER_FRAMES[frame_idx % len(self.SPINNER_FRAMES)]
+                elapsed = time.time() - start_time
+                message = self._spinner_message[:50]
+
+                # Format: ⠋ Phase Name... (1.2s)
+                line = f"\r  \033[36m{frame}\033[0m {message}... ({elapsed:.1f}s)"
+                sys.stdout.write(f"{line}\033[K")
+                sys.stdout.flush()
+
+                frame_idx += 1
+                await asyncio.sleep(0.08)
+            except asyncio.CancelledError:
+                break
+            except Exception:
+                break
+
+    def _print_phase_result(self, phase: Dict[str, Any]) -> None:
+        """Print the result of a completed phase."""
+        icon, status_text = self.STATUS_ICONS.get(phase["status"], self.STATUS_ICONS["pending"])
+        name = phase["name"]
+        duration = phase["duration_ms"]
+        message = phase.get("message", "")
+
+        # Format duration
+        if duration < 1000:
+            duration_str = f"{duration:.0f}ms"
+        else:
+            duration_str = f"{duration/1000:.1f}s"
+
+        # Build output line
+        if message and phase["status"] in ("warning", "error"):
+            line = f"  {icon} {name:<25} [{status_text}] {duration_str:>8}  {message}"
+        else:
+            line = f"  {icon} {name:<25} [{status_text}] {duration_str:>8}"
+
+        print(line)
+
+    def get_summary(self) -> Dict[str, Any]:
+        """Get summary of all phases."""
+        total_ms = sum(p["duration_ms"] for p in self._phases)
+        success = sum(1 for p in self._phases if p["status"] == "success")
+        warning = sum(1 for p in self._phases if p["status"] == "warning")
+        error = sum(1 for p in self._phases if p["status"] == "error")
+
+        return {
+            "total_ms": total_ms,
+            "total_sec": total_ms / 1000,
+            "phases": len(self._phases),
+            "success": success,
+            "warning": warning,
+            "error": error,
+            "all_ok": error == 0,
+        }
+
+    def print_summary(self) -> None:
+        """Print final summary."""
+        summary = self.get_summary()
+        print()
+        print("─" * 50)
+        status = "\033[32mSUCCESS\033[0m" if summary["all_ok"] else "\033[31mFAILED\033[0m"
+        print(f"  Startup {status} in {summary['total_sec']:.2f}s")
+        print(f"  Phases: {summary['success']}✓ {summary['warning']}⚠ {summary['error']}✗")
+        print("─" * 50)
+
+
+# Global startup display instance
+_startup_display: Optional[StartupProgressDisplay] = None
+
+
+def get_startup_display(enabled: bool = True) -> StartupProgressDisplay:
+    """Get or create the global startup display instance."""
+    global _startup_display
+    if _startup_display is None:
+        _startup_display = StartupProgressDisplay(enabled=enabled)
+    return _startup_display
+
+
 # =============================================================================
 # STARTUP ISSUE COLLECTOR & HEALTH REPORT
 # =============================================================================
@@ -7355,10 +7553,11 @@ class AsyncVoiceNarrator:
 
     async def narrate_zone_complete(self, zone: int, success: bool = True) -> None:
         """Narrate zone completion."""
+        # Track zone completion even when disabled (for statistics)
+        self._zones_completed.add(zone)
+
         if not self.enabled:
             return
-
-        self._zones_completed.add(zone)
         messages = self.ZONE_MESSAGES.get(zone, {"success": "Zone complete.", "fail": "Zone failed."})
         message = messages["success"] if success else messages["fail"]
 
@@ -7571,6 +7770,72 @@ class AsyncVoiceNarrator:
             message = f"{name} not available."
 
         await self.speak(message, wait=False, priority=VoicePriority.MEDIUM)
+
+    # =========================================================================
+    # Signal-Aware Narration
+    # =========================================================================
+
+    async def safe_narrate(
+        self,
+        text: str,
+        timeout: float = 5.0,
+        check_shutdown: Optional[Callable[[], bool]] = None,
+    ) -> bool:
+        """
+        Signal-aware narration with timeout protection.
+
+        Use this for narration during critical sections where signals
+        might interrupt the operation. This method:
+        - Respects shutdown signals (won't start if shutdown requested)
+        - Has timeout protection (won't block indefinitely)
+        - Returns success/failure for caller to handle
+
+        Args:
+            text: Text to speak
+            timeout: Maximum time to wait for speech (default: 5s)
+            check_shutdown: Optional callable to check if shutdown is requested
+
+        Returns:
+            True if speech completed, False if interrupted/timed out
+        """
+        if not self.enabled:
+            return True  # Success (nothing to do)
+
+        # Check if shutdown was requested
+        if check_shutdown and check_shutdown():
+            return False
+
+        try:
+            await asyncio.wait_for(
+                self.speak(text, wait=True, priority=VoicePriority.HIGH),
+                timeout=timeout
+            )
+            return True
+        except asyncio.TimeoutError:
+            _unified_logger.debug(f"[Narrator] Speech timed out: {text[:30]}...")
+            return False
+        except asyncio.CancelledError:
+            # Gracefully handle cancellation
+            if self._process and self._process.returncode is None:
+                self._process.terminate()
+            return False
+        except Exception as e:
+            _unified_logger.debug(f"[Narrator] Safe narrate failed: {e}")
+            return False
+
+    def emergency_stop(self) -> None:
+        """
+        Immediately stop any ongoing speech.
+
+        Use this when an immediate stop is required (e.g., during signal handling).
+        This is a sync method that can be called from signal handlers.
+        """
+        if self._process and self._process.returncode is None:
+            try:
+                self._process.terminate()
+            except Exception:
+                pass
+        self._speaking = False
 
     # =========================================================================
     # Statistics and Cleanup
@@ -49239,6 +49504,17 @@ class JarvisSystemKernel:
                 started_count = sum(1 for v in results.values() if v)
                 self.logger.success(f"[Kernel] Trinity: {started_count}/{len(results)} components started")
 
+                # Voice narration for Trinity components
+                if self._narrator:
+                    for component, connected in results.items():
+                        try:
+                            await self._narrator.narrate_trinity_status(
+                                component=component,
+                                connected=connected,
+                            )
+                        except Exception:
+                            pass
+
                 if self._readiness_manager:
                     self._readiness_manager.mark_component_ready("trinity", started_count > 0)
 
@@ -49246,6 +49522,11 @@ class JarvisSystemKernel:
 
             except Exception as e:
                 self.logger.warning(f"[Kernel] Trinity initialization failed: {e}")
+                if self._narrator:
+                    try:
+                        await self._narrator.narrate_error("Trinity integration failed", critical=False)
+                    except Exception:
+                        pass
                 return True  # Non-fatal
 
     async def _init_enterprise_service_with_timeout(
