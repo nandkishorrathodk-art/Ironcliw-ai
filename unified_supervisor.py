@@ -561,6 +561,7 @@ import json
 import logging
 import os
 import platform
+import random
 import re
 import shutil
 import signal
@@ -3339,15 +3340,7 @@ class GCPInstanceManager(ResourceManagerBase):
             return True  # Non-fatal - system can run without GCP
 
     async def _initialize_clients(self) -> None:
-        """
-        Initialize GCP API clients.
-
-        v118.0: Added auto-install capability for missing GCP dependencies.
-        When JARVIS_GCP_AUTO_INSTALL=true (default), missing packages are
-        automatically installed using pip. Falls back gracefully if install fails.
-        """
-        auto_install_enabled = os.getenv("JARVIS_GCP_AUTO_INSTALL", "true").lower() == "true"
-
+        """Initialize GCP API clients."""
         try:
             # Try to import google-cloud libraries
             from google.cloud import compute_v1
@@ -3370,122 +3363,20 @@ class GCPInstanceManager(ResourceManagerBase):
                 else:
                     self._run_client = run_v2.ServicesClient()
 
-        except ImportError as import_error:
-            # v118.0: Attempt auto-install if enabled
-            if auto_install_enabled:
-                self._logger.info("📦 GCP libraries missing, attempting auto-install...")
-                install_success = await self._auto_install_gcp_packages()
-
-                if install_success:
-                    # Retry import after installation
-                    try:
-                        from google.cloud import compute_v1
-                        from google.cloud import run_v2
-
-                        if self.credentials_path and Path(self.credentials_path).exists():
-                            self._compute_client = compute_v1.InstancesClient.from_service_account_json(
-                                self.credentials_path
-                            )
-                        else:
-                            self._compute_client = compute_v1.InstancesClient()
-
-                        if self.prefer_cloud_run:
-                            if self.credentials_path and Path(self.credentials_path).exists():
-                                self._run_client = run_v2.ServicesClient.from_service_account_json(
-                                    self.credentials_path
-                                )
-                            else:
-                                self._run_client = run_v2.ServicesClient()
-
-                        self._logger.success("📦 GCP libraries installed and initialized")
-                        return  # Success after auto-install
-
-                    except ImportError:
-                        pass  # Fall through to graceful degradation
-
-            # Graceful degradation: GCP features disabled but system continues
+        except ImportError:
             self._logger.warning("Google Cloud libraries not installed, GCP features limited")
+            # Add to startup issue collector for organized display
             try:
                 collector = get_startup_issue_collector()
-                suggestion = (
-                    "Run: pip install google-cloud-compute google-cloud-run\n"
-                    "Or set JARVIS_GCP_AUTO_INSTALL=true for automatic installation"
-                ) if not auto_install_enabled else (
-                    "Auto-install failed. Check network connectivity and pip permissions.\n"
-                    "Manual install: pip install google-cloud-compute google-cloud-run"
-                )
                 collector.add_warning(
                     "Google Cloud libraries not installed - GCP features limited",
                     IssueCategory.GCP,
-                    suggestion=suggestion
+                    suggestion="Run: pip install google-cloud-compute google-cloud-run"
                 )
             except Exception:
                 pass  # Collector might not be initialized yet
-
             self._compute_client = None
             self._run_client = None
-
-    async def _auto_install_gcp_packages(self) -> bool:
-        """
-        v118.0: Automatically install GCP packages using pip.
-
-        Runs pip install in subprocess to avoid blocking the event loop.
-        Returns True if installation succeeded, False otherwise.
-
-        Packages installed:
-        - google-cloud-compute: For Spot VM management
-        - google-cloud-run: For Cloud Run deployments
-        - google-auth: For authentication (dependency)
-        """
-        packages = [
-            "google-cloud-compute",
-            "google-cloud-run",
-            "google-auth",
-        ]
-
-        try:
-            import subprocess
-
-            # Use the same Python that's running the supervisor
-            python_exe = sys.executable
-
-            # Build pip install command with --quiet for cleaner output
-            cmd = [
-                python_exe, "-m", "pip", "install",
-                "--quiet",  # Reduce noise
-                "--disable-pip-version-check",  # Skip version check
-                "--no-warn-script-location",  # Skip path warnings
-                *packages
-            ]
-
-            self._logger.info(f"📦 Installing: {', '.join(packages)}...")
-
-            # Run pip in subprocess (non-blocking via asyncio)
-            proc = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-
-            stdout, stderr = await asyncio.wait_for(
-                proc.communicate(),
-                timeout=120.0  # 2 minute timeout for package installation
-            )
-
-            if proc.returncode == 0:
-                self._logger.success(f"📦 Successfully installed GCP packages")
-                return True
-            else:
-                error_msg = stderr.decode().strip() if stderr else "Unknown error"
-                self._logger.warning(f"📦 Package installation failed: {error_msg}")
-                return False
-
-        except asyncio.TimeoutError:
-            self._logger.warning("📦 Package installation timed out after 120s")
-            return False
-        except Exception as e:
-            self._logger.warning(f"📦 Auto-install error: {e}")
-            return False
 
     async def health_check(self) -> Tuple[bool, str]:
         """Check GCP instance health."""
@@ -6785,13 +6676,7 @@ class TrinityLaunchConfig:
     )
     reactor_core_launch_scripts: List[str] = field(default_factory=lambda:
         os.getenv("TRINITY_REACTOR_SCRIPTS",
-            # Primary entry points for reactor-core (dynamically discovered order)
-            "run_reactor.py,"  # Primary: Direct reactor launcher
-            "run_supervisor.py,"  # Secondary: Supervisor-based launcher
-            "reactor_core/orchestration/trinity_orchestrator.py,"  # Orchestration bridge
-            "reactor_core/__init__.py,"  # Module entry with __main__ support
-            "run_orchestrator.py,"  # Legacy orchestrator
-            "main.py"  # Fallback standard entry
+            "reactor_core/orchestration/trinity_orchestrator.py,run_orchestrator.py,main.py"
         ).split(",")
     )
 
@@ -47016,75 +46901,21 @@ class TrinityIntegrator:
         if not venv_python.exists():
             venv_python = Path(sys.executable)  # Fallback to current Python
 
-        # Find launch script - use component-specific scripts from config or dynamic discovery
-        # v118.0: Comprehensive launch script detection with repo-specific patterns
-        component_normalized = component.name.replace('-', '_').lower()
-
-        # Build prioritized list of candidate scripts based on component type
-        if 'reactor' in component_normalized:
-            # Reactor-Core specific scripts (in priority order)
-            launch_script_candidates = [
-                "run_reactor.py",           # Primary reactor entry point
-                "run_supervisor.py",        # Supervisor-based launcher
-                f"{component_normalized}/orchestration/trinity_orchestrator.py",
-                f"{component_normalized}/__init__.py",  # Module with __main__
-                "run_orchestrator.py",
-                "main.py",
-                f"{component_normalized}/server.py",
-            ]
-        elif 'prime' in component_normalized:
-            # JARVIS-Prime specific scripts (in priority order)
-            launch_script_candidates = [
-                f"{component_normalized}/server.py",  # Primary Prime server
-                "run_server.py",
-                f"{component_normalized}/core/trinity_bridge.py",
-                "main.py",
-                "run_prime.py",
-            ]
-        else:
-            # Generic fallback for any other component
-            launch_script_candidates = [
-                "run_server.py",
-                "main.py",
-                f"{component_normalized}/server.py",
-                "start.py",
-                "run.py",
-            ]
-
-        # Also check environment override for custom entry point
-        env_script_key = f"{component_normalized.upper()}_ENTRY_SCRIPT"
-        env_script = os.getenv(env_script_key)
-        if env_script:
-            launch_script_candidates.insert(0, env_script)
-
-        # Convert to full paths and find first existing script
-        launch_scripts = [component.repo_path / script for script in launch_script_candidates]
+        # Find launch script
+        launch_scripts = [
+            component.repo_path / "run_server.py",
+            component.repo_path / "main.py",
+            component.repo_path / f"{component.name.replace('-', '_')}" / "server.py",
+        ]
 
         launch_script = None
-        scripts_checked = []
         for script in launch_scripts:
-            scripts_checked.append(str(script.name))
             if script.exists():
                 launch_script = script
-                self.logger.debug(f"[Trinity] Found launch script: {script}")
                 break
 
         if not launch_script:
             self.logger.warning(f"[Trinity] No launch script found for {component.name}")
-            self.logger.debug(f"[Trinity] Checked scripts: {', '.join(scripts_checked)}")
-            # Add to startup issue collector for organized display
-            try:
-                collector = get_startup_issue_collector()
-                collector.add_warning(
-                    f"No launch script found for {component.name}",
-                    IssueCategory.TRINITY,
-                    suggestion=(
-                        f"Create one of: {', '.join(launch_script_candidates[:3])} in {component.repo_path}\n"
-                        f"Or set {env_script_key}=<script_name> environment variable"
-                    )
-                )
-            except Exception:
-                pass
             return False
 
         try:
@@ -48469,16 +48300,16 @@ class JarvisSystemKernel:
         self.logger.info("="*70)
         self.logger.info("")
         self.logger.info("╭─────────────────────────────────────────────────────────────────────╮")
-        self.logger.info("│                    ZONE ARCHITECTURE OVERVIEW                      │")
+        self.logger.info("│                    ZONE ARCHITECTURE OVERVIEW                       │")
         self.logger.info("├─────────────────────────────────────────────────────────────────────┤")
-        self.logger.info("│  Zone 0: Early Protection  │ Signal guards, venv activation        │")
-        self.logger.info("│  Zone 1: Foundation        │ Imports, SystemKernelConfig           │")
-        self.logger.info("│  Zone 2: Core Utilities    │ Logger, Lock, CircuitBreaker          │")
-        self.logger.info("│  Zone 3: Resources         │ Docker, GCP, Ports, Storage           │")
-        self.logger.info("│  Zone 4: Intelligence      │ ML, Routing, Goal Inference           │")
-        self.logger.info("│  Zone 5: Orchestration     │ Signals, Zombies, Hot Reload, Trinity │")
-        self.logger.info("│  Zone 6: The Kernel        │ Lock, IPC, JarvisSystemKernel         │")
-        self.logger.info("│  Zone 7: Entry Point       │ CLI, main()                           │")
+        self.logger.info("│  Zone 0: Early Protection  │ Signal guards, venv activation         │")
+        self.logger.info("│  Zone 1: Foundation        │ Imports, SystemKernelConfig            │")
+        self.logger.info("│  Zone 2: Core Utilities    │ Logger, Lock, CircuitBreaker           │")
+        self.logger.info("│  Zone 3: Resources         │ Docker, GCP, Ports, Storage            │")
+        self.logger.info("│  Zone 4: Intelligence      │ ML, Routing, Goal Inference            │")
+        self.logger.info("│  Zone 5: Orchestration     │ Signals, Zombies, Hot Reload, Trinity  │")
+        self.logger.info("│  Zone 6: The Kernel        │ Lock, IPC, JarvisSystemKernel          │")
+        self.logger.info("│  Zone 7: Entry Point       │ CLI, main()                            │")
         self.logger.info("╰─────────────────────────────────────────────────────────────────────╯")
         self.logger.info("")
 
@@ -48947,16 +48778,6 @@ class JarvisSystemKernel:
             self.logger.warning(
                 f"[Zone6/{name}] ⏱️ TIMEOUT after {timeout_seconds}s - skipping"
             )
-            # Add to startup issue collector
-            try:
-                collector = get_startup_issue_collector()
-                collector.add_warning(
-                    f"Enterprise service '{name}' timed out after {timeout_seconds}s",
-                    IssueCategory.DATABASE if "SQL" in name else IssueCategory.VOICE if "Voice" in name else IssueCategory.GENERAL,
-                    suggestion=f"Check network connectivity and service dependencies for {name}"
-                )
-            except Exception:
-                pass
             return {
                 "error": f"Timeout after {timeout_seconds}s",
                 "timed_out": True,
@@ -48970,17 +48791,6 @@ class JarvisSystemKernel:
         except Exception as e:
             elapsed = (time.time() - start_time) * 1000
             self.logger.warning(f"[Zone6/{name}] Failed: {e}")
-            # Add to startup issue collector
-            try:
-                collector = get_startup_issue_collector()
-                collector.add_error(
-                    f"Enterprise service '{name}' failed: {e}",
-                    IssueCategory.DATABASE if "SQL" in name else IssueCategory.VOICE if "Voice" in name else IssueCategory.GENERAL,
-                    traceback_str=traceback.format_exc(),
-                    suggestion=f"Check logs and configuration for {name}"
-                )
-            except Exception:
-                pass
             return {
                 "error": str(e),
                 "elapsed_ms": elapsed,
@@ -49002,40 +48812,33 @@ class JarvisSystemKernel:
         All services are optional - failures don't stop startup.
         """
         with self.logger.section_start(LogSection.BOOT, "Zone 6.4 | Phase 6: Enterprise Services"):
-            # v118.0: Adaptive timeouts based on service complexity
-            # - Fast services (local-only): 15s
-            # - Medium services (may need network): 30s
-            # - Slow services (ML models, external deps): 45s
-            FAST_TIMEOUT = float(os.getenv("ENTERPRISE_FAST_TIMEOUT", "15.0"))
-            MEDIUM_TIMEOUT = float(os.getenv("ENTERPRISE_MEDIUM_TIMEOUT", "30.0"))
-            SLOW_TIMEOUT = float(os.getenv("ENTERPRISE_SLOW_TIMEOUT", "45.0"))
+            self.logger.info("[Zone6] Initializing enterprise services (parallel with 30s timeouts)...")
 
-            self.logger.info(
-                f"[Zone6] Initializing enterprise services (parallel, adaptive timeouts: "
-                f"{FAST_TIMEOUT:.0f}s/{MEDIUM_TIMEOUT:.0f}s/{SLOW_TIMEOUT:.0f}s)..."
-            )
+            # Define service initializations with individual timeouts
+            # Each service gets 30 seconds to initialize
+            SERVICE_TIMEOUT = 30.0
 
-            # Run all service initializations in parallel with adaptive timeouts
+            # Run all service initializations in parallel with timeouts
             init_results = await asyncio.gather(
                 self._init_enterprise_service_with_timeout(
                     "CloudSQL",
                     self._initialize_cloud_sql_proxy(),
-                    MEDIUM_TIMEOUT,  # May need network, but has internal fallback
+                    SERVICE_TIMEOUT,
                 ),
                 self._init_enterprise_service_with_timeout(
                     "VoiceBio",
                     self._initialize_voice_biometrics(),
-                    SLOW_TIMEOUT,  # Uses fast_mode internally, but ML models may load
+                    SERVICE_TIMEOUT,
                 ),
                 self._init_enterprise_service_with_timeout(
                     "SemanticCache",
                     self._initialize_semantic_voice_cache(),
-                    FAST_TIMEOUT,  # ChromaDB is fast, local-only
+                    SERVICE_TIMEOUT,
                 ),
                 self._init_enterprise_service_with_timeout(
                     "InfraOrch",
                     self._initialize_infrastructure_orchestrator(),
-                    MEDIUM_TIMEOUT,  # GCP operations may need network
+                    SERVICE_TIMEOUT,
                 ),
                 return_exceptions=True
             )
@@ -49948,15 +49751,13 @@ class JarvisSystemKernel:
             if str(backend_dir) not in sys.path:
                 sys.path.insert(0, str(backend_dir))
 
-            # v118.0: Parallel initialization strategy for voice biometrics
-            # Uses fast_mode=True for SQLite-first with background Cloud SQL upgrade
-            self.logger.info("[VoiceBio] Loading learning database (fast mode)...")
+            # Initialize learning database
+            self.logger.info("[VoiceBio] Loading learning database...")
             try:
                 from intelligence.learning_database import JARVISLearningDatabase
 
                 learning_db = JARVISLearningDatabase()
-                # Use fast_mode=True for parallel initialization (~5s instead of 30s)
-                await learning_db.initialize(fast_mode=True)
+                await learning_db.initialize()
 
                 self.logger.success("[VoiceBio] Learning database initialized")
 
@@ -50413,61 +50214,21 @@ class JarvisSystemKernel:
             return status
 
         async def check_websocket() -> Dict[str, Any]:
-            """
-            v118.0: Intelligent WebSocket health check with graceful handling.
-
-            WebSocket is considered healthy if:
-            1. Port is listening and accepting connections, OR
-            2. WebSocket is explicitly disabled via JARVIS_WEBSOCKET_ENABLED=false, OR
-            3. WebSocket is optional and not started (note instead of error)
-
-            This prevents false "unhealthy" reports when WebSocket is optional.
-            """
             port = self.config.websocket_port
-            ws_enabled = os.getenv("JARVIS_WEBSOCKET_ENABLED", "true").lower() == "true"
-            ws_optional = os.getenv("JARVIS_WEBSOCKET_OPTIONAL", "true").lower() == "true"
-
             status: Dict[str, Any] = {"healthy": False, "name": "websocket"}
-
-            # Case 1: WebSocket explicitly disabled
-            if not ws_enabled:
-                status["healthy"] = True  # Disabled is OK
-                status["note"] = "WebSocket disabled by configuration"
-                return status
-
-            # Case 2: Port not configured
             if port == 0:
-                if ws_optional:
-                    status["healthy"] = True  # Optional and not configured is OK
-                    status["note"] = "WebSocket port not configured (optional)"
-                else:
-                    status["note"] = "WebSocket port not configured"
+                status["note"] = "WebSocket port not configured"
                 return status
-
-            # Case 3: Check if port is listening
             try:
                 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 sock.settimeout(5.0)
                 conn_result = sock.connect_ex(('localhost', port))
                 sock.close()
-
-                if conn_result == 0:
-                    status["healthy"] = True
-                    status["note"] = f"WebSocket listening on port {port}"
-                elif ws_optional:
-                    # Optional WebSocket not running - not an error
-                    status["healthy"] = True
-                    status["note"] = f"WebSocket not started (optional, port {port})"
-                else:
+                status["healthy"] = conn_result == 0
+                if not status["healthy"]:
                     status["error"] = f"Port {port} not open"
-
             except Exception as e:
-                if ws_optional:
-                    status["healthy"] = True
-                    status["note"] = f"WebSocket check skipped: {e}"
-                else:
-                    status["error"] = str(e)
-
+                status["error"] = str(e)
             return status
 
         async def check_trinity_prime() -> Dict[str, Any]:
@@ -51325,117 +51086,33 @@ class JarvisSystemKernel:
         return status
 
     async def _start_trinity_component(self, name: str, repo_path: Path) -> bool:
-        """
-        Start a Trinity component with intelligent script discovery.
-
-        v120.0: Enhanced with dynamic script discovery using TrinityLaunchConfig.
-        Uses configurable launch script lists per component type with intelligent
-        fallback and adaptive port allocation.
-        """
+        """Start a Trinity component if not already running."""
         self.logger.info(f"[Trinity] Starting {name}...")
 
-        # v120.0: Get component-specific launch scripts from config
-        trinity_config = getattr(self.config, 'trinity_launch_config', None)
-        component_normalized = name.lower().replace('-', '_').replace(' ', '_')
+        # Look for startup script
+        startup_scripts = [
+            repo_path / "start.py",
+            repo_path / "run.py",
+            repo_path / "main.py",
+        ]
 
-        # Determine which launch script list to use based on component type
-        if 'reactor' in component_normalized:
-            # Reactor-core component
-            if trinity_config:
-                launch_scripts = trinity_config.reactor_core_launch_scripts
-            else:
-                # Fallback: env-driven or sensible defaults
-                launch_scripts = os.getenv(
-                    "TRINITY_REACTOR_SCRIPTS",
-                    "run_reactor.py,run_supervisor.py,reactor_core/orchestration/trinity_orchestrator.py,"
-                    "reactor_core/__init__.py,run_orchestrator.py,main.py"
-                ).split(",")
-            default_port = int(os.getenv("REACTOR_CORE_PORT", "8090"))
-        elif 'prime' in component_normalized or 'jprime' in component_normalized:
-            # JARVIS Prime component
-            if trinity_config:
-                launch_scripts = trinity_config.jprime_launch_scripts
-            else:
-                launch_scripts = os.getenv(
-                    "TRINITY_JPRIME_SCRIPTS",
-                    "jarvis_prime/server.py,run_server.py,jarvis_prime/core/trinity_bridge.py,main.py"
-                ).split(",")
-            default_port = int(os.getenv("JARVIS_PRIME_PORT", "8000"))
-        else:
-            # Generic component - try all common patterns
-            launch_scripts = os.getenv(
-                f"TRINITY_{component_normalized.upper()}_SCRIPTS",
-                "run.py,start.py,main.py,server.py,app.py"
-            ).split(",")
-            default_port = 8080
-
-        # v120.0: Intelligent script discovery with priority ordering
         script_path = None
-        discovery_attempts = []
-        for script in launch_scripts:
-            script = script.strip()
-            if not script:
-                continue
-            candidate = repo_path / script
-            discovery_attempts.append(str(candidate))
-            if candidate.exists() and candidate.is_file():
-                script_path = candidate
-                self.logger.info(f"[Trinity] Found launch script: {script}")
+        for script in startup_scripts:
+            if script.exists():
+                script_path = script
                 break
 
         if not script_path:
-            # Log detailed discovery failure for debugging
             self.logger.warning(f"[Trinity] No startup script found for {name}")
-            self.logger.debug(f"[Trinity] Searched scripts: {discovery_attempts[:5]}...")
-
-            # v120.0: Try dynamic discovery of any .py files that look like entry points
-            for pattern in ["run_*.py", "start_*.py", "*_server.py", "main.py"]:
-                matches = list(repo_path.glob(pattern))
-                if matches:
-                    script_path = matches[0]
-                    self.logger.info(f"[Trinity] Fallback discovery found: {script_path.name}")
-                    break
-
-            if not script_path:
-                # Add to startup issue collector
-                try:
-                    collector = get_startup_issue_collector()
-                    collector.add_warning(
-                        f"No launch script found for Trinity component '{name}'",
-                        IssueCategory.TRINITY,
-                        suggestion=f"Create one of: {', '.join(launch_scripts[:3])} in {repo_path}"
-                    )
-                except Exception:
-                    pass
-                return False
+            return False
 
         try:
-            # v120.0: Enhanced environment with Trinity coordination
             env = os.environ.copy()
             env["JARVIS_KERNEL_PID"] = str(os.getpid())
             env["TRINITY_COORDINATOR"] = "jarvis"
-            env["TRINITY_COMPONENT_NAME"] = name
-            env["TRINITY_COMPONENT_PORT"] = str(default_port)
-            env["TRINITY_HEARTBEAT_DIR"] = str(Path.home() / ".jarvis" / "trinity" / "components")
-
-            # Ensure heartbeat directory exists
-            Path(env["TRINITY_HEARTBEAT_DIR"]).mkdir(parents=True, exist_ok=True)
-
-            # v120.0: Adaptive launch with port argument if script accepts it
-            cmd_args = [sys.executable, str(script_path)]
-
-            # Check if the script accepts --port argument (heuristic: read first 100 lines)
-            try:
-                script_content = script_path.read_text()[:3000]
-                if '--port' in script_content or 'argparse' in script_content:
-                    cmd_args.extend(['--port', str(default_port)])
-            except Exception:
-                pass  # Can't read script, skip port argument
-
-            self.logger.debug(f"[Trinity] Launch command: {' '.join(cmd_args)}")
 
             process = await asyncio.create_subprocess_exec(
-                *cmd_args,
+                sys.executable, str(script_path),
                 env=env,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
@@ -51452,34 +51129,14 @@ class JarvisSystemKernel:
                 await self._process_manager.register_process(
                     name,
                     process,
-                    {
-                        "type": "trinity",
-                        "repo": str(repo_path),
-                        "script": str(script_path),
-                        "port": default_port
-                    }
+                    {"type": "trinity", "repo": str(repo_path)}
                 )
 
-            # v120.0: Brief verification that process didn't crash immediately
-            await asyncio.sleep(0.5)
-            if process.returncode is not None:
-                self.logger.warning(f"[Trinity] {name} exited immediately (code: {process.returncode})")
-                # Try to read stderr for debugging
-                try:
-                    _, stderr = await asyncio.wait_for(process.communicate(), timeout=2.0)
-                    if stderr:
-                        self.logger.debug(f"[Trinity] {name} stderr: {stderr.decode()[:500]}")
-                except Exception:
-                    pass
-                return False
-
-            self.logger.success(f"[Trinity] Started {name} (PID: {process.pid}, port: {default_port})")
+            self.logger.success(f"[Trinity] Started {name} (PID: {process.pid})")
             return True
 
         except Exception as e:
             self.logger.error(f"[Trinity] Failed to start {name}: {e}")
-            import traceback
-            self.logger.debug(f"[Trinity] Traceback: {traceback.format_exc()}")
             return False
 
 
