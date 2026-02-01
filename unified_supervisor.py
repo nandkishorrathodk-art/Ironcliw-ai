@@ -582,11 +582,11 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager, contextmanager, suppress
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from enum import Enum, auto
+from enum import Enum, IntEnum, auto
 from pathlib import Path
 from typing import (
     Any, Awaitable, Callable, Coroutine, Dict, Generator, Generic,
-    List, Literal, Optional, Set, Tuple, Type, TypeVar, Union,
+    List, Literal, NamedTuple, Optional, Set, Tuple, Type, TypeVar, Union,
 )
 
 # Type variables
