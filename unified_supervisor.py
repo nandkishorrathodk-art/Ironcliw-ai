@@ -49937,48 +49937,76 @@ class JarvisSystemKernel:
 
     async def _phase_loading_experience(self) -> bool:
         """
-        Phase 0: Start the loading experience.
+        Phase 0: Start the loading experience (v118.0 robust).
 
         This phase runs FIRST to ensure users see immediate feedback during startup:
-        1. Start the loading server (serves progress page)
-        2. Open Chrome Incognito to the loading page
-        3. Return quickly so startup can continue
+        1. Start the loading server (serves progress page with WebSocket streaming)
+        2. Wait for server health with adaptive backoff
+        3. Open Chrome Incognito to the loading page with query params
+        4. Set JARVIS_SUPERVISOR_LOADING=1 to coordinate with other processes
+        5. Voice narration for accessibility
 
         Returns:
             True (non-blocking, always succeeds with graceful degradation)
         """
         self.logger.info("[Kernel] ───────────────────────────────────────────────────────")
-        self.logger.info("[Kernel] Phase 0: Loading Experience")
+        self.logger.info("[Kernel] Phase 0: Loading Experience (v118.0)")
         self.logger.info("[Kernel] ───────────────────────────────────────────────────────")
 
-        # Step 1: Start loading server
+        loading_port = self.config.loading_server_port
+
+        # Step 1: Start loading server with health check
         loading_server_started = False
         try:
             loading_server_started = await self._start_loading_server()
             if loading_server_started:
                 self.logger.success(
-                    f"[Kernel] Loading server ready on port {self.config.loading_server_port}"
+                    f"[Kernel] Loading server ready on port {loading_port}"
                 )
             else:
                 self.logger.info("[Kernel] Loading server not started (disabled or unavailable)")
         except Exception as e:
             self.logger.debug(f"[Kernel] Loading server error (non-fatal): {e}")
 
-        # Step 2: Open Chrome Incognito to loading page
+        # Step 2: Open Chrome Incognito to loading page with query params
         if loading_server_started:
             try:
-                loading_url = f"http://localhost:{self.config.loading_server_port}"
-                chrome_manager = get_chrome_manager()
-                result = await chrome_manager.ensure_single_incognito_window(loading_url)
-                if result.get("success"):
-                    action = result.get("action", "unknown")
-                    self.logger.success(f"[Kernel] Chrome Incognito opened ({action}) → {loading_url}")
+                # Build loading URL with frontend_optional param (matches run_supervisor behavior)
+                frontend_optional = os.environ.get("FRONTEND_OPTIONAL", "false").lower() == "true"
+                loading_url = f"http://localhost:{loading_port}"
+                loading_url_with_params = f"{loading_url}?frontend_optional={str(frontend_optional).lower()}"
+
+                # Open Chrome Incognito (clean slate - single window)
+                if sys.platform == "darwin":  # macOS
+                    chrome_manager = get_chrome_manager()
+                    result = await chrome_manager.ensure_single_incognito_window(loading_url_with_params)
+                    if result.get("success"):
+                        action = result.get("action", "unknown")
+                        self.logger.success(f"[Kernel] Chrome Incognito opened ({action})")
+
+                        # Step 3: Set environment variable to signal other processes
+                        os.environ["JARVIS_SUPERVISOR_LOADING"] = "1"
+                        self.logger.debug("[Kernel] Set JARVIS_SUPERVISOR_LOADING=1")
+                    else:
+                        error = result.get("error", "unknown")
+                        self.logger.info(f"[Kernel] Chrome not opened: {error}")
+                        self.logger.info(f"[Kernel] Open manually: {loading_url_with_params}")
                 else:
-                    self.logger.debug(
-                        f"[Kernel] Chrome Incognito not opened: {result.get('error', 'unknown')}"
-                    )
+                    self.logger.info(f"[Kernel] Non-macOS platform - open manually: {loading_url_with_params}")
+
             except Exception as e:
                 self.logger.debug(f"[Kernel] Chrome Incognito error (non-fatal): {e}")
+                self.logger.info(f"[Kernel] Open manually: http://localhost:{loading_port}")
+
+        # Step 4: Voice narration (if enabled)
+        if self._narrator and loading_server_started:
+            try:
+                await self._narrator.speak(
+                    "Loading page ready. Starting JARVIS core.",
+                    wait=False
+                )
+            except Exception as e:
+                self.logger.debug(f"[Kernel] Narration failed (non-fatal): {e}")
 
         self.logger.info("[Kernel] ───────────────────────────────────────────────────────")
         return True  # Always succeed - this is a nice-to-have, not critical
@@ -49992,19 +50020,23 @@ class JarvisSystemKernel:
 
     async def _phase_frontend_transition(self) -> bool:
         """
-        Phase 7: Transition from loading page to main frontend.
+        Phase 7: Transition from loading page to main frontend (v118.0 robust).
 
         This phase:
         1. Start the React frontend (npm start)
         2. Wait for frontend to be ready
-        3. Redirect Chrome from loading page to frontend URL
-        4. Stop the loading server (no longer needed)
+        3. Set JARVIS_STARTUP_COMPLETE=true to signal completion
+        4. Redirect Chrome from loading page to frontend URL
+        5. Gracefully stop the loading server (gives Chrome time to redirect)
+
+        The graceful shutdown ensures Chrome can naturally disconnect before
+        the loading server is killed, preventing "window terminated unexpectedly" errors.
 
         Returns:
             True (non-blocking, always succeeds with graceful degradation)
         """
         self.logger.info("[Kernel] ───────────────────────────────────────────────────────")
-        self.logger.info("[Kernel] Phase 7: Frontend Transition")
+        self.logger.info("[Kernel] Phase 7: Frontend Transition (v118.0)")
         self.logger.info("[Kernel] ───────────────────────────────────────────────────────")
 
         frontend_started = False
@@ -50020,25 +50052,53 @@ class JarvisSystemKernel:
         except Exception as e:
             self.logger.debug(f"[Kernel] Frontend startup error (non-fatal): {e}")
 
-        # Step 2: Redirect Chrome to the main frontend
+        # Step 2: Mark startup as complete (before redirect)
+        # This signals the loading server to allow graceful Chrome disconnect
+        os.environ["JARVIS_STARTUP_COMPLETE"] = "true"
+        self.logger.debug("[Kernel] Set JARVIS_STARTUP_COMPLETE=true")
+
+        # Step 3: Redirect Chrome to the main frontend
         if frontend_started:
             try:
                 frontend_url = f"http://localhost:{frontend_port}"
-                chrome_manager = get_chrome_manager()
-                result = await chrome_manager.ensure_single_incognito_window(frontend_url)
-                if result.get("success"):
-                    action = result.get("action", "unknown")
-                    self.logger.success(f"[Kernel] Chrome redirected ({action}) → {frontend_url}")
+
+                if sys.platform == "darwin":  # macOS
+                    chrome_manager = get_chrome_manager()
+                    result = await chrome_manager.ensure_single_incognito_window(frontend_url)
+                    if result.get("success"):
+                        action = result.get("action", "unknown")
+                        self.logger.success(f"[Kernel] Chrome redirected ({action}) → {frontend_url}")
+                    else:
+                        self.logger.info(
+                            f"[Kernel] Chrome redirect skipped: {result.get('error', 'unknown')}"
+                        )
+                        self.logger.info(f"[Kernel] Open manually: {frontend_url}")
                 else:
-                    self.logger.debug(
-                        f"[Kernel] Chrome redirect not completed: {result.get('error', 'unknown')}"
-                    )
+                    self.logger.info(f"[Kernel] Non-macOS - open manually: {frontend_url}")
+
             except Exception as e:
                 self.logger.debug(f"[Kernel] Chrome redirect error (non-fatal): {e}")
+
+            # Step 4: Gracefully stop the loading server
+            # The graceful shutdown will wait for Chrome to naturally disconnect
+            await self._stop_loading_server()
+
+            # Voice narration for transition
+            if self._narrator:
+                try:
+                    await self._narrator.speak(
+                        "JARVIS interface ready.",
+                        wait=False
+                    )
+                except Exception:
+                    pass
         else:
             # No frontend - stop loading server if running, but log that we're in API-only mode
             self.logger.info("[Kernel] Running in API-only mode (no frontend)")
             await self._stop_loading_server()
+
+        # Clear the supervisor loading flag
+        os.environ.pop("JARVIS_SUPERVISOR_LOADING", None)
 
         self.logger.info("[Kernel] ───────────────────────────────────────────────────────")
         return True  # Always succeed - frontend is optional
@@ -50052,83 +50112,424 @@ class JarvisSystemKernel:
 
     async def _start_loading_server(self) -> bool:
         """
-        Start the loading server for startup progress display.
+        Start the loading server for startup progress display (v118.0 robust).
 
-        The loading server shows a progress page while the backend initializes.
-        Once the system is ready, it's stopped and traffic goes to the main frontend.
+        Enhanced startup with:
+        - Venv Python selection with PYTHONPATH for correct imports
+        - Log file for debugging (backend/logs/loading_server_*.log)
+        - Adaptive health check with exponential backoff (15s max)
+        - Process monitoring and early exit detection
 
         Returns:
-            True if loading server started successfully
+            True if loading server started and is healthy
         """
         if self.config.loading_server_port == 0:
             self.logger.info("[LoadingServer] Port not configured - skipping")
             return False
 
-        self.logger.info(f"[LoadingServer] Starting on port {self.config.loading_server_port}...")
+        loading_port = self.config.loading_server_port
+        project_root = self.config.project_root
+        loading_server_path = self.config.backend_dir / "loading_server.py"
+
+        if not loading_server_path.exists():
+            self.logger.info(f"[LoadingServer] Script not found: {loading_server_path}")
+            return False
+
+        self.logger.info(f"[LoadingServer] Starting on port {loading_port}...")
 
         try:
-            # Check for dedicated loading server script
-            loading_server_path = self.config.backend_dir / "loading_server.py"
+            # Step 1: Determine Python executable (prefer venv for correct dependencies)
+            venv_python = project_root / "venv" / "bin" / "python3"
+            if not venv_python.exists():
+                venv_python = project_root / "venv" / "bin" / "python"
 
-            if loading_server_path.exists():
-                env = os.environ.copy()
-                env["LOADING_SERVER_PORT"] = str(self.config.loading_server_port)
-
-                self._loading_server_process = await asyncio.create_subprocess_exec(
-                    sys.executable, str(loading_server_path),
-                    env=env,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
-                )
+            if venv_python.exists():
+                python_executable = str(venv_python)
+                self.logger.debug(f"[LoadingServer] Using venv Python: {python_executable}")
             else:
-                # Fallback: serve static files with Python's HTTP server
-                public_dir = self.config.project_root / "frontend" / "public"
-                if public_dir.exists():
-                    self._loading_server_process = await asyncio.create_subprocess_exec(
-                        sys.executable, "-m", "http.server", str(self.config.loading_server_port),
-                        cwd=str(public_dir),
-                        stdout=asyncio.subprocess.DEVNULL,
-                        stderr=asyncio.subprocess.DEVNULL,
+                python_executable = sys.executable
+                self.logger.debug(f"[LoadingServer] Using system Python: {python_executable}")
+
+            # Step 2: Set up environment with PYTHONPATH for proper imports
+            env = os.environ.copy()
+            pythonpath_parts = [
+                str(project_root),
+                str(project_root / "backend"),
+            ]
+            existing_pythonpath = env.get("PYTHONPATH", "")
+            if existing_pythonpath:
+                pythonpath_parts.append(existing_pythonpath)
+            env["PYTHONPATH"] = os.pathsep.join(pythonpath_parts)
+            env["LOADING_SERVER_PORT"] = str(loading_port)
+
+            # Step 3: Create log file for subprocess output (helps debugging)
+            logs_dir = project_root / "backend" / "logs"
+            logs_dir.mkdir(parents=True, exist_ok=True)
+            log_filename = f"loading_server_{time.strftime('%Y%m%d_%H%M%S')}.log"
+            self._loading_server_log_path = logs_dir / log_filename
+
+            # Open log file (keep reference for cleanup)
+            self._loading_server_log_file = await asyncio.to_thread(
+                open, self._loading_server_log_path, "w"
+            )
+
+            # Step 4: Start subprocess with logging
+            self._loading_server_process = await asyncio.create_subprocess_exec(
+                python_executable,
+                str(loading_server_path),
+                stdout=self._loading_server_log_file,
+                stderr=asyncio.subprocess.STDOUT,  # Combine stderr into log
+                env=env,
+            )
+
+            self.logger.info(
+                f"[LoadingServer] Process started (PID: {self._loading_server_process.pid})"
+            )
+            self.logger.debug(f"[LoadingServer] Log file: {self._loading_server_log_path}")
+
+            # Step 5: Adaptive health check with exponential backoff
+            server_ready = await self._wait_for_loading_server_health(loading_port)
+
+            if not server_ready:
+                # Check if process died
+                if self._loading_server_process.returncode is not None:
+                    self.logger.warning(
+                        f"[LoadingServer] Process exited unexpectedly "
+                        f"(code: {self._loading_server_process.returncode})"
                     )
-                else:
-                    self.logger.info("[LoadingServer] No loading server found - skipping")
+                    # Try to show last few log lines for debugging
+                    await self._log_loading_server_errors()
                     return False
+                else:
+                    self.logger.warning(
+                        "[LoadingServer] Slow to respond - continuing (may still be starting)"
+                    )
+                    # Don't fail - let it keep trying in background
+                    return True
 
-            # Wait for process to start
-            await asyncio.sleep(0.5)
-
-            if self._loading_server_process.returncode is None:
-                self.logger.success(
-                    f"[LoadingServer] Started on port {self.config.loading_server_port} "
-                    f"(PID: {self._loading_server_process.pid})"
-                )
-                return True
-            else:
-                self.logger.warning(
-                    f"[LoadingServer] Exited with code {self._loading_server_process.returncode}"
-                )
-                return False
+            self.logger.success(
+                f"[LoadingServer] Ready on port {loading_port} "
+                f"(PID: {self._loading_server_process.pid})"
+            )
+            return True
 
         except Exception as e:
             self.logger.warning(f"[LoadingServer] Failed to start: {e}")
+            self.logger.debug(traceback.format_exc())
             return False
 
-    async def _stop_loading_server(self) -> None:
-        """Stop the loading server (called after frontend is ready)."""
-        if hasattr(self, '_loading_server_process') and self._loading_server_process:
-            if self._loading_server_process.returncode is None:
-                self.logger.info("[LoadingServer] Stopping...")
+    async def _wait_for_loading_server_health(self, port: int) -> bool:
+        """
+        Wait for loading server to become healthy with adaptive backoff.
+
+        Uses exponential backoff starting fast (100ms) and capping at 1s.
+        Total wait budget: 15 seconds.
+
+        Args:
+            port: The loading server port
+
+        Returns:
+            True if server responded healthy, False on timeout
+        """
+        health_url = f"http://localhost:{port}/health"
+
+        # Adaptive retry configuration (from run_supervisor)
+        initial_delay = 0.1    # Start fast
+        max_delay = 1.0        # Cap at 1 second
+        max_wait_time = float(os.getenv("LOADING_SERVER_HEALTH_TIMEOUT", "15.0"))
+        timeout_per_request = 1.0
+
+        start_time = time.time()
+        attempt = 0
+        current_delay = initial_delay
+
+        # Try aiohttp first (better performance), fallback to urllib
+        if AIOHTTP_AVAILABLE and aiohttp is not None:
+            try:
+                connector = aiohttp.TCPConnector(
+                    limit=1,
+                    enable_cleanup_closed=True,
+                    force_close=False,
+                )
+                async with aiohttp.ClientSession(
+                    connector=connector,
+                    timeout=aiohttp.ClientTimeout(total=timeout_per_request)
+                ) as session:
+                    while (time.time() - start_time) < max_wait_time:
+                        attempt += 1
+                        try:
+                            async with session.get(health_url) as resp:
+                                if resp.status == 200:
+                                    elapsed = time.time() - start_time
+                                    self.logger.info(
+                                        f"[LoadingServer] Healthy after {attempt} attempts "
+                                        f"({elapsed:.2f}s)"
+                                    )
+                                    return True
+                                else:
+                                    self.logger.debug(
+                                        f"[LoadingServer] Health check {attempt}: status {resp.status}"
+                                    )
+                        except aiohttp.ClientConnectorError:
+                            # Server not listening yet - expected during startup
+                            pass
+                        except asyncio.TimeoutError:
+                            self.logger.debug(
+                                f"[LoadingServer] Health check {attempt}: timeout"
+                            )
+                        except Exception as e:
+                            self.logger.debug(
+                                f"[LoadingServer] Health check {attempt}: {type(e).__name__}"
+                            )
+
+                        # Adaptive backoff: start fast, slow down over time
+                        await asyncio.sleep(current_delay)
+                        current_delay = min(current_delay * 1.5, max_delay)
+
+                        # Progress indicator every ~2 seconds
+                        if attempt % 5 == 0:
+                            elapsed = time.time() - start_time
+                            self.logger.debug(
+                                f"[LoadingServer] Waiting for health... ({elapsed:.1f}s)"
+                            )
+            except Exception as e:
+                self.logger.debug(f"[LoadingServer] aiohttp health check failed: {e}")
+        else:
+            # Fallback: simple socket check
+            while (time.time() - start_time) < max_wait_time:
+                attempt += 1
                 try:
-                    self._loading_server_process.terminate()
-                    await asyncio.wait_for(
-                        self._loading_server_process.wait(),
-                        timeout=5.0
-                    )
-                except asyncio.TimeoutError:
-                    self._loading_server_process.kill()
-                    await self._loading_server_process.wait()
-                self.logger.info("[LoadingServer] Stopped")
+                    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    sock.settimeout(timeout_per_request)
+                    result = sock.connect_ex(('localhost', port))
+                    sock.close()
+                    if result == 0:
+                        elapsed = time.time() - start_time
+                        self.logger.info(
+                            f"[LoadingServer] Port ready after {attempt} attempts "
+                            f"({elapsed:.2f}s)"
+                        )
+                        return True
+                except Exception:
+                    pass
+                await asyncio.sleep(current_delay)
+                current_delay = min(current_delay * 1.5, max_delay)
+
+        return False
+
+    async def _log_loading_server_errors(self) -> None:
+        """Log last few lines of loading server log for debugging."""
+        if not hasattr(self, '_loading_server_log_path'):
+            return
+        if not self._loading_server_log_path.exists():
+            return
+
+        try:
+            # Flush log file first
+            if hasattr(self, '_loading_server_log_file') and self._loading_server_log_file:
+                await asyncio.to_thread(self._loading_server_log_file.flush)
+
+            # Read last 10 lines
+            content = await asyncio.to_thread(
+                self._loading_server_log_path.read_text
+            )
+            lines = content.strip().split('\n')
+            if lines:
+                self.logger.warning(f"[LoadingServer] Log file: {self._loading_server_log_path}")
+                self.logger.warning("[LoadingServer] Last log entries:")
+                for line in lines[-10:]:
+                    self.logger.warning(f"  {line}")
+        except Exception as e:
+            self.logger.debug(f"[LoadingServer] Could not read log file: {e}")
+
+    async def _stop_loading_server(self) -> None:
+        """
+        Gracefully shutdown the loading server (v118.0 robust).
+
+        This method implements the graceful shutdown protocol that prevents
+        the "window terminated unexpectedly (reason: 'killed', code: '15')" error:
+
+        1. Request graceful shutdown via HTTP POST /api/shutdown/graceful
+        2. The loading server waits for browser to naturally disconnect
+        3. Then auto-shuts down cleanly without killing active connections
+        4. Falls back to signal-based shutdown if HTTP fails
+
+        Also cleans up the log file handle.
+        """
+        if not hasattr(self, '_loading_server_process') or not self._loading_server_process:
+            self._cleanup_loading_server_log()
+            return
+
+        loading_port = self.config.loading_server_port
+        shutdown_url = f"http://localhost:{loading_port}/api/shutdown/graceful"
+        status_url = f"http://localhost:{loading_port}/api/shutdown/status"
+
+        # Try HTTP graceful shutdown first
+        http_shutdown_success = False
+
+        if AIOHTTP_AVAILABLE and aiohttp is not None:
+            try:
+                # Configurable timeouts from environment
+                http_timeout = float(os.getenv('LOADING_SERVER_SHUTDOWN_HTTP_TIMEOUT', '5.0'))
+                max_wait = float(os.getenv('LOADING_SERVER_SHUTDOWN_MAX_WAIT', '30.0'))
+                poll_interval = float(os.getenv('LOADING_SERVER_SHUTDOWN_POLL_INTERVAL', '0.5'))
+
+                async with aiohttp.ClientSession(
+                    timeout=aiohttp.ClientTimeout(total=http_timeout)
+                ) as session:
+                    # Step 1: Request graceful shutdown
+                    self.logger.info("[LoadingServer] Requesting graceful shutdown...")
+                    try:
+                        async with session.post(
+                            shutdown_url,
+                            json={"reason": "supervisor_shutdown"}
+                        ) as resp:
+                            if resp.status == 200:
+                                result = await resp.json()
+                                status = result.get("status", "unknown")
+                                connections = result.get("connections", 0)
+
+                                if status == "immediate_shutdown":
+                                    self.logger.info(
+                                        "[LoadingServer] Shutting down immediately (no active connections)"
+                                    )
+                                elif status == "pending_disconnect":
+                                    self.logger.info(
+                                        f"[LoadingServer] Waiting for {connections} connection(s) to close..."
+                                    )
+                                elif status == "already_shutting_down":
+                                    self.logger.debug("[LoadingServer] Already shutting down")
+                                else:
+                                    self.logger.debug(f"[LoadingServer] Shutdown response: {result}")
+
+                                http_shutdown_success = True
+                            else:
+                                self.logger.debug(
+                                    f"[LoadingServer] Shutdown request returned {resp.status}"
+                                )
+                    except aiohttp.ClientError as e:
+                        self.logger.debug(f"[LoadingServer] HTTP shutdown request failed: {e}")
+
+                    # Step 2: Wait for loading server to actually shutdown
+                    if http_shutdown_success:
+                        start_time = time.time()
+                        while (time.time() - start_time) < max_wait:
+                            # Check if process has exited
+                            if self._loading_server_process.returncode is not None:
+                                self.logger.info("[LoadingServer] Gracefully terminated via HTTP")
+                                self._cleanup_loading_server_log()
+                                self._loading_server_process = None
+                                return
+
+                            # Check shutdown status
+                            try:
+                                async with session.get(status_url) as resp:
+                                    if resp.status == 200:
+                                        status_data = await resp.json()
+                                        if status_data.get("shutdown_initiated"):
+                                            self.logger.debug(
+                                                "[LoadingServer] Shutdown initiated, waiting for process exit..."
+                                            )
+                                    else:
+                                        # Server may have already died
+                                        break
+                            except aiohttp.ClientError:
+                                # Server not responding, likely already shutdown
+                                self.logger.debug("[LoadingServer] No longer responding")
+                                break
+
+                            await asyncio.sleep(poll_interval)
+
+                        # Wait a bit more for process to fully exit
+                        try:
+                            await asyncio.wait_for(
+                                self._loading_server_process.wait(),
+                                timeout=2.0
+                            )
+                            self.logger.info("[LoadingServer] Gracefully terminated")
+                            self._cleanup_loading_server_log()
+                            self._loading_server_process = None
+                            return
+                        except asyncio.TimeoutError:
+                            pass
+
+            except Exception as e:
+                self.logger.debug(f"[LoadingServer] HTTP graceful shutdown failed: {e}")
+
+        # Fallback to signal-based shutdown
+        await self._fallback_signal_shutdown_loading_server()
+
+    async def _fallback_signal_shutdown_loading_server(self) -> None:
+        """
+        Fallback shutdown using signals (for when HTTP graceful shutdown fails).
+
+        Includes a delay to give Chrome time to redirect before killing
+        the loading server, preventing "window terminated unexpectedly" errors.
+        """
+        if not hasattr(self, '_loading_server_process') or not self._loading_server_process:
+            self._cleanup_loading_server_log()
+            return
+
+        if self._loading_server_process.returncode is not None:
+            self._cleanup_loading_server_log()
             self._loading_server_process = None
+            return
+
+        try:
+            # Check if startup is complete - if so, give Chrome time to redirect
+            startup_complete = os.environ.get("JARVIS_STARTUP_COMPLETE") == "true"
+
+            if startup_complete:
+                self.logger.debug("[LoadingServer] Waiting for Chrome to complete redirect...")
+                await asyncio.sleep(2.0)
+
+            self.logger.info("[LoadingServer] Stopping via signal...")
+
+            # Try SIGINT first for graceful shutdown
+            try:
+                self._loading_server_process.send_signal(signal.SIGINT)
+                await asyncio.wait_for(self._loading_server_process.wait(), timeout=3.0)
+                self.logger.info("[LoadingServer] Terminated (SIGINT)")
+                self._cleanup_loading_server_log()
+                self._loading_server_process = None
+                return
+            except asyncio.TimeoutError:
+                pass
+
+            # Try SIGTERM
+            try:
+                self._loading_server_process.terminate()
+                await asyncio.wait_for(self._loading_server_process.wait(), timeout=2.0)
+                self.logger.info("[LoadingServer] Terminated (SIGTERM)")
+                self._cleanup_loading_server_log()
+                self._loading_server_process = None
+                return
+            except asyncio.TimeoutError:
+                pass
+
+            # Force kill as last resort
+            self._loading_server_process.kill()
+            await self._loading_server_process.wait()
+            self.logger.warning("[LoadingServer] Force killed (timeout)")
+
+        except ProcessLookupError:
+            self.logger.debug("[LoadingServer] Already exited")
+        except Exception as e:
+            self.logger.debug(f"[LoadingServer] Cleanup error: {e}")
+        finally:
+            self._cleanup_loading_server_log()
+            self._loading_server_process = None
+
+    def _cleanup_loading_server_log(self) -> None:
+        """Clean up loading server log file handle."""
+        if hasattr(self, '_loading_server_log_file') and self._loading_server_log_file:
+            try:
+                self._loading_server_log_file.close()
+                self.logger.debug("[LoadingServer] Log file closed")
+            except Exception as e:
+                self.logger.debug(f"[LoadingServer] Error closing log file: {e}")
+            finally:
+                self._loading_server_log_file = None
 
     async def _start_frontend(self) -> bool:
         """
