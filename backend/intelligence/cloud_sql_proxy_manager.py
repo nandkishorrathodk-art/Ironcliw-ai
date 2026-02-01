@@ -810,17 +810,87 @@ class CloudSQLProxyManager:
 
         return False
 
+    async def is_running_async(self, strict: bool = False) -> bool:
+        """
+        Check if proxy is running and healthy (async version - doesn't block event loop).
+
+        v124.0: Fully async implementation using asyncio.to_thread for all blocking operations.
+        This is the preferred method to call from async contexts like Phase 6 initialization.
+
+        Args:
+            strict: If True, requires our PID file to be valid.
+                   If False, accepts any cloud-sql-proxy on the port.
+
+        Returns:
+            True if a healthy cloud-sql-proxy is running on our port.
+        """
+        port = self.config["cloud_sql"]["port"]
+
+        # Quick check: is port in use? (async - doesn't block)
+        if not await self._is_port_in_use_async(port):
+            return False
+
+        # Check if PID file exists and process is alive (run in thread pool)
+        def _check_pid_file_sync():
+            if self.pid_path.exists():
+                try:
+                    with open(self.pid_path) as f:
+                        pid = int(f.read().strip())
+
+                    # Check if process exists and is cloud-sql-proxy
+                    try:
+                        os.kill(pid, 0)  # Doesn't actually kill, just checks
+                        if self._is_cloud_sql_proxy_process(pid):
+                            return ("found", pid)
+                        else:
+                            # PID is alive but not cloud-sql-proxy - stale PID file
+                            self.pid_path.unlink(missing_ok=True)
+                            return ("stale", None)
+                    except ProcessLookupError:
+                        # Process dead - stale PID file
+                        self.pid_path.unlink(missing_ok=True)
+                        return ("dead", None)
+                except (ValueError, OSError):
+                    # Corrupted PID file
+                    self.pid_path.unlink(missing_ok=True)
+                    return ("corrupted", None)
+            return ("no_file", None)
+
+        result, pid = await asyncio.to_thread(_check_pid_file_sync)
+        if result == "found":
+            return True
+
+        # In strict mode, we require our PID file to be valid
+        if strict:
+            return False
+
+        # Non-strict mode: check if any cloud-sql-proxy is on the port (run in thread pool)
+        def _check_port_process_sync():
+            pid_on_port = self._get_pid_using_port(port)
+            if pid_on_port and self._is_cloud_sql_proxy_process(pid_on_port):
+                # Adopt this proxy - update our PID file
+                logger.info(f"[ProxyManager] Adopting orphan cloud-sql-proxy (PID {pid_on_port})")
+                try:
+                    self.pid_path.write_text(str(pid_on_port))
+                except OSError as e:
+                    logger.debug(f"[ProxyManager] Failed to update PID file: {e}")
+                return True
+            return False
+
+        return await asyncio.to_thread(_check_port_process_sync)
+
     async def is_running_db_level(self) -> bool:
         """
         Check if proxy is running with DB-level verification.
 
         v86.0: Uses ProxyReadinessGate for actual database connectivity check.
+        v124.0: Now uses is_running_async() to avoid blocking the event loop.
 
         Returns:
             True if proxy is running AND can connect to database.
         """
-        # First check TCP-level
-        if not self.is_running():
+        # First check TCP-level (async - doesn't block event loop)
+        if not await self.is_running_async():
             return False
 
         # Then check DB-level via ProxyReadinessGate
@@ -843,7 +913,7 @@ class CloudSQLProxyManager:
         except ImportError:
             # ProxyReadinessGate not available - fall back to TCP-level
             logger.debug("[ProxyManager] ProxyReadinessGate not available - using TCP-level check")
-            return self.is_running()
+            return await self.is_running_async()
         except Exception as e:
             logger.debug(f"[ProxyManager] DB-level check failed: {e}")
             return False
@@ -950,8 +1020,9 @@ class CloudSQLProxyManager:
                     logger.info(f"🔄 Retry attempt {attempt + 1}/{max_retries}...")
                     await asyncio.sleep(2)  # Wait before retry
 
-                # Check if already running
-                if self.is_running() and not force_restart:
+                # Check if already running (async - doesn't block event loop)
+                # v124.0: Use is_running_async() instead of is_running()
+                if await self.is_running_async() and not force_restart:
                     logger.info("✅ Cloud SQL proxy already running")
                     return True
 
@@ -993,43 +1064,55 @@ class CloudSQLProxyManager:
                 logger.info(f"   Log: {self.log_path}")
                 logger.info(f"   Command: {' '.join(cmd)}")
 
-                # Ensure log directory exists
-                self.log_path.parent.mkdir(parents=True, exist_ok=True)
+                # v124.0: Run all blocking I/O in thread pool to not block event loop
+                def _start_proxy_process_sync():
+                    """Sync helper - runs in thread pool."""
+                    # Ensure log directory exists
+                    self.log_path.parent.mkdir(parents=True, exist_ok=True)
 
-                # Start proxy process (truncate log file for fresh start)
-                log_file = open(self.log_path, "w")  # Use "w" to truncate old logs
-                self.process = subprocess.Popen(
-                    cmd,
-                    stdout=log_file,
-                    stderr=subprocess.STDOUT,
-                    start_new_session=True,  # Detach from parent
-                )
+                    # Start proxy process (truncate log file for fresh start)
+                    log_file = open(self.log_path, "w")  # Use "w" to truncate old logs
+                    process = subprocess.Popen(
+                        cmd,
+                        stdout=log_file,
+                        stderr=subprocess.STDOUT,
+                        start_new_session=True,  # Detach from parent
+                    )
 
-                # Write PID file
-                with open(self.pid_path, "w") as f:
-                    f.write(str(self.process.pid))
+                    # Write PID file
+                    with open(self.pid_path, "w") as f:
+                        f.write(str(process.pid))
 
+                    return process
+
+                self.process = await asyncio.to_thread(_start_proxy_process_sync)
                 logger.info(f"   PID: {self.process.pid}")
 
                 # Wait for proxy to be ready (max 15 seconds) - ASYNC!
+                # v124.0: All checks in this loop are now async to not block event loop
                 logger.info(f"⏳ Waiting for proxy to be ready...")
                 for i in range(30):
                     await asyncio.sleep(0.5)  # Non-blocking async sleep
 
-                    # Check if process crashed
-                    if self.process.poll() is not None:
-                        log_content = self.log_path.read_text() if self.log_path.exists() else "No log"
+                    # Check if process crashed (wrap poll() in thread)
+                    poll_result = await asyncio.to_thread(self.process.poll)
+                    if poll_result is not None:
+                        def _read_log_sync():
+                            return self.log_path.read_text() if self.log_path.exists() else "No log"
+                        log_content = await asyncio.to_thread(_read_log_sync)
                         error_msg = f"Proxy process crashed (exit code: {self.process.returncode})\nLog:\n{log_content}"
                         logger.error(f"❌ {error_msg}")
                         last_error = error_msg
                         break
 
-                    if self._is_port_in_use(port):
+                    # Check if port is now in use (async - doesn't block)
+                    if await self._is_port_in_use_async(port):
                         logger.info(f"✅ Cloud SQL proxy ready on port {port} (took {i * 0.5:.1f}s)")
                         return True
 
                 # If we got here, proxy didn't start in time
-                if self.process.poll() is None:
+                poll_result = await asyncio.to_thread(self.process.poll)
+                if poll_result is None:
                     logger.error(f"❌ Proxy failed to start within 15 seconds")
                     last_error = "Startup timeout"
                     # Kill the slow process

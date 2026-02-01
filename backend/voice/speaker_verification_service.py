@@ -3437,7 +3437,15 @@ class SpeakerVerificationService:
             try:
                 # Start ECAPA loading as background task to keep init fast
                 # but ensure it gets loaded before first verification attempt
+                #
+                # v124.0: Cap ECAPA timeout for Phase 6 initialization
+                # Phase 6 has ~30s timeout per service, so we need to finish faster
+                # Use ECAPA_PHASE6_TIMEOUT (default 25s) which is the max time we'll
+                # wait during Phase 6, even if ECAPA_LOAD_TIMEOUT is higher.
                 ecapa_load_timeout = float(os.environ.get("ECAPA_LOAD_TIMEOUT", "60.0"))
+                ecapa_phase6_timeout = float(os.environ.get("ECAPA_PHASE6_TIMEOUT", "25.0"))
+                effective_timeout = min(ecapa_load_timeout, ecapa_phase6_timeout)
+                logger.info(f"   [FAST-INIT] ECAPA timeout: {effective_timeout:.1f}s (phase6 cap: {ecapa_phase6_timeout}s)")
 
                 # 🆕 EDGE-NATIVE: In edge-native mode, NEVER allow cloud ECAPA
                 if self._edge_config.enabled and self._edge_config.local_ecapa_only:
@@ -3449,7 +3457,7 @@ class SpeakerVerificationService:
                 # Use asyncio.create_task to load in background, but also await briefly
                 # to ensure the loading has at least started
                 success, message, encoder = await ensure_ecapa_available(
-                    timeout=ecapa_load_timeout,
+                    timeout=effective_timeout,
                     allow_cloud=ecapa_allow_cloud,
                 )
 
