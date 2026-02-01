@@ -46216,12 +46216,15 @@ class ComprehensiveZombieCleanup:
         config: SystemKernelConfig,
         logger: UnifiedLogger,
         enable_circuit_breaker: bool = True,
+        protected_pids: Optional[Set[int]] = None,
     ) -> None:
         self.config = config
         self.logger = logger
         self._my_pid = os.getpid()
         self._my_parent = os.getppid()
         self._enable_circuit_breaker = enable_circuit_breaker
+        # v183.0: Additional PIDs to protect (e.g., loading server, frontend)
+        self._protected_pids = protected_pids or set()
 
         # Circuit breaker state
         self._cleanup_attempts = 0
@@ -46424,10 +46427,11 @@ class ComprehensiveZombieCleanup:
             if isinstance(result, dict):
                 discovered.update(result)
 
-        # Filter out ourselves and our parent
+        # v183.0: Filter out ourselves, our parent, AND protected PIDs
+        all_protected = {self._my_pid, self._my_parent} | self._protected_pids
         discovered = {
             pid: info for pid, info in discovered.items()
-            if pid not in (self._my_pid, self._my_parent)
+            if pid not in all_protected
         }
 
         return discovered
@@ -49167,6 +49171,10 @@ class JarvisSystemKernel:
         self._frontend_process: Optional[asyncio.subprocess.Process] = None
         self._loading_server_process: Optional[asyncio.subprocess.Process] = None
 
+        # v183.0: Protected PIDs - processes spawned by THIS kernel that must NOT be killed
+        # Used by zombie cleanup to avoid killing our own loading server, frontend, etc.
+        self._protected_pids: Set[int] = set()
+
         # Enterprise status tracking
         self._enterprise_status: Dict[str, Any] = {}
 
@@ -49416,6 +49424,18 @@ class JarvisSystemKernel:
 
         self._state = KernelState.STOPPED
         self.logger.warning("[Kernel] ⚠️ Emergency shutdown complete")
+
+    async def emergency_shutdown(self) -> None:
+        """
+        v183.0: Public API for emergency shutdown.
+
+        Provides idempotent access to emergency shutdown for external callers
+        (e.g., finally blocks, signal handlers, CLI commands).
+        """
+        if self._state == KernelState.SHUTTING_DOWN:
+            self.logger.debug("[Kernel] Emergency shutdown already in progress")
+            return
+        await self._emergency_shutdown()
 
     def _configure_system_mode(
         self,
@@ -50244,7 +50264,12 @@ class JarvisSystemKernel:
                 self._process_cleanup_manager = None
 
             # Zombie cleanup
-            self._zombie_cleanup = ComprehensiveZombieCleanup(self.config, self.logger)
+            # v183.0: Pass protected PIDs to prevent killing our loading server
+            self._zombie_cleanup = ComprehensiveZombieCleanup(
+                self.config,
+                self.logger,
+                protected_pids=self._protected_pids,
+            )
             cleanup_result = await self._zombie_cleanup.run_comprehensive_cleanup()
             if cleanup_result["zombies_killed"] > 0:
                 self.logger.info(f"[Kernel] Cleaned {cleanup_result['zombies_killed']} zombie processes")
@@ -50304,8 +50329,9 @@ class JarvisSystemKernel:
         """
         self._state = KernelState.STARTING_RESOURCES
 
-        # v180.0: Resource initialization timeout
-        resource_timeout = float(os.environ.get("JARVIS_RESOURCE_TIMEOUT", "60.0"))
+        # v183.0: Resource initialization timeout - increased from 60s to 300s
+        # GCP/Docker init often takes 2-4 minutes, 60s was causing premature timeouts
+        resource_timeout = float(os.environ.get("JARVIS_RESOURCE_TIMEOUT", "300.0"))
 
         with self.logger.section_start(LogSection.RESOURCES, "Zone 3 | Phase 2: Resources"):
             # v180.0: Diagnostic checkpoint
@@ -51728,6 +51754,13 @@ class JarvisSystemKernel:
                 f"[LoadingServer] Process started (PID: {self._loading_server_process.pid})"
             )
             self.logger.debug(f"[LoadingServer] Log file: {self._loading_server_log_path}")
+
+            # v183.0: Protect loading server from zombie cleanup
+            if self._loading_server_process.pid:
+                self._protected_pids.add(self._loading_server_process.pid)
+                self.logger.debug(
+                    f"[LoadingServer] PID {self._loading_server_process.pid} added to protected set"
+                )
 
             # Step 5: Adaptive health check with exponential backoff
             server_ready = await self._wait_for_loading_server_health(loading_port)
