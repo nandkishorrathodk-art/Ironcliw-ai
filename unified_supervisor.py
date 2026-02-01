@@ -47703,32 +47703,46 @@ class JarvisSystemKernel:
         self.logger.info("="*70)
         self.logger.info("JARVIS SYSTEM KERNEL - Starting")
         self.logger.info("="*70)
+        self.logger.info("")
+        self.logger.info("╭─────────────────────────────────────────────────────────────────────╮")
+        self.logger.info("│                    ZONE ARCHITECTURE OVERVIEW                      │")
+        self.logger.info("├─────────────────────────────────────────────────────────────────────┤")
+        self.logger.info("│  Zone 0: Early Protection  │ Signal guards, venv activation        │")
+        self.logger.info("│  Zone 1: Foundation        │ Imports, SystemKernelConfig           │")
+        self.logger.info("│  Zone 2: Core Utilities    │ Logger, Lock, CircuitBreaker          │")
+        self.logger.info("│  Zone 3: Resources         │ Docker, GCP, Ports, Storage           │")
+        self.logger.info("│  Zone 4: Intelligence      │ ML, Routing, Goal Inference           │")
+        self.logger.info("│  Zone 5: Orchestration     │ Signals, Zombies, Hot Reload, Trinity │")
+        self.logger.info("│  Zone 6: The Kernel        │ Lock, IPC, JarvisSystemKernel         │")
+        self.logger.info("│  Zone 7: Entry Point       │ CLI, main()                           │")
+        self.logger.info("╰─────────────────────────────────────────────────────────────────────╯")
+        self.logger.info("")
 
         self._started_at = time.time()
 
         try:
-            # Phase 1: Preflight
+            # Phase 1: Preflight (Zone 5.1-5.4)
             if not await self._phase_preflight():
                 return 1
 
-            # Phase 2: Resources
+            # Phase 2: Resources (Zone 3)
             if not await self._phase_resources():
                 return 1
 
-            # Phase 3: Backend
+            # Phase 3: Backend (Zone 6.1)
             if not await self._phase_backend():
                 return 1
 
-            # Phase 4: Intelligence
+            # Phase 4: Intelligence (Zone 4)
             if not await self._phase_intelligence():
                 # Non-fatal - continue without intelligence
-                self.logger.warning("[Kernel] Intelligence layer failed - continuing without ML")
+                self.logger.warning("[Zone4] Intelligence layer failed - continuing without ML")
 
-            # Phase 5: Trinity
+            # Phase 5: Trinity (Zone 5.7)
             if self.config.trinity_enabled:
                 await self._phase_trinity()
 
-            # Phase 6: Enterprise Services (Voice Biometrics, Cloud SQL, Caches)
+            # Phase 6: Enterprise Services (Zone 6.4)
             await self._phase_enterprise_services()
 
             # Start background pre-warming task (non-blocking)
@@ -47775,7 +47789,7 @@ class JarvisSystemKernel:
         """
         self._state = KernelState.PREFLIGHT
 
-        with self.logger.section_start(LogSection.BOOT, "Phase 1: Preflight"):
+        with self.logger.section_start(LogSection.BOOT, "Zone 5.1 | Phase 1: Preflight"):
             # Acquire startup lock
             if not self._startup_lock.acquire(force=self._force):
                 holder_pid = self._startup_lock.get_current_holder()
@@ -47821,7 +47835,7 @@ class JarvisSystemKernel:
         """
         self._state = KernelState.STARTING_RESOURCES
 
-        with self.logger.section_start(LogSection.RESOURCES, "Phase 2: Resources"):
+        with self.logger.section_start(LogSection.RESOURCES, "Zone 3 | Phase 2: Resources"):
             self._resource_registry = ResourceManagerRegistry(self.config)
 
             # Create managers
@@ -47863,7 +47877,7 @@ class JarvisSystemKernel:
         """
         self._state = KernelState.STARTING_BACKEND
 
-        with self.logger.section_start(LogSection.BACKEND, "Phase 3: Backend"):
+        with self.logger.section_start(LogSection.BACKEND, "Zone 6.1 | Phase 3: Backend"):
             if self.config.in_process_backend:
                 success = await self._start_backend_in_process()
             else:
@@ -48026,7 +48040,7 @@ class JarvisSystemKernel:
         """
         self._state = KernelState.STARTING_INTELLIGENCE
 
-        with self.logger.section_start(LogSection.INTELLIGENCE, "Phase 4: Intelligence"):
+        with self.logger.section_start(LogSection.INTELLIGENCE, "Zone 4 | Phase 4: Intelligence"):
             try:
                 self._intelligence_registry = IntelligenceRegistry(self.config)
 
@@ -48065,7 +48079,7 @@ class JarvisSystemKernel:
         """
         self._state = KernelState.STARTING_TRINITY
 
-        with self.logger.section_start(LogSection.TRINITY, "Phase 5: Trinity"):
+        with self.logger.section_start(LogSection.TRINITY, "Zone 5.7 | Phase 5: Trinity"):
             try:
                 self._trinity = TrinityIntegrator(self.config, self.logger)
                 await self._trinity.initialize()
@@ -48085,27 +48099,103 @@ class JarvisSystemKernel:
                 self.logger.warning(f"[Kernel] Trinity initialization failed: {e}")
                 return True  # Non-fatal
 
+    async def _init_enterprise_service_with_timeout(
+        self,
+        name: str,
+        coro: Coroutine[Any, Any, Dict[str, Any]],
+        timeout_seconds: float = 30.0,
+    ) -> Dict[str, Any]:
+        """
+        Initialize an enterprise service with timeout protection.
+
+        This prevents any single service from blocking the entire startup
+        indefinitely. If a service times out, we log a warning and return
+        a failure result, allowing other services to continue.
+
+        Args:
+            name: Human-readable service name for logging
+            coro: The async initialization coroutine
+            timeout_seconds: Maximum time to wait (default: 30s)
+
+        Returns:
+            Dict with service initialization results or timeout error
+        """
+        self.logger.info(f"[Zone6/{name}] Initializing (timeout: {timeout_seconds}s)...")
+        start_time = time.time()
+
+        try:
+            result = await asyncio.wait_for(coro, timeout=timeout_seconds)
+            elapsed = (time.time() - start_time) * 1000
+            self.logger.info(f"[Zone6/{name}] Completed in {elapsed:.0f}ms")
+            return result
+
+        except asyncio.TimeoutError:
+            elapsed = (time.time() - start_time) * 1000
+            self.logger.warning(
+                f"[Zone6/{name}] ⏱️ TIMEOUT after {timeout_seconds}s - skipping"
+            )
+            return {
+                "error": f"Timeout after {timeout_seconds}s",
+                "timed_out": True,
+                "elapsed_ms": elapsed,
+            }
+
+        except asyncio.CancelledError:
+            self.logger.warning(f"[Zone6/{name}] Cancelled")
+            raise  # Re-raise cancellation
+
+        except Exception as e:
+            elapsed = (time.time() - start_time) * 1000
+            self.logger.warning(f"[Zone6/{name}] Failed: {e}")
+            return {
+                "error": str(e),
+                "elapsed_ms": elapsed,
+            }
+
     async def _phase_enterprise_services(self) -> bool:
         """
-        Phase 6: Initialize enterprise services.
+        Phase 6: Initialize enterprise services (Zone 6.4).
 
-        Initializes in parallel:
-        - Cloud SQL proxy for database connections
-        - Voice biometric authentication system
-        - Semantic voice cache (ChromaDB)
-        - Infrastructure orchestrator for GCP resources
+        Initializes in parallel WITH INDIVIDUAL TIMEOUTS:
+        - Cloud SQL proxy for database connections (30s timeout)
+        - Voice biometric authentication system (30s timeout)
+        - Semantic voice cache (ChromaDB) (30s timeout)
+        - Infrastructure orchestrator for GCP resources (30s timeout)
+
+        CRITICAL FIX: Each service now has its own timeout to prevent any
+        single service from blocking the entire startup indefinitely.
 
         All services are optional - failures don't stop startup.
         """
-        with self.logger.section_start(LogSection.BOOT, "Phase 6: Enterprise Services"):
-            self.logger.info("[Kernel] Initializing enterprise services (parallel)...")
+        with self.logger.section_start(LogSection.BOOT, "Zone 6.4 | Phase 6: Enterprise Services"):
+            self.logger.info("[Zone6] Initializing enterprise services (parallel with 30s timeouts)...")
 
-            # Run enterprise service initialization in parallel
+            # Define service initializations with individual timeouts
+            # Each service gets 30 seconds to initialize
+            SERVICE_TIMEOUT = 30.0
+
+            # Run all service initializations in parallel with timeouts
             init_results = await asyncio.gather(
-                self._initialize_cloud_sql_proxy(),
-                self._initialize_voice_biometrics(),
-                self._initialize_semantic_voice_cache(),
-                self._initialize_infrastructure_orchestrator(),
+                self._init_enterprise_service_with_timeout(
+                    "CloudSQL",
+                    self._initialize_cloud_sql_proxy(),
+                    SERVICE_TIMEOUT,
+                ),
+                self._init_enterprise_service_with_timeout(
+                    "VoiceBio",
+                    self._initialize_voice_biometrics(),
+                    SERVICE_TIMEOUT,
+                ),
+                self._init_enterprise_service_with_timeout(
+                    "SemanticCache",
+                    self._initialize_semantic_voice_cache(),
+                    SERVICE_TIMEOUT,
+                ),
+                self._init_enterprise_service_with_timeout(
+                    "InfraOrch",
+                    self._initialize_infrastructure_orchestrator(),
+                    SERVICE_TIMEOUT,
+                ),
                 return_exceptions=True
             )
 
@@ -48120,8 +48210,10 @@ class JarvisSystemKernel:
             init_status: Dict[str, Any] = {}
             for name, result in zip(service_names, init_results):
                 if isinstance(result, Exception):
-                    self.logger.warning(f"[Kernel] {name} initialization error: {result}")
+                    self.logger.warning(f"[Zone6/{name}] Unexpected error: {result}")
                     init_status[name] = {"error": str(result)}
+                elif isinstance(result, dict) and result.get("timed_out"):
+                    init_status[name] = result
                 else:
                     init_status[name] = result
 
@@ -48134,9 +48226,18 @@ class JarvisSystemKernel:
                     status.get("running")
                 )
             ]
+            timed_out = [
+                name for name, status in init_status.items()
+                if isinstance(status, dict) and status.get("timed_out")
+            ]
+
+            if timed_out:
+                self.logger.warning(
+                    f"[Zone6] Services timed out: {', '.join(timed_out)}"
+                )
 
             self.logger.success(
-                f"[Kernel] Enterprise services: {len(successful)}/{len(service_names)} active"
+                f"[Zone6] Enterprise services: {len(successful)}/{len(service_names)} active"
             )
 
             # Store results for later reference
