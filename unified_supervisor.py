@@ -49204,6 +49204,10 @@ class JarvisSystemKernel:
         self._background_tasks: List[asyncio.Task] = []
         self._shutdown_event = asyncio.Event()
 
+        # v183.0: Heartbeat task for loading server
+        self._heartbeat_task: Optional[asyncio.Task] = None
+        self._current_progress: int = 0  # Track progress for heartbeat payload
+
         # Voice narrator for startup feedback (v2.0)
         self._narrator: Optional[AsyncVoiceNarrator] = None
         if self.config.voice_enabled:
@@ -49405,6 +49409,10 @@ class JarvisSystemKernel:
         # Cancel all background tasks
         for task in self._background_tasks:
             task.cancel()
+
+        # v183.0: Cancel heartbeat task
+        if self._heartbeat_task and not self._heartbeat_task.done():
+            self._heartbeat_task.cancel()
 
         # Wait briefly for task cancellation
         if self._background_tasks:
@@ -51786,6 +51794,14 @@ class JarvisSystemKernel:
                 f"[LoadingServer] Ready on port {loading_port} "
                 f"(PID: {self._loading_server_process.pid})"
             )
+
+            # v183.0: Start heartbeat background task
+            if self._heartbeat_task is None or self._heartbeat_task.done():
+                self._heartbeat_task = asyncio.create_task(
+                    self._supervisor_heartbeat_loop()
+                )
+                self.logger.debug("[LoadingServer] Heartbeat loop started")
+
             return True
 
         except Exception as e:
@@ -52432,6 +52448,9 @@ class JarvisSystemKernel:
             "metadata": metadata or {},
         }
 
+        # v183.0: Track current progress for heartbeat payloads
+        self._current_progress = progress_data["progress"]
+
         # Try to broadcast via loading server HTTP API
         # v121.0: Use /api/update-progress (same endpoint as run_supervisor)
         try:
@@ -52480,6 +52499,59 @@ class JarvisSystemKernel:
             return await asyncio.to_thread(do_request)
         except Exception:
             return False
+
+    async def _supervisor_heartbeat_loop(self) -> None:
+        """
+        v183.0: Send periodic heartbeats to loading server.
+        
+        Heartbeats are sent every 5 seconds to let the loading page know
+        the supervisor is still alive and making progress.
+        """
+        heartbeat_interval = 5.0
+        
+        self.logger.info("[Heartbeat] Starting heartbeat loop (5s interval)")
+        
+        while not self._shutdown_event.is_set():
+            try:
+                await self._send_supervisor_heartbeat()
+            except Exception as e:
+                self.logger.debug(f"[Heartbeat] Failed: {e}")
+            
+            try:
+                await asyncio.wait_for(
+                    self._shutdown_event.wait(),
+                    timeout=heartbeat_interval
+                )
+                break  # Shutdown requested
+            except asyncio.TimeoutError:
+                pass  # Continue loop
+        
+        self.logger.info("[Heartbeat] Loop stopped")
+
+    async def _send_supervisor_heartbeat(self) -> None:
+        """Send single heartbeat to loading server."""
+        if self.config.loading_server_port == 0:
+            return
+        
+        heartbeat_data = {
+            "type": "heartbeat",
+            "pid": os.getpid(),
+            "state": self._state.value if hasattr(self._state, 'value') else str(self._state),
+            "progress": self._current_progress,
+            "timestamp": time.time(),
+        }
+        
+        try:
+            if AIOHTTP_AVAILABLE and aiohttp is not None:
+                url = f"http://localhost:{self.config.loading_server_port}/api/update-progress"
+                async with aiohttp.ClientSession(
+                    timeout=aiohttp.ClientTimeout(total=2.0)
+                ) as session:
+                    async with session.post(url, json=heartbeat_data) as resp:
+                        if resp.status == 200:
+                            self.logger.debug("[Heartbeat] Sent successfully")
+        except Exception:
+            pass  # Heartbeat failures are not critical
 
     # =========================================================================
     # DIAGNOSTIC LOGGING

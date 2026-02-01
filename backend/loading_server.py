@@ -891,6 +891,16 @@ class LoadingServer:
         # Background tasks
         self._background_tasks: List[asyncio.Task] = []
 
+        # v183.0: Supervisor heartbeat tracking
+        self._last_supervisor_update: float = time.time()
+        self._supervisor_timeout_threshold: float = 30.0  # seconds
+
+        # v183.0: Trinity component status tracking
+        self._trinity_status: Dict[str, Dict[str, Any]] = {
+            "jarvis_prime": {"progress": 0, "status": "unknown", "last_update": 0},
+            "reactor_core": {"progress": 0, "status": "unknown", "last_update": 0},
+        }
+
         # Integration with unified hub (if available)
         self._hub = None
         self._try_connect_hub()
@@ -1006,7 +1016,8 @@ class LoadingServer:
             return self._json_response(self._get_health_response())
 
         elif path == "/api/supervisor/heartbeat":
-            return self._json_response({"alive": True, "timestamp": time.time()})
+            # v183.0: Return real heartbeat status based on update freshness
+            return self._json_response(self._get_supervisor_heartbeat())
 
         elif path == "/api/supervisor/status":
             return self._json_response(self._get_full_status())
@@ -1032,6 +1043,13 @@ class LoadingServer:
 
         elif path == "/api/component/complete" and method == "POST":
             return await self._handle_component_complete(body)
+
+        # v183.0: Trinity component status endpoints
+        elif path == "/api/trinity/status" and method == "POST":
+            return await self._handle_trinity_status_update(body)
+
+        elif path == "/api/trinity/status" and method == "GET":
+            return self._json_response({"trinity": self._trinity_status})
 
         elif path == "/api/shutdown" and method == "POST":
             self._shutdown_requested = True
@@ -1089,7 +1107,7 @@ class LoadingServer:
         return {
             "supervisor": state,
             "loading_server": {
-                "version": "182.0.0",
+                "version": "183.0.0",
                 "startup_time": self._startup_time,
                 "uptime_seconds": time.time() - self._startup_time,
                 "progress": self._progress,
@@ -1099,10 +1117,31 @@ class LoadingServer:
             },
             "eta": self._eta_engine.get_predicted_eta(),
             "components": self._dependency_graph.get_progress(),
+            "trinity": self._trinity_status,
             "circuit_breakers": {
                 name: cb.state.value
                 for name, cb in self._health_aggregator._circuit_breakers.items()
             },
+        }
+
+    def _get_supervisor_heartbeat(self) -> Dict[str, Any]:
+        """
+        v183.0: Return real supervisor heartbeat status based on update freshness.
+        
+        The supervisor is considered alive if we've received an update within
+        the timeout threshold (default 30s).
+        """
+        now = time.time()
+        time_since_update = now - self._last_supervisor_update
+        is_alive = time_since_update < self._supervisor_timeout_threshold
+        
+        return {
+            "supervisor_alive": is_alive,  # Match frontend expectation
+            "alive": is_alive,  # Legacy compatibility
+            "last_update_timestamp": self._last_supervisor_update,
+            "time_since_update": round(time_since_update, 1),
+            "timeout_threshold": self._supervisor_timeout_threshold,
+            "timestamp": now,
         }
 
     async def _handle_progress_update(self, body: Optional[bytes]) -> str:
@@ -1146,6 +1185,8 @@ class LoadingServer:
                     self._components.update(metadata)
 
             self._eta_engine.update_progress(self._progress)
+            # v183.0: Track supervisor activity
+            self._last_supervisor_update = time.time()
             await self._broadcast_progress()
 
             return self._json_response({"status": "updated"})
@@ -1184,6 +1225,50 @@ class LoadingServer:
 
             await self._broadcast_progress()
             return self._json_response({"status": "completed"})
+        except Exception as e:
+            return self._json_response({"error": str(e)}, status=400)
+
+    async def _handle_trinity_status_update(self, body: Optional[bytes]) -> str:
+        """
+        v183.0: Handle status update from Trinity components (J-Prime, Reactor).
+        
+        Expected payload:
+        {
+            "component": "jarvis_prime" | "reactor_core",
+            "progress": 0-100,
+            "status": "starting" | "running" | "ready" | "error",
+            "message": "Loading models..."
+        }
+        """
+        if not body:
+            return self._json_response({"error": "No body"}, status=400)
+
+        try:
+            data = json.loads(body.decode())
+            component = data.get("component")
+            
+            if component not in self._trinity_status:
+                return self._json_response({"error": f"Unknown component: {component}"}, status=400)
+            
+            self._trinity_status[component] = {
+                "progress": data.get("progress", 0),
+                "status": data.get("status", "unknown"),
+                "message": data.get("message", ""),
+                "last_update": time.time(),
+            }
+            
+            # Also update supervisor tracking since we got an update
+            self._last_supervisor_update = time.time()
+            
+            # Broadcast to WebSocket clients
+            await self._ws_manager.broadcast(json.dumps({
+                "type": "trinity_update",
+                "data": self._trinity_status
+            }))
+            
+            logger.info(f"[v183.0] Trinity update: {component} → {data.get('progress', 0)}% ({data.get('status', 'unknown')})")
+            
+            return self._json_response({"status": "updated"})
         except Exception as e:
             return self._json_response({"error": str(e)}, status=400)
 
