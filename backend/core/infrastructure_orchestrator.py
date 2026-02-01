@@ -1077,8 +1077,22 @@ class GCPReconciler:
             return {"error": str(e), "orphaned_vms": [], "orphaned_cloud_run": []}
 
     async def _find_orphaned_vms(self) -> List[Dict[str, Any]]:
-        """Find VMs with JARVIS labels that aren't tracked locally."""
+        """
+        Find VMs with JARVIS labels that aren't tracked locally.
+
+        v2.1 CRITICAL FIX: Now includes grace period for recently-created VMs.
+        This prevents the reconciler from deleting VMs that were just created
+        by this session but haven't had their session lock fully written yet.
+
+        Grace Period Logic:
+        - VMs created within last 5 minutes are NEVER considered orphans
+        - VMs with current session ID are NEVER considered orphans
+        - VMs with valid session lock are NEVER considered orphans
+        """
         orphans = []
+
+        # v2.1: Configurable grace period for recently-created VMs
+        grace_period_minutes = float(os.getenv("GCP_ORPHAN_GRACE_PERIOD_MINUTES", "5.0"))
 
         try:
             # Use gcloud CLI to list JARVIS VMs
@@ -1107,21 +1121,61 @@ class GCPReconciler:
                 vm_name = vm.get("name", "")
                 labels = vm.get("labels", {})
                 session_id = labels.get("jarvis-session-id", "unknown")
-                created_at = vm.get("creationTimestamp", "")
+                created_at_str = vm.get("creationTimestamp", "")
 
-                # Check if this VM belongs to a dead session
-                if session_id != self._session_id:
-                    # Check if the session is still alive
-                    session_lock = Path.home() / ".jarvis" / "infra_lock" / f"{session_id}.lock"
-                    if not session_lock.exists():
-                        orphans.append({
-                            "name": vm_name,
-                            "zone": vm.get("zone", "").split("/")[-1],
-                            "status": vm.get("status"),
-                            "created_at": created_at,
-                            "session_id": session_id,
-                            "reason": "Session lock not found (session crashed or completed)",
-                        })
+                # ═══════════════════════════════════════════════════════════════════
+                # v2.1: CHECK 1 - Current session ID means NOT an orphan
+                # ═══════════════════════════════════════════════════════════════════
+                if session_id == self._session_id:
+                    logger.debug(f"[GCPReconciler] VM {vm_name} belongs to current session - skipping")
+                    continue
+
+                # ═══════════════════════════════════════════════════════════════════
+                # v2.1: CHECK 2 - Recently created VMs get a grace period
+                # This prevents race conditions where VM is created but session
+                # lock hasn't been written yet.
+                # ═══════════════════════════════════════════════════════════════════
+                if created_at_str:
+                    try:
+                        # Parse ISO 8601 timestamp from GCP (e.g., "2026-02-01T00:26:14.123-08:00")
+                        created_at = datetime.fromisoformat(created_at_str.replace('Z', '+00:00'))
+                        vm_age = datetime.now(created_at.tzinfo) - created_at
+                        if vm_age < timedelta(minutes=grace_period_minutes):
+                            logger.debug(
+                                f"[GCPReconciler] VM {vm_name} created {vm_age.total_seconds():.0f}s ago - "
+                                f"within grace period ({grace_period_minutes}min), skipping"
+                            )
+                            continue
+                    except (ValueError, TypeError) as e:
+                        logger.debug(f"[GCPReconciler] Could not parse creation time for {vm_name}: {e}")
+
+                # ═══════════════════════════════════════════════════════════════════
+                # v2.1: CHECK 3 - Session lock exists means NOT an orphan
+                # ═══════════════════════════════════════════════════════════════════
+                session_lock = Path.home() / ".jarvis" / "infra_lock" / f"{session_id}.lock"
+                if session_lock.exists():
+                    # Session is still alive - check if the process is running
+                    try:
+                        with open(session_lock) as f:
+                            lock_data = json.load(f)
+                        pid = lock_data.get("pid")
+                        if pid and self._is_process_running(pid):
+                            logger.debug(
+                                f"[GCPReconciler] VM {vm_name} session {session_id} still running (PID {pid})"
+                            )
+                            continue
+                    except Exception as e:
+                        logger.debug(f"[GCPReconciler] Error reading lock for {session_id}: {e}")
+
+                # If we get here, the VM is an orphan
+                orphans.append({
+                    "name": vm_name,
+                    "zone": vm.get("zone", "").split("/")[-1],
+                    "status": vm.get("status"),
+                    "created_at": created_at_str,
+                    "session_id": session_id,
+                    "reason": "Session lock not found or session process not running",
+                })
 
             return orphans
 
@@ -1133,8 +1187,13 @@ class GCPReconciler:
             return []
 
     async def _find_orphaned_cloud_run(self) -> List[Dict[str, Any]]:
-        """Find Cloud Run services with JARVIS labels that aren't tracked."""
+        """
+        Find Cloud Run services with JARVIS labels that aren't tracked.
+
+        v2.1: Same grace period logic as _find_orphaned_vms.
+        """
         orphans = []
+        grace_period_minutes = float(os.getenv("GCP_ORPHAN_GRACE_PERIOD_MINUTES", "5.0"))
 
         try:
             cmd = [
@@ -1165,17 +1224,40 @@ class GCPReconciler:
                 svc_name = metadata.get("name", "")
                 labels = metadata.get("labels", {})
                 session_id = labels.get("jarvis-session-id", "unknown")
+                created_at_str = metadata.get("creationTimestamp", "")
 
-                # Check if session is dead
-                if session_id != self._session_id:
-                    session_lock = Path.home() / ".jarvis" / "infra_lock" / f"{session_id}.lock"
-                    if not session_lock.exists():
-                        orphans.append({
-                            "name": svc_name,
-                            "created_at": metadata.get("creationTimestamp"),
-                            "session_id": session_id,
-                            "reason": "Session lock not found",
-                        })
+                # v2.1: Skip if current session
+                if session_id == self._session_id:
+                    continue
+
+                # v2.1: Grace period for recently created services
+                if created_at_str:
+                    try:
+                        created_at = datetime.fromisoformat(created_at_str.replace('Z', '+00:00'))
+                        svc_age = datetime.now(created_at.tzinfo) - created_at
+                        if svc_age < timedelta(minutes=grace_period_minutes):
+                            continue
+                    except (ValueError, TypeError):
+                        pass
+
+                # v2.1: Check if session is still alive
+                session_lock = Path.home() / ".jarvis" / "infra_lock" / f"{session_id}.lock"
+                if session_lock.exists():
+                    try:
+                        with open(session_lock) as f:
+                            lock_data = json.load(f)
+                        pid = lock_data.get("pid")
+                        if pid and self._is_process_running(pid):
+                            continue
+                    except Exception:
+                        pass
+
+                orphans.append({
+                    "name": svc_name,
+                    "created_at": created_at_str,
+                    "session_id": session_id,
+                    "reason": "Session lock not found or process not running",
+                })
 
             return orphans
 

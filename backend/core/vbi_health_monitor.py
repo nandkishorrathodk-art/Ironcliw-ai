@@ -69,7 +69,8 @@ from typing import (
 )
 from weakref import WeakSet
 
-logger = logging.getLogger(__name__)
+# v116.0: Use fixed logger name to avoid duplicate loggers from different import paths
+logger = logging.getLogger("jarvis.vbi_health_monitor")
 
 # Type variables for generic components
 T = TypeVar("T")

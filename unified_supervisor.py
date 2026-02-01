@@ -49627,7 +49627,7 @@ class JarvisSystemKernel:
         with self.logger.section_start(LogSection.BOOT, "Zone 6.4 | Phase 6: Enterprise Services"):
             # Configurable timeout via JARVIS_SERVICE_TIMEOUT env var (default: 30s)
             SERVICE_TIMEOUT = float(os.getenv("JARVIS_SERVICE_TIMEOUT", "30.0"))
-            self.logger.info(f"[Zone6] Initializing 4 enterprise services (parallel, {SERVICE_TIMEOUT}s timeout each)...")
+            self.logger.info(f"[Zone6] Initializing 5 enterprise services (parallel, {SERVICE_TIMEOUT}s timeout each)...")
 
             # Service definitions with display names
             services = [
@@ -49635,6 +49635,7 @@ class JarvisSystemKernel:
                 ("VoiceBio", "voice_biometrics", self._initialize_voice_biometrics),
                 ("SemanticCache", "semantic_cache", self._initialize_semantic_voice_cache),
                 ("InfraOrch", "infra_orchestrator", self._initialize_infrastructure_orchestrator),
+                ("WebSocket", "websocket_hub", self._initialize_websocket_hub),  # v116.0: Trinity IPC
             ]
 
             # Log service list
@@ -50993,6 +50994,91 @@ class JarvisSystemKernel:
             self.logger.info(f"[InfraOrch] Orchestrator not available: {e}")
         except Exception as e:
             self.logger.warning(f"[InfraOrch] Initialization failed: {e}")
+
+        return result
+
+    # =========================================================================
+    # v116.0: WEBSOCKET HUB FOR TRINITY IPC
+    # =========================================================================
+    # Real-time cross-repo communication via WebSocket on port 8765.
+    # Enables JARVIS, J-Prime, and J-Reactor to communicate with <10ms latency.
+    # =========================================================================
+
+    async def _initialize_websocket_hub(self) -> Dict[str, Any]:
+        """
+        v116.0: Initialize WebSocket hub for Trinity cross-repo communication.
+
+        Features:
+        - Listens on port 8765 (configurable via JARVIS_WEBSOCKET_PORT)
+        - Real-time pub/sub messaging between repos
+        - Automatic client reconnection
+        - Message prioritization (critical, high, normal, low)
+
+        Returns:
+            Dict with WebSocket server status
+        """
+        result: Dict[str, Any] = {
+            "enabled": False,
+            "running": False,
+            "port": None,
+            "topics": [],
+        }
+
+        # Check if WebSocket is explicitly disabled
+        ws_enabled = os.getenv("JARVIS_WEBSOCKET_ENABLED", "true").lower() == "true"
+        if not ws_enabled:
+            self.logger.info("[WebSocket] Disabled by configuration")
+            return result
+
+        self.logger.info("[WebSocket] Initializing Trinity IPC hub...")
+
+        try:
+            backend_dir = self.config.backend_dir
+            if str(backend_dir) not in sys.path:
+                sys.path.insert(0, str(backend_dir))
+
+            from core.websocket_coordinator import WebSocketCoordinator, WebSocketConfig
+
+            # Get port from environment (default 8765)
+            ws_port = int(os.getenv("JARVIS_WEBSOCKET_PORT", "8765"))
+            ws_host = os.getenv("JARVIS_WEBSOCKET_HOST", "0.0.0.0")
+
+            # Create coordinator in server mode
+            config = WebSocketConfig(host=ws_host, port=ws_port)
+            coordinator = WebSocketCoordinator(mode="server", config=config)
+
+            # Start the server
+            await coordinator.start_server(host=ws_host, port=ws_port)
+
+            # Store reference for later use
+            self._websocket_coordinator = coordinator
+
+            result["enabled"] = True
+            result["running"] = True
+            result["port"] = ws_port
+            result["topics"] = [
+                "vbia_events",      # Voice authentication events
+                "visual_security",  # Visual threat detection
+                "cost_tracking",    # API cost updates
+                "health_status",    # Component health
+                "training_signals", # J-Reactor ML signals
+                "system.heartbeat", # Periodic heartbeats
+            ]
+
+            self.logger.success(f"[WebSocket] ✓ Trinity IPC hub running on ws://{ws_host}:{ws_port}")
+            self.logger.info(f"[WebSocket]   Topics: {', '.join(result['topics'][:3])}...")
+
+        except ImportError as e:
+            self.logger.info(f"[WebSocket] WebSocket coordinator not available: {e}")
+        except OSError as e:
+            if "Address already in use" in str(e):
+                self.logger.info(f"[WebSocket] Port {ws_port} already in use - likely another JARVIS instance")
+                result["running"] = True  # Assume another instance is running
+                result["port"] = ws_port
+            else:
+                self.logger.warning(f"[WebSocket] Failed to start: {e}")
+        except Exception as e:
+            self.logger.warning(f"[WebSocket] Initialization failed: {e}")
 
         return result
 

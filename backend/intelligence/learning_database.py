@@ -7079,14 +7079,15 @@ class JARVISLearningDatabase:
                 """
                 )
                 rows = await cursor.fetchall()
-                logger.info(f"Got {len(rows) if rows else 0} speaker profile rows")
-                logger.info(
+                # v116.0: Moved from INFO to DEBUG to reduce log noise
+                logger.debug(f"Got {len(rows) if rows else 0} speaker profile rows")
+                logger.debug(
                     f"Type of rows: {type(rows)}, Type of first row: {type(rows[0]) if rows else 'empty'}"
                 )
 
                 if rows and len(rows) > 0:
-                    logger.info(f"First row content: {rows[0]}")
-                    logger.info(
+                    logger.debug(f"First row content: {rows[0]}")
+                    logger.debug(
                         f"First row keys: {list(rows[0].keys()) if hasattr(rows[0], 'keys') else 'no keys'}"
                     )
 

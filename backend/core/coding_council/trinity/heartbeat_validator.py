@@ -1,5 +1,5 @@
 """
-v108.0: Heartbeat Validator - Enterprise Edition
+v115.0: Heartbeat Validator - Enterprise Edition
 =================================================
 
 Robust heartbeat validation with:
@@ -11,11 +11,17 @@ Robust heartbeat validation with:
 - v108.0: Startup grace period awareness
 - v108.0: Component-specific timeout profiles
 - v108.0: Integration with TrinityOrchestrationConfig
+- v115.0: Permanent removal tracking (prevents dead component loop)
+- v115.0: Heartbeat file cleanup on removal
+- v115.0: Reduced log noise (only log significant transitions)
 
 CRITICAL v108.0 FIX: All thresholds now come from TrinityOrchestrationConfig
 to prevent mismatched configuration values causing cascading failures.
 
-Author: JARVIS v108.0
+CRITICAL v115.0 FIX: Dead components are permanently removed and their
+heartbeat files are deleted to prevent "removed every cycle" log spam.
+
+Author: JARVIS v115.0
 """
 
 from __future__ import annotations
@@ -30,7 +36,10 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Callable, Coroutine, Dict, List, Optional
 
-logger = logging.getLogger(__name__)
+# v115.0: Use fixed logger name to avoid duplicate loggers when imported
+# as "backend.core.coding_council.trinity.heartbeat_validator" vs
+# "core.coding_council.trinity.heartbeat_validator"
+logger = logging.getLogger("jarvis.trinity.heartbeat_validator")
 
 
 class HeartbeatStatus(Enum):
@@ -182,6 +191,22 @@ class HeartbeatValidator:
         self._global_startup_grace_seconds = _env_float(
             "TRINITY_GLOBAL_STARTUP_GRACE_PERIOD", 120.0  # 2 minutes grace for all
         )
+
+        # ═══════════════════════════════════════════════════════════════════
+        # v115.0: PERMANENT REMOVAL TRACKING
+        # ═══════════════════════════════════════════════════════════════════
+        # Prevents the "dead component removed every cycle" log spam.
+        # When a component is marked dead and removed, we:
+        # 1. Delete its heartbeat files from all directories
+        # 2. Add its component_id to this set
+        # 3. Skip loading heartbeats for IDs in this set
+        # This persists until the validator is restarted (intentional - restart resets)
+        # ═══════════════════════════════════════════════════════════════════
+        self._permanently_removed: set[str] = set()
+
+        # v115.0: Track already-logged state transitions to reduce noise
+        # Key: component_id, Value: (old_status, new_status, timestamp)
+        self._logged_transitions: Dict[str, tuple] = {}
 
     def get_stale_threshold(self, component_type: str) -> float:
         """
@@ -658,11 +683,15 @@ class HeartbeatValidator:
 
     async def _load_all_heartbeats(self) -> None:
         """
-        v114.0: Load and REFRESH all heartbeats from multiple directories.
+        v115.0: Load and REFRESH all heartbeats from multiple directories.
 
         CRITICAL FIX v114.0: Now ALWAYS refreshes timestamp from files, even for
         existing components. This fixes the root cause of false staleness warnings
         where in-memory timestamps became stale while files were being updated.
+
+        CRITICAL FIX v115.0: Skips permanently removed components to prevent the
+        "dead component removed every cycle" log spam. Components in _permanently_removed
+        are not reloaded until the validator is restarted.
 
         Loads from all cross-repo directories for Trinity-wide visibility:
         - Primary heartbeat directory
@@ -682,6 +711,13 @@ class HeartbeatValidator:
             try:
                 for filepath in heartbeat_dir.glob("*.json"):
                     component_id = filepath.stem
+
+                    # ═══════════════════════════════════════════════════════════
+                    # v115.0: Skip permanently removed components
+                    # This prevents the "dead component re-appearing every cycle" issue
+                    # ═══════════════════════════════════════════════════════════
+                    if component_id in self._permanently_removed:
+                        continue
 
                     try:
                         # ALWAYS read the file to check timestamp
@@ -764,8 +800,37 @@ class HeartbeatValidator:
         old_status: HeartbeatStatus,
         new_status: HeartbeatStatus
     ) -> None:
-        """Notify callbacks of status change."""
-        logger.info(f"[HeartbeatValidator] {component_id}: {old_status.value} -> {new_status.value}")
+        """
+        v115.0: Notify callbacks of status change with reduced log noise.
+
+        Only logs significant transitions to reduce spam:
+        - Transitions TO dead/zombie/stale (problems starting)
+        - Transitions FROM dead/zombie (recovery)
+        - First time a component is seen (unknown -> anything)
+
+        Normal healthy state maintenance is logged at DEBUG level.
+        """
+        # ═══════════════════════════════════════════════════════════════════
+        # v115.0: SMART LOGGING - Reduce "unknown -> healthy" spam
+        # ═══════════════════════════════════════════════════════════════════
+        is_significant = (
+            # Transitions TO problematic states (always important)
+            new_status in (HeartbeatStatus.DEAD, HeartbeatStatus.ZOMBIE, HeartbeatStatus.STALE)
+            # Recovery from problematic states (important)
+            or old_status in (HeartbeatStatus.DEAD, HeartbeatStatus.ZOMBIE)
+            # First time seeing a component go healthy (informative, but not spammy)
+            or (old_status == HeartbeatStatus.UNKNOWN and new_status == HeartbeatStatus.HEALTHY
+                and component_id not in self._logged_transitions)
+        )
+
+        # Track this transition
+        self._logged_transitions[component_id] = (old_status, new_status, time.time())
+
+        if is_significant:
+            logger.info(f"[HeartbeatValidator] {component_id}: {old_status.value} -> {new_status.value}")
+        else:
+            # Log routine transitions at DEBUG level
+            logger.debug(f"[HeartbeatValidator] {component_id}: {old_status.value} -> {new_status.value}")
 
         for callback in self._callbacks:
             try:
@@ -791,8 +856,11 @@ class HeartbeatValidator:
                         # v93.0: Use configurable cleanup multiplier
                         cleanup_threshold = self.DEAD_THRESHOLD_SECONDS * self.CLEANUP_MULTIPLIER
                         if age > cleanup_threshold:
-                            del self._components[component_id]
-                            logger.info(f"[HeartbeatValidator] Removed dead component: {component_id}")
+                            # ═══════════════════════════════════════════════════════
+                            # v115.0: PERMANENT REMOVAL WITH FILE CLEANUP
+                            # This fixes the "dead component removed every cycle" bug
+                            # ═══════════════════════════════════════════════════════
+                            await self._permanently_remove_component(component_id)
 
                 # v93.0: Use configurable monitor interval
                 await asyncio.sleep(self.MONITOR_INTERVAL_SECONDS)
@@ -802,6 +870,41 @@ class HeartbeatValidator:
             except Exception as e:
                 logger.error(f"[HeartbeatValidator] Monitor error: {e}")
                 await asyncio.sleep(1)
+
+    async def _permanently_remove_component(self, component_id: str) -> None:
+        """
+        v115.0: Permanently remove a dead component and clean up its heartbeat files.
+
+        This prevents the "dead component removed every cycle" log spam by:
+        1. Deleting heartbeat files from all directories
+        2. Adding to _permanently_removed set
+        3. Removing from _components dict
+
+        The component will not be reloaded until the validator is restarted.
+        """
+        # Delete from in-memory tracking
+        if component_id in self._components:
+            del self._components[component_id]
+
+        # Add to permanent removal set (prevents future loading)
+        self._permanently_removed.add(component_id)
+
+        # Delete heartbeat files from all directories
+        files_deleted = 0
+        for heartbeat_dir in self._cross_repo_dirs:
+            try:
+                filepath = heartbeat_dir / f"{component_id}.json"
+                if filepath.exists():
+                    filepath.unlink()
+                    files_deleted += 1
+            except Exception as e:
+                logger.debug(f"[HeartbeatValidator] Could not delete {filepath}: {e}")
+
+        # Log removal only once (this is the only place this log should appear)
+        logger.info(
+            f"[HeartbeatValidator] Permanently removed dead component: {component_id} "
+            f"(deleted {files_deleted} heartbeat file(s))"
+        )
 
     def get_summary(self) -> Dict[str, Any]:
         """Get summary of all component health."""
