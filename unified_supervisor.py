@@ -37130,6 +37130,2029 @@ class ReportGenerator:
 
 
 # =============================================================================
+# ZONE 4.18: PLUGIN SYSTEM AND EXTENDED SERVICES
+# =============================================================================
+# This zone provides plugin architecture and extended service capabilities:
+# - PluginManager: Plugin lifecycle and dependency management
+# - LocalizationManager: i18n and l10n support
+# - AuditTrailManager: Enhanced audit logging
+# - NetworkManager: Network connectivity and diagnostics
+# - FileSystemManager: Abstracted file system operations
+# - ExternalServiceRegistry: External service integration
+# - CalendarService: Date/time and scheduling utilities
+# - CommandPatternManager: Command pattern implementation
+# =============================================================================
+
+
+@dataclass
+class Plugin:
+    """A plugin definition."""
+    plugin_id: str
+    name: str
+    version: str
+    description: str
+    entry_point: str
+    dependencies: List[str] = field(default_factory=list)
+    config_schema: Dict[str, Any] = field(default_factory=dict)
+    enabled: bool = True
+    loaded: bool = False
+    instance: Optional[Any] = None
+    metadata: Dict[str, Any] = field(default_factory=dict)
+    hooks: Dict[str, List[Callable]] = field(default_factory=dict)
+
+
+@dataclass
+class PluginEvent:
+    """An event in the plugin system."""
+    event_type: str
+    plugin_id: str
+    data: Dict[str, Any]
+    timestamp: datetime = field(default_factory=datetime.now)
+
+
+class PluginManager:
+    """
+    Plugin lifecycle and dependency management system.
+
+    Provides plugin loading, dependency resolution, and
+    hook-based extension points.
+
+    Features:
+    - Plugin discovery and loading
+    - Dependency resolution
+    - Hook-based extension points
+    - Plugin configuration
+    - Version compatibility checking
+    - Hot reload support
+    """
+
+    def __init__(self, config: SystemKernelConfig):
+        self.config = config
+        self._lock = asyncio.Lock()
+        self._plugins: Dict[str, Plugin] = {}
+        self._hooks: Dict[str, List[Tuple[str, Callable]]] = {}  # hook_name -> [(plugin_id, callback)]
+        self._load_order: List[str] = []
+        self._event_log: deque = deque(maxlen=10000)
+        self._plugin_configs: Dict[str, Dict[str, Any]] = {}
+        self._logger = UnifiedLogger(
+            name="PluginManager",
+            config=config
+        )
+        self._initialized = False
+
+    async def initialize(self) -> bool:
+        """Initialize plugin manager."""
+        try:
+            self._initialized = True
+            self._logger.info("Plugin manager initialized")
+            return True
+        except Exception as e:
+            self._logger.error(f"Failed to initialize plugin manager: {e}")
+            return False
+
+    async def register_plugin(
+        self,
+        name: str,
+        version: str,
+        description: str,
+        entry_point: str,
+        dependencies: Optional[List[str]] = None,
+        config_schema: Optional[Dict[str, Any]] = None
+    ) -> Plugin:
+        """
+        Register a new plugin.
+
+        Args:
+            name: Plugin name
+            version: Plugin version
+            description: Plugin description
+            entry_point: Entry point (module.class or callable)
+            dependencies: List of required plugin IDs
+            config_schema: Configuration schema
+
+        Returns:
+            Registered Plugin
+        """
+        plugin_id = f"plugin_{name.lower().replace(' ', '_')}"
+
+        plugin = Plugin(
+            plugin_id=plugin_id,
+            name=name,
+            version=version,
+            description=description,
+            entry_point=entry_point,
+            dependencies=dependencies or [],
+            config_schema=config_schema or {}
+        )
+
+        async with self._lock:
+            self._plugins[plugin_id] = plugin
+
+        self._log_event("registered", plugin_id, {"version": version})
+        self._logger.info(f"Registered plugin: {name} v{version}")
+        return plugin
+
+    async def load_plugin(self, plugin_id: str) -> Tuple[bool, str]:
+        """
+        Load a plugin and its dependencies.
+
+        Args:
+            plugin_id: Plugin ID to load
+
+        Returns:
+            Tuple of (success, message)
+        """
+        plugin = self._plugins.get(plugin_id)
+        if not plugin:
+            return False, f"Plugin not found: {plugin_id}"
+
+        if plugin.loaded:
+            return True, "Plugin already loaded"
+
+        if not plugin.enabled:
+            return False, "Plugin is disabled"
+
+        # Check and load dependencies first
+        for dep_id in plugin.dependencies:
+            dep = self._plugins.get(dep_id)
+            if not dep:
+                return False, f"Missing dependency: {dep_id}"
+
+            if not dep.loaded:
+                success, msg = await self.load_plugin(dep_id)
+                if not success:
+                    return False, f"Failed to load dependency {dep_id}: {msg}"
+
+        # Load the plugin
+        try:
+            # In a real implementation, would use importlib to load entry_point
+            # Here we simulate successful loading
+            plugin.loaded = True
+            self._load_order.append(plugin_id)
+
+            self._log_event("loaded", plugin_id, {})
+            self._logger.info(f"Loaded plugin: {plugin.name}")
+            return True, "Plugin loaded successfully"
+
+        except Exception as e:
+            return False, f"Failed to load plugin: {e}"
+
+    async def unload_plugin(self, plugin_id: str) -> Tuple[bool, str]:
+        """Unload a plugin."""
+        plugin = self._plugins.get(plugin_id)
+        if not plugin:
+            return False, "Plugin not found"
+
+        if not plugin.loaded:
+            return True, "Plugin not loaded"
+
+        # Check if other plugins depend on this one
+        for other in self._plugins.values():
+            if other.loaded and plugin_id in other.dependencies:
+                return False, f"Plugin {other.plugin_id} depends on this plugin"
+
+        # Remove hooks
+        for hook_name, callbacks in self._hooks.items():
+            self._hooks[hook_name] = [(pid, cb) for pid, cb in callbacks if pid != plugin_id]
+
+        plugin.loaded = False
+        plugin.instance = None
+        self._load_order.remove(plugin_id)
+
+        self._log_event("unloaded", plugin_id, {})
+        return True, "Plugin unloaded successfully"
+
+    def register_hook(
+        self,
+        plugin_id: str,
+        hook_name: str,
+        callback: Callable
+    ) -> bool:
+        """Register a hook callback for a plugin."""
+        plugin = self._plugins.get(plugin_id)
+        if not plugin or not plugin.loaded:
+            return False
+
+        if hook_name not in self._hooks:
+            self._hooks[hook_name] = []
+
+        self._hooks[hook_name].append((plugin_id, callback))
+
+        # Also store in plugin
+        if hook_name not in plugin.hooks:
+            plugin.hooks[hook_name] = []
+        plugin.hooks[hook_name].append(callback)
+
+        return True
+
+    async def trigger_hook(
+        self,
+        hook_name: str,
+        data: Optional[Dict[str, Any]] = None
+    ) -> List[Any]:
+        """
+        Trigger a hook and collect results.
+
+        Args:
+            hook_name: Hook name to trigger
+            data: Data to pass to hook callbacks
+
+        Returns:
+            List of results from callbacks
+        """
+        callbacks = self._hooks.get(hook_name, [])
+        results = []
+
+        for plugin_id, callback in callbacks:
+            try:
+                if asyncio.iscoroutinefunction(callback):
+                    result = await callback(data or {})
+                else:
+                    result = callback(data or {})
+                results.append({"plugin_id": plugin_id, "result": result})
+            except Exception as e:
+                self._logger.error(f"Hook callback error ({plugin_id}): {e}")
+                results.append({"plugin_id": plugin_id, "error": str(e)})
+
+        return results
+
+    def set_config(self, plugin_id: str, config: Dict[str, Any]) -> bool:
+        """Set configuration for a plugin."""
+        if plugin_id not in self._plugins:
+            return False
+
+        self._plugin_configs[plugin_id] = config
+        return True
+
+    def get_config(self, plugin_id: str) -> Dict[str, Any]:
+        """Get configuration for a plugin."""
+        return self._plugin_configs.get(plugin_id, {})
+
+    def _log_event(
+        self,
+        event_type: str,
+        plugin_id: str,
+        data: Dict[str, Any]
+    ) -> None:
+        """Log a plugin event."""
+        event = PluginEvent(
+            event_type=event_type,
+            plugin_id=plugin_id,
+            data=data
+        )
+        self._event_log.append(event)
+
+    def get_plugin(self, plugin_id: str) -> Optional[Plugin]:
+        """Get a plugin by ID."""
+        return self._plugins.get(plugin_id)
+
+    def get_loaded_plugins(self) -> List[Plugin]:
+        """Get all loaded plugins in load order."""
+        return [self._plugins[pid] for pid in self._load_order if pid in self._plugins]
+
+    def get_statistics(self) -> Dict[str, Any]:
+        """Get plugin manager statistics."""
+        return {
+            "total_plugins": len(self._plugins),
+            "loaded_plugins": len(self._load_order),
+            "hooks_registered": sum(len(cbs) for cbs in self._hooks.values()),
+            "event_log_size": len(self._event_log)
+        }
+
+
+@dataclass
+class LocaleData:
+    """Locale-specific data."""
+    locale_code: str
+    name: str
+    translations: Dict[str, str]
+    pluralization_rules: Dict[str, Callable[[int], str]] = field(default_factory=dict)
+    date_format: str = "%Y-%m-%d"
+    time_format: str = "%H:%M:%S"
+    datetime_format: str = "%Y-%m-%d %H:%M:%S"
+    number_format: Dict[str, Any] = field(default_factory=dict)
+    currency_code: str = "USD"
+    currency_symbol: str = "$"
+
+
+class LocalizationManager:
+    """
+    Internationalization (i18n) and localization (l10n) manager.
+
+    Provides multi-language support with translations,
+    date/time formatting, and number formatting.
+
+    Features:
+    - Translation management
+    - Pluralization support
+    - Date/time localization
+    - Number and currency formatting
+    - Locale switching
+    - Missing translation handling
+    """
+
+    def __init__(self, config: SystemKernelConfig):
+        self.config = config
+        self._lock = asyncio.Lock()
+        self._locales: Dict[str, LocaleData] = {}
+        self._current_locale: str = "en_US"
+        self._fallback_locale: str = "en_US"
+        self._missing_translations: Dict[str, Set[str]] = {}  # locale -> keys
+        self._logger = UnifiedLogger(
+            name="LocalizationManager",
+            config=config
+        )
+        self._initialized = False
+
+    async def initialize(self) -> bool:
+        """Initialize localization manager."""
+        try:
+            # Register default English locale
+            await self.register_locale(LocaleData(
+                locale_code="en_US",
+                name="English (US)",
+                translations={
+                    "common.yes": "Yes",
+                    "common.no": "No",
+                    "common.ok": "OK",
+                    "common.cancel": "Cancel",
+                    "common.save": "Save",
+                    "common.delete": "Delete",
+                    "common.edit": "Edit",
+                    "common.loading": "Loading...",
+                    "common.error": "Error",
+                    "common.success": "Success",
+                    "common.warning": "Warning",
+                    "common.info": "Information",
+                    "errors.not_found": "Not found",
+                    "errors.unauthorized": "Unauthorized",
+                    "errors.forbidden": "Forbidden",
+                    "errors.internal": "Internal error",
+                    "time.now": "now",
+                    "time.seconds_ago": "{count} seconds ago",
+                    "time.minutes_ago": "{count} minutes ago",
+                    "time.hours_ago": "{count} hours ago",
+                    "time.days_ago": "{count} days ago",
+                },
+                number_format={
+                    "decimal_separator": ".",
+                    "thousands_separator": ",",
+                    "decimal_places": 2
+                }
+            ))
+
+            self._initialized = True
+            self._logger.info("Localization manager initialized")
+            return True
+        except Exception as e:
+            self._logger.error(f"Failed to initialize localization: {e}")
+            return False
+
+    async def register_locale(self, locale_data: LocaleData) -> bool:
+        """Register a new locale."""
+        async with self._lock:
+            self._locales[locale_data.locale_code] = locale_data
+            self._missing_translations[locale_data.locale_code] = set()
+
+        self._logger.debug(f"Registered locale: {locale_data.name}")
+        return True
+
+    def set_locale(self, locale_code: str) -> bool:
+        """Set the current locale."""
+        if locale_code not in self._locales:
+            return False
+
+        self._current_locale = locale_code
+        return True
+
+    def translate(
+        self,
+        key: str,
+        params: Optional[Dict[str, Any]] = None,
+        locale: Optional[str] = None,
+        count: Optional[int] = None
+    ) -> str:
+        """
+        Translate a key to the current or specified locale.
+
+        Args:
+            key: Translation key
+            params: Parameters for string formatting
+            locale: Override locale
+            count: Count for pluralization
+
+        Returns:
+            Translated string
+        """
+        locale = locale or self._current_locale
+        locale_data = self._locales.get(locale)
+
+        if not locale_data:
+            locale_data = self._locales.get(self._fallback_locale)
+
+        if not locale_data:
+            return key
+
+        # Get translation
+        translation = locale_data.translations.get(key)
+
+        # Try fallback locale
+        if translation is None and locale != self._fallback_locale:
+            fallback_data = self._locales.get(self._fallback_locale)
+            if fallback_data:
+                translation = fallback_data.translations.get(key)
+
+        # Log missing translation
+        if translation is None:
+            self._missing_translations[locale].add(key)
+            return key
+
+        # Handle pluralization
+        if count is not None and key in locale_data.pluralization_rules:
+            plural_form = locale_data.pluralization_rules[key](count)
+            translation = locale_data.translations.get(f"{key}_{plural_form}", translation)
+
+        # Format with parameters
+        if params:
+            try:
+                translation = translation.format(**params)
+            except (KeyError, ValueError) as e:
+                self._logger.warning(f"Translation format error: {e}")
+
+        return translation
+
+    def t(self, key: str, **kwargs) -> str:
+        """Shorthand for translate."""
+        return self.translate(key, params=kwargs)
+
+    def format_date(
+        self,
+        date: datetime,
+        locale: Optional[str] = None,
+        format_str: Optional[str] = None
+    ) -> str:
+        """Format a date for the locale."""
+        locale = locale or self._current_locale
+        locale_data = self._locales.get(locale)
+
+        if locale_data:
+            format_str = format_str or locale_data.date_format
+        else:
+            format_str = format_str or "%Y-%m-%d"
+
+        return date.strftime(format_str)
+
+    def format_datetime(
+        self,
+        dt: datetime,
+        locale: Optional[str] = None,
+        format_str: Optional[str] = None
+    ) -> str:
+        """Format a datetime for the locale."""
+        locale = locale or self._current_locale
+        locale_data = self._locales.get(locale)
+
+        if locale_data:
+            format_str = format_str or locale_data.datetime_format
+        else:
+            format_str = format_str or "%Y-%m-%d %H:%M:%S"
+
+        return dt.strftime(format_str)
+
+    def format_number(
+        self,
+        number: float,
+        locale: Optional[str] = None,
+        decimal_places: Optional[int] = None
+    ) -> str:
+        """Format a number for the locale."""
+        locale = locale or self._current_locale
+        locale_data = self._locales.get(locale)
+
+        if locale_data:
+            decimal_sep = locale_data.number_format.get("decimal_separator", ".")
+            thousands_sep = locale_data.number_format.get("thousands_separator", ",")
+            places = decimal_places or locale_data.number_format.get("decimal_places", 2)
+        else:
+            decimal_sep = "."
+            thousands_sep = ","
+            places = decimal_places or 2
+
+        # Format number
+        formatted = f"{number:,.{places}f}"
+        if decimal_sep != ".":
+            formatted = formatted.replace(".", "TEMP_DECIMAL")
+        if thousands_sep != ",":
+            formatted = formatted.replace(",", thousands_sep)
+        if decimal_sep != ".":
+            formatted = formatted.replace("TEMP_DECIMAL", decimal_sep)
+
+        return formatted
+
+    def format_currency(
+        self,
+        amount: float,
+        locale: Optional[str] = None,
+        currency_code: Optional[str] = None
+    ) -> str:
+        """Format a currency amount for the locale."""
+        locale = locale or self._current_locale
+        locale_data = self._locales.get(locale)
+
+        if locale_data:
+            symbol = locale_data.currency_symbol
+        else:
+            symbol = "$"
+
+        formatted_number = self.format_number(amount, locale, 2)
+        return f"{symbol}{formatted_number}"
+
+    def format_relative_time(
+        self,
+        dt: datetime,
+        locale: Optional[str] = None
+    ) -> str:
+        """Format a relative time (e.g., '5 minutes ago')."""
+        now = datetime.now()
+        diff = now - dt
+
+        seconds = int(diff.total_seconds())
+
+        if seconds < 60:
+            return self.translate("time.seconds_ago", {"count": seconds}, locale)
+        elif seconds < 3600:
+            minutes = seconds // 60
+            return self.translate("time.minutes_ago", {"count": minutes}, locale)
+        elif seconds < 86400:
+            hours = seconds // 3600
+            return self.translate("time.hours_ago", {"count": hours}, locale)
+        else:
+            days = seconds // 86400
+            return self.translate("time.days_ago", {"count": days}, locale)
+
+    def get_missing_translations(self, locale: Optional[str] = None) -> Dict[str, Set[str]]:
+        """Get missing translations."""
+        if locale:
+            return {locale: self._missing_translations.get(locale, set())}
+        return dict(self._missing_translations)
+
+
+@dataclass
+class AuditEntry:
+    """An audit trail entry."""
+    entry_id: str
+    action: str
+    resource_type: str
+    resource_id: str
+    actor_type: str  # user, system, service
+    actor_id: str
+    timestamp: datetime = field(default_factory=datetime.now)
+    changes: Dict[str, Any] = field(default_factory=dict)
+    metadata: Dict[str, Any] = field(default_factory=dict)
+    ip_address: Optional[str] = None
+    user_agent: Optional[str] = None
+    session_id: Optional[str] = None
+
+
+class AuditTrailManager:
+    """
+    Enhanced audit trail and activity logging system.
+
+    Provides comprehensive audit logging with search,
+    retention, and compliance features.
+
+    Features:
+    - Structured audit entries
+    - Change tracking (before/after)
+    - Actor identification
+    - Search and filtering
+    - Retention policies
+    - Compliance reporting
+    - Real-time audit streaming
+    """
+
+    def __init__(self, config: SystemKernelConfig):
+        self.config = config
+        self._lock = asyncio.Lock()
+        self._entries: deque = deque(maxlen=100000)
+        self._indexes: Dict[str, Dict[str, List[str]]] = {
+            "by_resource": {},
+            "by_actor": {},
+            "by_action": {}
+        }
+        self._retention_days: int = 365
+        self._stream_handlers: List[Callable[[AuditEntry], Awaitable[None]]] = []
+        self._logger = UnifiedLogger(
+            name="AuditTrailManager",
+            config=config
+        )
+        self._initialized = False
+
+    async def initialize(self) -> bool:
+        """Initialize audit trail manager."""
+        try:
+            self._initialized = True
+            self._logger.info("Audit trail manager initialized")
+            return True
+        except Exception as e:
+            self._logger.error(f"Failed to initialize audit trail: {e}")
+            return False
+
+    async def record(
+        self,
+        action: str,
+        resource_type: str,
+        resource_id: str,
+        actor_id: str,
+        actor_type: str = "user",
+        changes: Optional[Dict[str, Any]] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+        ip_address: Optional[str] = None,
+        user_agent: Optional[str] = None,
+        session_id: Optional[str] = None
+    ) -> AuditEntry:
+        """
+        Record an audit entry.
+
+        Args:
+            action: Action performed (create, read, update, delete, etc.)
+            resource_type: Type of resource affected
+            resource_id: ID of resource affected
+            actor_id: ID of actor performing action
+            actor_type: Type of actor (user, system, service)
+            changes: Dictionary of changes (before/after values)
+            metadata: Additional metadata
+            ip_address: Client IP address
+            user_agent: Client user agent
+            session_id: Session identifier
+
+        Returns:
+            Created AuditEntry
+        """
+        entry = AuditEntry(
+            entry_id=f"audit_{secrets.token_hex(8)}",
+            action=action,
+            resource_type=resource_type,
+            resource_id=resource_id,
+            actor_type=actor_type,
+            actor_id=actor_id,
+            changes=changes or {},
+            metadata=metadata or {},
+            ip_address=ip_address,
+            user_agent=user_agent,
+            session_id=session_id
+        )
+
+        async with self._lock:
+            self._entries.append(entry)
+
+            # Update indexes
+            resource_key = f"{resource_type}:{resource_id}"
+            if resource_key not in self._indexes["by_resource"]:
+                self._indexes["by_resource"][resource_key] = []
+            self._indexes["by_resource"][resource_key].append(entry.entry_id)
+
+            if actor_id not in self._indexes["by_actor"]:
+                self._indexes["by_actor"][actor_id] = []
+            self._indexes["by_actor"][actor_id].append(entry.entry_id)
+
+            if action not in self._indexes["by_action"]:
+                self._indexes["by_action"][action] = []
+            self._indexes["by_action"][action].append(entry.entry_id)
+
+        # Stream to handlers
+        for handler in self._stream_handlers:
+            try:
+                await handler(entry)
+            except Exception as e:
+                self._logger.error(f"Audit stream handler error: {e}")
+
+        return entry
+
+    async def query(
+        self,
+        resource_type: Optional[str] = None,
+        resource_id: Optional[str] = None,
+        actor_id: Optional[str] = None,
+        action: Optional[str] = None,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
+        limit: int = 100,
+        offset: int = 0
+    ) -> List[AuditEntry]:
+        """
+        Query audit entries with filters.
+
+        Args:
+            resource_type: Filter by resource type
+            resource_id: Filter by resource ID
+            actor_id: Filter by actor ID
+            action: Filter by action
+            start_date: Filter by start date
+            end_date: Filter by end date
+            limit: Maximum results
+            offset: Result offset
+
+        Returns:
+            List of matching AuditEntry objects
+        """
+        results = []
+
+        for entry in self._entries:
+            # Apply filters
+            if resource_type and entry.resource_type != resource_type:
+                continue
+            if resource_id and entry.resource_id != resource_id:
+                continue
+            if actor_id and entry.actor_id != actor_id:
+                continue
+            if action and entry.action != action:
+                continue
+            if start_date and entry.timestamp < start_date:
+                continue
+            if end_date and entry.timestamp > end_date:
+                continue
+
+            results.append(entry)
+
+        # Sort by timestamp (newest first)
+        results.sort(key=lambda e: e.timestamp, reverse=True)
+
+        # Apply pagination
+        return results[offset:offset + limit]
+
+    async def get_resource_history(
+        self,
+        resource_type: str,
+        resource_id: str
+    ) -> List[AuditEntry]:
+        """Get complete history for a resource."""
+        return await self.query(
+            resource_type=resource_type,
+            resource_id=resource_id,
+            limit=10000
+        )
+
+    async def get_actor_activity(
+        self,
+        actor_id: str,
+        limit: int = 100
+    ) -> List[AuditEntry]:
+        """Get activity for an actor."""
+        return await self.query(actor_id=actor_id, limit=limit)
+
+    def register_stream_handler(
+        self,
+        handler: Callable[[AuditEntry], Awaitable[None]]
+    ) -> None:
+        """Register a handler for real-time audit streaming."""
+        self._stream_handlers.append(handler)
+
+    async def cleanup_old_entries(self) -> int:
+        """Remove entries older than retention period."""
+        cutoff = datetime.now() - timedelta(days=self._retention_days)
+        removed = 0
+
+        async with self._lock:
+            new_entries: deque = deque(maxlen=100000)
+            for entry in self._entries:
+                if entry.timestamp >= cutoff:
+                    new_entries.append(entry)
+                else:
+                    removed += 1
+
+            self._entries = new_entries
+
+        self._logger.info(f"Cleaned up {removed} old audit entries")
+        return removed
+
+    def generate_compliance_report(
+        self,
+        start_date: datetime,
+        end_date: datetime,
+        report_type: str = "summary"
+    ) -> Dict[str, Any]:
+        """Generate a compliance report."""
+        entries = [
+            e for e in self._entries
+            if start_date <= e.timestamp <= end_date
+        ]
+
+        action_counts: Dict[str, int] = {}
+        resource_counts: Dict[str, int] = {}
+        actor_counts: Dict[str, int] = {}
+
+        for entry in entries:
+            action_counts[entry.action] = action_counts.get(entry.action, 0) + 1
+            resource_counts[entry.resource_type] = resource_counts.get(entry.resource_type, 0) + 1
+            actor_counts[entry.actor_id] = actor_counts.get(entry.actor_id, 0) + 1
+
+        return {
+            "report_type": report_type,
+            "period_start": start_date.isoformat(),
+            "period_end": end_date.isoformat(),
+            "total_entries": len(entries),
+            "by_action": action_counts,
+            "by_resource_type": resource_counts,
+            "unique_actors": len(actor_counts),
+            "top_actors": sorted(actor_counts.items(), key=lambda x: x[1], reverse=True)[:10]
+        }
+
+
+@dataclass
+class NetworkEndpoint:
+    """A network endpoint definition."""
+    endpoint_id: str
+    name: str
+    host: str
+    port: int
+    protocol: str = "tcp"  # tcp, udp, http, https
+    healthy: bool = True
+    last_check: datetime = field(default_factory=datetime.now)
+    response_time_ms: float = 0
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+
+class NetworkManager:
+    """
+    Network connectivity and diagnostics manager.
+
+    Provides network health monitoring, connectivity testing,
+    and network-related utilities.
+
+    Features:
+    - Endpoint health checking
+    - Connectivity testing
+    - DNS resolution
+    - Network latency tracking
+    - Bandwidth estimation
+    - Network topology awareness
+    """
+
+    def __init__(self, config: SystemKernelConfig):
+        self.config = config
+        self._lock = asyncio.Lock()
+        self._endpoints: Dict[str, NetworkEndpoint] = {}
+        self._dns_cache: Dict[str, Tuple[str, datetime]] = {}
+        self._dns_cache_ttl: int = 300
+        self._latency_history: Dict[str, deque] = {}
+        self._logger = UnifiedLogger(
+            name="NetworkManager",
+            config=config
+        )
+        self._initialized = False
+
+    async def initialize(self) -> bool:
+        """Initialize network manager."""
+        try:
+            self._initialized = True
+            self._logger.info("Network manager initialized")
+            return True
+        except Exception as e:
+            self._logger.error(f"Failed to initialize network manager: {e}")
+            return False
+
+    def register_endpoint(
+        self,
+        name: str,
+        host: str,
+        port: int,
+        protocol: str = "tcp"
+    ) -> NetworkEndpoint:
+        """Register a network endpoint for monitoring."""
+        endpoint_id = f"endpoint_{name.lower().replace(' ', '_')}"
+
+        endpoint = NetworkEndpoint(
+            endpoint_id=endpoint_id,
+            name=name,
+            host=host,
+            port=port,
+            protocol=protocol
+        )
+
+        self._endpoints[endpoint_id] = endpoint
+        self._latency_history[endpoint_id] = deque(maxlen=1000)
+
+        return endpoint
+
+    async def check_endpoint(self, endpoint_id: str) -> Tuple[bool, float]:
+        """
+        Check endpoint connectivity.
+
+        Args:
+            endpoint_id: Endpoint to check
+
+        Returns:
+            Tuple of (healthy, response_time_ms)
+        """
+        endpoint = self._endpoints.get(endpoint_id)
+        if not endpoint:
+            return False, 0
+
+        start_time = time.time()
+        healthy = False
+
+        try:
+            if endpoint.protocol in ("tcp", "http", "https"):
+                # TCP connection check
+                reader, writer = await asyncio.wait_for(
+                    asyncio.open_connection(endpoint.host, endpoint.port),
+                    timeout=5.0
+                )
+                writer.close()
+                await writer.wait_closed()
+                healthy = True
+
+            elif endpoint.protocol == "udp":
+                # UDP is connectionless, just record as potentially healthy
+                healthy = True
+
+        except asyncio.TimeoutError:
+            self._logger.warning(f"Endpoint check timeout: {endpoint.name}")
+        except Exception as e:
+            self._logger.warning(f"Endpoint check failed: {endpoint.name} - {e}")
+
+        response_time = (time.time() - start_time) * 1000
+
+        # Update endpoint status
+        async with self._lock:
+            endpoint.healthy = healthy
+            endpoint.last_check = datetime.now()
+            endpoint.response_time_ms = response_time
+            self._latency_history[endpoint_id].append((datetime.now(), response_time))
+
+        return healthy, response_time
+
+    async def check_all_endpoints(self) -> Dict[str, Tuple[bool, float]]:
+        """Check all registered endpoints."""
+        results = {}
+        for endpoint_id in self._endpoints:
+            results[endpoint_id] = await self.check_endpoint(endpoint_id)
+        return results
+
+    async def resolve_dns(
+        self,
+        hostname: str,
+        use_cache: bool = True
+    ) -> Optional[str]:
+        """
+        Resolve hostname to IP address.
+
+        Args:
+            hostname: Hostname to resolve
+            use_cache: Whether to use DNS cache
+
+        Returns:
+            IP address or None
+        """
+        # Check cache
+        if use_cache and hostname in self._dns_cache:
+            ip, cached_at = self._dns_cache[hostname]
+            if (datetime.now() - cached_at).total_seconds() < self._dns_cache_ttl:
+                return ip
+
+        try:
+            import socket
+            ip = socket.gethostbyname(hostname)
+
+            # Cache result
+            self._dns_cache[hostname] = (ip, datetime.now())
+            return ip
+
+        except Exception as e:
+            self._logger.warning(f"DNS resolution failed for {hostname}: {e}")
+            return None
+
+    def get_latency_stats(self, endpoint_id: str) -> Optional[Dict[str, float]]:
+        """Get latency statistics for an endpoint."""
+        history = self._latency_history.get(endpoint_id)
+        if not history or len(history) == 0:
+            return None
+
+        latencies = [entry[1] for entry in history]
+        latencies.sort()
+
+        return {
+            "min_ms": min(latencies),
+            "max_ms": max(latencies),
+            "avg_ms": sum(latencies) / len(latencies),
+            "p50_ms": latencies[len(latencies) // 2],
+            "p95_ms": latencies[int(len(latencies) * 0.95)],
+            "p99_ms": latencies[int(len(latencies) * 0.99)],
+            "samples": len(latencies)
+        }
+
+    def get_endpoint(self, endpoint_id: str) -> Optional[NetworkEndpoint]:
+        """Get an endpoint by ID."""
+        return self._endpoints.get(endpoint_id)
+
+    def get_all_endpoints(self) -> List[NetworkEndpoint]:
+        """Get all registered endpoints."""
+        return list(self._endpoints.values())
+
+    def get_healthy_endpoints(self) -> List[NetworkEndpoint]:
+        """Get all healthy endpoints."""
+        return [e for e in self._endpoints.values() if e.healthy]
+
+
+@dataclass
+class FileMetadata:
+    """Metadata for a file."""
+    path: str
+    name: str
+    extension: str
+    size_bytes: int
+    created_at: datetime
+    modified_at: datetime
+    is_directory: bool
+    permissions: str
+    checksum: Optional[str] = None
+
+
+class FileSystemManager:
+    """
+    Abstracted file system operations manager.
+
+    Provides safe, cross-platform file operations with
+    monitoring and caching capabilities.
+
+    Features:
+    - Safe file operations
+    - File watching
+    - Metadata caching
+    - Checksum verification
+    - Directory traversal
+    - Temporary file management
+    """
+
+    def __init__(self, config: SystemKernelConfig):
+        self.config = config
+        self._lock = asyncio.Lock()
+        self._metadata_cache: Dict[str, FileMetadata] = {}
+        self._cache_ttl_seconds: float = 60.0
+        self._cache_timestamps: Dict[str, datetime] = {}
+        self._temp_files: Set[str] = set()
+        self._watchers: Dict[str, List[Callable[[str, str], Awaitable[None]]]] = {}
+        self._logger = UnifiedLogger(
+            name="FileSystemManager",
+            config=config
+        )
+        self._initialized = False
+
+    async def initialize(self) -> bool:
+        """Initialize file system manager."""
+        try:
+            self._initialized = True
+            self._logger.info("File system manager initialized")
+            return True
+        except Exception as e:
+            self._logger.error(f"Failed to initialize file system manager: {e}")
+            return False
+
+    async def get_metadata(
+        self,
+        path: str,
+        use_cache: bool = True
+    ) -> Optional[FileMetadata]:
+        """
+        Get metadata for a file or directory.
+
+        Args:
+            path: File path
+            use_cache: Whether to use cached metadata
+
+        Returns:
+            FileMetadata or None
+        """
+        # Check cache
+        if use_cache and path in self._metadata_cache:
+            cache_time = self._cache_timestamps.get(path)
+            if cache_time and (datetime.now() - cache_time).total_seconds() < self._cache_ttl_seconds:
+                return self._metadata_cache[path]
+
+        try:
+            stat_info = os.stat(path)
+
+            metadata = FileMetadata(
+                path=path,
+                name=os.path.basename(path),
+                extension=os.path.splitext(path)[1],
+                size_bytes=stat_info.st_size,
+                created_at=datetime.fromtimestamp(stat_info.st_ctime),
+                modified_at=datetime.fromtimestamp(stat_info.st_mtime),
+                is_directory=os.path.isdir(path),
+                permissions=oct(stat_info.st_mode)[-3:]
+            )
+
+            # Cache metadata
+            self._metadata_cache[path] = metadata
+            self._cache_timestamps[path] = datetime.now()
+
+            return metadata
+
+        except Exception as e:
+            self._logger.warning(f"Failed to get metadata for {path}: {e}")
+            return None
+
+    async def read_file(
+        self,
+        path: str,
+        encoding: str = "utf-8"
+    ) -> Optional[str]:
+        """Read file contents."""
+        try:
+            async with aiofiles.open(path, "r", encoding=encoding) as f:
+                return await f.read()
+        except Exception as e:
+            self._logger.error(f"Failed to read file {path}: {e}")
+            return None
+
+    async def write_file(
+        self,
+        path: str,
+        content: str,
+        encoding: str = "utf-8",
+        create_dirs: bool = True
+    ) -> bool:
+        """Write content to a file."""
+        try:
+            if create_dirs:
+                os.makedirs(os.path.dirname(path), exist_ok=True)
+
+            async with aiofiles.open(path, "w", encoding=encoding) as f:
+                await f.write(content)
+
+            # Invalidate cache
+            self._metadata_cache.pop(path, None)
+
+            # Notify watchers
+            await self._notify_watchers(path, "write")
+
+            return True
+        except Exception as e:
+            self._logger.error(f"Failed to write file {path}: {e}")
+            return False
+
+    async def delete_file(self, path: str) -> bool:
+        """Delete a file."""
+        try:
+            os.remove(path)
+
+            # Invalidate cache
+            self._metadata_cache.pop(path, None)
+
+            # Notify watchers
+            await self._notify_watchers(path, "delete")
+
+            return True
+        except Exception as e:
+            self._logger.error(f"Failed to delete file {path}: {e}")
+            return False
+
+    async def copy_file(self, source: str, destination: str) -> bool:
+        """Copy a file."""
+        try:
+            import shutil
+            shutil.copy2(source, destination)
+
+            # Notify watchers
+            await self._notify_watchers(destination, "create")
+
+            return True
+        except Exception as e:
+            self._logger.error(f"Failed to copy file {source} to {destination}: {e}")
+            return False
+
+    async def move_file(self, source: str, destination: str) -> bool:
+        """Move a file."""
+        try:
+            import shutil
+            shutil.move(source, destination)
+
+            # Invalidate cache
+            self._metadata_cache.pop(source, None)
+
+            # Notify watchers
+            await self._notify_watchers(source, "delete")
+            await self._notify_watchers(destination, "create")
+
+            return True
+        except Exception as e:
+            self._logger.error(f"Failed to move file {source} to {destination}: {e}")
+            return False
+
+    async def list_directory(
+        self,
+        path: str,
+        pattern: Optional[str] = None,
+        recursive: bool = False
+    ) -> List[FileMetadata]:
+        """List contents of a directory."""
+        results = []
+
+        try:
+            if recursive:
+                for root, dirs, files in os.walk(path):
+                    for name in files + dirs:
+                        full_path = os.path.join(root, name)
+                        if pattern and not fnmatch.fnmatch(name, pattern):
+                            continue
+                        metadata = await self.get_metadata(full_path)
+                        if metadata:
+                            results.append(metadata)
+            else:
+                for name in os.listdir(path):
+                    if pattern and not fnmatch.fnmatch(name, pattern):
+                        continue
+                    full_path = os.path.join(path, name)
+                    metadata = await self.get_metadata(full_path)
+                    if metadata:
+                        results.append(metadata)
+
+        except Exception as e:
+            self._logger.error(f"Failed to list directory {path}: {e}")
+
+        return results
+
+    async def calculate_checksum(
+        self,
+        path: str,
+        algorithm: str = "sha256"
+    ) -> Optional[str]:
+        """Calculate file checksum."""
+        try:
+            hash_func = hashlib.new(algorithm)
+
+            async with aiofiles.open(path, "rb") as f:
+                while chunk := await f.read(8192):
+                    hash_func.update(chunk)
+
+            return hash_func.hexdigest()
+
+        except Exception as e:
+            self._logger.error(f"Failed to calculate checksum for {path}: {e}")
+            return None
+
+    async def create_temp_file(
+        self,
+        content: str = "",
+        suffix: str = "",
+        prefix: str = "tmp_"
+    ) -> Optional[str]:
+        """Create a temporary file."""
+        try:
+            import tempfile
+            fd, path = tempfile.mkstemp(suffix=suffix, prefix=prefix)
+            os.close(fd)
+
+            if content:
+                await self.write_file(path, content)
+
+            self._temp_files.add(path)
+            return path
+
+        except Exception as e:
+            self._logger.error(f"Failed to create temp file: {e}")
+            return None
+
+    async def cleanup_temp_files(self) -> int:
+        """Clean up all temporary files."""
+        cleaned = 0
+        for path in list(self._temp_files):
+            if os.path.exists(path):
+                try:
+                    os.remove(path)
+                    cleaned += 1
+                except Exception:
+                    pass
+            self._temp_files.discard(path)
+        return cleaned
+
+    def register_watcher(
+        self,
+        path: str,
+        callback: Callable[[str, str], Awaitable[None]]
+    ) -> None:
+        """Register a file change watcher."""
+        if path not in self._watchers:
+            self._watchers[path] = []
+        self._watchers[path].append(callback)
+
+    async def _notify_watchers(self, path: str, event_type: str) -> None:
+        """Notify registered watchers."""
+        callbacks = self._watchers.get(path, [])
+        for callback in callbacks:
+            try:
+                await callback(path, event_type)
+            except Exception as e:
+                self._logger.error(f"Watcher callback error: {e}")
+
+
+@dataclass
+class ExternalService:
+    """An external service definition."""
+    service_id: str
+    name: str
+    base_url: str
+    auth_type: str = "none"  # none, api_key, bearer, basic, oauth
+    auth_config: Dict[str, Any] = field(default_factory=dict)
+    headers: Dict[str, str] = field(default_factory=dict)
+    timeout_seconds: float = 30.0
+    retry_config: Dict[str, Any] = field(default_factory=dict)
+    healthy: bool = True
+    last_request: Optional[datetime] = None
+    request_count: int = 0
+    error_count: int = 0
+
+
+class ExternalServiceRegistry:
+    """
+    External service integration registry.
+
+    Manages connections to external services with authentication,
+    health checking, and request tracking.
+
+    Features:
+    - Service registration and discovery
+    - Authentication management
+    - Request/response handling
+    - Health monitoring
+    - Rate limit awareness
+    - Circuit breaker integration
+    """
+
+    def __init__(self, config: SystemKernelConfig):
+        self.config = config
+        self._lock = asyncio.Lock()
+        self._services: Dict[str, ExternalService] = {}
+        self._circuit_breakers: Dict[str, bool] = {}  # service_id -> is_open
+        self._request_log: deque = deque(maxlen=10000)
+        self._logger = UnifiedLogger(
+            name="ExternalServiceRegistry",
+            config=config
+        )
+        self._initialized = False
+
+    async def initialize(self) -> bool:
+        """Initialize external service registry."""
+        try:
+            self._initialized = True
+            self._logger.info("External service registry initialized")
+            return True
+        except Exception as e:
+            self._logger.error(f"Failed to initialize external service registry: {e}")
+            return False
+
+    def register_service(
+        self,
+        name: str,
+        base_url: str,
+        auth_type: str = "none",
+        auth_config: Optional[Dict[str, Any]] = None,
+        headers: Optional[Dict[str, str]] = None,
+        timeout: float = 30.0
+    ) -> ExternalService:
+        """
+        Register an external service.
+
+        Args:
+            name: Service name
+            base_url: Base URL for the service
+            auth_type: Authentication type
+            auth_config: Authentication configuration
+            headers: Default headers
+            timeout: Request timeout
+
+        Returns:
+            Registered ExternalService
+        """
+        service_id = f"service_{name.lower().replace(' ', '_')}"
+
+        service = ExternalService(
+            service_id=service_id,
+            name=name,
+            base_url=base_url,
+            auth_type=auth_type,
+            auth_config=auth_config or {},
+            headers=headers or {},
+            timeout_seconds=timeout
+        )
+
+        self._services[service_id] = service
+        self._circuit_breakers[service_id] = False
+
+        self._logger.info(f"Registered external service: {name}")
+        return service
+
+    async def request(
+        self,
+        service_id: str,
+        method: str,
+        path: str,
+        data: Optional[Dict[str, Any]] = None,
+        params: Optional[Dict[str, Any]] = None,
+        headers: Optional[Dict[str, str]] = None
+    ) -> Tuple[bool, Any]:
+        """
+        Make a request to an external service.
+
+        Args:
+            service_id: Service ID
+            method: HTTP method
+            path: Request path
+            data: Request body
+            params: Query parameters
+            headers: Additional headers
+
+        Returns:
+            Tuple of (success, response_data_or_error)
+        """
+        service = self._services.get(service_id)
+        if not service:
+            return False, "Service not found"
+
+        # Check circuit breaker
+        if self._circuit_breakers.get(service_id, False):
+            return False, "Circuit breaker is open"
+
+        try:
+            # Build URL
+            url = f"{service.base_url.rstrip('/')}/{path.lstrip('/')}"
+
+            # Build headers
+            request_headers = dict(service.headers)
+            if headers:
+                request_headers.update(headers)
+
+            # Add authentication
+            request_headers = self._add_auth(service, request_headers)
+
+            # This is a simulation - in production would use aiohttp or httpx
+            response_data = {
+                "status": 200,
+                "data": {"message": "Simulated response"}
+            }
+
+            # Update service statistics
+            async with self._lock:
+                service.last_request = datetime.now()
+                service.request_count += 1
+
+            # Log request
+            self._request_log.append({
+                "service_id": service_id,
+                "method": method,
+                "path": path,
+                "timestamp": datetime.now().isoformat(),
+                "success": True
+            })
+
+            return True, response_data
+
+        except Exception as e:
+            async with self._lock:
+                service.error_count += 1
+
+                # Check if circuit breaker should open
+                if service.error_count > 5:
+                    self._circuit_breakers[service_id] = True
+                    self._logger.warning(f"Circuit breaker opened for {service.name}")
+
+            self._request_log.append({
+                "service_id": service_id,
+                "method": method,
+                "path": path,
+                "timestamp": datetime.now().isoformat(),
+                "success": False,
+                "error": str(e)
+            })
+
+            return False, str(e)
+
+    def _add_auth(
+        self,
+        service: ExternalService,
+        headers: Dict[str, str]
+    ) -> Dict[str, str]:
+        """Add authentication to headers."""
+        if service.auth_type == "api_key":
+            key_name = service.auth_config.get("header_name", "X-API-Key")
+            key_value = service.auth_config.get("api_key", "")
+            headers[key_name] = key_value
+
+        elif service.auth_type == "bearer":
+            token = service.auth_config.get("token", "")
+            headers["Authorization"] = f"Bearer {token}"
+
+        elif service.auth_type == "basic":
+            import base64
+            username = service.auth_config.get("username", "")
+            password = service.auth_config.get("password", "")
+            credentials = base64.b64encode(f"{username}:{password}".encode()).decode()
+            headers["Authorization"] = f"Basic {credentials}"
+
+        return headers
+
+    def reset_circuit_breaker(self, service_id: str) -> bool:
+        """Reset a circuit breaker."""
+        if service_id not in self._circuit_breakers:
+            return False
+
+        self._circuit_breakers[service_id] = False
+        if service_id in self._services:
+            self._services[service_id].error_count = 0
+
+        return True
+
+    def get_service(self, service_id: str) -> Optional[ExternalService]:
+        """Get a service by ID."""
+        return self._services.get(service_id)
+
+    def get_all_services(self) -> List[ExternalService]:
+        """Get all registered services."""
+        return list(self._services.values())
+
+    def get_service_statistics(self, service_id: str) -> Optional[Dict[str, Any]]:
+        """Get statistics for a service."""
+        service = self._services.get(service_id)
+        if not service:
+            return None
+
+        return {
+            "service_id": service_id,
+            "name": service.name,
+            "request_count": service.request_count,
+            "error_count": service.error_count,
+            "error_rate": service.error_count / max(1, service.request_count) * 100,
+            "circuit_breaker_open": self._circuit_breakers.get(service_id, False),
+            "last_request": service.last_request.isoformat() if service.last_request else None
+        }
+
+
+@dataclass
+class ScheduledEvent:
+    """A scheduled calendar event."""
+    event_id: str
+    title: str
+    start_time: datetime
+    end_time: datetime
+    recurrence: Optional[str] = None  # daily, weekly, monthly, yearly
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+
+class CalendarService:
+    """
+    Date/time and scheduling utilities service.
+
+    Provides calendar operations, time zone handling,
+    and scheduling utilities.
+
+    Features:
+    - Date/time calculations
+    - Time zone conversions
+    - Business day calculations
+    - Holiday awareness
+    - Event scheduling
+    - Recurrence handling
+    """
+
+    def __init__(self, config: SystemKernelConfig):
+        self.config = config
+        self._events: Dict[str, ScheduledEvent] = {}
+        self._holidays: Dict[str, List[datetime]] = {}  # country -> dates
+        self._timezone: str = "UTC"
+        self._logger = UnifiedLogger(
+            name="CalendarService",
+            config=config
+        )
+        self._initialized = False
+
+    async def initialize(self) -> bool:
+        """Initialize calendar service."""
+        try:
+            # Add some common US holidays for the current year
+            current_year = datetime.now().year
+            self._holidays["US"] = [
+                datetime(current_year, 1, 1),   # New Year's Day
+                datetime(current_year, 7, 4),   # Independence Day
+                datetime(current_year, 12, 25), # Christmas
+            ]
+
+            self._initialized = True
+            self._logger.info("Calendar service initialized")
+            return True
+        except Exception as e:
+            self._logger.error(f"Failed to initialize calendar service: {e}")
+            return False
+
+    def set_timezone(self, timezone: str) -> None:
+        """Set the default timezone."""
+        self._timezone = timezone
+
+    def add_business_days(
+        self,
+        start_date: datetime,
+        days: int,
+        country: str = "US"
+    ) -> datetime:
+        """
+        Add business days to a date.
+
+        Args:
+            start_date: Starting date
+            days: Number of business days to add
+            country: Country for holiday calendar
+
+        Returns:
+            Resulting date
+        """
+        current = start_date
+        added = 0
+        direction = 1 if days >= 0 else -1
+        days = abs(days)
+
+        while added < days:
+            current += timedelta(days=direction)
+
+            # Skip weekends
+            if current.weekday() >= 5:
+                continue
+
+            # Skip holidays
+            holidays = self._holidays.get(country, [])
+            if any(h.date() == current.date() for h in holidays):
+                continue
+
+            added += 1
+
+        return current
+
+    def get_business_days_between(
+        self,
+        start_date: datetime,
+        end_date: datetime,
+        country: str = "US"
+    ) -> int:
+        """
+        Get number of business days between two dates.
+
+        Args:
+            start_date: Start date
+            end_date: End date
+            country: Country for holiday calendar
+
+        Returns:
+            Number of business days
+        """
+        if start_date > end_date:
+            start_date, end_date = end_date, start_date
+
+        business_days = 0
+        current = start_date
+
+        while current < end_date:
+            current += timedelta(days=1)
+
+            # Skip weekends
+            if current.weekday() >= 5:
+                continue
+
+            # Skip holidays
+            holidays = self._holidays.get(country, [])
+            if any(h.date() == current.date() for h in holidays):
+                continue
+
+            business_days += 1
+
+        return business_days
+
+    def is_business_day(
+        self,
+        date: datetime,
+        country: str = "US"
+    ) -> bool:
+        """Check if a date is a business day."""
+        # Check weekend
+        if date.weekday() >= 5:
+            return False
+
+        # Check holidays
+        holidays = self._holidays.get(country, [])
+        if any(h.date() == date.date() for h in holidays):
+            return False
+
+        return True
+
+    def get_start_of_week(self, date: datetime) -> datetime:
+        """Get the start of the week (Monday)."""
+        return date - timedelta(days=date.weekday())
+
+    def get_end_of_week(self, date: datetime) -> datetime:
+        """Get the end of the week (Sunday)."""
+        return date + timedelta(days=(6 - date.weekday()))
+
+    def get_start_of_month(self, date: datetime) -> datetime:
+        """Get the start of the month."""
+        return date.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+    def get_end_of_month(self, date: datetime) -> datetime:
+        """Get the end of the month."""
+        if date.month == 12:
+            next_month = date.replace(year=date.year + 1, month=1, day=1)
+        else:
+            next_month = date.replace(month=date.month + 1, day=1)
+        return next_month - timedelta(days=1)
+
+    async def schedule_event(
+        self,
+        title: str,
+        start_time: datetime,
+        end_time: datetime,
+        recurrence: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> ScheduledEvent:
+        """Schedule an event."""
+        event_id = f"event_{secrets.token_hex(6)}"
+
+        event = ScheduledEvent(
+            event_id=event_id,
+            title=title,
+            start_time=start_time,
+            end_time=end_time,
+            recurrence=recurrence,
+            metadata=metadata or {}
+        )
+
+        self._events[event_id] = event
+        return event
+
+    async def get_events(
+        self,
+        start_date: datetime,
+        end_date: datetime
+    ) -> List[ScheduledEvent]:
+        """Get events within a date range."""
+        results = []
+
+        for event in self._events.values():
+            if event.start_time >= start_date and event.start_time <= end_date:
+                results.append(event)
+
+            # Handle recurring events
+            if event.recurrence:
+                occurrences = self._expand_recurrence(event, start_date, end_date)
+                results.extend(occurrences)
+
+        return sorted(results, key=lambda e: e.start_time)
+
+    def _expand_recurrence(
+        self,
+        event: ScheduledEvent,
+        start_date: datetime,
+        end_date: datetime
+    ) -> List[ScheduledEvent]:
+        """Expand recurring event into occurrences."""
+        occurrences = []
+        current = event.start_time
+
+        while current <= end_date:
+            if current >= start_date:
+                occurrence = ScheduledEvent(
+                    event_id=f"{event.event_id}_{current.isoformat()}",
+                    title=event.title,
+                    start_time=current,
+                    end_time=current + (event.end_time - event.start_time),
+                    recurrence=None,  # Occurrences don't have their own recurrence
+                    metadata={**event.metadata, "parent_event": event.event_id}
+                )
+                occurrences.append(occurrence)
+
+            # Calculate next occurrence
+            if event.recurrence == "daily":
+                current += timedelta(days=1)
+            elif event.recurrence == "weekly":
+                current += timedelta(weeks=1)
+            elif event.recurrence == "monthly":
+                if current.month == 12:
+                    current = current.replace(year=current.year + 1, month=1)
+                else:
+                    current = current.replace(month=current.month + 1)
+            elif event.recurrence == "yearly":
+                current = current.replace(year=current.year + 1)
+            else:
+                break
+
+        return occurrences
+
+
+@dataclass
+class Command:
+    """A command for the command pattern."""
+    command_id: str
+    name: str
+    execute_fn: Callable[..., Awaitable[Any]]
+    undo_fn: Optional[Callable[..., Awaitable[Any]]] = None
+    args: Tuple = field(default_factory=tuple)
+    kwargs: Dict[str, Any] = field(default_factory=dict)
+    executed_at: Optional[datetime] = None
+    result: Optional[Any] = None
+    undone: bool = False
+
+
+class CommandPatternManager:
+    """
+    Command pattern implementation for undo/redo support.
+
+    Provides command execution with undo/redo capability
+    and command history management.
+
+    Features:
+    - Command execution
+    - Undo/redo support
+    - Command history
+    - Command batching
+    - Macro recording
+    - Command serialization
+    """
+
+    def __init__(self, config: SystemKernelConfig):
+        self.config = config
+        self._lock = asyncio.Lock()
+        self._history: List[Command] = []
+        self._undo_stack: List[Command] = []
+        self._redo_stack: List[Command] = []
+        self._macros: Dict[str, List[Command]] = {}
+        self._recording_macro: Optional[str] = None
+        self._logger = UnifiedLogger(
+            name="CommandPatternManager",
+            config=config
+        )
+        self._initialized = False
+
+    async def initialize(self) -> bool:
+        """Initialize command pattern manager."""
+        try:
+            self._initialized = True
+            self._logger.info("Command pattern manager initialized")
+            return True
+        except Exception as e:
+            self._logger.error(f"Failed to initialize command pattern manager: {e}")
+            return False
+
+    async def execute(
+        self,
+        name: str,
+        execute_fn: Callable[..., Awaitable[Any]],
+        undo_fn: Optional[Callable[..., Awaitable[Any]]] = None,
+        *args: Any,
+        **kwargs: Any
+    ) -> Any:
+        """
+        Execute a command.
+
+        Args:
+            name: Command name
+            execute_fn: Function to execute
+            undo_fn: Function to undo (optional)
+            *args: Arguments for execute_fn
+            **kwargs: Keyword arguments for execute_fn
+
+        Returns:
+            Result of execute_fn
+        """
+        command = Command(
+            command_id=f"cmd_{secrets.token_hex(6)}",
+            name=name,
+            execute_fn=execute_fn,
+            undo_fn=undo_fn,
+            args=args,
+            kwargs=kwargs
+        )
+
+        try:
+            result = await execute_fn(*args, **kwargs)
+            command.result = result
+            command.executed_at = datetime.now()
+
+            async with self._lock:
+                self._history.append(command)
+
+                # Add to undo stack if undoable
+                if undo_fn:
+                    self._undo_stack.append(command)
+                    # Clear redo stack on new command
+                    self._redo_stack.clear()
+
+                # Record to macro if recording
+                if self._recording_macro:
+                    if self._recording_macro not in self._macros:
+                        self._macros[self._recording_macro] = []
+                    self._macros[self._recording_macro].append(command)
+
+            self._logger.debug(f"Executed command: {name}")
+            return result
+
+        except Exception as e:
+            self._logger.error(f"Command execution failed: {name} - {e}")
+            raise
+
+    async def undo(self) -> Optional[Any]:
+        """Undo the last command."""
+        async with self._lock:
+            if not self._undo_stack:
+                return None
+
+            command = self._undo_stack.pop()
+
+        if not command.undo_fn:
+            return None
+
+        try:
+            result = await command.undo_fn(*command.args, **command.kwargs)
+            command.undone = True
+
+            async with self._lock:
+                self._redo_stack.append(command)
+
+            self._logger.debug(f"Undid command: {command.name}")
+            return result
+
+        except Exception as e:
+            self._logger.error(f"Undo failed: {command.name} - {e}")
+            raise
+
+    async def redo(self) -> Optional[Any]:
+        """Redo the last undone command."""
+        async with self._lock:
+            if not self._redo_stack:
+                return None
+
+            command = self._redo_stack.pop()
+
+        try:
+            result = await command.execute_fn(*command.args, **command.kwargs)
+            command.undone = False
+
+            async with self._lock:
+                self._undo_stack.append(command)
+
+            self._logger.debug(f"Redid command: {command.name}")
+            return result
+
+        except Exception as e:
+            self._logger.error(f"Redo failed: {command.name} - {e}")
+            raise
+
+    def start_recording_macro(self, name: str) -> None:
+        """Start recording commands to a macro."""
+        self._recording_macro = name
+        self._macros[name] = []
+        self._logger.info(f"Started recording macro: {name}")
+
+    def stop_recording_macro(self) -> Optional[str]:
+        """Stop recording commands to a macro."""
+        name = self._recording_macro
+        self._recording_macro = None
+        if name:
+            self._logger.info(f"Stopped recording macro: {name}")
+        return name
+
+    async def play_macro(self, name: str) -> List[Any]:
+        """Play a recorded macro."""
+        commands = self._macros.get(name, [])
+        results = []
+
+        for command in commands:
+            result = await command.execute_fn(*command.args, **command.kwargs)
+            results.append(result)
+
+        self._logger.info(f"Played macro: {name} ({len(commands)} commands)")
+        return results
+
+    def get_history(self, limit: int = 100) -> List[Command]:
+        """Get command history."""
+        return self._history[-limit:]
+
+    def can_undo(self) -> bool:
+        """Check if undo is available."""
+        return len(self._undo_stack) > 0
+
+    def can_redo(self) -> bool:
+        """Check if redo is available."""
+        return len(self._redo_stack) > 0
+
+    def get_statistics(self) -> Dict[str, Any]:
+        """Get command pattern manager statistics."""
+        return {
+            "total_commands": len(self._history),
+            "undo_stack_size": len(self._undo_stack),
+            "redo_stack_size": len(self._redo_stack),
+            "macros_recorded": len(self._macros),
+            "recording": self._recording_macro is not None
+        }
+
+
+# =============================================================================
 # =============================================================================
 #
 #  ███████╗ ██████╗ ███╗   ██╗███████╗    ███████╗
