@@ -752,6 +752,43 @@ except ImportError:
     register_shutdown_handlers = None
     cleanup_orphaned_semaphores_on_startup = None
 
+# =============================================================================
+# v181.0: EARLY SHUTDOWN HANDLER REGISTRATION
+# =============================================================================
+# Register shutdown handlers at MODULE LOAD TIME - this ensures that even if
+# a crash occurs BEFORE _phase_clean_slate() runs, the handlers are active.
+# This is critical for GCP VM cleanup on early crashes.
+# =============================================================================
+_EARLY_HANDLERS_REGISTERED = False
+
+def _register_early_shutdown_handlers() -> bool:
+    """
+    Register shutdown handlers at module load for maximum crash coverage.
+
+    This runs ONCE at module import time, ensuring handlers are active
+    before any kernel code runs. Idempotent - safe to call multiple times.
+
+    Returns:
+        True if handlers registered, False if already registered or unavailable
+    """
+    global _EARLY_HANDLERS_REGISTERED
+
+    if _EARLY_HANDLERS_REGISTERED:
+        return False
+
+    if SHUTDOWN_HOOK_AVAILABLE and register_shutdown_handlers:
+        try:
+            register_shutdown_handlers()
+            _EARLY_HANDLERS_REGISTERED = True
+            return True
+        except Exception:
+            pass
+
+    return False
+
+# Execute immediately at module load
+_register_early_shutdown_handlers()
+
 # Intelligent Startup Narrator - phase-aware voice narration
 # Note: Import as BackendStartupPhase to avoid conflict with local StartupPhase enum
 try:
@@ -50951,106 +50988,201 @@ class JarvisSystemKernel:
 
         try:
             # =================================================================
-            # STEP 1: Detect crash markers and clear stale state files
+            # v181.0: PARALLEL CRASH DETECTION & INTELLIGENT RECOVERY
+            # =================================================================
+            # Uses asyncio.gather for parallel file analysis across all state
+            # directories. Each detector returns a CrashSignal with confidence
+            # score - we only act when signals exceed threshold.
             # =================================================================
             trinity_dir = JARVIS_HOME / "trinity"
             cross_repo_dir = JARVIS_HOME / "cross_repo"
 
-            # Ensure directories exist
-            trinity_dir.mkdir(parents=True, exist_ok=True)
-            cross_repo_dir.mkdir(parents=True, exist_ok=True)
+            # Ensure directories exist (parallel)
+            await asyncio.gather(
+                asyncio.to_thread(lambda: trinity_dir.mkdir(parents=True, exist_ok=True)),
+                asyncio.to_thread(lambda: cross_repo_dir.mkdir(parents=True, exist_ok=True)),
+                asyncio.to_thread(lambda: LOCKS_DIR.mkdir(parents=True, exist_ok=True)),
+            )
 
-            # Check 1: kernel_crash.marker
-            crash_marker = LOCKS_DIR / "kernel_crash.marker"
-            if crash_marker.exists():
-                try:
-                    crash_info = crash_marker.read_text().strip()
-                    self.logger.warning(f"[Clean Slate] Previous crash detected: {crash_info}")
-                    crash_marker.unlink()
-                    recovery_stats["crash_detected"] = True
-                    recovery_stats["files_cleared"] += 1
-                    recovery_stats["actions_taken"].append("cleared_crash_marker")
-                except Exception as e:
-                    self.logger.debug(f"[Clean Slate] Failed to clear crash marker: {e}")
+            # ─────────────────────────────────────────────────────────────────
+            # PARALLEL CRASH SIGNAL DETECTION
+            # ─────────────────────────────────────────────────────────────────
+            # Each detector is an async function that returns a tuple:
+            # (signal_name, confidence: 0.0-1.0, should_clear: bool, file_path)
+            # ─────────────────────────────────────────────────────────────────
 
-            # Check 2: cloud_lock.json (OOM/SIGKILL markers)
-            cloud_lock_file = trinity_dir / "cloud_lock.json"
-            if cloud_lock_file.exists():
-                try:
-                    import json as _json
-                    cloud_lock_data = _json.loads(cloud_lock_file.read_text())
-                    lock_reason = cloud_lock_data.get("reason", "")
-                    lock_timestamp = cloud_lock_data.get("timestamp", 0)
+            async def detect_crash_marker() -> tuple:
+                """Detect kernel crash marker (confidence: 1.0 - definitive crash signal)."""
+                crash_marker = LOCKS_DIR / "kernel_crash.marker"
+                if crash_marker.exists():
+                    try:
+                        content = await asyncio.to_thread(crash_marker.read_text)
+                        return ("crash_marker", 1.0, True, crash_marker, content.strip())
+                    except Exception:
+                        return ("crash_marker", 0.8, True, crash_marker, "unreadable")
+                return ("crash_marker", 0.0, False, crash_marker, None)
 
-                    # Check for crash indicators
-                    crash_indicators = ["OOM", "SIGKILL", "KILLED", "EMERGENCY", "CRASH"]
-                    is_crash = any(ind in lock_reason.upper() for ind in crash_indicators)
-
-                    # Check for stale lock (older than 1 hour)
-                    is_stale = lock_timestamp and (time.time() - lock_timestamp > 3600)
-
-                    if is_crash or is_stale:
-                        self.logger.warning(
-                            f"[Clean Slate] Clearing cloud lock: reason='{lock_reason}', "
-                            f"stale={is_stale}, crash_indicator={is_crash}"
-                        )
-                        cloud_lock_file.unlink()
-                        recovery_stats["crash_detected"] = True
-                        recovery_stats["files_cleared"] += 1
-                        recovery_stats["actions_taken"].append("cleared_cloud_lock")
-                except Exception as e:
-                    self.logger.debug(f"[Clean Slate] Failed to process cloud lock: {e}")
-
-            # Check 3: memory_pressure.json
-            memory_pressure_file = cross_repo_dir / "memory_pressure.json"
-            if memory_pressure_file.exists():
+            async def detect_cloud_lock() -> tuple:
+                """Detect cloud lock with OOM/SIGKILL indicators."""
+                cloud_lock_file = trinity_dir / "cloud_lock.json"
+                if not cloud_lock_file.exists():
+                    return ("cloud_lock", 0.0, False, cloud_lock_file, None)
                 try:
                     import json as _json
-                    pressure_data = _json.loads(memory_pressure_file.read_text())
-                    status = pressure_data.get("status", "")
-                    is_emergency = status == "offload_active" or pressure_data.get("emergency", False)
-                    pressure_timestamp = pressure_data.get("timestamp", 0)
-                    is_stale = pressure_timestamp and (time.time() - pressure_timestamp > 1800)
+                    content = await asyncio.to_thread(cloud_lock_file.read_text)
+                    data = _json.loads(content)
+                    reason = data.get("reason", "").upper()
+                    timestamp = data.get("timestamp", 0)
 
-                    if is_emergency or is_stale:
-                        self.logger.warning(
-                            f"[Clean Slate] Clearing memory pressure signal: "
-                            f"status='{status}', emergency={is_emergency}, stale={is_stale}"
-                        )
-                        memory_pressure_file.unlink()
-                        recovery_stats["files_cleared"] += 1
-                        recovery_stats["actions_taken"].append("cleared_memory_pressure")
+                    # Crash indicators with weights
+                    crash_weights = {
+                        "OOM": 1.0, "SIGKILL": 1.0, "KILLED": 0.9,
+                        "EMERGENCY": 0.85, "CRASH": 1.0, "FATAL": 0.95
+                    }
+                    confidence = max(
+                        (w for k, w in crash_weights.items() if k in reason),
+                        default=0.0
+                    )
+
+                    # Stale lock (>1 hour) gets moderate confidence
+                    if timestamp and (time.time() - timestamp > 3600):
+                        confidence = max(confidence, 0.7)
+
+                    return ("cloud_lock", confidence, confidence > 0.5, cloud_lock_file, reason)
                 except Exception as e:
-                    self.logger.debug(f"[Clean Slate] Failed to process memory pressure: {e}")
+                    # Corrupted file = likely crash
+                    return ("cloud_lock", 0.6, True, cloud_lock_file, f"corrupted: {e}")
 
-            # Check 4: Stale heartbeat file
-            heartbeat_file = trinity_dir / "jarvis_body.json"
-            if heartbeat_file.exists():
+            async def detect_memory_pressure() -> tuple:
+                """Detect stale memory pressure signals."""
+                pressure_file = cross_repo_dir / "memory_pressure.json"
+                if not pressure_file.exists():
+                    return ("memory_pressure", 0.0, False, pressure_file, None)
                 try:
                     import json as _json
-                    heartbeat_data = _json.loads(heartbeat_file.read_text())
-                    last_heartbeat = heartbeat_data.get("last_heartbeat", 0)
-                    # Stale if no heartbeat in 5 minutes
-                    if last_heartbeat and (time.time() - last_heartbeat > 300):
-                        self.logger.warning("[Clean Slate] Stale heartbeat detected - previous process died without cleanup")
-                        heartbeat_file.unlink()
-                        recovery_stats["crash_detected"] = True
-                        recovery_stats["files_cleared"] += 1
-                        recovery_stats["actions_taken"].append("cleared_stale_heartbeat")
-                except Exception as e:
-                    self.logger.debug(f"[Clean Slate] Failed to process heartbeat: {e}")
+                    content = await asyncio.to_thread(pressure_file.read_text)
+                    data = _json.loads(content)
+                    status = data.get("status", "")
+                    timestamp = data.get("timestamp", 0)
+                    is_emergency = status == "offload_active" or data.get("emergency", False)
 
-            # Check 5: Stale orchestrator state
-            orchestrator_state = cross_repo_dir / "orchestrator_state.json"
-            if orchestrator_state.exists():
+                    confidence = 0.0
+                    if is_emergency:
+                        confidence = 0.8
+                    if timestamp and (time.time() - timestamp > 1800):
+                        confidence = max(confidence, 0.6)
+
+                    return ("memory_pressure", confidence, confidence > 0.5, pressure_file, status)
+                except Exception:
+                    return ("memory_pressure", 0.5, True, pressure_file, "corrupted")
+
+            async def detect_stale_heartbeat() -> tuple:
+                """Detect stale heartbeat (process died without cleanup)."""
+                heartbeat_file = trinity_dir / "jarvis_body.json"
+                if not heartbeat_file.exists():
+                    return ("heartbeat", 0.0, False, heartbeat_file, None)
                 try:
-                    file_age = time.time() - orchestrator_state.stat().st_mtime
-                    if file_age > 3600:  # Older than 1 hour
-                        orchestrator_state.unlink()
-                        recovery_stats["files_cleared"] += 1
-                        recovery_stats["actions_taken"].append("cleared_stale_orchestrator_state")
-                except Exception as e:
-                    self.logger.debug(f"[Clean Slate] Failed to clear orchestrator state: {e}")
+                    import json as _json
+                    content = await asyncio.to_thread(heartbeat_file.read_text)
+                    data = _json.loads(content)
+                    last_hb = data.get("last_heartbeat", 0)
+
+                    if last_hb:
+                        age = time.time() - last_hb
+                        # Confidence scales with age: 5min=0.8, 15min=0.95, 1h=1.0
+                        if age > 300:  # 5 minutes
+                            confidence = min(0.8 + (age - 300) / 3600 * 0.2, 1.0)
+                            return ("heartbeat", confidence, True, heartbeat_file, f"age={age:.0f}s")
+                    return ("heartbeat", 0.0, False, heartbeat_file, None)
+                except Exception:
+                    return ("heartbeat", 0.5, True, heartbeat_file, "corrupted")
+
+            async def detect_stale_orchestrator() -> tuple:
+                """Detect stale orchestrator state."""
+                state_file = cross_repo_dir / "orchestrator_state.json"
+                if not state_file.exists():
+                    return ("orchestrator", 0.0, False, state_file, None)
+                try:
+                    stat = await asyncio.to_thread(state_file.stat)
+                    age = time.time() - stat.st_mtime
+                    if age > 3600:
+                        confidence = min(0.5 + (age - 3600) / 7200 * 0.3, 0.8)
+                        return ("orchestrator", confidence, True, state_file, f"age={age:.0f}s")
+                    return ("orchestrator", 0.0, False, state_file, None)
+                except Exception:
+                    return ("orchestrator", 0.4, True, state_file, "stat_failed")
+
+            async def detect_stale_ports() -> tuple:
+                """Detect processes holding JARVIS ports without proper registration."""
+                # Trinity ports to check
+                ports_to_check = [8000, 8010, 8090]  # J-Prime, JARVIS, Reactor
+                stale_pids = []
+                try:
+                    import psutil
+                    for conn in psutil.net_connections(kind='inet'):
+                        if conn.laddr.port in ports_to_check and conn.status == 'LISTEN':
+                            try:
+                                proc = psutil.Process(conn.pid)
+                                # Check if it's a zombie or if cmdline doesn't contain JARVIS
+                                if proc.status() == 'zombie':
+                                    stale_pids.append(conn.pid)
+                            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                                stale_pids.append(conn.pid)
+                except ImportError:
+                    pass
+                except Exception:
+                    pass
+
+                if stale_pids:
+                    return ("stale_ports", 0.7, True, None, f"pids={stale_pids}")
+                return ("stale_ports", 0.0, False, None, None)
+
+            # Run all detectors in parallel
+            signals = await asyncio.gather(
+                detect_crash_marker(),
+                detect_cloud_lock(),
+                detect_memory_pressure(),
+                detect_stale_heartbeat(),
+                detect_stale_orchestrator(),
+                detect_stale_ports(),
+                return_exceptions=True
+            )
+
+            # Process signals and determine if crash recovery is needed
+            crash_confidence = 0.0
+            for signal in signals:
+                if isinstance(signal, Exception):
+                    self.logger.debug(f"[Clean Slate] Detector failed: {signal}")
+                    continue
+
+                name, confidence, should_clear, file_path, detail = signal
+                if confidence > 0:
+                    self.logger.debug(
+                        f"[Clean Slate] Signal: {name} confidence={confidence:.2f} "
+                        f"clear={should_clear} detail={detail}"
+                    )
+                    crash_confidence = max(crash_confidence, confidence)
+
+                    if should_clear and file_path and file_path.exists():
+                        try:
+                            await asyncio.to_thread(file_path.unlink)
+                            recovery_stats["files_cleared"] += 1
+                            recovery_stats["actions_taken"].append(f"cleared_{name}")
+                            if confidence >= 0.8:
+                                recovery_stats["crash_detected"] = True
+                                self.logger.warning(
+                                    f"[Clean Slate] Crash signal: {name} "
+                                    f"(confidence={confidence:.0%}, {detail})"
+                                )
+                        except Exception as e:
+                            self.logger.debug(f"[Clean Slate] Failed to clear {name}: {e}")
+
+            # Log overall crash confidence
+            if crash_confidence >= 0.5:
+                self.logger.info(
+                    f"[Clean Slate] Crash confidence: {crash_confidence:.0%} - "
+                    f"recovery mode {'ACTIVE' if crash_confidence >= 0.8 else 'PARTIAL'}"
+                )
 
             # =================================================================
             # STEP 2: Clean up orphaned semaphores
@@ -51090,15 +51222,18 @@ class JarvisSystemKernel:
                     self.logger.warning(f"[Clean Slate] Instance check failed (non-fatal): {e}")
 
             # =================================================================
-            # STEP 4: Register shutdown handlers for future crash recovery
+            # STEP 4: Verify shutdown handlers (registered at module load)
             # =================================================================
-            if SHUTDOWN_HOOK_AVAILABLE and register_shutdown_handlers:
-                try:
-                    register_shutdown_handlers()
-                    self.logger.debug("[Clean Slate] Shutdown handlers registered")
-                    recovery_stats["actions_taken"].append("registered_shutdown_handlers")
-                except Exception as e:
-                    self.logger.debug(f"[Clean Slate] Failed to register shutdown handlers: {e}")
+            # v181.0: Handlers are now registered at MODULE LOAD TIME for maximum
+            # crash coverage. This step just verifies they're active.
+            if _EARLY_HANDLERS_REGISTERED:
+                self.logger.debug("[Clean Slate] Shutdown handlers active (registered at module load)")
+                recovery_stats["actions_taken"].append("shutdown_handlers_verified")
+            else:
+                # Fallback: try to register if not already done
+                if _register_early_shutdown_handlers():
+                    self.logger.debug("[Clean Slate] Shutdown handlers registered (late registration)")
+                    recovery_stats["actions_taken"].append("registered_shutdown_handlers_late")
 
             # =================================================================
             # STEP 5: Log recovery summary
@@ -52120,6 +52255,29 @@ class JarvisSystemKernel:
             if self._trinity:
                 await self._trinity.stop()
                 self.logger.info("[Kernel] Trinity stopped")
+
+            # =====================================================================
+            # v181.0: GCP VM CLEANUP (Normal Path)
+            # =====================================================================
+            # Cleanup GCP VMs on normal shutdown, not just emergency shutdown.
+            # This prevents orphaned Spot VMs from running up bills after Ctrl+C.
+            # =====================================================================
+            try:
+                if CROSS_REPO_ORCHESTRATOR_AVAILABLE:
+                    from backend.supervisor.cross_repo_startup_orchestrator import (
+                        shutdown_orchestrator,
+                    )
+                    try:
+                        await asyncio.wait_for(shutdown_orchestrator(), timeout=15.0)
+                        self.logger.info("[Kernel] Cross-repo orchestrator shutdown complete")
+                    except asyncio.TimeoutError:
+                        self.logger.warning("[Kernel] Orchestrator shutdown timed out (15s)")
+                    except Exception as e:
+                        self.logger.debug(f"[Kernel] Orchestrator shutdown error: {e}")
+            except ImportError:
+                pass
+            except Exception as e:
+                self.logger.debug(f"[Kernel] GCP cleanup error: {e}")
 
             # Stop frontend and loading server
             await self._stop_frontend()

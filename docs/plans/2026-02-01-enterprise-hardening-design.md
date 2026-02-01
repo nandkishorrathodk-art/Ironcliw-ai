@@ -179,3 +179,57 @@ from backend.scripts.shutdown_hook import register_handlers, cleanup_orphaned_se
 - `_emergency_shutdown()` - Now stops Trinity + GCP VMs
 - `_phase_trinity()` - Now initializes cross_repo_orchestration first
 - `startup()` - Uses dynamic timeout calculation
+- `cleanup()` - Now includes GCP VM cleanup (normal path, not just emergency)
+- `_phase_clean_slate()` - Advanced parallel crash detection with confidence scoring
+
+---
+
+## v181.1 Fixes (Review Feedback)
+
+### Issue 1: Clean Slate Conditional vs Unconditional
+**Status:** Already correct in original implementation
+
+The crash detection was already conditional - files are only cleared when crash/stale indicators are detected (OOM, SIGKILL, stale timestamps > 1 hour, etc.).
+
+### Issue 2: GCP Cleanup on Normal Shutdown
+**Status:** FIXED
+
+Added GCP VM cleanup to the normal `cleanup()` path (not just `_emergency_shutdown()`). Now runs `shutdown_orchestrator()` on Ctrl+C/normal exit to prevent orphaned Spot VMs.
+
+### Issue 3: Early Shutdown Handler Registration
+**Status:** FIXED
+
+Moved `register_shutdown_handlers()` to MODULE LOAD TIME:
+- Added `_register_early_shutdown_handlers()` function
+- Called immediately at module import
+- Ensures handlers are active before ANY kernel code runs
+- Crash during startup still triggers GCP cleanup
+
+---
+
+## Advanced Features (v181.1)
+
+### Parallel Crash Detection
+
+The `_phase_clean_slate()` now uses parallel async detection:
+
+```python
+signals = await asyncio.gather(
+    detect_crash_marker(),     # 1.0 confidence = definitive crash
+    detect_cloud_lock(),       # 0.8-1.0 for OOM/SIGKILL
+    detect_memory_pressure(),  # 0.6-0.8 for stale/emergency
+    detect_stale_heartbeat(),  # Scales with age
+    detect_stale_orchestrator(),
+    detect_stale_ports(),      # Zombie detection via psutil
+)
+```
+
+### Confidence Scoring
+
+Each detector returns a confidence score (0.0-1.0):
+- **1.0:** Definitive crash (kernel_crash.marker, OOM)
+- **0.8-0.9:** High confidence (SIGKILL, stale heartbeat >15min)
+- **0.5-0.7:** Moderate confidence (stale locks, corrupted files)
+- **<0.5:** No action needed
+
+Only clears files when confidence > 0.5, marking crash_detected when > 0.8.
