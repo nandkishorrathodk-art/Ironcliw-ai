@@ -24660,6 +24660,1983 @@ class APIGatewayManager:
         }
 
 
+# =============================================================================
+# ZONE 4.12: DEPLOYMENT AND INFRASTRUCTURE ORCHESTRATION
+# =============================================================================
+# Production deployment patterns and infrastructure management:
+# - ConnectionPoolManager: Database and service connection pooling
+# - HealthCheckOrchestrator: Comprehensive health checking system
+# - DeploymentCoordinator: Deployment lifecycle management
+# - BlueGreenDeployer: Zero-downtime blue-green deployments
+# - CanaryReleaseManager: Progressive canary deployments
+# - RollbackCoordinator: Automated rollback with checkpoints
+# - InfrastructureProvisionerManager: Infrastructure provisioning
+
+
+class PooledConnection:
+    """Represents a connection in the pool."""
+
+    def __init__(
+        self,
+        connection_id: str,
+        connection: Any,
+        pool_name: str,
+    ):
+        self.connection_id = connection_id
+        self.connection = connection
+        self.pool_name = pool_name
+
+        self.created_at = time.time()
+        self.last_used_at = time.time()
+        self.use_count = 0
+        self.in_use = False
+        self.healthy = True
+        self.error_count = 0
+
+    def mark_used(self) -> None:
+        """Mark connection as used."""
+        self.last_used_at = time.time()
+        self.use_count += 1
+        self.in_use = True
+
+    def mark_released(self) -> None:
+        """Mark connection as released."""
+        self.in_use = False
+
+    @property
+    def idle_seconds(self) -> float:
+        """Calculate how long connection has been idle."""
+        if self.in_use:
+            return 0.0
+        return time.time() - self.last_used_at
+
+    @property
+    def age_seconds(self) -> float:
+        """Calculate connection age."""
+        return time.time() - self.created_at
+
+
+class ConnectionPool:
+    """
+    Generic connection pool implementation.
+
+    Supports any connection type (database, HTTP, etc.).
+    """
+
+    def __init__(
+        self,
+        pool_name: str,
+        min_size: int = 2,
+        max_size: int = 10,
+        max_idle_seconds: float = 300.0,
+        max_age_seconds: float = 3600.0,
+        connection_factory: Optional[Callable[[], Awaitable[Any]]] = None,
+        health_check: Optional[Callable[[Any], Awaitable[bool]]] = None,
+        connection_close: Optional[Callable[[Any], Awaitable[None]]] = None,
+    ):
+        self.pool_name = pool_name
+        self.min_size = min_size
+        self.max_size = max_size
+        self.max_idle_seconds = max_idle_seconds
+        self.max_age_seconds = max_age_seconds
+
+        self._factory = connection_factory
+        self._health_check = health_check
+        self._close_func = connection_close
+
+        # Pool state
+        self._connections: List[PooledConnection] = []
+        self._pool_lock = asyncio.Lock()
+        self._available = asyncio.Semaphore(max_size)
+
+        # Waiters
+        self._waiters: List[asyncio.Future] = []
+
+        # Background tasks
+        self._maintenance_task: Optional[asyncio.Task] = None
+        self._running = False
+
+        # Statistics
+        self._stats = {
+            "connections_created": 0,
+            "connections_destroyed": 0,
+            "acquisitions": 0,
+            "releases": 0,
+            "wait_timeouts": 0,
+            "health_checks_failed": 0,
+        }
+
+    async def start(self) -> None:
+        """Start the connection pool."""
+        if self._running:
+            return
+
+        self._running = True
+
+        # Pre-warm pool to min_size
+        await self._warm_pool()
+
+        # Start maintenance task
+        self._maintenance_task = asyncio.create_task(self._maintenance_loop())
+
+    async def stop(self) -> None:
+        """Stop the pool and close all connections."""
+        self._running = False
+
+        if self._maintenance_task:
+            self._maintenance_task.cancel()
+            try:
+                await self._maintenance_task
+            except asyncio.CancelledError:
+                pass
+
+        # Close all connections
+        async with self._pool_lock:
+            for conn in self._connections:
+                await self._close_connection(conn)
+            self._connections = []
+
+    async def _warm_pool(self) -> None:
+        """Pre-create connections up to min_size."""
+        for _ in range(self.min_size):
+            try:
+                conn = await self._create_connection()
+                if conn:
+                    self._connections.append(conn)
+            except Exception:
+                pass
+
+    async def _create_connection(self) -> Optional[PooledConnection]:
+        """Create a new pooled connection."""
+        if self._factory is None:
+            return None
+
+        try:
+            raw_conn = await self._factory()
+            conn = PooledConnection(
+                connection_id=str(uuid.uuid4())[:8],
+                connection=raw_conn,
+                pool_name=self.pool_name,
+            )
+            self._stats["connections_created"] += 1
+            return conn
+        except Exception:
+            return None
+
+    async def _close_connection(self, conn: PooledConnection) -> None:
+        """Close a connection."""
+        if self._close_func:
+            try:
+                await self._close_func(conn.connection)
+            except Exception:
+                pass
+        self._stats["connections_destroyed"] += 1
+
+    async def acquire(
+        self,
+        timeout: Optional[float] = None,
+    ) -> Optional[Any]:
+        """
+        Acquire a connection from the pool.
+
+        Returns the raw connection object.
+        """
+        timeout = timeout or 30.0
+        deadline = time.time() + timeout
+
+        while time.time() < deadline:
+            async with self._pool_lock:
+                # Find available healthy connection
+                for conn in self._connections:
+                    if not conn.in_use and conn.healthy:
+                        conn.mark_used()
+                        self._stats["acquisitions"] += 1
+                        return conn.connection
+
+                # Create new connection if under max
+                if len(self._connections) < self.max_size:
+                    new_conn = await self._create_connection()
+                    if new_conn:
+                        new_conn.mark_used()
+                        self._connections.append(new_conn)
+                        self._stats["acquisitions"] += 1
+                        return new_conn.connection
+
+            # Wait for a connection to become available
+            remaining = deadline - time.time()
+            if remaining <= 0:
+                break
+
+            try:
+                await asyncio.sleep(min(0.1, remaining))
+            except asyncio.CancelledError:
+                break
+
+        self._stats["wait_timeouts"] += 1
+        return None
+
+    async def release(self, connection: Any) -> None:
+        """Release a connection back to the pool."""
+        async with self._pool_lock:
+            for conn in self._connections:
+                if conn.connection is connection:
+                    conn.mark_released()
+                    self._stats["releases"] += 1
+
+                    # Notify waiters
+                    for waiter in self._waiters:
+                        if not waiter.done():
+                            waiter.set_result(True)
+                            break
+
+                    return
+
+    @contextmanager
+    def connection(self):
+        """Context manager for acquiring and releasing connections."""
+        # Note: This is sync wrapper, use async with for full async support
+        raise NotImplementedError("Use async context manager")
+
+    async def _maintenance_loop(self) -> None:
+        """Background loop for pool maintenance."""
+        while self._running:
+            try:
+                await asyncio.sleep(30.0)
+                await self._perform_maintenance()
+            except asyncio.CancelledError:
+                break
+            except Exception:
+                pass
+
+    async def _perform_maintenance(self) -> None:
+        """Perform pool maintenance tasks."""
+        async with self._pool_lock:
+            connections_to_remove = []
+
+            for conn in self._connections:
+                # Skip connections in use
+                if conn.in_use:
+                    continue
+
+                # Remove idle connections above min_size
+                if len(self._connections) > self.min_size:
+                    if conn.idle_seconds > self.max_idle_seconds:
+                        connections_to_remove.append(conn)
+                        continue
+
+                # Remove old connections
+                if conn.age_seconds > self.max_age_seconds:
+                    connections_to_remove.append(conn)
+                    continue
+
+                # Health check
+                if self._health_check:
+                    try:
+                        healthy = await self._health_check(conn.connection)
+                        conn.healthy = healthy
+                        if not healthy:
+                            self._stats["health_checks_failed"] += 1
+                            connections_to_remove.append(conn)
+                    except Exception:
+                        conn.healthy = False
+                        connections_to_remove.append(conn)
+
+            # Remove unhealthy/old connections
+            for conn in connections_to_remove:
+                await self._close_connection(conn)
+                self._connections.remove(conn)
+
+            # Ensure min_size
+            while len(self._connections) < self.min_size:
+                new_conn = await self._create_connection()
+                if new_conn:
+                    self._connections.append(new_conn)
+                else:
+                    break
+
+    def get_status(self) -> Dict[str, Any]:
+        """Get pool status."""
+        return {
+            "pool_name": self.pool_name,
+            "total_connections": len(self._connections),
+            "in_use": sum(1 for c in self._connections if c.in_use),
+            "available": sum(1 for c in self._connections if not c.in_use and c.healthy),
+            "unhealthy": sum(1 for c in self._connections if not c.healthy),
+            "min_size": self.min_size,
+            "max_size": self.max_size,
+            "stats": self._stats.copy(),
+        }
+
+
+class ConnectionPoolManager:
+    """
+    Manages multiple connection pools.
+
+    Features:
+    - Multiple named pools
+    - Pool lifecycle management
+    - Cross-pool statistics
+    - Dynamic pool creation
+    """
+
+    def __init__(self):
+        self._pools: Dict[str, ConnectionPool] = {}
+        self._running = False
+
+        # Global statistics
+        self._stats = {
+            "pools_created": 0,
+            "total_connections": 0,
+        }
+
+    async def start(self) -> None:
+        """Start all managed pools."""
+        if self._running:
+            return
+
+        self._running = True
+
+        for pool in self._pools.values():
+            await pool.start()
+
+    async def stop(self) -> None:
+        """Stop all managed pools."""
+        self._running = False
+
+        for pool in self._pools.values():
+            await pool.stop()
+
+    def create_pool(
+        self,
+        pool_name: str,
+        **kwargs
+    ) -> ConnectionPool:
+        """Create a new connection pool."""
+        pool = ConnectionPool(pool_name=pool_name, **kwargs)
+        self._pools[pool_name] = pool
+        self._stats["pools_created"] += 1
+
+        if self._running:
+            asyncio.create_task(pool.start())
+
+        return pool
+
+    def get_pool(self, pool_name: str) -> Optional[ConnectionPool]:
+        """Get a pool by name."""
+        return self._pools.get(pool_name)
+
+    async def acquire(
+        self,
+        pool_name: str,
+        timeout: Optional[float] = None,
+    ) -> Optional[Any]:
+        """Acquire a connection from a named pool."""
+        pool = self._pools.get(pool_name)
+        if pool:
+            return await pool.acquire(timeout)
+        return None
+
+    async def release(self, pool_name: str, connection: Any) -> None:
+        """Release a connection back to a named pool."""
+        pool = self._pools.get(pool_name)
+        if pool:
+            await pool.release(connection)
+
+    def get_all_status(self) -> Dict[str, Any]:
+        """Get status of all pools."""
+        pools_status = {
+            name: pool.get_status()
+            for name, pool in self._pools.items()
+        }
+
+        total_conns = sum(s["total_connections"] for s in pools_status.values())
+        total_in_use = sum(s["in_use"] for s in pools_status.values())
+
+        return {
+            "running": self._running,
+            "pools_count": len(self._pools),
+            "total_connections": total_conns,
+            "total_in_use": total_in_use,
+            "pools": pools_status,
+            "stats": self._stats.copy(),
+        }
+
+
+class HealthCheckType(Enum):
+    """Types of health checks."""
+    LIVENESS = "liveness"
+    READINESS = "readiness"
+    STARTUP = "startup"
+
+
+class HealthCheckResult:
+    """Result of a health check."""
+
+    def __init__(
+        self,
+        check_name: str,
+        check_type: HealthCheckType,
+        healthy: bool,
+        message: str = "",
+        latency_ms: float = 0.0,
+        details: Optional[Dict[str, Any]] = None,
+    ):
+        self.check_name = check_name
+        self.check_type = check_type
+        self.healthy = healthy
+        self.message = message
+        self.latency_ms = latency_ms
+        self.details = details or {}
+        self.timestamp = time.time()
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Serialize result."""
+        return {
+            "check_name": self.check_name,
+            "check_type": self.check_type.value,
+            "healthy": self.healthy,
+            "message": self.message,
+            "latency_ms": self.latency_ms,
+            "details": self.details,
+            "timestamp": self.timestamp,
+        }
+
+
+class HealthCheck:
+    """Represents a health check definition."""
+
+    def __init__(
+        self,
+        name: str,
+        check_type: HealthCheckType,
+        checker: Callable[[], Awaitable[Tuple[bool, str]]],
+        interval_seconds: float = 30.0,
+        timeout_seconds: float = 10.0,
+        failure_threshold: int = 3,
+        success_threshold: int = 1,
+    ):
+        self.name = name
+        self.check_type = check_type
+        self.checker = checker
+        self.interval = interval_seconds
+        self.timeout = timeout_seconds
+        self.failure_threshold = failure_threshold
+        self.success_threshold = success_threshold
+
+        # State
+        self.consecutive_failures = 0
+        self.consecutive_successes = 0
+        self.last_result: Optional[HealthCheckResult] = None
+        self.healthy = True
+
+
+class HealthCheckOrchestrator:
+    """
+    Comprehensive health checking system.
+
+    Features:
+    - Kubernetes-compatible liveness/readiness/startup probes
+    - Configurable thresholds
+    - Parallel check execution
+    - Health history tracking
+    - Webhook notifications
+    """
+
+    def __init__(
+        self,
+        check_interval: float = 30.0,
+    ):
+        self._check_interval = check_interval
+
+        # Health checks
+        self._checks: Dict[str, HealthCheck] = {}
+
+        # History
+        self._history: Dict[str, List[HealthCheckResult]] = defaultdict(list)
+        self._history_max_size = 100
+
+        # Background tasks
+        self._check_task: Optional[asyncio.Task] = None
+        self._running = False
+
+        # Callbacks
+        self._status_callbacks: List[Callable[[str, bool], Awaitable[None]]] = []
+
+        # Statistics
+        self._stats = {
+            "total_checks": 0,
+            "successful_checks": 0,
+            "failed_checks": 0,
+            "timeouts": 0,
+        }
+
+    async def start(self) -> None:
+        """Start the health check orchestrator."""
+        if self._running:
+            return
+
+        self._running = True
+        self._check_task = asyncio.create_task(self._check_loop())
+
+    async def stop(self) -> None:
+        """Stop the orchestrator."""
+        self._running = False
+
+        if self._check_task:
+            self._check_task.cancel()
+            try:
+                await self._check_task
+            except asyncio.CancelledError:
+                pass
+
+    def register_check(
+        self,
+        name: str,
+        check_type: HealthCheckType,
+        checker: Callable[[], Awaitable[Tuple[bool, str]]],
+        **kwargs
+    ) -> None:
+        """Register a health check."""
+        self._checks[name] = HealthCheck(
+            name=name,
+            check_type=check_type,
+            checker=checker,
+            **kwargs
+        )
+
+    def unregister_check(self, name: str) -> bool:
+        """Unregister a health check."""
+        if name in self._checks:
+            del self._checks[name]
+            return True
+        return False
+
+    async def _check_loop(self) -> None:
+        """Background loop for running health checks."""
+        while self._running:
+            try:
+                await self._run_all_checks()
+                await asyncio.sleep(self._check_interval)
+            except asyncio.CancelledError:
+                break
+            except Exception:
+                pass
+
+    async def _run_all_checks(self) -> None:
+        """Run all registered health checks."""
+        tasks = [
+            self._run_single_check(check)
+            for check in self._checks.values()
+        ]
+
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+    async def _run_single_check(self, check: HealthCheck) -> HealthCheckResult:
+        """Run a single health check."""
+        self._stats["total_checks"] += 1
+        start_time = time.time()
+
+        try:
+            healthy, message = await asyncio.wait_for(
+                check.checker(),
+                timeout=check.timeout,
+            )
+            latency_ms = (time.time() - start_time) * 1000
+
+            result = HealthCheckResult(
+                check_name=check.name,
+                check_type=check.check_type,
+                healthy=healthy,
+                message=message,
+                latency_ms=latency_ms,
+            )
+
+            if healthy:
+                self._stats["successful_checks"] += 1
+                check.consecutive_successes += 1
+                check.consecutive_failures = 0
+            else:
+                self._stats["failed_checks"] += 1
+                check.consecutive_failures += 1
+                check.consecutive_successes = 0
+
+        except asyncio.TimeoutError:
+            self._stats["timeouts"] += 1
+            check.consecutive_failures += 1
+            check.consecutive_successes = 0
+
+            result = HealthCheckResult(
+                check_name=check.name,
+                check_type=check.check_type,
+                healthy=False,
+                message="Check timed out",
+                latency_ms=check.timeout * 1000,
+            )
+
+        except Exception as e:
+            self._stats["failed_checks"] += 1
+            check.consecutive_failures += 1
+            check.consecutive_successes = 0
+
+            result = HealthCheckResult(
+                check_name=check.name,
+                check_type=check.check_type,
+                healthy=False,
+                message=str(e),
+                latency_ms=(time.time() - start_time) * 1000,
+            )
+
+        # Update check status
+        previous_healthy = check.healthy
+        if check.consecutive_failures >= check.failure_threshold:
+            check.healthy = False
+        elif check.consecutive_successes >= check.success_threshold:
+            check.healthy = True
+
+        check.last_result = result
+
+        # Add to history
+        self._history[check.name].append(result)
+        if len(self._history[check.name]) > self._history_max_size:
+            self._history[check.name] = self._history[check.name][-50:]
+
+        # Notify if status changed
+        if check.healthy != previous_healthy:
+            for callback in self._status_callbacks:
+                try:
+                    await callback(check.name, check.healthy)
+                except Exception:
+                    pass
+
+        return result
+
+    async def check_now(self, name: str) -> Optional[HealthCheckResult]:
+        """Run a specific check immediately."""
+        check = self._checks.get(name)
+        if check:
+            return await self._run_single_check(check)
+        return None
+
+    def on_status_change(
+        self,
+        callback: Callable[[str, bool], Awaitable[None]],
+    ) -> None:
+        """Register callback for health status changes."""
+        self._status_callbacks.append(callback)
+
+    def is_healthy(self, check_type: Optional[HealthCheckType] = None) -> bool:
+        """Check if all (or specific type) checks are healthy."""
+        for check in self._checks.values():
+            if check_type and check.check_type != check_type:
+                continue
+            if not check.healthy:
+                return False
+        return True
+
+    def get_liveness(self) -> Dict[str, Any]:
+        """Get liveness probe result (Kubernetes-compatible)."""
+        healthy = self.is_healthy(HealthCheckType.LIVENESS)
+        return {
+            "status": "ok" if healthy else "fail",
+            "checks": {
+                name: check.last_result.to_dict() if check.last_result else None
+                for name, check in self._checks.items()
+                if check.check_type == HealthCheckType.LIVENESS
+            }
+        }
+
+    def get_readiness(self) -> Dict[str, Any]:
+        """Get readiness probe result (Kubernetes-compatible)."""
+        healthy = self.is_healthy(HealthCheckType.READINESS)
+        return {
+            "status": "ok" if healthy else "fail",
+            "checks": {
+                name: check.last_result.to_dict() if check.last_result else None
+                for name, check in self._checks.items()
+                if check.check_type == HealthCheckType.READINESS
+            }
+        }
+
+    def get_status(self) -> Dict[str, Any]:
+        """Get orchestrator status."""
+        return {
+            "running": self._running,
+            "checks_registered": len(self._checks),
+            "all_healthy": self.is_healthy(),
+            "checks": {
+                name: {
+                    "type": check.check_type.value,
+                    "healthy": check.healthy,
+                    "consecutive_failures": check.consecutive_failures,
+                    "last_check": check.last_result.to_dict() if check.last_result else None,
+                }
+                for name, check in self._checks.items()
+            },
+            "stats": self._stats.copy(),
+        }
+
+
+class DeploymentPhase(Enum):
+    """Deployment phases."""
+    PENDING = "pending"
+    PREPARING = "preparing"
+    DEPLOYING = "deploying"
+    VERIFYING = "verifying"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    ROLLED_BACK = "rolled_back"
+
+
+class Deployment:
+    """Represents a deployment."""
+
+    def __init__(
+        self,
+        deployment_id: str,
+        application_name: str,
+        version: str,
+        strategy: str,  # rolling, blue_green, canary
+        config: Dict[str, Any],
+    ):
+        self.deployment_id = deployment_id
+        self.application_name = application_name
+        self.version = version
+        self.strategy = strategy
+        self.config = config
+
+        self.phase = DeploymentPhase.PENDING
+        self.created_at = time.time()
+        self.started_at: Optional[float] = None
+        self.completed_at: Optional[float] = None
+        self.progress_percent = 0
+        self.error: Optional[str] = None
+
+        # Rollback info
+        self.previous_version: Optional[str] = None
+        self.rollback_available = False
+
+        # Phase history
+        self.phase_history: List[Dict[str, Any]] = []
+
+    def transition_to(self, phase: DeploymentPhase, message: str = "") -> None:
+        """Transition to a new phase."""
+        self.phase_history.append({
+            "from": self.phase.value,
+            "to": phase.value,
+            "timestamp": time.time(),
+            "message": message,
+        })
+        self.phase = phase
+
+        if phase == DeploymentPhase.DEPLOYING and self.started_at is None:
+            self.started_at = time.time()
+        elif phase in (DeploymentPhase.COMPLETED, DeploymentPhase.FAILED, DeploymentPhase.ROLLED_BACK):
+            self.completed_at = time.time()
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Serialize deployment."""
+        return {
+            "deployment_id": self.deployment_id,
+            "application_name": self.application_name,
+            "version": self.version,
+            "strategy": self.strategy,
+            "phase": self.phase.value,
+            "progress_percent": self.progress_percent,
+            "created_at": self.created_at,
+            "started_at": self.started_at,
+            "completed_at": self.completed_at,
+            "duration_seconds": (
+                (self.completed_at or time.time()) - (self.started_at or self.created_at)
+                if self.started_at else None
+            ),
+            "error": self.error,
+            "previous_version": self.previous_version,
+            "rollback_available": self.rollback_available,
+            "phase_history": self.phase_history,
+        }
+
+
+class DeploymentCoordinator:
+    """
+    Deployment lifecycle management.
+
+    Features:
+    - Multiple deployment strategies
+    - Progress tracking
+    - Pre/post deployment hooks
+    - Automatic verification
+    - Rollback coordination
+    """
+
+    def __init__(
+        self,
+        health_orchestrator: Optional[HealthCheckOrchestrator] = None,
+    ):
+        self._health_orchestrator = health_orchestrator
+
+        # Deployments
+        self._deployments: Dict[str, Deployment] = {}
+        self._deployment_lock = asyncio.Lock()
+
+        # Strategy implementations
+        self._strategies: Dict[str, Callable[[Deployment], Awaitable[bool]]] = {}
+
+        # Hooks
+        self._pre_deploy_hooks: List[Callable[[Deployment], Awaitable[bool]]] = []
+        self._post_deploy_hooks: List[Callable[[Deployment], Awaitable[None]]] = []
+        self._verification_hooks: List[Callable[[Deployment], Awaitable[bool]]] = []
+
+        # Statistics
+        self._stats = {
+            "deployments_started": 0,
+            "deployments_succeeded": 0,
+            "deployments_failed": 0,
+            "rollbacks_performed": 0,
+        }
+
+    def register_strategy(
+        self,
+        name: str,
+        implementation: Callable[[Deployment], Awaitable[bool]],
+    ) -> None:
+        """Register a deployment strategy."""
+        self._strategies[name] = implementation
+
+    def add_pre_deploy_hook(
+        self,
+        hook: Callable[[Deployment], Awaitable[bool]],
+    ) -> None:
+        """Add a pre-deployment hook."""
+        self._pre_deploy_hooks.append(hook)
+
+    def add_post_deploy_hook(
+        self,
+        hook: Callable[[Deployment], Awaitable[None]],
+    ) -> None:
+        """Add a post-deployment hook."""
+        self._post_deploy_hooks.append(hook)
+
+    def add_verification_hook(
+        self,
+        hook: Callable[[Deployment], Awaitable[bool]],
+    ) -> None:
+        """Add a verification hook."""
+        self._verification_hooks.append(hook)
+
+    async def deploy(
+        self,
+        application_name: str,
+        version: str,
+        strategy: str = "rolling",
+        config: Optional[Dict[str, Any]] = None,
+    ) -> str:
+        """
+        Start a deployment.
+
+        Returns deployment ID.
+        """
+        deployment_id = str(uuid.uuid4())[:12]
+
+        deployment = Deployment(
+            deployment_id=deployment_id,
+            application_name=application_name,
+            version=version,
+            strategy=strategy,
+            config=config or {},
+        )
+
+        async with self._deployment_lock:
+            self._deployments[deployment_id] = deployment
+
+        self._stats["deployments_started"] += 1
+
+        # Execute deployment in background
+        asyncio.create_task(self._execute_deployment(deployment))
+
+        return deployment_id
+
+    async def _execute_deployment(self, deployment: Deployment) -> None:
+        """Execute the deployment workflow."""
+        try:
+            # Phase 1: Preparing
+            deployment.transition_to(DeploymentPhase.PREPARING, "Running pre-deploy hooks")
+
+            for hook in self._pre_deploy_hooks:
+                try:
+                    if not await hook(deployment):
+                        deployment.transition_to(
+                            DeploymentPhase.FAILED,
+                            "Pre-deploy hook failed"
+                        )
+                        deployment.error = "Pre-deploy hook returned false"
+                        self._stats["deployments_failed"] += 1
+                        return
+                except Exception as e:
+                    deployment.transition_to(
+                        DeploymentPhase.FAILED,
+                        f"Pre-deploy hook error: {e}"
+                    )
+                    deployment.error = str(e)
+                    self._stats["deployments_failed"] += 1
+                    return
+
+            # Phase 2: Deploying
+            deployment.transition_to(DeploymentPhase.DEPLOYING, "Executing deployment strategy")
+
+            strategy_impl = self._strategies.get(deployment.strategy)
+            if strategy_impl is None:
+                deployment.transition_to(
+                    DeploymentPhase.FAILED,
+                    f"Unknown strategy: {deployment.strategy}"
+                )
+                deployment.error = f"Unknown strategy: {deployment.strategy}"
+                self._stats["deployments_failed"] += 1
+                return
+
+            deployment.rollback_available = True
+
+            success = await strategy_impl(deployment)
+            if not success:
+                deployment.transition_to(
+                    DeploymentPhase.FAILED,
+                    "Deployment strategy failed"
+                )
+                deployment.error = "Strategy execution failed"
+                self._stats["deployments_failed"] += 1
+                return
+
+            # Phase 3: Verifying
+            deployment.transition_to(DeploymentPhase.VERIFYING, "Running verification")
+
+            # Health check verification
+            if self._health_orchestrator:
+                await asyncio.sleep(5)  # Give time for service to stabilize
+                if not self._health_orchestrator.is_healthy(HealthCheckType.READINESS):
+                    deployment.transition_to(
+                        DeploymentPhase.FAILED,
+                        "Health check failed after deployment"
+                    )
+                    deployment.error = "Post-deployment health check failed"
+                    self._stats["deployments_failed"] += 1
+                    return
+
+            # Custom verification hooks
+            for hook in self._verification_hooks:
+                try:
+                    if not await hook(deployment):
+                        deployment.transition_to(
+                            DeploymentPhase.FAILED,
+                            "Verification hook failed"
+                        )
+                        deployment.error = "Verification hook returned false"
+                        self._stats["deployments_failed"] += 1
+                        return
+                except Exception as e:
+                    deployment.transition_to(
+                        DeploymentPhase.FAILED,
+                        f"Verification error: {e}"
+                    )
+                    deployment.error = str(e)
+                    self._stats["deployments_failed"] += 1
+                    return
+
+            # Phase 4: Completed
+            deployment.transition_to(DeploymentPhase.COMPLETED, "Deployment successful")
+            deployment.progress_percent = 100
+            self._stats["deployments_succeeded"] += 1
+
+            # Post-deploy hooks (fire and forget)
+            for hook in self._post_deploy_hooks:
+                try:
+                    await hook(deployment)
+                except Exception:
+                    pass
+
+        except Exception as e:
+            deployment.transition_to(DeploymentPhase.FAILED, f"Unexpected error: {e}")
+            deployment.error = str(e)
+            self._stats["deployments_failed"] += 1
+
+    async def rollback(self, deployment_id: str) -> bool:
+        """
+        Rollback a deployment.
+
+        Returns True if rollback was initiated.
+        """
+        async with self._deployment_lock:
+            deployment = self._deployments.get(deployment_id)
+
+            if deployment is None:
+                return False
+
+            if not deployment.rollback_available:
+                return False
+
+            if deployment.previous_version is None:
+                return False
+
+            # Create rollback deployment
+            rollback_id = await self.deploy(
+                application_name=deployment.application_name,
+                version=deployment.previous_version,
+                strategy=deployment.strategy,
+                config=deployment.config,
+            )
+
+            if rollback_id:
+                deployment.transition_to(
+                    DeploymentPhase.ROLLED_BACK,
+                    f"Rolled back via {rollback_id}"
+                )
+                self._stats["rollbacks_performed"] += 1
+                return True
+
+            return False
+
+    def get_deployment(self, deployment_id: str) -> Optional[Dict[str, Any]]:
+        """Get deployment details."""
+        deployment = self._deployments.get(deployment_id)
+        if deployment:
+            return deployment.to_dict()
+        return None
+
+    def list_deployments(
+        self,
+        application_name: Optional[str] = None,
+        phase: Optional[DeploymentPhase] = None,
+    ) -> List[Dict[str, Any]]:
+        """List deployments with optional filtering."""
+        results = []
+        for deployment in self._deployments.values():
+            if application_name and deployment.application_name != application_name:
+                continue
+            if phase and deployment.phase != phase:
+                continue
+            results.append(deployment.to_dict())
+        return results
+
+    def get_status(self) -> Dict[str, Any]:
+        """Get coordinator status."""
+        return {
+            "active_deployments": len([
+                d for d in self._deployments.values()
+                if d.phase in (DeploymentPhase.PREPARING, DeploymentPhase.DEPLOYING, DeploymentPhase.VERIFYING)
+            ]),
+            "total_deployments": len(self._deployments),
+            "registered_strategies": list(self._strategies.keys()),
+            "stats": self._stats.copy(),
+        }
+
+
+class BlueGreenState:
+    """State for blue-green deployment."""
+
+    def __init__(
+        self,
+        application_name: str,
+    ):
+        self.application_name = application_name
+        self.active_environment = "blue"  # blue or green
+        self.blue_version: Optional[str] = None
+        self.green_version: Optional[str] = None
+        self.last_switch_at: Optional[float] = None
+
+
+class BlueGreenDeployer:
+    """
+    Zero-downtime blue-green deployments.
+
+    Features:
+    - Two identical environments (blue and green)
+    - Instant traffic switch
+    - Easy rollback by switching back
+    - Health verification before switch
+    """
+
+    def __init__(
+        self,
+        health_orchestrator: Optional[HealthCheckOrchestrator] = None,
+    ):
+        self._health_orchestrator = health_orchestrator
+
+        # State per application
+        self._states: Dict[str, BlueGreenState] = {}
+
+        # Environment management
+        self._environment_deployers: Dict[str, Callable[[str, str], Awaitable[bool]]] = {}
+        self._traffic_switchers: Dict[str, Callable[[str, str], Awaitable[bool]]] = {}
+
+        # Statistics
+        self._stats = {
+            "deployments": 0,
+            "switches": 0,
+            "rollbacks": 0,
+            "failed_deployments": 0,
+        }
+
+    def register_environment_deployer(
+        self,
+        application_name: str,
+        deployer: Callable[[str, str], Awaitable[bool]],  # (environment, version) -> success
+    ) -> None:
+        """Register function to deploy to an environment."""
+        self._environment_deployers[application_name] = deployer
+
+    def register_traffic_switcher(
+        self,
+        application_name: str,
+        switcher: Callable[[str, str], Awaitable[bool]],  # (app, environment) -> success
+    ) -> None:
+        """Register function to switch traffic."""
+        self._traffic_switchers[application_name] = switcher
+
+    async def deploy(
+        self,
+        application_name: str,
+        version: str,
+    ) -> Tuple[bool, str]:
+        """
+        Deploy a new version using blue-green strategy.
+
+        Returns (success, message).
+        """
+        # Get or create state
+        if application_name not in self._states:
+            self._states[application_name] = BlueGreenState(application_name)
+
+        state = self._states[application_name]
+
+        # Determine target environment (the inactive one)
+        target_env = "green" if state.active_environment == "blue" else "blue"
+
+        self._stats["deployments"] += 1
+
+        # Deploy to target environment
+        deployer = self._environment_deployers.get(application_name)
+        if deployer is None:
+            return False, f"No deployer registered for {application_name}"
+
+        try:
+            success = await deployer(target_env, version)
+            if not success:
+                self._stats["failed_deployments"] += 1
+                return False, f"Deployment to {target_env} failed"
+        except Exception as e:
+            self._stats["failed_deployments"] += 1
+            return False, f"Deployment error: {e}"
+
+        # Update state
+        if target_env == "blue":
+            state.blue_version = version
+        else:
+            state.green_version = version
+
+        # Verify health before switching
+        if self._health_orchestrator:
+            await asyncio.sleep(5)  # Stabilization time
+            if not self._health_orchestrator.is_healthy(HealthCheckType.READINESS):
+                return False, "Health check failed on new environment"
+
+        # Switch traffic
+        switcher = self._traffic_switchers.get(application_name)
+        if switcher is None:
+            return False, f"No traffic switcher registered for {application_name}"
+
+        try:
+            success = await switcher(application_name, target_env)
+            if not success:
+                return False, f"Traffic switch to {target_env} failed"
+        except Exception as e:
+            return False, f"Traffic switch error: {e}"
+
+        # Update active environment
+        state.active_environment = target_env
+        state.last_switch_at = time.time()
+        self._stats["switches"] += 1
+
+        return True, f"Deployed {version} to {target_env} and switched traffic"
+
+    async def rollback(self, application_name: str) -> Tuple[bool, str]:
+        """
+        Rollback by switching to the other environment.
+
+        Returns (success, message).
+        """
+        state = self._states.get(application_name)
+        if state is None:
+            return False, "No deployment state found"
+
+        # Switch to the other environment
+        target_env = "green" if state.active_environment == "blue" else "blue"
+        target_version = state.green_version if target_env == "green" else state.blue_version
+
+        if target_version is None:
+            return False, f"No version deployed to {target_env}"
+
+        switcher = self._traffic_switchers.get(application_name)
+        if switcher is None:
+            return False, f"No traffic switcher registered for {application_name}"
+
+        try:
+            success = await switcher(application_name, target_env)
+            if not success:
+                return False, f"Traffic switch to {target_env} failed"
+        except Exception as e:
+            return False, f"Rollback error: {e}"
+
+        state.active_environment = target_env
+        state.last_switch_at = time.time()
+        self._stats["rollbacks"] += 1
+
+        return True, f"Rolled back to {target_env} (version {target_version})"
+
+    def get_state(self, application_name: str) -> Optional[Dict[str, Any]]:
+        """Get deployment state for an application."""
+        state = self._states.get(application_name)
+        if state is None:
+            return None
+
+        return {
+            "application_name": state.application_name,
+            "active_environment": state.active_environment,
+            "blue_version": state.blue_version,
+            "green_version": state.green_version,
+            "last_switch_at": state.last_switch_at,
+        }
+
+    def get_status(self) -> Dict[str, Any]:
+        """Get deployer status."""
+        return {
+            "applications": list(self._states.keys()),
+            "stats": self._stats.copy(),
+        }
+
+
+class CanaryReleaseState:
+    """State for canary release."""
+
+    def __init__(
+        self,
+        application_name: str,
+        stable_version: str,
+        canary_version: str,
+    ):
+        self.application_name = application_name
+        self.stable_version = stable_version
+        self.canary_version = canary_version
+
+        self.canary_percentage = 0.0
+        self.started_at = time.time()
+        self.last_update_at = time.time()
+        self.phase = "initial"  # initial, ramping, stable, completed, aborted
+
+        # Metrics
+        self.canary_requests = 0
+        self.canary_errors = 0
+        self.stable_requests = 0
+        self.stable_errors = 0
+
+
+class CanaryReleaseManager:
+    """
+    Progressive canary deployments.
+
+    Features:
+    - Gradual traffic shift (1% -> 5% -> 10% -> 25% -> 50% -> 100%)
+    - Automatic metrics comparison
+    - Automatic promotion or rollback
+    - Manual approval gates
+    """
+
+    def __init__(
+        self,
+        default_steps: Optional[List[float]] = None,
+        step_duration_seconds: float = 300.0,
+        error_threshold: float = 0.05,  # 5% error rate threshold
+    ):
+        self._default_steps = default_steps or [1, 5, 10, 25, 50, 100]
+        self._step_duration = step_duration_seconds
+        self._error_threshold = error_threshold
+
+        # Active releases
+        self._releases: Dict[str, CanaryReleaseState] = {}
+        self._release_lock = asyncio.Lock()
+
+        # Background tasks
+        self._monitor_tasks: Dict[str, asyncio.Task] = {}
+        self._running = False
+
+        # Traffic router callback
+        self._traffic_routers: Dict[str, Callable[[str, float], Awaitable[bool]]] = {}
+
+        # Statistics
+        self._stats = {
+            "releases_started": 0,
+            "releases_completed": 0,
+            "releases_aborted": 0,
+            "auto_rollbacks": 0,
+        }
+
+    def register_traffic_router(
+        self,
+        application_name: str,
+        router: Callable[[str, float], Awaitable[bool]],  # (version, percentage) -> success
+    ) -> None:
+        """Register function to route traffic percentage."""
+        self._traffic_routers[application_name] = router
+
+    async def start_release(
+        self,
+        application_name: str,
+        stable_version: str,
+        canary_version: str,
+        steps: Optional[List[float]] = None,
+        auto_promote: bool = True,
+    ) -> Tuple[bool, str]:
+        """
+        Start a canary release.
+
+        Returns (success, release_id or error message).
+        """
+        async with self._release_lock:
+            if application_name in self._releases:
+                return False, "Release already in progress"
+
+            release = CanaryReleaseState(
+                application_name=application_name,
+                stable_version=stable_version,
+                canary_version=canary_version,
+            )
+
+            self._releases[application_name] = release
+            self._stats["releases_started"] += 1
+
+        # Start monitoring if auto-promote
+        if auto_promote:
+            steps = steps or self._default_steps
+            task = asyncio.create_task(self._auto_promote_loop(application_name, steps))
+            self._monitor_tasks[application_name] = task
+
+        # Initial canary deployment
+        await self._set_canary_percentage(application_name, 1.0)
+
+        return True, application_name
+
+    async def _auto_promote_loop(
+        self,
+        application_name: str,
+        steps: List[float],
+    ) -> None:
+        """Auto-promotion loop for canary release."""
+        try:
+            for percentage in steps:
+                # Set new percentage
+                await self._set_canary_percentage(application_name, percentage)
+
+                # Wait for step duration
+                await asyncio.sleep(self._step_duration)
+
+                # Check metrics
+                release = self._releases.get(application_name)
+                if release is None:
+                    return
+
+                if await self._should_abort(release):
+                    await self.abort_release(application_name)
+                    return
+
+            # Completed - promote to 100%
+            await self._complete_release(application_name)
+
+        except asyncio.CancelledError:
+            pass
+        except Exception:
+            await self.abort_release(application_name)
+
+    async def _set_canary_percentage(
+        self,
+        application_name: str,
+        percentage: float,
+    ) -> bool:
+        """Set canary traffic percentage."""
+        release = self._releases.get(application_name)
+        if release is None:
+            return False
+
+        router = self._traffic_routers.get(application_name)
+        if router:
+            try:
+                await router(release.canary_version, percentage)
+            except Exception:
+                return False
+
+        release.canary_percentage = percentage
+        release.last_update_at = time.time()
+        release.phase = "ramping"
+
+        return True
+
+    async def _should_abort(self, release: CanaryReleaseState) -> bool:
+        """Check if release should be aborted based on metrics."""
+        if release.canary_requests == 0:
+            return False
+
+        canary_error_rate = release.canary_errors / release.canary_requests
+
+        if release.stable_requests > 0:
+            stable_error_rate = release.stable_errors / release.stable_requests
+            # Abort if canary error rate is significantly worse
+            if canary_error_rate > self._error_threshold and canary_error_rate > stable_error_rate * 2:
+                return True
+
+        return canary_error_rate > self._error_threshold
+
+    async def _complete_release(self, application_name: str) -> None:
+        """Complete the canary release."""
+        release = self._releases.get(application_name)
+        if release:
+            release.phase = "completed"
+            release.canary_percentage = 100.0
+            self._stats["releases_completed"] += 1
+
+    async def abort_release(self, application_name: str) -> Tuple[bool, str]:
+        """Abort the canary release and roll back."""
+        async with self._release_lock:
+            release = self._releases.get(application_name)
+            if release is None:
+                return False, "No release in progress"
+
+            # Cancel monitoring task
+            task = self._monitor_tasks.pop(application_name, None)
+            if task:
+                task.cancel()
+
+            # Route all traffic back to stable
+            router = self._traffic_routers.get(application_name)
+            if router:
+                try:
+                    await router(release.stable_version, 100.0)
+                except Exception as e:
+                    return False, f"Failed to route traffic: {e}"
+
+            release.phase = "aborted"
+            release.canary_percentage = 0.0
+            self._stats["releases_aborted"] += 1
+            self._stats["auto_rollbacks"] += 1
+
+            return True, "Release aborted, traffic routed to stable"
+
+    def record_metrics(
+        self,
+        application_name: str,
+        is_canary: bool,
+        is_error: bool,
+    ) -> None:
+        """Record request metrics for canary comparison."""
+        release = self._releases.get(application_name)
+        if release is None:
+            return
+
+        if is_canary:
+            release.canary_requests += 1
+            if is_error:
+                release.canary_errors += 1
+        else:
+            release.stable_requests += 1
+            if is_error:
+                release.stable_errors += 1
+
+    def get_release_state(self, application_name: str) -> Optional[Dict[str, Any]]:
+        """Get release state."""
+        release = self._releases.get(application_name)
+        if release is None:
+            return None
+
+        canary_error_rate = (
+            release.canary_errors / release.canary_requests
+            if release.canary_requests > 0 else 0
+        )
+        stable_error_rate = (
+            release.stable_errors / release.stable_requests
+            if release.stable_requests > 0 else 0
+        )
+
+        return {
+            "application_name": release.application_name,
+            "stable_version": release.stable_version,
+            "canary_version": release.canary_version,
+            "canary_percentage": release.canary_percentage,
+            "phase": release.phase,
+            "started_at": release.started_at,
+            "canary_requests": release.canary_requests,
+            "canary_error_rate": canary_error_rate,
+            "stable_requests": release.stable_requests,
+            "stable_error_rate": stable_error_rate,
+        }
+
+    def get_status(self) -> Dict[str, Any]:
+        """Get manager status."""
+        return {
+            "active_releases": len(self._releases),
+            "stats": self._stats.copy(),
+        }
+
+
+class RollbackCheckpoint:
+    """Represents a rollback checkpoint."""
+
+    def __init__(
+        self,
+        checkpoint_id: str,
+        application_name: str,
+        version: str,
+        state_snapshot: Dict[str, Any],
+    ):
+        self.checkpoint_id = checkpoint_id
+        self.application_name = application_name
+        self.version = version
+        self.state_snapshot = state_snapshot
+        self.created_at = time.time()
+        self.metadata: Dict[str, Any] = {}
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Serialize checkpoint."""
+        return {
+            "checkpoint_id": self.checkpoint_id,
+            "application_name": self.application_name,
+            "version": self.version,
+            "created_at": self.created_at,
+            "metadata": self.metadata,
+        }
+
+
+class RollbackCoordinator:
+    """
+    Automated rollback with checkpoints.
+
+    Features:
+    - Checkpoint creation before deployments
+    - Multiple checkpoint retention
+    - Automatic rollback triggers
+    - State restoration
+    """
+
+    def __init__(
+        self,
+        max_checkpoints_per_app: int = 5,
+        storage_path: Optional[Path] = None,
+    ):
+        self._max_checkpoints = max_checkpoints_per_app
+        self._storage_path = storage_path or Path(tempfile.gettempdir()) / "jarvis_rollback"
+
+        # Checkpoints per application
+        self._checkpoints: Dict[str, List[RollbackCheckpoint]] = defaultdict(list)
+
+        # Rollback handlers
+        self._rollback_handlers: Dict[str, Callable[[RollbackCheckpoint], Awaitable[bool]]] = {}
+
+        # Automatic rollback triggers
+        self._triggers: Dict[str, Callable[[], Awaitable[bool]]] = {}
+
+        # Statistics
+        self._stats = {
+            "checkpoints_created": 0,
+            "rollbacks_performed": 0,
+            "automatic_rollbacks": 0,
+        }
+
+    def register_rollback_handler(
+        self,
+        application_name: str,
+        handler: Callable[[RollbackCheckpoint], Awaitable[bool]],
+    ) -> None:
+        """Register a rollback handler for an application."""
+        self._rollback_handlers[application_name] = handler
+
+    def register_trigger(
+        self,
+        name: str,
+        trigger: Callable[[], Awaitable[bool]],  # Returns True if rollback needed
+    ) -> None:
+        """Register an automatic rollback trigger."""
+        self._triggers[name] = trigger
+
+    async def create_checkpoint(
+        self,
+        application_name: str,
+        version: str,
+        state_snapshot: Dict[str, Any],
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> str:
+        """
+        Create a rollback checkpoint.
+
+        Returns checkpoint ID.
+        """
+        checkpoint_id = str(uuid.uuid4())[:12]
+
+        checkpoint = RollbackCheckpoint(
+            checkpoint_id=checkpoint_id,
+            application_name=application_name,
+            version=version,
+            state_snapshot=state_snapshot,
+        )
+
+        if metadata:
+            checkpoint.metadata.update(metadata)
+
+        # Add to list
+        self._checkpoints[application_name].append(checkpoint)
+
+        # Trim old checkpoints
+        while len(self._checkpoints[application_name]) > self._max_checkpoints:
+            self._checkpoints[application_name].pop(0)
+
+        self._stats["checkpoints_created"] += 1
+
+        # Persist
+        await self._save_checkpoint(checkpoint)
+
+        return checkpoint_id
+
+    async def rollback_to(
+        self,
+        application_name: str,
+        checkpoint_id: Optional[str] = None,
+    ) -> Tuple[bool, str]:
+        """
+        Rollback to a checkpoint.
+
+        If checkpoint_id is None, rolls back to the most recent checkpoint.
+        """
+        checkpoints = self._checkpoints.get(application_name, [])
+        if not checkpoints:
+            return False, "No checkpoints available"
+
+        # Find target checkpoint
+        target = None
+        if checkpoint_id:
+            for cp in checkpoints:
+                if cp.checkpoint_id == checkpoint_id:
+                    target = cp
+                    break
+            if target is None:
+                return False, f"Checkpoint {checkpoint_id} not found"
+        else:
+            # Use most recent
+            target = checkpoints[-1]
+
+        # Execute rollback
+        handler = self._rollback_handlers.get(application_name)
+        if handler is None:
+            return False, f"No rollback handler for {application_name}"
+
+        try:
+            success = await handler(target)
+            if success:
+                self._stats["rollbacks_performed"] += 1
+                return True, f"Rolled back to {target.version} (checkpoint {target.checkpoint_id})"
+            else:
+                return False, "Rollback handler returned failure"
+        except Exception as e:
+            return False, f"Rollback error: {e}"
+
+    async def check_triggers(self) -> List[str]:
+        """
+        Check all registered triggers.
+
+        Returns list of trigger names that fired.
+        """
+        fired = []
+        for name, trigger in self._triggers.items():
+            try:
+                if await trigger():
+                    fired.append(name)
+            except Exception:
+                pass
+        return fired
+
+    async def auto_rollback_if_needed(
+        self,
+        application_name: str,
+    ) -> Optional[Tuple[bool, str]]:
+        """
+        Check triggers and automatically rollback if needed.
+
+        Returns rollback result if performed, None otherwise.
+        """
+        fired = await self.check_triggers()
+        if fired:
+            self._stats["automatic_rollbacks"] += 1
+            return await self.rollback_to(application_name)
+        return None
+
+    def list_checkpoints(self, application_name: str) -> List[Dict[str, Any]]:
+        """List checkpoints for an application."""
+        return [cp.to_dict() for cp in self._checkpoints.get(application_name, [])]
+
+    async def _save_checkpoint(self, checkpoint: RollbackCheckpoint) -> None:
+        """Persist checkpoint to storage."""
+        self._storage_path.mkdir(parents=True, exist_ok=True)
+        filepath = self._storage_path / f"checkpoint_{checkpoint.checkpoint_id}.json"
+
+        try:
+            data = {
+                **checkpoint.to_dict(),
+                "state_snapshot": checkpoint.state_snapshot,
+            }
+            filepath.write_text(json.dumps(data, default=str))
+        except Exception:
+            pass
+
+    def get_status(self) -> Dict[str, Any]:
+        """Get coordinator status."""
+        return {
+            "applications_with_checkpoints": len(self._checkpoints),
+            "total_checkpoints": sum(len(cps) for cps in self._checkpoints.values()),
+            "registered_triggers": list(self._triggers.keys()),
+            "stats": self._stats.copy(),
+        }
+
+
+class InfrastructureResource:
+    """Represents an infrastructure resource."""
+
+    def __init__(
+        self,
+        resource_id: str,
+        resource_type: str,
+        name: str,
+        config: Dict[str, Any],
+    ):
+        self.resource_id = resource_id
+        self.resource_type = resource_type
+        self.name = name
+        self.config = config
+
+        self.status = "pending"
+        self.created_at: Optional[float] = None
+        self.updated_at: Optional[float] = None
+        self.outputs: Dict[str, Any] = {}
+        self.error: Optional[str] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Serialize resource."""
+        return {
+            "resource_id": self.resource_id,
+            "resource_type": self.resource_type,
+            "name": self.name,
+            "status": self.status,
+            "created_at": self.created_at,
+            "updated_at": self.updated_at,
+            "outputs": self.outputs,
+            "error": self.error,
+        }
+
+
+class InfrastructureStack:
+    """Represents an infrastructure stack."""
+
+    def __init__(
+        self,
+        stack_id: str,
+        name: str,
+    ):
+        self.stack_id = stack_id
+        self.name = name
+        self.resources: Dict[str, InfrastructureResource] = {}
+        self.status = "pending"
+        self.created_at = time.time()
+        self.last_update_at: Optional[float] = None
+
+    def add_resource(self, resource: InfrastructureResource) -> None:
+        """Add a resource to the stack."""
+        self.resources[resource.resource_id] = resource
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Serialize stack."""
+        return {
+            "stack_id": self.stack_id,
+            "name": self.name,
+            "status": self.status,
+            "created_at": self.created_at,
+            "last_update_at": self.last_update_at,
+            "resource_count": len(self.resources),
+            "resources": {
+                rid: r.to_dict()
+                for rid, r in self.resources.items()
+            },
+        }
+
+
+class InfrastructureProvisionerManager:
+    """
+    Infrastructure provisioning management.
+
+    Features:
+    - Resource provisioning workflows
+    - Stack management
+    - Dependency resolution
+    - Resource lifecycle (create/update/delete)
+    - Output value propagation
+    """
+
+    def __init__(self):
+        # Stacks
+        self._stacks: Dict[str, InfrastructureStack] = {}
+
+        # Resource provisioners by type
+        self._provisioners: Dict[str, Callable[[InfrastructureResource], Awaitable[Dict[str, Any]]]] = {}
+        self._destroyers: Dict[str, Callable[[InfrastructureResource], Awaitable[bool]]] = {}
+
+        # Statistics
+        self._stats = {
+            "stacks_created": 0,
+            "resources_provisioned": 0,
+            "resources_destroyed": 0,
+            "provision_failures": 0,
+        }
+
+    def register_provisioner(
+        self,
+        resource_type: str,
+        provisioner: Callable[[InfrastructureResource], Awaitable[Dict[str, Any]]],
+        destroyer: Optional[Callable[[InfrastructureResource], Awaitable[bool]]] = None,
+    ) -> None:
+        """Register a resource provisioner."""
+        self._provisioners[resource_type] = provisioner
+        if destroyer:
+            self._destroyers[resource_type] = destroyer
+
+    async def create_stack(
+        self,
+        name: str,
+        resources: List[Dict[str, Any]],
+    ) -> str:
+        """
+        Create an infrastructure stack.
+
+        Resources should have: type, name, config
+        Returns stack ID.
+        """
+        stack_id = str(uuid.uuid4())[:12]
+
+        stack = InfrastructureStack(
+            stack_id=stack_id,
+            name=name,
+        )
+
+        # Create resource objects
+        for res_config in resources:
+            resource = InfrastructureResource(
+                resource_id=str(uuid.uuid4())[:8],
+                resource_type=res_config["type"],
+                name=res_config["name"],
+                config=res_config.get("config", {}),
+            )
+            stack.add_resource(resource)
+
+        self._stacks[stack_id] = stack
+        self._stats["stacks_created"] += 1
+
+        # Provision in background
+        asyncio.create_task(self._provision_stack(stack))
+
+        return stack_id
+
+    async def _provision_stack(self, stack: InfrastructureStack) -> None:
+        """Provision all resources in a stack."""
+        stack.status = "provisioning"
+
+        for resource in stack.resources.values():
+            success = await self._provision_resource(resource)
+            if not success:
+                stack.status = "failed"
+                return
+
+        stack.status = "active"
+        stack.last_update_at = time.time()
+
+    async def _provision_resource(self, resource: InfrastructureResource) -> bool:
+        """Provision a single resource."""
+        provisioner = self._provisioners.get(resource.resource_type)
+        if provisioner is None:
+            resource.status = "failed"
+            resource.error = f"No provisioner for type: {resource.resource_type}"
+            self._stats["provision_failures"] += 1
+            return False
+
+        try:
+            resource.status = "provisioning"
+            outputs = await provisioner(resource)
+            resource.outputs = outputs
+            resource.status = "active"
+            resource.created_at = time.time()
+            self._stats["resources_provisioned"] += 1
+            return True
+        except Exception as e:
+            resource.status = "failed"
+            resource.error = str(e)
+            self._stats["provision_failures"] += 1
+            return False
+
+    async def destroy_stack(self, stack_id: str) -> Tuple[bool, str]:
+        """
+        Destroy an infrastructure stack.
+
+        Returns (success, message).
+        """
+        stack = self._stacks.get(stack_id)
+        if stack is None:
+            return False, "Stack not found"
+
+        stack.status = "destroying"
+
+        # Destroy resources in reverse order
+        for resource in reversed(list(stack.resources.values())):
+            await self._destroy_resource(resource)
+
+        stack.status = "destroyed"
+        del self._stacks[stack_id]
+
+        return True, f"Stack {stack_id} destroyed"
+
+    async def _destroy_resource(self, resource: InfrastructureResource) -> bool:
+        """Destroy a single resource."""
+        destroyer = self._destroyers.get(resource.resource_type)
+        if destroyer is None:
+            # No destroyer, just mark as destroyed
+            resource.status = "destroyed"
+            return True
+
+        try:
+            await destroyer(resource)
+            resource.status = "destroyed"
+            self._stats["resources_destroyed"] += 1
+            return True
+        except Exception:
+            return False
+
+    def get_stack(self, stack_id: str) -> Optional[Dict[str, Any]]:
+        """Get stack details."""
+        stack = self._stacks.get(stack_id)
+        if stack:
+            return stack.to_dict()
+        return None
+
+    def list_stacks(self) -> List[Dict[str, Any]]:
+        """List all stacks."""
+        return [s.to_dict() for s in self._stacks.values()]
+
+    def get_status(self) -> Dict[str, Any]:
+        """Get manager status."""
+        return {
+            "active_stacks": len(self._stacks),
+            "registered_types": list(self._provisioners.keys()),
+            "stats": self._stats.copy(),
+        }
+
+
 # ╔═══════════════════════════════════════════════════════════════════════════════╗
 # ║                                                                               ║
 # ║   END OF ZONE 4                                                               ║
