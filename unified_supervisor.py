@@ -3339,7 +3339,15 @@ class GCPInstanceManager(ResourceManagerBase):
             return True  # Non-fatal - system can run without GCP
 
     async def _initialize_clients(self) -> None:
-        """Initialize GCP API clients."""
+        """
+        Initialize GCP API clients.
+
+        v118.0: Added auto-install capability for missing GCP dependencies.
+        When JARVIS_GCP_AUTO_INSTALL=true (default), missing packages are
+        automatically installed using pip. Falls back gracefully if install fails.
+        """
+        auto_install_enabled = os.getenv("JARVIS_GCP_AUTO_INSTALL", "true").lower() == "true"
+
         try:
             # Try to import google-cloud libraries
             from google.cloud import compute_v1
@@ -3362,20 +3370,122 @@ class GCPInstanceManager(ResourceManagerBase):
                 else:
                     self._run_client = run_v2.ServicesClient()
 
-        except ImportError:
+        except ImportError as import_error:
+            # v118.0: Attempt auto-install if enabled
+            if auto_install_enabled:
+                self._logger.info("📦 GCP libraries missing, attempting auto-install...")
+                install_success = await self._auto_install_gcp_packages()
+
+                if install_success:
+                    # Retry import after installation
+                    try:
+                        from google.cloud import compute_v1
+                        from google.cloud import run_v2
+
+                        if self.credentials_path and Path(self.credentials_path).exists():
+                            self._compute_client = compute_v1.InstancesClient.from_service_account_json(
+                                self.credentials_path
+                            )
+                        else:
+                            self._compute_client = compute_v1.InstancesClient()
+
+                        if self.prefer_cloud_run:
+                            if self.credentials_path and Path(self.credentials_path).exists():
+                                self._run_client = run_v2.ServicesClient.from_service_account_json(
+                                    self.credentials_path
+                                )
+                            else:
+                                self._run_client = run_v2.ServicesClient()
+
+                        self._logger.success("📦 GCP libraries installed and initialized")
+                        return  # Success after auto-install
+
+                    except ImportError:
+                        pass  # Fall through to graceful degradation
+
+            # Graceful degradation: GCP features disabled but system continues
             self._logger.warning("Google Cloud libraries not installed, GCP features limited")
-            # Add to startup issue collector for organized display
             try:
                 collector = get_startup_issue_collector()
+                suggestion = (
+                    "Run: pip install google-cloud-compute google-cloud-run\n"
+                    "Or set JARVIS_GCP_AUTO_INSTALL=true for automatic installation"
+                ) if not auto_install_enabled else (
+                    "Auto-install failed. Check network connectivity and pip permissions.\n"
+                    "Manual install: pip install google-cloud-compute google-cloud-run"
+                )
                 collector.add_warning(
                     "Google Cloud libraries not installed - GCP features limited",
                     IssueCategory.GCP,
-                    suggestion="Run: pip install google-cloud-compute google-cloud-run"
+                    suggestion=suggestion
                 )
             except Exception:
                 pass  # Collector might not be initialized yet
+
             self._compute_client = None
             self._run_client = None
+
+    async def _auto_install_gcp_packages(self) -> bool:
+        """
+        v118.0: Automatically install GCP packages using pip.
+
+        Runs pip install in subprocess to avoid blocking the event loop.
+        Returns True if installation succeeded, False otherwise.
+
+        Packages installed:
+        - google-cloud-compute: For Spot VM management
+        - google-cloud-run: For Cloud Run deployments
+        - google-auth: For authentication (dependency)
+        """
+        packages = [
+            "google-cloud-compute",
+            "google-cloud-run",
+            "google-auth",
+        ]
+
+        try:
+            import subprocess
+
+            # Use the same Python that's running the supervisor
+            python_exe = sys.executable
+
+            # Build pip install command with --quiet for cleaner output
+            cmd = [
+                python_exe, "-m", "pip", "install",
+                "--quiet",  # Reduce noise
+                "--disable-pip-version-check",  # Skip version check
+                "--no-warn-script-location",  # Skip path warnings
+                *packages
+            ]
+
+            self._logger.info(f"📦 Installing: {', '.join(packages)}...")
+
+            # Run pip in subprocess (non-blocking via asyncio)
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+
+            stdout, stderr = await asyncio.wait_for(
+                proc.communicate(),
+                timeout=120.0  # 2 minute timeout for package installation
+            )
+
+            if proc.returncode == 0:
+                self._logger.success(f"📦 Successfully installed GCP packages")
+                return True
+            else:
+                error_msg = stderr.decode().strip() if stderr else "Unknown error"
+                self._logger.warning(f"📦 Package installation failed: {error_msg}")
+                return False
+
+        except asyncio.TimeoutError:
+            self._logger.warning("📦 Package installation timed out after 120s")
+            return False
+        except Exception as e:
+            self._logger.warning(f"📦 Auto-install error: {e}")
+            return False
 
     async def health_check(self) -> Tuple[bool, str]:
         """Check GCP instance health."""
@@ -50303,21 +50413,61 @@ class JarvisSystemKernel:
             return status
 
         async def check_websocket() -> Dict[str, Any]:
+            """
+            v118.0: Intelligent WebSocket health check with graceful handling.
+
+            WebSocket is considered healthy if:
+            1. Port is listening and accepting connections, OR
+            2. WebSocket is explicitly disabled via JARVIS_WEBSOCKET_ENABLED=false, OR
+            3. WebSocket is optional and not started (note instead of error)
+
+            This prevents false "unhealthy" reports when WebSocket is optional.
+            """
             port = self.config.websocket_port
+            ws_enabled = os.getenv("JARVIS_WEBSOCKET_ENABLED", "true").lower() == "true"
+            ws_optional = os.getenv("JARVIS_WEBSOCKET_OPTIONAL", "true").lower() == "true"
+
             status: Dict[str, Any] = {"healthy": False, "name": "websocket"}
-            if port == 0:
-                status["note"] = "WebSocket port not configured"
+
+            # Case 1: WebSocket explicitly disabled
+            if not ws_enabled:
+                status["healthy"] = True  # Disabled is OK
+                status["note"] = "WebSocket disabled by configuration"
                 return status
+
+            # Case 2: Port not configured
+            if port == 0:
+                if ws_optional:
+                    status["healthy"] = True  # Optional and not configured is OK
+                    status["note"] = "WebSocket port not configured (optional)"
+                else:
+                    status["note"] = "WebSocket port not configured"
+                return status
+
+            # Case 3: Check if port is listening
             try:
                 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 sock.settimeout(5.0)
                 conn_result = sock.connect_ex(('localhost', port))
                 sock.close()
-                status["healthy"] = conn_result == 0
-                if not status["healthy"]:
+
+                if conn_result == 0:
+                    status["healthy"] = True
+                    status["note"] = f"WebSocket listening on port {port}"
+                elif ws_optional:
+                    # Optional WebSocket not running - not an error
+                    status["healthy"] = True
+                    status["note"] = f"WebSocket not started (optional, port {port})"
+                else:
                     status["error"] = f"Port {port} not open"
+
             except Exception as e:
-                status["error"] = str(e)
+                if ws_optional:
+                    status["healthy"] = True
+                    status["note"] = f"WebSocket check skipped: {e}"
+                else:
+                    status["error"] = str(e)
+
             return status
 
         async def check_trinity_prime() -> Dict[str, Any]:
