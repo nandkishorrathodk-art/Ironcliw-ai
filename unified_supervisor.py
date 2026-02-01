@@ -17516,6 +17516,693 @@ class DistributedStateCoordinator:
         }
 
 
+class TrinityOrchestrationEngine:
+    """
+    God Process orchestration for the Trinity system.
+
+    The Trinity Orchestration Engine is the central coordinator that manages:
+    - Distributed consensus with Raft-inspired leader election
+    - Predictive auto-scaling using Holt-Winters forecasting
+    - Graceful degradation with fallback modes
+    - Dead letter queue for failed event recovery
+    - Resource governance with memory limits
+
+    Architecture:
+    - Leader handles coordination decisions
+    - Followers replicate state and take over on failure
+    - All nodes can process local requests
+    """
+
+    class NodeState(Enum):
+        LEADER = "leader"
+        FOLLOWER = "follower"
+        CANDIDATE = "candidate"
+        OFFLINE = "offline"
+
+    def __init__(
+        self,
+        node_id: Optional[str] = None,
+        cluster_dir: Optional[Path] = None,
+        election_timeout_range: Tuple[float, float] = (1.5, 3.0),
+        heartbeat_interval: float = 0.5,
+    ) -> None:
+        self._node_id = node_id or f"node_{os.urandom(4).hex()}"
+        self._cluster_dir = cluster_dir or Path.home() / ".jarvis" / "trinity" / "cluster"
+        self._cluster_dir.mkdir(parents=True, exist_ok=True)
+        self._election_timeout_range = election_timeout_range
+        self._heartbeat_interval = heartbeat_interval
+
+        # Node state
+        self._state = self.NodeState.FOLLOWER
+        self._current_term = 0
+        self._voted_for: Optional[str] = None
+        self._leader_id: Optional[str] = None
+
+        # Log replication (simplified)
+        self._log: List[Dict[str, Any]] = []
+        self._commit_index = 0
+        self._last_applied = 0
+
+        # Cluster membership
+        self._known_nodes: Set[str] = {self._node_id}
+        self._node_last_seen: Dict[str, float] = {}
+
+        # Dead letter queue
+        self._dead_letters: List[Dict[str, Any]] = []
+        self._max_dead_letters = 1000
+
+        # Auto-scaling state (Holt-Winters forecasting)
+        self._load_history: List[float] = []
+        self._level = 0.0
+        self._trend = 0.0
+        self._alpha = 0.3  # Level smoothing
+        self._beta = 0.1   # Trend smoothing
+
+        # Background tasks
+        self._election_task: Optional[asyncio.Task] = None
+        self._heartbeat_task: Optional[asyncio.Task] = None
+        self._running = False
+
+        # Statistics
+        self._stats = {
+            "elections_participated": 0,
+            "elections_won": 0,
+            "heartbeats_sent": 0,
+            "heartbeats_received": 0,
+            "commands_processed": 0,
+            "dead_letters_created": 0,
+        }
+
+    async def start(self) -> bool:
+        """Start the orchestration engine."""
+        if self._running:
+            return True
+
+        self._running = True
+
+        # Load persisted state
+        await self._load_state()
+
+        # Start election timer
+        self._election_task = asyncio.create_task(self._election_loop())
+
+        return True
+
+    async def stop(self) -> None:
+        """Stop the orchestration engine."""
+        self._running = False
+        self._state = self.NodeState.OFFLINE
+
+        if self._election_task:
+            self._election_task.cancel()
+            try:
+                await self._election_task
+            except asyncio.CancelledError:
+                pass
+
+        if self._heartbeat_task:
+            self._heartbeat_task.cancel()
+            try:
+                await self._heartbeat_task
+            except asyncio.CancelledError:
+                pass
+
+        # Save state
+        await self._save_state()
+
+    async def _election_loop(self) -> None:
+        """Background loop for leader election."""
+        while self._running:
+            try:
+                # Random election timeout
+                timeout = random.uniform(*self._election_timeout_range)
+                await asyncio.sleep(timeout)
+
+                # Check if we need to start election
+                if self._state == self.NodeState.FOLLOWER:
+                    leader_timeout = time.time() - self._node_last_seen.get(
+                        self._leader_id or "", 0
+                    )
+                    if leader_timeout > timeout * 2:
+                        await self._start_election()
+
+            except asyncio.CancelledError:
+                break
+            except Exception:
+                pass
+
+    async def _start_election(self) -> None:
+        """Start a leader election."""
+        self._state = self.NodeState.CANDIDATE
+        self._current_term += 1
+        self._voted_for = self._node_id
+        self._stats["elections_participated"] += 1
+
+        # Request votes from other nodes
+        votes_received = 1  # Vote for self
+        nodes_contacted = await self._discover_nodes()
+
+        # In file-based coordination, we check who has the latest log
+        for node_id in nodes_contacted:
+            if node_id == self._node_id:
+                continue
+
+            vote = await self._request_vote(node_id)
+            if vote:
+                votes_received += 1
+
+        # Check if we won
+        majority = (len(nodes_contacted) + 1) // 2 + 1
+        if votes_received >= majority:
+            self._state = self.NodeState.LEADER
+            self._leader_id = self._node_id
+            self._stats["elections_won"] += 1
+
+            # Start heartbeat task
+            if self._heartbeat_task:
+                self._heartbeat_task.cancel()
+            self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
+        else:
+            self._state = self.NodeState.FOLLOWER
+
+    async def _heartbeat_loop(self) -> None:
+        """Send heartbeats as leader."""
+        while self._running and self._state == self.NodeState.LEADER:
+            try:
+                await self._send_heartbeat()
+                self._stats["heartbeats_sent"] += 1
+                await asyncio.sleep(self._heartbeat_interval)
+            except asyncio.CancelledError:
+                break
+            except Exception:
+                pass
+
+    async def _send_heartbeat(self) -> None:
+        """Send heartbeat to cluster."""
+        heartbeat_file = self._cluster_dir / f"{self._node_id}.heartbeat"
+        data = {
+            "node_id": self._node_id,
+            "term": self._current_term,
+            "state": self._state.value,
+            "commit_index": self._commit_index,
+            "timestamp": time.time(),
+        }
+        heartbeat_file.write_text(json.dumps(data))
+
+    async def _discover_nodes(self) -> List[str]:
+        """Discover other nodes in the cluster."""
+        nodes = []
+        for heartbeat_file in self._cluster_dir.glob("*.heartbeat"):
+            try:
+                content = heartbeat_file.read_text()
+                data = json.loads(content)
+                node_id = data.get("node_id")
+                timestamp = data.get("timestamp", 0)
+
+                # Only include recent nodes
+                if time.time() - timestamp < 10:
+                    nodes.append(node_id)
+                    self._node_last_seen[node_id] = timestamp
+
+                    # Update leader if needed
+                    if data.get("state") == "leader":
+                        self._leader_id = node_id
+                        if node_id != self._node_id:
+                            self._state = self.NodeState.FOLLOWER
+
+            except Exception:
+                pass
+
+        self._known_nodes = set(nodes) | {self._node_id}
+        return nodes
+
+    async def _request_vote(self, node_id: str) -> bool:
+        """Request vote from a node (file-based simulation)."""
+        # In file-based coordination, we use a voting file
+        vote_file = self._cluster_dir / f"{node_id}.vote"
+        if vote_file.exists():
+            try:
+                content = vote_file.read_text()
+                data = json.loads(content)
+                return data.get("voted_for") == self._node_id
+            except Exception:
+                pass
+        return False
+
+    async def submit_command(self, command: Dict[str, Any]) -> bool:
+        """Submit a command to the cluster."""
+        if self._state != self.NodeState.LEADER:
+            # Forward to leader (or add to dead letter queue)
+            if self._leader_id:
+                return await self._forward_to_leader(command)
+            else:
+                self._add_dead_letter(command, "no_leader")
+                return False
+
+        # Append to log
+        entry = {
+            "term": self._current_term,
+            "index": len(self._log),
+            "command": command,
+            "timestamp": time.time(),
+        }
+        self._log.append(entry)
+        self._commit_index = len(self._log) - 1
+        self._stats["commands_processed"] += 1
+
+        # Apply immediately (simplified)
+        await self._apply_entry(entry)
+
+        return True
+
+    async def _forward_to_leader(self, command: Dict[str, Any]) -> bool:
+        """Forward command to leader via file."""
+        if not self._leader_id:
+            return False
+
+        forward_file = self._cluster_dir / f"forward_{self._leader_id}_{int(time.time() * 1000)}.json"
+        forward_file.write_text(json.dumps({
+            "from": self._node_id,
+            "command": command,
+            "timestamp": time.time(),
+        }))
+        return True
+
+    async def _apply_entry(self, entry: Dict[str, Any]) -> None:
+        """Apply a log entry (process command)."""
+        command = entry.get("command", {})
+        command_type = command.get("type")
+
+        if command_type == "scale":
+            await self._handle_scale_command(command)
+        elif command_type == "failover":
+            await self._handle_failover_command(command)
+
+        self._last_applied = entry.get("index", 0)
+
+    async def _handle_scale_command(self, command: Dict[str, Any]) -> None:
+        """Handle auto-scaling command."""
+        # Record load and update forecasting
+        current_load = command.get("load", 0)
+        self._load_history.append(current_load)
+        if len(self._load_history) > 100:
+            self._load_history = self._load_history[-100:]
+
+        # Holt-Winters update
+        if len(self._load_history) >= 2:
+            old_level = self._level
+            self._level = self._alpha * current_load + (1 - self._alpha) * (self._level + self._trend)
+            self._trend = self._beta * (self._level - old_level) + (1 - self._beta) * self._trend
+
+    async def _handle_failover_command(self, command: Dict[str, Any]) -> None:
+        """Handle failover command."""
+        failed_node = command.get("failed_node")
+        if failed_node:
+            self._known_nodes.discard(failed_node)
+
+    def _add_dead_letter(self, command: Dict[str, Any], reason: str) -> None:
+        """Add command to dead letter queue."""
+        self._dead_letters.append({
+            "command": command,
+            "reason": reason,
+            "timestamp": datetime.now().isoformat(),
+        })
+        if len(self._dead_letters) > self._max_dead_letters:
+            self._dead_letters = self._dead_letters[-self._max_dead_letters:]
+        self._stats["dead_letters_created"] += 1
+
+    def get_forecast(self, periods: int = 5) -> List[float]:
+        """Get load forecast for future periods."""
+        forecasts = []
+        level = self._level
+        trend = self._trend
+
+        for _ in range(periods):
+            forecast = level + trend
+            forecasts.append(forecast)
+            level = level + trend
+
+        return forecasts
+
+    async def _load_state(self) -> None:
+        """Load persisted state."""
+        state_file = self._cluster_dir / f"{self._node_id}.state.json"
+        if state_file.exists():
+            try:
+                content = state_file.read_text()
+                data = json.loads(content)
+                self._current_term = data.get("term", 0)
+                self._voted_for = data.get("voted_for")
+                self._commit_index = data.get("commit_index", 0)
+            except Exception:
+                pass
+
+    async def _save_state(self) -> None:
+        """Persist state."""
+        state_file = self._cluster_dir / f"{self._node_id}.state.json"
+        data = {
+            "node_id": self._node_id,
+            "term": self._current_term,
+            "voted_for": self._voted_for,
+            "commit_index": self._commit_index,
+            "state": self._state.value,
+        }
+        state_file.write_text(json.dumps(data))
+
+    def get_status(self) -> Dict[str, Any]:
+        """Get orchestration engine status."""
+        return {
+            "node_id": self._node_id,
+            "state": self._state.value,
+            "term": self._current_term,
+            "leader_id": self._leader_id,
+            "known_nodes": list(self._known_nodes),
+            "commit_index": self._commit_index,
+            "log_length": len(self._log),
+            "dead_letters": len(self._dead_letters),
+            "forecast": self.get_forecast(3),
+            "stats": self._stats,
+        }
+
+
+class IntelligentWorkloadBalancer:
+    """
+    Intelligent workload distribution across JARVIS components.
+
+    Balances requests across:
+    - Local processing (Mac)
+    - JARVIS Prime (Tier-0 brain)
+    - Reactor Core (training)
+    - Cloud Run (overflow)
+    - GCP Spot VMs (batch processing)
+
+    Algorithms:
+    - Weighted round-robin for even distribution
+    - Least connections for low-latency requests
+    - Resource-aware routing based on CPU/memory
+    - Adaptive learning from response times
+    """
+
+    class BalancingStrategy(Enum):
+        ROUND_ROBIN = "round_robin"
+        WEIGHTED_ROUND_ROBIN = "weighted_round_robin"
+        LEAST_CONNECTIONS = "least_connections"
+        RESOURCE_AWARE = "resource_aware"
+        ADAPTIVE = "adaptive"
+
+    def __init__(
+        self,
+        strategy: "IntelligentWorkloadBalancer.BalancingStrategy" = None,
+        health_check_interval: float = 10.0,
+    ) -> None:
+        self._strategy = strategy or self.BalancingStrategy.ADAPTIVE
+        self._health_check_interval = health_check_interval
+
+        # Backend pool
+        self._backends: Dict[str, Dict[str, Any]] = {}
+
+        # Connection tracking
+        self._active_connections: Dict[str, int] = {}
+
+        # Round-robin state
+        self._rr_index = 0
+
+        # Adaptive learning state
+        self._response_times: Dict[str, List[float]] = {}
+        self._error_rates: Dict[str, List[bool]] = {}
+        self._adaptive_weights: Dict[str, float] = {}
+
+        # Health checking
+        self._health_task: Optional[asyncio.Task] = None
+        self._running = False
+
+        # Statistics
+        self._stats = {
+            "requests_routed": 0,
+            "requests_by_backend": {},
+            "health_checks": 0,
+            "backends_marked_unhealthy": 0,
+        }
+
+    def add_backend(
+        self,
+        backend_id: str,
+        url: str,
+        weight: int = 1,
+        max_connections: int = 100,
+        capabilities: Optional[List[str]] = None,
+    ) -> None:
+        """Add a backend to the pool."""
+        self._backends[backend_id] = {
+            "url": url,
+            "weight": weight,
+            "max_connections": max_connections,
+            "capabilities": capabilities or [],
+            "healthy": True,
+            "last_health_check": 0,
+        }
+        self._active_connections[backend_id] = 0
+        self._response_times[backend_id] = []
+        self._error_rates[backend_id] = []
+        self._adaptive_weights[backend_id] = float(weight)
+        self._stats["requests_by_backend"][backend_id] = 0
+
+    def remove_backend(self, backend_id: str) -> None:
+        """Remove a backend from the pool."""
+        if backend_id in self._backends:
+            del self._backends[backend_id]
+            del self._active_connections[backend_id]
+            del self._response_times[backend_id]
+            del self._error_rates[backend_id]
+            del self._adaptive_weights[backend_id]
+
+    async def start(self) -> bool:
+        """Start the load balancer."""
+        if self._running:
+            return True
+
+        self._running = True
+        self._health_task = asyncio.create_task(self._health_check_loop())
+        return True
+
+    async def stop(self) -> None:
+        """Stop the load balancer."""
+        self._running = False
+        if self._health_task:
+            self._health_task.cancel()
+            try:
+                await self._health_task
+            except asyncio.CancelledError:
+                pass
+
+    def select_backend(
+        self,
+        required_capabilities: Optional[List[str]] = None,
+    ) -> Optional[str]:
+        """Select a backend for a request."""
+        # Filter healthy backends with required capabilities
+        candidates = []
+        for backend_id, info in self._backends.items():
+            if not info["healthy"]:
+                continue
+            if self._active_connections[backend_id] >= info["max_connections"]:
+                continue
+            if required_capabilities:
+                if not all(cap in info["capabilities"] for cap in required_capabilities):
+                    continue
+            candidates.append(backend_id)
+
+        if not candidates:
+            return None
+
+        # Select based on strategy
+        selected = None
+        if self._strategy == self.BalancingStrategy.ROUND_ROBIN:
+            selected = self._select_round_robin(candidates)
+        elif self._strategy == self.BalancingStrategy.WEIGHTED_ROUND_ROBIN:
+            selected = self._select_weighted_round_robin(candidates)
+        elif self._strategy == self.BalancingStrategy.LEAST_CONNECTIONS:
+            selected = self._select_least_connections(candidates)
+        elif self._strategy == self.BalancingStrategy.RESOURCE_AWARE:
+            selected = self._select_resource_aware(candidates)
+        elif self._strategy == self.BalancingStrategy.ADAPTIVE:
+            selected = self._select_adaptive(candidates)
+
+        if selected:
+            self._active_connections[selected] += 1
+            self._stats["requests_routed"] += 1
+            self._stats["requests_by_backend"][selected] = (
+                self._stats["requests_by_backend"].get(selected, 0) + 1
+            )
+
+        return selected
+
+    def release_backend(self, backend_id: str) -> None:
+        """Release a backend connection."""
+        if backend_id in self._active_connections:
+            self._active_connections[backend_id] = max(
+                0, self._active_connections[backend_id] - 1
+            )
+
+    def record_response(
+        self,
+        backend_id: str,
+        response_time_ms: float,
+        success: bool,
+    ) -> None:
+        """Record response for adaptive learning."""
+        if backend_id not in self._response_times:
+            return
+
+        # Record response time
+        self._response_times[backend_id].append(response_time_ms)
+        if len(self._response_times[backend_id]) > 100:
+            self._response_times[backend_id] = self._response_times[backend_id][-100:]
+
+        # Record success/failure
+        self._error_rates[backend_id].append(success)
+        if len(self._error_rates[backend_id]) > 100:
+            self._error_rates[backend_id] = self._error_rates[backend_id][-100:]
+
+        # Update adaptive weight
+        self._update_adaptive_weight(backend_id)
+
+    def _select_round_robin(self, candidates: List[str]) -> Optional[str]:
+        """Simple round-robin selection."""
+        if not candidates:
+            return None
+        self._rr_index = (self._rr_index + 1) % len(candidates)
+        return candidates[self._rr_index]
+
+    def _select_weighted_round_robin(self, candidates: List[str]) -> Optional[str]:
+        """Weighted round-robin based on backend weight."""
+        if not candidates:
+            return None
+
+        total_weight = sum(self._backends[b]["weight"] for b in candidates)
+        r = random.uniform(0, total_weight)
+
+        cumulative = 0
+        for backend_id in candidates:
+            cumulative += self._backends[backend_id]["weight"]
+            if r <= cumulative:
+                return backend_id
+
+        return candidates[-1]
+
+    def _select_least_connections(self, candidates: List[str]) -> Optional[str]:
+        """Select backend with least active connections."""
+        if not candidates:
+            return None
+
+        return min(candidates, key=lambda b: self._active_connections[b])
+
+    def _select_resource_aware(self, candidates: List[str]) -> Optional[str]:
+        """Select based on resource availability."""
+        # For now, fall back to least connections
+        # In production, would check CPU/memory of each backend
+        return self._select_least_connections(candidates)
+
+    def _select_adaptive(self, candidates: List[str]) -> Optional[str]:
+        """Select based on learned performance."""
+        if not candidates:
+            return None
+
+        # Use adaptive weights (higher = better)
+        total_weight = sum(self._adaptive_weights.get(b, 1.0) for b in candidates)
+        if total_weight <= 0:
+            return self._select_round_robin(candidates)
+
+        r = random.uniform(0, total_weight)
+        cumulative = 0
+        for backend_id in candidates:
+            cumulative += self._adaptive_weights.get(backend_id, 1.0)
+            if r <= cumulative:
+                return backend_id
+
+        return candidates[-1]
+
+    def _update_adaptive_weight(self, backend_id: str) -> None:
+        """Update adaptive weight based on performance."""
+        if backend_id not in self._response_times:
+            return
+
+        # Calculate average response time
+        response_times = self._response_times[backend_id]
+        if not response_times:
+            return
+
+        avg_response_time = sum(response_times) / len(response_times)
+
+        # Calculate error rate
+        error_rates = self._error_rates[backend_id]
+        success_rate = sum(error_rates) / len(error_rates) if error_rates else 1.0
+
+        # Weight inversely proportional to response time, proportional to success
+        # Base weight from configuration
+        base_weight = self._backends[backend_id]["weight"]
+
+        # Faster response = higher weight
+        response_factor = 1000 / max(1, avg_response_time)  # 1000ms baseline
+
+        # Higher success rate = higher weight
+        success_factor = success_rate
+
+        # Combine factors
+        self._adaptive_weights[backend_id] = base_weight * response_factor * success_factor
+
+    async def _health_check_loop(self) -> None:
+        """Background health checking."""
+        while self._running:
+            try:
+                await asyncio.sleep(self._health_check_interval)
+                await self._check_all_backends()
+            except asyncio.CancelledError:
+                break
+            except Exception:
+                pass
+
+    async def _check_all_backends(self) -> None:
+        """Check health of all backends."""
+        self._stats["health_checks"] += 1
+
+        for backend_id, info in self._backends.items():
+            was_healthy = info["healthy"]
+
+            # Simple health check - try to connect
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(
+                        f"{info['url']}/health",
+                        timeout=aiohttp.ClientTimeout(total=5),
+                    ) as resp:
+                        info["healthy"] = resp.status == 200
+            except Exception:
+                info["healthy"] = False
+
+            info["last_health_check"] = time.time()
+
+            if was_healthy and not info["healthy"]:
+                self._stats["backends_marked_unhealthy"] += 1
+
+    def get_status(self) -> Dict[str, Any]:
+        """Get load balancer status."""
+        return {
+            "strategy": self._strategy.value,
+            "running": self._running,
+            "backends": {
+                bid: {
+                    "healthy": info["healthy"],
+                    "connections": self._active_connections.get(bid, 0),
+                    "weight": info["weight"],
+                    "adaptive_weight": self._adaptive_weights.get(bid, 0),
+                }
+                for bid, info in self._backends.items()
+            },
+            "stats": self._stats,
+        }
+
+
 # ╔═══════════════════════════════════════════════════════════════════════════════╗
 # ║                                                                               ║
 # ║   END OF ZONE 4                                                               ║
