@@ -47552,14 +47552,29 @@ class TrinityIntegrator:
         return True
 
     async def _discover_repo(self, name: str, explicit_path: Optional[Path]) -> Optional[Path]:
-        """Discover a Trinity repo location."""
+        """
+        Discover a Trinity repo location with comprehensive logging (v170.0).
+
+        Search strategy:
+        1. Explicit path from config
+        2. Environment variable ({NAME}_PATH)
+        3. Common locations relative to home and workspace
+        """
+        self.logger.debug(f"[Trinity] Discovering {name}...")
+
         if name in self._discovery_cache:
-            return self._discovery_cache[name]
+            cached = self._discovery_cache[name]
+            self.logger.debug(f"[Trinity] {name}: Using cached path: {cached}")
+            return cached
 
         # Strategy 1: Explicit path from config
-        if explicit_path and explicit_path.exists():
-            self._discovery_cache[name] = explicit_path
-            return explicit_path
+        if explicit_path:
+            if explicit_path.exists():
+                self.logger.debug(f"[Trinity] {name}: Found via explicit config at {explicit_path}")
+                self._discovery_cache[name] = explicit_path
+                return explicit_path
+            else:
+                self.logger.debug(f"[Trinity] {name}: Explicit path {explicit_path} does not exist")
 
         # Strategy 2: Environment variable
         env_var = f"{name.upper().replace('-', '_')}_PATH"
@@ -47567,23 +47582,49 @@ class TrinityIntegrator:
         if env_path:
             path = Path(env_path)
             if path.exists():
+                self.logger.debug(f"[Trinity] {name}: Found via {env_var}={env_path}")
                 self._discovery_cache[name] = path
                 return path
+            else:
+                self.logger.debug(f"[Trinity] {name}: {env_var}={env_path} does not exist")
 
         # Strategy 3: Common locations
+        # Determine workspace root (where unified_supervisor.py lives)
+        workspace_root = Path(__file__).parent
+        workspace_parent = workspace_root.parent
+
         search_paths = [
+            # Standard locations
             Path.home() / "Documents" / "repos" / name,
             Path.home() / "repos" / name,
             Path.home() / "code" / name,
             Path.home() / "projects" / name,
-            Path(__file__).parent.parent / name,  # Sibling directory
+            # Sibling directory (most common for multi-repo setups)
+            workspace_parent / name,
+            # Parent's parent (some users nest deeper)
+            workspace_parent.parent / name,
         ]
 
-        for path in search_paths:
-            if path.exists() and (path / ".git").exists():
-                self._discovery_cache[name] = path
-                return path
+        self.logger.debug(f"[Trinity] {name}: Searching {len(search_paths)} common locations...")
 
+        for path in search_paths:
+            try:
+                if path.exists():
+                    # Check if it's a valid repo (has .git or is a recognized structure)
+                    is_git_repo = (path / ".git").exists()
+                    # Also check for package directory as fallback
+                    has_package = (path / name.replace('-', '_')).exists()
+
+                    if is_git_repo or has_package:
+                        self.logger.debug(f"[Trinity] {name}: Found at {path} (git={is_git_repo}, pkg={has_package})")
+                        self._discovery_cache[name] = path
+                        return path
+                    else:
+                        self.logger.debug(f"[Trinity] {name}: Path {path} exists but not a valid repo")
+            except (PermissionError, OSError) as e:
+                self.logger.debug(f"[Trinity] {name}: Cannot access {path}: {e}")
+
+        self.logger.debug(f"[Trinity] {name}: Not found in any search location")
         self._discovery_cache[name] = None
         return None
 
@@ -47609,18 +47650,33 @@ class TrinityIntegrator:
         return results
 
     async def _start_component(self, component: TrinityComponent) -> bool:
-        """Start a single Trinity component."""
+        """
+        Start a single Trinity component (v170.0 enhanced with detailed logging).
+
+        Process:
+        1. Find Python executable (venv preferred, fallback to system)
+        2. Find launch script from common patterns
+        3. Start subprocess with Trinity environment
+        4. Wait for health check
+        """
         if component.repo_path is None:
+            self.logger.warning(f"[Trinity] Cannot start {component.name}: no repo path")
             return False
 
+        self.logger.info(f"[Trinity] ─────────────────────────────────────────")
         self.logger.info(f"[Trinity] Starting {component.name}...")
+        self.logger.info(f"[Trinity]   Repo: {component.repo_path}")
+        self.logger.info(f"[Trinity]   Port: {component.port}")
 
         # Find Python executable
         venv_python = component.repo_path / "venv" / "bin" / "python3"
         if not venv_python.exists():
             venv_python = component.repo_path / "venv" / "bin" / "python"
         if not venv_python.exists():
+            self.logger.warning(f"[Trinity]   No venv found, using system Python")
             venv_python = Path(sys.executable)  # Fallback to current Python
+        else:
+            self.logger.info(f"[Trinity]   Python: {venv_python}")
 
         # Find launch script - expanded search list for common entry points
         # Includes repo-specific names (e.g., run_reactor.py for reactor-core)
@@ -47647,26 +47703,31 @@ class TrinityIntegrator:
         for script in launch_scripts:
             if script.exists():
                 launch_script = script
-                self.logger.debug(f"[Trinity] Found launch script: {script}")
+                self.logger.info(f"[Trinity]   Script: {script.name}")
                 break
 
         if not launch_script:
             # Log available .py files for debugging
             try:
-                available_py = list(component.repo_path.glob("*.py"))[:5]
-                self.logger.warning(
-                    f"[Trinity] No launch script found for {component.name}. "
-                    f"Available: {[p.name for p in available_py]}"
-                )
-            except Exception:
-                self.logger.warning(f"[Trinity] No launch script found for {component.name}")
+                available_py = list(component.repo_path.glob("*.py"))[:10]
+                self.logger.error(f"[Trinity] ✗ No launch script found for {component.name}")
+                self.logger.error(f"[Trinity]   Searched: run_server.py, main.py, run.py, etc.")
+                if available_py:
+                    self.logger.info(f"[Trinity]   Available .py files: {[p.name for p in available_py]}")
+                else:
+                    self.logger.warning(f"[Trinity]   No .py files found in {component.repo_path}")
+            except Exception as e:
+                self.logger.error(f"[Trinity] ✗ No launch script found for {component.name}: {e}")
             return False
 
         try:
-            # Start process
+            # Start process with Trinity environment
             env = os.environ.copy()
             env["TRINITY_COMPONENT"] = component.name
             env["TRINITY_PORT"] = str(component.port)
+            env["TRINITY_ENABLED"] = "true"
+
+            self.logger.info(f"[Trinity]   Launching: {venv_python} {launch_script} --port {component.port}")
 
             process = await asyncio.create_subprocess_exec(
                 str(venv_python),
@@ -47682,19 +47743,26 @@ class TrinityIntegrator:
             component.pid = process.pid
             component.state = "starting"
 
+            self.logger.info(f"[Trinity]   Process started (PID: {component.pid})")
+            self.logger.info(f"[Trinity]   Waiting for health check at {component.health_url}...")
+
             # Wait for health check
             healthy = await self._wait_for_health(component, timeout=60.0)
             if healthy:
                 component.state = "healthy"
-                self.logger.success(f"[Trinity] {component.name} started (PID: {component.pid})")
+                self.logger.success(f"[Trinity] ✓ {component.name} RUNNING (PID: {component.pid}, Port: {component.port})")
                 return True
             else:
                 component.state = "failed"
-                self.logger.error(f"[Trinity] {component.name} failed to become healthy")
+                self.logger.error(f"[Trinity] ✗ {component.name} failed to become healthy (timeout 60s)")
+                # Try to capture stderr for debugging
+                if process.returncode is not None:
+                    self.logger.error(f"[Trinity]   Process exited with code: {process.returncode}")
                 return False
 
         except Exception as e:
-            self.logger.error(f"[Trinity] Failed to start {component.name}: {e}")
+            self.logger.error(f"[Trinity] ✗ Failed to start {component.name}: {e}")
+            self.logger.debug(f"[Trinity]   Stack trace: {traceback.format_exc()}")
             component.state = "failed"
             return False
 
@@ -47793,7 +47861,7 @@ class TrinityIntegrator:
                     self.logger.debug(f"[Trinity] Error stopping {component.name}: {e}")
 
     def get_status(self) -> Dict[str, Any]:
-        """Get Trinity status."""
+        """Get Trinity status with enhanced diagnostics (v170.0)."""
         return {
             "enabled": self._enabled,
             "components": {
@@ -47802,6 +47870,7 @@ class TrinityIntegrator:
                     "state": self._jprime.state if self._jprime else "not_configured",
                     "pid": self._jprime.pid if self._jprime else None,
                     "port": self._jprime.port if self._jprime else None,
+                    "repo_path": str(self._jprime.repo_path) if self._jprime and self._jprime.repo_path else None,
                     "restart_count": self._jprime.restart_count if self._jprime else 0,
                 },
                 "reactor-core": {
@@ -47809,6 +47878,7 @@ class TrinityIntegrator:
                     "state": self._reactor.state if self._reactor else "not_configured",
                     "pid": self._reactor.pid if self._reactor else None,
                     "port": self._reactor.port if self._reactor else None,
+                    "repo_path": str(self._reactor.repo_path) if self._reactor and self._reactor.repo_path else None,
                     "restart_count": self._reactor.restart_count if self._reactor else 0,
                 },
             },
@@ -49145,6 +49215,13 @@ class JarvisSystemKernel:
                 if self._narrator:
                     await self._narrator.narrate_phase_start("trinity")
                 await self._phase_trinity()
+            else:
+                # v170.0: Explicitly log when Trinity is disabled
+                self.logger.info("[Kernel] ───────────────────────────────────────────────────────")
+                self.logger.info("[Kernel] Phase 5: Trinity - SKIPPED (disabled)")
+                self.logger.info(f"[Kernel]   Set JARVIS_TRINITY_ENABLED=true or --trinity to enable")
+                self.logger.info("[Kernel]   Trinity connects: JARVIS + J-Prime + Reactor-Core")
+                self.logger.info("[Kernel] ───────────────────────────────────────────────────────")
 
             # Phase 6: Enterprise Services (Zone 6.4)
             issue_collector.set_current_phase("Phase 6: Enterprise Services")
@@ -49517,19 +49594,74 @@ class JarvisSystemKernel:
         Starts:
         - J-Prime (local LLM inference)
         - Reactor-Core (training pipeline)
+
+        v170.0: Enhanced with comprehensive diagnostic logging
         """
         self._state = KernelState.STARTING_TRINITY
 
         with self.logger.section_start(LogSection.TRINITY, "Zone 5.7 | Phase 5: Trinity"):
             try:
+                # Log Trinity configuration
+                self.logger.info("[Trinity] ═══════════════════════════════════════════════════════")
+                self.logger.info("[Trinity] TRINITY CROSS-REPO INTEGRATION")
+                self.logger.info("[Trinity] ═══════════════════════════════════════════════════════")
+                self.logger.info(f"[Trinity] Enabled: {self.config.trinity_enabled}")
+
+                # Log repo search paths
+                prime_path = self.config.prime_repo_path
+                reactor_path = self.config.reactor_repo_path
+                self.logger.info(f"[Trinity] Prime repo config: {prime_path or 'auto-discover'}")
+                self.logger.info(f"[Trinity] Reactor repo config: {reactor_path or 'auto-discover'}")
+
+                # Initialize TrinityIntegrator
                 self._trinity = TrinityIntegrator(self.config, self.logger)
                 await self._trinity.initialize()
+
+                # Get detailed status after initialization
+                status = self._trinity.get_status()
+                self.logger.info("[Trinity] ───────────────────────────────────────────────────────")
+                self.logger.info("[Trinity] DISCOVERY RESULTS:")
+
+                # Log Prime discovery result
+                prime_status = status.get("components", {}).get("jarvis-prime", {})
+                if prime_status.get("configured"):
+                    self.logger.success(f"[Trinity] ✓ J-Prime: Discovered at {prime_status.get('repo_path', 'unknown')}")
+                else:
+                    self.logger.warning("[Trinity] ✗ J-Prime: NOT FOUND - searched common locations:")
+                    self.logger.warning("[Trinity]   ~/Documents/repos/jarvis-prime")
+                    self.logger.warning("[Trinity]   ~/repos/jarvis-prime")
+                    self.logger.warning("[Trinity]   Set JARVIS_PRIME_PATH env var to specify location")
+
+                # Log Reactor discovery result
+                reactor_status = status.get("components", {}).get("reactor-core", {})
+                if reactor_status.get("configured"):
+                    self.logger.success(f"[Trinity] ✓ Reactor-Core: Discovered at {reactor_status.get('repo_path', 'unknown')}")
+                else:
+                    self.logger.warning("[Trinity] ✗ Reactor-Core: NOT FOUND - searched common locations:")
+                    self.logger.warning("[Trinity]   ~/Documents/repos/reactor-core")
+                    self.logger.warning("[Trinity]   ~/repos/reactor-core")
+                    self.logger.warning("[Trinity]   Set REACTOR_CORE_PATH env var to specify location")
+
+                self.logger.info("[Trinity] ───────────────────────────────────────────────────────")
 
                 # Start components
                 results = await self._trinity.start_components()
 
+                # Log start results
                 started_count = sum(1 for v in results.values() if v)
-                self.logger.success(f"[Kernel] Trinity: {started_count}/{len(results)} components started")
+                total_count = len(results) if results else 0
+
+                if started_count > 0:
+                    self.logger.success(f"[Trinity] 🚀 {started_count}/{total_count} component(s) started")
+                    for component, started in results.items():
+                        if started:
+                            self.logger.success(f"[Trinity]   ✓ {component}: RUNNING")
+                        else:
+                            self.logger.warning(f"[Trinity]   ✗ {component}: FAILED TO START")
+                elif total_count == 0:
+                    self.logger.info("[Trinity] No Trinity components configured - running JARVIS standalone")
+                else:
+                    self.logger.warning(f"[Trinity] ⚠️ 0/{total_count} components started")
 
                 # Voice narration for Trinity components
                 if self._narrator:
@@ -49545,10 +49677,12 @@ class JarvisSystemKernel:
                 if self._readiness_manager:
                     self._readiness_manager.mark_component_ready("trinity", started_count > 0)
 
+                self.logger.info("[Trinity] ═══════════════════════════════════════════════════════")
                 return True  # Trinity is optional
 
             except Exception as e:
-                self.logger.warning(f"[Kernel] Trinity initialization failed: {e}")
+                self.logger.error(f"[Trinity] ✗ Initialization failed: {e}")
+                self.logger.debug(f"[Trinity] Stack trace: {traceback.format_exc()}")
                 if self._narrator:
                     try:
                         await self._narrator.narrate_error("Trinity integration failed", critical=False)

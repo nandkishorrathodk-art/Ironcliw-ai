@@ -847,7 +847,15 @@ class HeartbeatValidator:
 
                 # Evaluate all components
                 for component_id in list(self._components.keys()):
-                    health = self._components[component_id]
+                    # v170.0: Skip components already marked for permanent removal
+                    if component_id in self._permanently_removed:
+                        self._components.pop(component_id, None)
+                        continue
+
+                    health = self._components.get(component_id)
+                    if not health:
+                        continue
+
                     await self._evaluate_status(health)
 
                     # Clean up dead components after extended period
@@ -857,7 +865,7 @@ class HeartbeatValidator:
                         cleanup_threshold = self.DEAD_THRESHOLD_SECONDS * self.CLEANUP_MULTIPLIER
                         if age > cleanup_threshold:
                             # ═══════════════════════════════════════════════════════
-                            # v115.0: PERMANENT REMOVAL WITH FILE CLEANUP
+                            # v170.0: PERMANENT REMOVAL WITH FILE CLEANUP
                             # This fixes the "dead component removed every cycle" bug
                             # ═══════════════════════════════════════════════════════
                             await self._permanently_remove_component(component_id)
@@ -873,15 +881,23 @@ class HeartbeatValidator:
 
     async def _permanently_remove_component(self, component_id: str) -> None:
         """
-        v115.0: Permanently remove a dead component and clean up its heartbeat files.
+        v170.0: Permanently remove a dead component and clean up its heartbeat files.
 
         This prevents the "dead component removed every cycle" log spam by:
-        1. Deleting heartbeat files from all directories
-        2. Adding to _permanently_removed set
-        3. Removing from _components dict
+        1. Checking if ALREADY permanently removed (prevents duplicate logs)
+        2. Deleting heartbeat files from all directories
+        3. Adding to _permanently_removed set
+        4. Removing from _components dict
 
         The component will not be reloaded until the validator is restarted.
         """
+        # v170.0: CRITICAL FIX - Skip if already permanently removed
+        # This prevents duplicate "Permanently removed dead component" log spam
+        if component_id in self._permanently_removed:
+            # Already removed - just ensure it's not in _components
+            self._components.pop(component_id, None)
+            return
+
         # Delete from in-memory tracking
         if component_id in self._components:
             del self._components[component_id]
