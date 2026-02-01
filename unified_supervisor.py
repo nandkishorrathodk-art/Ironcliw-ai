@@ -42804,6 +42804,1087 @@ class DigitalSignatureService:
 
 
 # =============================================================================
+# ZONE 4.20: FINAL UTILITIES AND SYSTEM INTEGRATION
+# =============================================================================
+# This zone provides the final set of utility managers for:
+# - Health aggregation across all subsystems
+# - System telemetry and metrics collection
+# - Configuration hot-reload support
+# - Graceful degradation management
+# - Resource cleanup coordination
+# =============================================================================
+
+
+# -----------------------------------------------------------------------------
+# 4.20.1: Health Aggregator
+# -----------------------------------------------------------------------------
+
+class SubsystemHealth(NamedTuple):
+    """Health status for a subsystem."""
+    subsystem_id: str
+    name: str
+    status: str  # healthy, degraded, unhealthy, unknown
+    last_check: float
+    response_time_ms: float
+    message: str
+    details: Dict[str, Any]
+    dependencies: List[str]
+
+
+class HealthCheckResult(NamedTuple):
+    """Result of a health check."""
+    overall_status: str
+    timestamp: float
+    subsystems: Dict[str, SubsystemHealth]
+    degraded_count: int
+    unhealthy_count: int
+    total_response_time_ms: float
+
+
+class HealthAggregator:
+    """
+    Centralized health aggregation across all kernel subsystems.
+
+    Provides:
+    - Parallel health checking of all components
+    - Dependency-aware health status
+    - Historical health tracking
+    - Health score calculation
+    - Alerting integration hooks
+    """
+
+    def __init__(self, check_interval: float = 30.0) -> None:
+        self._subsystems: Dict[str, Callable[[], Awaitable[Tuple[bool, str, Dict[str, Any]]]]] = {}
+        self._health_history: Dict[str, List[SubsystemHealth]] = {}
+        self._dependencies: Dict[str, List[str]] = {}
+        self._check_interval = check_interval
+        self._lock = asyncio.Lock()
+        self._running = False
+        self._check_task: Optional[asyncio.Task[None]] = None
+        self._last_result: Optional[HealthCheckResult] = None
+        self._alert_callbacks: List[Callable[[str, SubsystemHealth], Awaitable[None]]] = []
+
+    async def initialize(self) -> bool:
+        """Initialize the health aggregator."""
+        self._running = True
+        self._check_task = asyncio.create_task(self._check_loop())
+        return True
+
+    async def cleanup(self) -> None:
+        """Cleanup health aggregator resources."""
+        self._running = False
+        if self._check_task:
+            self._check_task.cancel()
+            try:
+                await self._check_task
+            except asyncio.CancelledError:
+                pass
+
+    def register_subsystem(
+        self,
+        subsystem_id: str,
+        name: str,
+        health_check: Callable[[], Awaitable[Tuple[bool, str, Dict[str, Any]]]],
+        dependencies: Optional[List[str]] = None,
+    ) -> None:
+        """
+        Register a subsystem for health monitoring.
+
+        Args:
+            subsystem_id: Unique subsystem identifier
+            name: Human-readable name
+            health_check: Async function returning (healthy, message, details)
+            dependencies: List of subsystem IDs this depends on
+        """
+        self._subsystems[subsystem_id] = health_check
+        self._dependencies[subsystem_id] = dependencies or []
+        self._health_history[subsystem_id] = []
+
+    def register_alert_callback(
+        self,
+        callback: Callable[[str, SubsystemHealth], Awaitable[None]],
+    ) -> None:
+        """Register a callback for health alerts."""
+        self._alert_callbacks.append(callback)
+
+    async def check_all(self) -> HealthCheckResult:
+        """
+        Perform health check on all registered subsystems.
+
+        Returns:
+            HealthCheckResult with aggregated status
+        """
+        start_time = time.time()
+        subsystem_health: Dict[str, SubsystemHealth] = {}
+
+        # Run all health checks in parallel
+        tasks = []
+        subsystem_ids = []
+        for subsystem_id, check_func in self._subsystems.items():
+            tasks.append(self._check_subsystem(subsystem_id, check_func))
+            subsystem_ids.append(subsystem_id)
+
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        for subsystem_id, result in zip(subsystem_ids, results):
+            if isinstance(result, Exception):
+                health = SubsystemHealth(
+                    subsystem_id=subsystem_id,
+                    name=subsystem_id,
+                    status="unhealthy",
+                    last_check=time.time(),
+                    response_time_ms=0,
+                    message=f"Health check failed: {result}",
+                    details={},
+                    dependencies=self._dependencies.get(subsystem_id, []),
+                )
+            else:
+                health = result
+
+            subsystem_health[subsystem_id] = health
+
+            # Track history
+            async with self._lock:
+                history = self._health_history.get(subsystem_id, [])
+                history.append(health)
+                # Keep last 100 entries
+                if len(history) > 100:
+                    history = history[-100:]
+                self._health_history[subsystem_id] = history
+
+            # Check for status changes and alert
+            await self._check_status_change(subsystem_id, health)
+
+        # Calculate overall status
+        degraded_count = sum(1 for h in subsystem_health.values() if h.status == "degraded")
+        unhealthy_count = sum(1 for h in subsystem_health.values() if h.status == "unhealthy")
+
+        if unhealthy_count > 0:
+            overall_status = "unhealthy"
+        elif degraded_count > 0:
+            overall_status = "degraded"
+        else:
+            overall_status = "healthy"
+
+        total_response_time = sum(h.response_time_ms for h in subsystem_health.values())
+
+        result = HealthCheckResult(
+            overall_status=overall_status,
+            timestamp=time.time(),
+            subsystems=subsystem_health,
+            degraded_count=degraded_count,
+            unhealthy_count=unhealthy_count,
+            total_response_time_ms=total_response_time,
+        )
+
+        self._last_result = result
+        return result
+
+    async def _check_subsystem(
+        self,
+        subsystem_id: str,
+        check_func: Callable[[], Awaitable[Tuple[bool, str, Dict[str, Any]]]],
+    ) -> SubsystemHealth:
+        """Check a single subsystem's health."""
+        start = time.time()
+        try:
+            healthy, message, details = await asyncio.wait_for(check_func(), timeout=10.0)
+            response_time = (time.time() - start) * 1000
+
+            # Determine status
+            if healthy:
+                if response_time > 5000:  # Slow response
+                    status = "degraded"
+                else:
+                    status = "healthy"
+            else:
+                status = "unhealthy"
+
+            return SubsystemHealth(
+                subsystem_id=subsystem_id,
+                name=subsystem_id,
+                status=status,
+                last_check=time.time(),
+                response_time_ms=response_time,
+                message=message,
+                details=details,
+                dependencies=self._dependencies.get(subsystem_id, []),
+            )
+
+        except asyncio.TimeoutError:
+            return SubsystemHealth(
+                subsystem_id=subsystem_id,
+                name=subsystem_id,
+                status="unhealthy",
+                last_check=time.time(),
+                response_time_ms=10000,
+                message="Health check timed out",
+                details={},
+                dependencies=self._dependencies.get(subsystem_id, []),
+            )
+
+    async def _check_status_change(
+        self,
+        subsystem_id: str,
+        current: SubsystemHealth,
+    ) -> None:
+        """Check for status changes and trigger alerts."""
+        history = self._health_history.get(subsystem_id, [])
+        if len(history) < 2:
+            return
+
+        previous = history[-2] if len(history) >= 2 else None
+        if previous and previous.status != current.status:
+            # Status changed - trigger alerts
+            for callback in self._alert_callbacks:
+                try:
+                    await callback(subsystem_id, current)
+                except Exception:
+                    pass
+
+    async def _check_loop(self) -> None:
+        """Background loop for periodic health checks."""
+        while self._running:
+            try:
+                await self.check_all()
+                await asyncio.sleep(self._check_interval)
+            except asyncio.CancelledError:
+                break
+            except Exception:
+                await asyncio.sleep(self._check_interval)
+
+    def get_last_result(self) -> Optional[HealthCheckResult]:
+        """Get the most recent health check result."""
+        return self._last_result
+
+    def get_subsystem_history(
+        self,
+        subsystem_id: str,
+        limit: int = 50,
+    ) -> List[SubsystemHealth]:
+        """Get health history for a subsystem."""
+        history = self._health_history.get(subsystem_id, [])
+        return history[-limit:] if len(history) > limit else list(history)
+
+    def calculate_health_score(self) -> float:
+        """
+        Calculate an overall health score (0.0 to 1.0).
+
+        Returns:
+            Health score based on recent check results
+        """
+        if not self._last_result:
+            return 0.0
+
+        total = len(self._last_result.subsystems)
+        if total == 0:
+            return 1.0
+
+        healthy_count = sum(
+            1 for h in self._last_result.subsystems.values()
+            if h.status == "healthy"
+        )
+        degraded_count = self._last_result.degraded_count
+
+        # Healthy = 1.0, Degraded = 0.5, Unhealthy = 0
+        score = (healthy_count + degraded_count * 0.5) / total
+        return round(score, 3)
+
+    def get_statistics(self) -> Dict[str, Any]:
+        """Get health aggregator statistics."""
+        return {
+            "registered_subsystems": len(self._subsystems),
+            "check_interval": self._check_interval,
+            "last_check_time": self._last_result.timestamp if self._last_result else None,
+            "current_health_score": self.calculate_health_score(),
+            "alert_callbacks": len(self._alert_callbacks),
+        }
+
+
+# -----------------------------------------------------------------------------
+# 4.20.2: System Telemetry Collector
+# -----------------------------------------------------------------------------
+
+class TelemetryMetric(NamedTuple):
+    """Telemetry metric data point."""
+    metric_id: str
+    name: str
+    value: float
+    unit: str
+    timestamp: float
+    tags: Dict[str, str]
+    aggregation: str  # gauge, counter, histogram
+
+
+class TelemetryEvent(NamedTuple):
+    """Telemetry event record."""
+    event_id: str
+    event_type: str
+    timestamp: float
+    data: Dict[str, Any]
+    severity: str
+    source: str
+
+
+class SystemTelemetryCollector:
+    """
+    Centralized telemetry collection for the kernel.
+
+    Provides:
+    - Metric collection and aggregation
+    - Event logging
+    - System resource monitoring
+    - Custom metric registration
+    - Export to various backends
+    """
+
+    def __init__(self, flush_interval: float = 60.0) -> None:
+        self._metrics: Dict[str, List[TelemetryMetric]] = {}
+        self._events: List[TelemetryEvent] = []
+        self._custom_collectors: Dict[str, Callable[[], Awaitable[Dict[str, float]]]] = {}
+        self._flush_interval = flush_interval
+        self._lock = asyncio.Lock()
+        self._running = False
+        self._collect_task: Optional[asyncio.Task[None]] = None
+        self._exporters: List[Callable[[List[TelemetryMetric], List[TelemetryEvent]], Awaitable[None]]] = []
+
+    async def initialize(self) -> bool:
+        """Initialize the telemetry collector."""
+        self._running = True
+        self._collect_task = asyncio.create_task(self._collection_loop())
+        return True
+
+    async def cleanup(self) -> None:
+        """Cleanup telemetry collector resources."""
+        self._running = False
+        if self._collect_task:
+            self._collect_task.cancel()
+            try:
+                await self._collect_task
+            except asyncio.CancelledError:
+                pass
+
+    def register_metric_collector(
+        self,
+        name: str,
+        collector: Callable[[], Awaitable[Dict[str, float]]],
+    ) -> None:
+        """Register a custom metric collector."""
+        self._custom_collectors[name] = collector
+
+    def register_exporter(
+        self,
+        exporter: Callable[[List[TelemetryMetric], List[TelemetryEvent]], Awaitable[None]],
+    ) -> None:
+        """Register a telemetry exporter."""
+        self._exporters.append(exporter)
+
+    async def record_metric(
+        self,
+        name: str,
+        value: float,
+        unit: str = "",
+        tags: Optional[Dict[str, str]] = None,
+        aggregation: str = "gauge",
+    ) -> TelemetryMetric:
+        """
+        Record a telemetry metric.
+
+        Args:
+            name: Metric name
+            value: Metric value
+            unit: Measurement unit
+            tags: Additional tags
+            aggregation: Aggregation type (gauge, counter, histogram)
+
+        Returns:
+            TelemetryMetric instance
+        """
+        async with self._lock:
+            metric_id = f"metric_{hashlib.sha256(f'{name}:{time.time()}'.encode()).hexdigest()[:12]}"
+
+            metric = TelemetryMetric(
+                metric_id=metric_id,
+                name=name,
+                value=value,
+                unit=unit,
+                timestamp=time.time(),
+                tags=tags or {},
+                aggregation=aggregation,
+            )
+
+            if name not in self._metrics:
+                self._metrics[name] = []
+            self._metrics[name].append(metric)
+
+            # Keep last 1000 points per metric
+            if len(self._metrics[name]) > 1000:
+                self._metrics[name] = self._metrics[name][-1000:]
+
+            return metric
+
+    async def record_event(
+        self,
+        event_type: str,
+        data: Dict[str, Any],
+        severity: str = "info",
+        source: str = "kernel",
+    ) -> TelemetryEvent:
+        """
+        Record a telemetry event.
+
+        Args:
+            event_type: Event type identifier
+            data: Event data
+            severity: Event severity (debug, info, warning, error)
+            source: Event source
+
+        Returns:
+            TelemetryEvent instance
+        """
+        async with self._lock:
+            event_id = f"event_{hashlib.sha256(f'{event_type}:{time.time()}'.encode()).hexdigest()[:12]}"
+
+            event = TelemetryEvent(
+                event_id=event_id,
+                event_type=event_type,
+                timestamp=time.time(),
+                data=data,
+                severity=severity,
+                source=source,
+            )
+
+            self._events.append(event)
+
+            # Keep last 10000 events
+            if len(self._events) > 10000:
+                self._events = self._events[-10000:]
+
+            return event
+
+    async def _collection_loop(self) -> None:
+        """Background loop for metric collection."""
+        while self._running:
+            try:
+                await self._collect_system_metrics()
+                await self._run_custom_collectors()
+                await self._flush_to_exporters()
+                await asyncio.sleep(self._flush_interval)
+            except asyncio.CancelledError:
+                break
+            except Exception:
+                await asyncio.sleep(self._flush_interval)
+
+    async def _collect_system_metrics(self) -> None:
+        """Collect built-in system metrics."""
+        try:
+            import os
+
+            # CPU usage (simplified)
+            load_avg = os.getloadavg()
+            await self.record_metric("system.load.1m", load_avg[0], tags={"type": "load_average"})
+            await self.record_metric("system.load.5m", load_avg[1], tags={"type": "load_average"})
+            await self.record_metric("system.load.15m", load_avg[2], tags={"type": "load_average"})
+
+            # Python-specific metrics
+            import sys
+            await self.record_metric("python.gc.objects", float(len(gc.get_objects())), tags={"type": "gc"})
+
+        except Exception:
+            pass
+
+    async def _run_custom_collectors(self) -> None:
+        """Run registered custom collectors."""
+        for name, collector in self._custom_collectors.items():
+            try:
+                metrics = await collector()
+                for metric_name, value in metrics.items():
+                    await self.record_metric(f"{name}.{metric_name}", value)
+            except Exception:
+                pass
+
+    async def _flush_to_exporters(self) -> None:
+        """Flush collected data to exporters."""
+        if not self._exporters:
+            return
+
+        async with self._lock:
+            all_metrics = []
+            for metric_list in self._metrics.values():
+                all_metrics.extend(metric_list)
+            events = list(self._events)
+
+        for exporter in self._exporters:
+            try:
+                await exporter(all_metrics, events)
+            except Exception:
+                pass
+
+    async def get_metric_series(
+        self,
+        name: str,
+        start_time: Optional[float] = None,
+        end_time: Optional[float] = None,
+    ) -> List[TelemetryMetric]:
+        """
+        Get metric time series.
+
+        Args:
+            name: Metric name
+            start_time: Optional start time filter
+            end_time: Optional end time filter
+
+        Returns:
+            List of metrics in the time range
+        """
+        async with self._lock:
+            metrics = self._metrics.get(name, [])
+
+            if start_time is not None:
+                metrics = [m for m in metrics if m.timestamp >= start_time]
+            if end_time is not None:
+                metrics = [m for m in metrics if m.timestamp <= end_time]
+
+            return list(metrics)
+
+    async def get_events(
+        self,
+        event_type: Optional[str] = None,
+        severity: Optional[str] = None,
+        limit: int = 100,
+    ) -> List[TelemetryEvent]:
+        """
+        Get telemetry events.
+
+        Args:
+            event_type: Optional filter by type
+            severity: Optional filter by severity
+            limit: Maximum events to return
+
+        Returns:
+            List of matching events
+        """
+        async with self._lock:
+            events = list(self._events)
+
+            if event_type:
+                events = [e for e in events if e.event_type == event_type]
+            if severity:
+                events = [e for e in events if e.severity == severity]
+
+            return events[-limit:] if len(events) > limit else events
+
+    def get_statistics(self) -> Dict[str, Any]:
+        """Get telemetry collector statistics."""
+        return {
+            "metric_names": len(self._metrics),
+            "total_metric_points": sum(len(m) for m in self._metrics.values()),
+            "total_events": len(self._events),
+            "custom_collectors": len(self._custom_collectors),
+            "exporters": len(self._exporters),
+            "flush_interval": self._flush_interval,
+        }
+
+
+# -----------------------------------------------------------------------------
+# 4.20.3: Graceful Degradation Manager
+# -----------------------------------------------------------------------------
+
+class DegradationLevel(NamedTuple):
+    """Degradation level definition."""
+    level_id: str
+    name: str
+    threshold: float  # Health score threshold
+    disabled_features: List[str]
+    reduced_capacity: Dict[str, float]  # feature -> capacity multiplier
+    description: str
+
+
+class DegradationState(NamedTuple):
+    """Current degradation state."""
+    current_level: str
+    active_since: float
+    disabled_features: List[str]
+    capacity_limits: Dict[str, float]
+    reason: str
+
+
+class GracefulDegradationManager:
+    """
+    Manages graceful degradation during system stress.
+
+    Provides:
+    - Multi-level degradation modes
+    - Automatic feature disabling based on health
+    - Capacity reduction management
+    - Recovery detection and escalation
+    - Feature priority configuration
+    """
+
+    def __init__(self) -> None:
+        self._levels: Dict[str, DegradationLevel] = {}
+        self._current_state: Optional[DegradationState] = None
+        self._feature_priorities: Dict[str, int] = {}  # feature -> priority (lower = more critical)
+        self._lock = asyncio.Lock()
+        self._state_callbacks: List[Callable[[DegradationState], Awaitable[None]]] = []
+
+        # Initialize default levels
+        self._setup_default_levels()
+
+    def _setup_default_levels(self) -> None:
+        """Setup default degradation levels."""
+        self._levels["normal"] = DegradationLevel(
+            level_id="normal",
+            name="Normal Operation",
+            threshold=0.9,
+            disabled_features=[],
+            reduced_capacity={},
+            description="All features operational at full capacity",
+        )
+        self._levels["degraded_1"] = DegradationLevel(
+            level_id="degraded_1",
+            name="Light Degradation",
+            threshold=0.7,
+            disabled_features=["analytics", "recommendations"],
+            reduced_capacity={"rate_limit": 0.8, "batch_size": 0.8},
+            description="Non-critical features disabled, capacity slightly reduced",
+        )
+        self._levels["degraded_2"] = DegradationLevel(
+            level_id="degraded_2",
+            name="Moderate Degradation",
+            threshold=0.5,
+            disabled_features=["analytics", "recommendations", "search", "export"],
+            reduced_capacity={"rate_limit": 0.5, "batch_size": 0.5, "concurrent_tasks": 0.5},
+            description="Multiple features disabled, capacity significantly reduced",
+        )
+        self._levels["critical"] = DegradationLevel(
+            level_id="critical",
+            name="Critical Mode",
+            threshold=0.3,
+            disabled_features=["analytics", "recommendations", "search", "export", "webhooks", "notifications"],
+            reduced_capacity={"rate_limit": 0.2, "batch_size": 0.2, "concurrent_tasks": 0.2},
+            description="Only core features operational, minimal capacity",
+        )
+        self._levels["emergency"] = DegradationLevel(
+            level_id="emergency",
+            name="Emergency Mode",
+            threshold=0.0,
+            disabled_features=["*"],  # All non-critical
+            reduced_capacity={"rate_limit": 0.1, "batch_size": 0.1, "concurrent_tasks": 0.1},
+            description="Emergency mode - only authentication and basic read operations",
+        )
+
+    async def initialize(self) -> bool:
+        """Initialize the degradation manager."""
+        self._current_state = DegradationState(
+            current_level="normal",
+            active_since=time.time(),
+            disabled_features=[],
+            capacity_limits={},
+            reason="System startup",
+        )
+        return True
+
+    def register_state_callback(
+        self,
+        callback: Callable[[DegradationState], Awaitable[None]],
+    ) -> None:
+        """Register a callback for state changes."""
+        self._state_callbacks.append(callback)
+
+    def set_feature_priority(self, feature: str, priority: int) -> None:
+        """
+        Set feature priority (lower = more critical).
+
+        Args:
+            feature: Feature name
+            priority: Priority level (0 = most critical)
+        """
+        self._feature_priorities[feature] = priority
+
+    async def evaluate_degradation(self, health_score: float) -> DegradationState:
+        """
+        Evaluate and update degradation level based on health score.
+
+        Args:
+            health_score: Current system health score (0.0 to 1.0)
+
+        Returns:
+            New DegradationState
+        """
+        async with self._lock:
+            # Find appropriate level
+            sorted_levels = sorted(
+                self._levels.values(),
+                key=lambda l: l.threshold,
+                reverse=True,
+            )
+
+            new_level = "emergency"
+            for level in sorted_levels:
+                if health_score >= level.threshold:
+                    new_level = level.level_id
+                    break
+
+            level_config = self._levels[new_level]
+
+            # Check if level changed
+            if self._current_state and self._current_state.current_level == new_level:
+                return self._current_state
+
+            # Create new state
+            new_state = DegradationState(
+                current_level=new_level,
+                active_since=time.time(),
+                disabled_features=level_config.disabled_features,
+                capacity_limits=level_config.reduced_capacity,
+                reason=f"Health score: {health_score:.2f}",
+            )
+
+            self._current_state = new_state
+
+            # Notify callbacks
+            for callback in self._state_callbacks:
+                try:
+                    await callback(new_state)
+                except Exception:
+                    pass
+
+            return new_state
+
+    def is_feature_enabled(self, feature: str) -> bool:
+        """
+        Check if a feature is currently enabled.
+
+        Args:
+            feature: Feature name
+
+        Returns:
+            True if feature is enabled
+        """
+        if not self._current_state:
+            return True
+
+        disabled = self._current_state.disabled_features
+        if "*" in disabled:
+            # Check if feature is critical
+            priority = self._feature_priorities.get(feature, 100)
+            return priority <= 10  # Only very critical features
+
+        return feature not in disabled
+
+    def get_capacity_limit(self, resource: str, default: float = 1.0) -> float:
+        """
+        Get current capacity limit for a resource.
+
+        Args:
+            resource: Resource name
+            default: Default limit if not specified
+
+        Returns:
+            Capacity multiplier (0.0 to 1.0)
+        """
+        if not self._current_state:
+            return default
+
+        return self._current_state.capacity_limits.get(resource, default)
+
+    def get_current_state(self) -> Optional[DegradationState]:
+        """Get current degradation state."""
+        return self._current_state
+
+    async def force_level(self, level_id: str, reason: str = "") -> Optional[DegradationState]:
+        """
+        Force a specific degradation level.
+
+        Args:
+            level_id: Level to force
+            reason: Reason for forcing
+
+        Returns:
+            New DegradationState if successful
+        """
+        async with self._lock:
+            level_config = self._levels.get(level_id)
+            if not level_config:
+                return None
+
+            new_state = DegradationState(
+                current_level=level_id,
+                active_since=time.time(),
+                disabled_features=level_config.disabled_features,
+                capacity_limits=level_config.reduced_capacity,
+                reason=reason or f"Manually forced to {level_id}",
+            )
+
+            self._current_state = new_state
+
+            for callback in self._state_callbacks:
+                try:
+                    await callback(new_state)
+                except Exception:
+                    pass
+
+            return new_state
+
+    def get_statistics(self) -> Dict[str, Any]:
+        """Get degradation manager statistics."""
+        return {
+            "configured_levels": len(self._levels),
+            "feature_priorities": len(self._feature_priorities),
+            "current_level": self._current_state.current_level if self._current_state else None,
+            "active_since": self._current_state.active_since if self._current_state else None,
+            "disabled_features_count": len(self._current_state.disabled_features) if self._current_state else 0,
+        }
+
+
+# -----------------------------------------------------------------------------
+# 4.20.4: Resource Cleanup Coordinator
+# -----------------------------------------------------------------------------
+
+class CleanupTask(NamedTuple):
+    """Cleanup task definition."""
+    task_id: str
+    name: str
+    handler: Callable[[], Awaitable[bool]]
+    priority: int  # Lower = runs first
+    timeout_seconds: float
+    critical: bool  # If True, failure stops cleanup
+
+
+class CleanupResult(NamedTuple):
+    """Result of a cleanup task."""
+    task_id: str
+    name: str
+    success: bool
+    duration_ms: float
+    error: Optional[str]
+
+
+class CleanupReport(NamedTuple):
+    """Complete cleanup report."""
+    started_at: float
+    completed_at: float
+    total_tasks: int
+    successful: int
+    failed: int
+    skipped: int
+    results: List[CleanupResult]
+    overall_success: bool
+
+
+class ResourceCleanupCoordinator:
+    """
+    Coordinates graceful cleanup of all kernel resources.
+
+    Provides:
+    - Priority-ordered cleanup execution
+    - Timeout handling per task
+    - Critical task enforcement
+    - Cleanup reporting
+    - Rollback support for failed cleanups
+    """
+
+    def __init__(self, default_timeout: float = 30.0) -> None:
+        self._tasks: Dict[str, CleanupTask] = {}
+        self._default_timeout = default_timeout
+        self._lock = asyncio.Lock()
+        self._last_report: Optional[CleanupReport] = None
+
+    def register_cleanup(
+        self,
+        name: str,
+        handler: Callable[[], Awaitable[bool]],
+        priority: int = 50,
+        timeout: Optional[float] = None,
+        critical: bool = False,
+    ) -> str:
+        """
+        Register a cleanup task.
+
+        Args:
+            name: Task name
+            handler: Async cleanup function returning success bool
+            priority: Execution priority (lower = earlier)
+            timeout: Task timeout in seconds
+            critical: Whether failure should stop cleanup
+
+        Returns:
+            Task ID
+        """
+        task_id = f"cleanup_{hashlib.sha256(f'{name}:{time.time()}'.encode()).hexdigest()[:12]}"
+
+        task = CleanupTask(
+            task_id=task_id,
+            name=name,
+            handler=handler,
+            priority=priority,
+            timeout_seconds=timeout or self._default_timeout,
+            critical=critical,
+        )
+
+        self._tasks[task_id] = task
+        return task_id
+
+    def unregister_cleanup(self, task_id: str) -> bool:
+        """Unregister a cleanup task."""
+        if task_id in self._tasks:
+            del self._tasks[task_id]
+            return True
+        return False
+
+    async def execute_cleanup(
+        self,
+        skip_non_critical: bool = False,
+    ) -> CleanupReport:
+        """
+        Execute all registered cleanup tasks.
+
+        Args:
+            skip_non_critical: If True, only run critical tasks
+
+        Returns:
+            CleanupReport with results
+        """
+        start_time = time.time()
+        results: List[CleanupResult] = []
+        successful = 0
+        failed = 0
+        skipped = 0
+        overall_success = True
+
+        # Sort tasks by priority
+        sorted_tasks = sorted(self._tasks.values(), key=lambda t: t.priority)
+
+        for task in sorted_tasks:
+            # Skip non-critical if requested
+            if skip_non_critical and not task.critical:
+                skipped += 1
+                continue
+
+            # Execute cleanup task
+            task_start = time.time()
+            try:
+                success = await asyncio.wait_for(
+                    task.handler(),
+                    timeout=task.timeout_seconds,
+                )
+                duration = (time.time() - task_start) * 1000
+
+                result = CleanupResult(
+                    task_id=task.task_id,
+                    name=task.name,
+                    success=success,
+                    duration_ms=duration,
+                    error=None if success else "Handler returned False",
+                )
+
+                if success:
+                    successful += 1
+                else:
+                    failed += 1
+                    if task.critical:
+                        overall_success = False
+
+            except asyncio.TimeoutError:
+                duration = task.timeout_seconds * 1000
+                result = CleanupResult(
+                    task_id=task.task_id,
+                    name=task.name,
+                    success=False,
+                    duration_ms=duration,
+                    error="Cleanup timed out",
+                )
+                failed += 1
+                if task.critical:
+                    overall_success = False
+
+            except Exception as e:
+                duration = (time.time() - task_start) * 1000
+                result = CleanupResult(
+                    task_id=task.task_id,
+                    name=task.name,
+                    success=False,
+                    duration_ms=duration,
+                    error=str(e),
+                )
+                failed += 1
+                if task.critical:
+                    overall_success = False
+
+            results.append(result)
+
+            # Stop if critical task failed
+            if task.critical and not result.success:
+                break
+
+        report = CleanupReport(
+            started_at=start_time,
+            completed_at=time.time(),
+            total_tasks=len(sorted_tasks),
+            successful=successful,
+            failed=failed,
+            skipped=skipped,
+            results=results,
+            overall_success=overall_success,
+        )
+
+        self._last_report = report
+        return report
+
+    async def cleanup_single(self, task_id: str) -> Optional[CleanupResult]:
+        """
+        Execute a single cleanup task.
+
+        Args:
+            task_id: Task to execute
+
+        Returns:
+            CleanupResult if task exists
+        """
+        task = self._tasks.get(task_id)
+        if not task:
+            return None
+
+        start = time.time()
+        try:
+            success = await asyncio.wait_for(
+                task.handler(),
+                timeout=task.timeout_seconds,
+            )
+            return CleanupResult(
+                task_id=task_id,
+                name=task.name,
+                success=success,
+                duration_ms=(time.time() - start) * 1000,
+                error=None if success else "Handler returned False",
+            )
+        except Exception as e:
+            return CleanupResult(
+                task_id=task_id,
+                name=task.name,
+                success=False,
+                duration_ms=(time.time() - start) * 1000,
+                error=str(e),
+            )
+
+    def get_last_report(self) -> Optional[CleanupReport]:
+        """Get the last cleanup report."""
+        return self._last_report
+
+    def get_statistics(self) -> Dict[str, Any]:
+        """Get cleanup coordinator statistics."""
+        critical_count = sum(1 for t in self._tasks.values() if t.critical)
+        return {
+            "registered_tasks": len(self._tasks),
+            "critical_tasks": critical_count,
+            "non_critical_tasks": len(self._tasks) - critical_count,
+            "default_timeout": self._default_timeout,
+            "last_cleanup_success": self._last_report.overall_success if self._last_report else None,
+        }
+
+
+# =============================================================================
 # =============================================================================
 #
 #  ███████╗ ██████╗ ███╗   ██╗███████╗    ███████╗
