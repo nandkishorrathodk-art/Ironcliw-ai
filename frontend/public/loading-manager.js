@@ -56,14 +56,23 @@
 
 class JARVISLoadingManager {
     constructor() {
+        // v181.0: Dynamic port detection - use current origin port for unified_supervisor
+        // This ensures the loading page communicates with the correct server regardless
+        // of whether we're running via start_system.py (3001) or unified_supervisor.py (8080)
+        const currentPort = parseInt(window.location.port) || (window.location.protocol === 'https:' ? 443 : 80);
+        const isUnifiedSupervisor = currentPort === 8080 || window.location.pathname.includes('unified');
+
         this.config = {
-            // Loading server runs on port 3001 during restart
-            loadingServerPort: 3001,
+            // v181.0: Use current port for same-origin API calls
+            // Fallback to 3001 only if we can't detect the port (e.g., running on default HTTP port)
+            loadingServerPort: currentPort || 3001,
             backendPort: 8010,
             mainAppPort: 3000,
             wsProtocol: window.location.protocol === 'https:' ? 'wss:' : 'ws:',
             httpProtocol: window.location.protocol,
             hostname: window.location.hostname || 'localhost',
+            // v181.0: Track if running under unified supervisor
+            isUnifiedSupervisor: isUnifiedSupervisor,
             // v5.2: Intelligent frontend handling
             // When true, system can complete startup even if frontend is unavailable
             // This is set dynamically from supervisor or via URL parameter
@@ -866,6 +875,113 @@ class JARVISLoadingManager {
                 expectedProgress: [69, 70],
                 substeps: ['Window tracking active', 'Workspace awareness enabled'],
                 detailFields: ['spaces', 'windows', 'focused_app']
+            },
+
+            // ===================================================================
+            // v181.0: UNIFIED SUPERVISOR KERNEL STAGES
+            // These stages are broadcast by unified_supervisor.py (Unified System Kernel)
+            // When running via: python3 unified_supervisor.py
+            // ===================================================================
+            'loading': {
+                name: 'Loading Server Ready',
+                icon: '🚀',
+                phase: 'cleanup',
+                expectedProgress: [0, 5],
+                substeps: ['Loading page initialized', 'Preparing system startup'],
+                isUnifiedSupervisor: true
+            },
+            'preflight': {
+                name: 'Preflight Checks',
+                icon: '✈️',
+                phase: 'cleanup',
+                expectedProgress: [5, 15],
+                substeps: ['Acquiring startup lock', 'Cleaning zombies', 'IPC server init', 'Health monitors'],
+                isUnifiedSupervisor: true
+            },
+            'resources': {
+                name: 'Resource Initialization',
+                icon: '📦',
+                phase: 'initialization',
+                expectedProgress: [15, 30],
+                substeps: ['Docker containers', 'GCP resources', 'Storage validation', 'Port allocation'],
+                isUnifiedSupervisor: true
+            },
+            'backend': {
+                name: 'Backend Server',
+                icon: '⚡',
+                phase: 'initialization',
+                expectedProgress: [30, 50],
+                substeps: ['Starting uvicorn', 'FastAPI initialization', 'Health endpoint ready'],
+                isUnifiedSupervisor: true
+            },
+            'intelligence': {
+                name: 'Intelligence Layer',
+                icon: '🧠',
+                phase: 'initialization',
+                expectedProgress: [50, 65],
+                substeps: ['ML model registry', 'Cost optimizer', 'Intent routing', 'Goal inference'],
+                isUnifiedSupervisor: true
+            },
+            'parallel_init': {
+                name: 'Parallel Initialization',
+                icon: '⚡',
+                phase: 'initialization',
+                expectedProgress: [65, 70],
+                substeps: ['Trinity + Enterprise running concurrently', 'Async parallel execution'],
+                isUnifiedSupervisor: true
+            },
+            'trinity': {
+                name: 'Trinity Integration',
+                icon: '🔺',
+                phase: 'initialization',
+                expectedProgress: [70, 85],
+                substeps: ['JARVIS Body (execution)', 'J-Prime Mind (reasoning)', 'Reactor-Core Nerves (learning)'],
+                isUnifiedSupervisor: true,
+                components: ['jarvis', 'prime', 'reactor']
+            },
+            'enterprise': {
+                name: 'Enterprise Services',
+                icon: '🏢',
+                phase: 'initialization',
+                expectedProgress: [85, 95],
+                substeps: ['CloudSQL proxy', 'Voice biometrics (background)', 'Semantic cache', 'WebSocket hub'],
+                isUnifiedSupervisor: true
+            },
+            'frontend': {
+                name: 'Frontend Transition',
+                icon: '🌐',
+                phase: 'ready',
+                expectedProgress: [95, 98],
+                substeps: ['Starting React frontend', 'Transitioning from loading page'],
+                isUnifiedSupervisor: true
+            },
+
+            // ===================================================================
+            // TRINITY COMPONENT STATUS (shown in loading page)
+            // ===================================================================
+            'trinity_jarvis': {
+                name: 'JARVIS Body',
+                icon: '🦾',
+                phase: 'initialization',
+                expectedProgress: [70, 75],
+                substeps: ['Execution layer', 'Vision system', 'Action handlers'],
+                isUnifiedSupervisor: true
+            },
+            'trinity_prime': {
+                name: 'J-Prime Mind',
+                icon: '🧠',
+                phase: 'initialization',
+                expectedProgress: [75, 82],
+                substeps: ['Local LLM inference', 'Reasoning engine', 'Context management'],
+                isUnifiedSupervisor: true
+            },
+            'trinity_reactor': {
+                name: 'Reactor-Core Nerves',
+                icon: '⚡',
+                phase: 'initialization',
+                expectedProgress: [82, 88],
+                substeps: ['Training pipeline', 'Model fine-tuning', 'Continuous learning'],
+                isUnifiedSupervisor: true
             }
         };
 
@@ -2713,6 +2829,75 @@ class JARVISLoadingManager {
 
                 this.updateAdvancedStatusPanel('trinity');
             }
+
+            // ===================================================================
+            // v181.0: UNIFIED SUPERVISOR COMPONENT STATUS
+            // Handle components metadata from unified_supervisor.py
+            // ===================================================================
+            if (metadata.components) {
+                const components = metadata.components;
+
+                // Initialize trinity components state if not exists
+                if (!this.state.trinityComponents) {
+                    this.state.trinityComponents = {
+                        jarvis: { status: 'pending' },
+                        prime: { status: 'pending' },
+                        reactor: { status: 'pending' },
+                        trinity: { status: 'pending' },
+                        enterprise: { status: 'pending' },
+                        overallProgress: 0
+                    };
+                }
+
+                // Update component states
+                if (components.trinity) {
+                    this.state.trinityComponents.trinity = components.trinity;
+                }
+                if (components.jarvis) {
+                    this.state.trinityComponents.jarvis = components.jarvis;
+                }
+                if (components.prime) {
+                    this.state.trinityComponents.prime = components.prime;
+                }
+                if (components.reactor) {
+                    this.state.trinityComponents.reactor = components.reactor;
+                }
+                if (components.enterprise) {
+                    this.state.trinityComponents.enterprise = components.enterprise;
+                }
+
+                // Calculate overall Trinity progress
+                const trinityPhases = ['jarvis', 'prime', 'reactor'];
+                const completedTrinity = trinityPhases.filter(
+                    p => this.state.trinityComponents[p]?.status === 'complete' ||
+                         this.state.trinityComponents[p]?.status === 'ready'
+                ).length;
+                this.state.trinityComponents.overallProgress = Math.round((completedTrinity / trinityPhases.length) * 100);
+
+                // Update Trinity UI
+                this.updateTrinityComponentsUI();
+
+                // Log Trinity component status changes
+                for (const [name, comp] of Object.entries(components)) {
+                    if (['jarvis', 'prime', 'reactor'].includes(name) && comp.status === 'complete') {
+                        const labels = { jarvis: 'JARVIS Body', prime: 'J-Prime Mind', reactor: 'Reactor-Core' };
+                        this.addLogEntry('Trinity', `${labels[name] || name} ready`, 'success');
+                    }
+                }
+            }
+
+            // v181.0: Handle parallel_duration from parallel phase execution
+            if (metadata.parallel_duration !== undefined) {
+                this.addLogEntry('Parallel', `Trinity + Enterprise completed in ${metadata.parallel_duration.toFixed(1)}s`, 'success');
+            }
+
+            // v181.0: Track Trinity/Enterprise success for status display
+            if (metadata.trinity_success !== undefined) {
+                this.state.trinitySuccess = metadata.trinity_success;
+            }
+            if (metadata.enterprise_success !== undefined) {
+                this.state.enterpriseSuccess = metadata.enterprise_success;
+            }
         }
 
         // Handle special log-only stages
@@ -3075,6 +3260,88 @@ class JARVISLoadingManager {
             if (!state.tier2Operational) {
                 tier2.classList.add('inactive');
             }
+        }
+    }
+
+    /**
+     * v181.0: Update Trinity Components UI
+     * Updates the Trinity section in loading.html with component status
+     * from unified_supervisor.py broadcasts.
+     */
+    updateTrinityComponentsUI() {
+        const state = this.state.trinityComponents;
+        if (!state) return;
+
+        // Update Trinity badge
+        const trinityBadge = document.getElementById('trinity-badge');
+        if (trinityBadge) {
+            trinityBadge.className = 'trinity-badge';
+            const allReady = ['jarvis', 'prime', 'reactor'].every(
+                c => state[c]?.status === 'complete' || state[c]?.status === 'ready'
+            );
+            const anyRunning = ['jarvis', 'prime', 'reactor'].some(
+                c => state[c]?.status === 'running'
+            );
+
+            if (allReady) {
+                trinityBadge.classList.add('ready');
+                trinityBadge.textContent = 'Ready';
+            } else if (anyRunning) {
+                trinityBadge.classList.add('initializing');
+                trinityBadge.textContent = 'Initializing';
+            } else {
+                trinityBadge.classList.add('pending');
+                trinityBadge.textContent = 'Pending';
+            }
+        }
+
+        // Helper to update Trinity component item
+        const updateTrinityItem = (elementId, componentState) => {
+            const el = document.getElementById(elementId);
+            if (!el) return;
+
+            const status = componentState?.status || 'pending';
+            el.className = 'trinity-item';
+
+            if (status === 'complete' || status === 'ready') {
+                el.classList.add('ready');
+            } else if (status === 'running') {
+                el.classList.add('running');
+            } else if (status === 'error' || status === 'failed') {
+                el.classList.add('error');
+            } else {
+                el.classList.add('pending');
+            }
+
+            const statusEl = el.querySelector('.trinity-status-text');
+            if (statusEl) {
+                const statusLabels = {
+                    'pending': 'Pending',
+                    'running': 'Starting...',
+                    'complete': 'Ready',
+                    'ready': 'Ready',
+                    'error': 'Error',
+                    'failed': 'Failed',
+                    'warning': 'Warning'
+                };
+                statusEl.textContent = statusLabels[status] || status;
+            }
+        };
+
+        // Update individual Trinity items
+        updateTrinityItem('jarvis-status', state.jarvis);
+        updateTrinityItem('prime-status', state.prime);
+        updateTrinityItem('reactor-status', state.reactor);
+
+        // Update progress bar
+        const progressFill = document.getElementById('trinity-progress-fill');
+        const progressText = document.getElementById('trinity-progress-text');
+
+        if (progressFill) {
+            progressFill.style.width = `${state.overallProgress || 0}%`;
+        }
+        if (progressText) {
+            progressText.textContent = `${state.overallProgress || 0}%`;
         }
     }
 

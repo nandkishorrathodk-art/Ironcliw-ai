@@ -1087,6 +1087,170 @@
             50% { opacity: 0.6; box-shadow: 0 0 8px currentColor; }
         }
 
+        /* v181.0: Trinity Components Status */
+        .trinity-components {
+            margin-top: 15px;
+            padding-top: 12px;
+            border-top: 1px solid rgba(0, 255, 65, 0.2);
+        }
+
+        .trinity-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 12px;
+        }
+
+        .trinity-title {
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--jarvis-green);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+        }
+
+        .trinity-badge {
+            font-size: 0.65rem;
+            padding: 3px 8px;
+            border-radius: 10px;
+            text-transform: uppercase;
+            font-weight: 700;
+            letter-spacing: 0.05em;
+        }
+
+        .trinity-badge.pending {
+            background: rgba(100, 100, 100, 0.2);
+            color: #888;
+            border: 1px solid rgba(100, 100, 100, 0.4);
+        }
+
+        .trinity-badge.initializing {
+            background: rgba(255, 170, 0, 0.2);
+            color: #ffaa00;
+            border: 1px solid rgba(255, 170, 0, 0.4);
+        }
+
+        .trinity-badge.ready {
+            background: rgba(0, 255, 65, 0.2);
+            color: var(--jarvis-green);
+            border: 1px solid rgba(0, 255, 65, 0.4);
+            animation: trinity-pulse 2s ease-in-out infinite;
+        }
+
+        @keyframes trinity-pulse {
+            0%, 100% { box-shadow: 0 0 5px rgba(0, 255, 65, 0.3); }
+            50% { box-shadow: 0 0 15px rgba(0, 255, 65, 0.6); }
+        }
+
+        .trinity-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+
+        .trinity-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 6px;
+            border: 1px solid rgba(100, 100, 100, 0.3);
+            transition: all 0.3s ease;
+        }
+
+        .trinity-item.pending {
+            border-color: rgba(100, 100, 100, 0.3);
+        }
+
+        .trinity-item.running {
+            border-color: rgba(255, 170, 0, 0.5);
+            background: rgba(255, 170, 0, 0.1);
+        }
+
+        .trinity-item.ready {
+            border-color: rgba(0, 255, 65, 0.5);
+            background: rgba(0, 255, 65, 0.1);
+        }
+
+        .trinity-item.error {
+            border-color: rgba(255, 68, 68, 0.5);
+            background: rgba(255, 68, 68, 0.1);
+        }
+
+        .trinity-icon {
+            font-size: 1.2rem;
+        }
+
+        .trinity-info {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            min-width: 0;
+        }
+
+        .trinity-label {
+            font-size: 0.7rem;
+            font-weight: 600;
+            color: var(--jarvis-green);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .trinity-status-text {
+            font-size: 0.6rem;
+            color: #888;
+            text-transform: uppercase;
+        }
+
+        .trinity-item.ready .trinity-status-text {
+            color: var(--jarvis-green);
+        }
+
+        .trinity-item.running .trinity-status-text {
+            color: #ffaa00;
+        }
+
+        .trinity-item.error .trinity-status-text {
+            color: var(--jarvis-red);
+        }
+
+        .trinity-progress-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .trinity-progress-bar {
+            flex: 1;
+            height: 4px;
+            background: rgba(0, 255, 65, 0.1);
+            border-radius: 2px;
+            overflow: hidden;
+        }
+
+        .trinity-progress-fill {
+            height: 100%;
+            width: 0%;
+            background: var(--jarvis-green);
+            transition: width 0.5s ease;
+        }
+
+        .trinity-progress-text {
+            font-size: 0.7rem;
+            color: var(--jarvis-green);
+            min-width: 35px;
+            text-align: right;
+        }
+
+        @media (max-width: 480px) {
+            .trinity-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
         /* Error state */
         .error-container {
             display: none;
@@ -1306,6 +1470,47 @@
                             <span class="tier-dot"></span>
                             <span>Tier 2: Claude</span>
                         </div>
+                    </div>
+                </div>
+
+                <!-- v181.0: Trinity Components Status -->
+                <div class="trinity-components" id="trinity-components">
+                    <div class="trinity-header">
+                        <span class="trinity-title">🔺 Trinity Integration</span>
+                        <span class="trinity-badge pending" id="trinity-badge">Pending</span>
+                    </div>
+
+                    <div class="trinity-grid">
+                        <div class="trinity-item pending" id="jarvis-status">
+                            <span class="trinity-icon">🦾</span>
+                            <div class="trinity-info">
+                                <div class="trinity-label">JARVIS Body</div>
+                                <div class="trinity-status-text">Pending</div>
+                            </div>
+                        </div>
+
+                        <div class="trinity-item pending" id="prime-status">
+                            <span class="trinity-icon">🧠</span>
+                            <div class="trinity-info">
+                                <div class="trinity-label">J-Prime Mind</div>
+                                <div class="trinity-status-text">Pending</div>
+                            </div>
+                        </div>
+
+                        <div class="trinity-item pending" id="reactor-status">
+                            <span class="trinity-icon">⚡</span>
+                            <div class="trinity-info">
+                                <div class="trinity-label">Reactor-Core</div>
+                                <div class="trinity-status-text">Pending</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="trinity-progress-row">
+                        <div class="trinity-progress-bar" id="trinity-progress-bar">
+                            <div class="trinity-progress-fill" id="trinity-progress-fill"></div>
+                        </div>
+                        <span class="trinity-progress-text" id="trinity-progress-text">0%</span>
                     </div>
                 </div>
             </div>
