@@ -2048,6 +2048,586 @@ class StartupSummaryTable:
         print()
 
 
+# =============================================================================
+# STARTUP ISSUE COLLECTOR & HEALTH REPORT
+# =============================================================================
+# Enterprise-grade issue collection and display system that:
+# - Collects all warnings, errors, and tracebacks during startup
+# - Organizes issues by category (GCP, Trinity, Database, etc.)
+# - Displays a beautiful summary panel at the end of startup
+# - Makes issues easy to spot with color-coded severity levels
+# =============================================================================
+
+class IssueSeverity(Enum):
+    """Issue severity levels with display properties."""
+    INFO = ("info", "\033[36m", "ℹ")      # Cyan
+    WARNING = ("warning", "\033[33m", "⚠")  # Yellow
+    ERROR = ("error", "\033[31m", "✗")      # Red
+    CRITICAL = ("critical", "\033[35m", "🔥")  # Magenta
+
+
+class IssueCategory(Enum):
+    """Categories for organizing startup issues."""
+    GCP = "GCP / Cloud"
+    TRINITY = "Trinity Integration"
+    DATABASE = "Database / Storage"
+    DOCKER = "Docker"
+    VOICE = "Voice / Audio"
+    INTELLIGENCE = "Intelligence / ML"
+    NETWORK = "Network / Ports"
+    FILESYSTEM = "Filesystem"
+    IMPORT = "Import / Dependencies"
+    CONFIG = "Configuration"
+    GENERAL = "General"
+
+
+@dataclass
+class StartupIssue:
+    """Represents a single issue encountered during startup."""
+    severity: IssueSeverity
+    category: IssueCategory
+    message: str
+    phase: str = ""
+    zone: str = ""
+    timestamp: float = field(default_factory=time.time)
+    traceback: Optional[str] = None
+    suggestion: Optional[str] = None
+
+    def format_short(self) -> str:
+        """Format issue for inline display."""
+        color = self.severity.value[1]
+        icon = self.severity.value[2]
+        reset = "\033[0m"
+        return f"{color}{icon} [{self.category.value}] {self.message}{reset}"
+
+    def format_full(self) -> str:
+        """Format issue with full details."""
+        lines = [self.format_short()]
+        if self.phase:
+            lines.append(f"    Phase: {self.phase}")
+        if self.zone:
+            lines.append(f"    Zone: {self.zone}")
+        if self.suggestion:
+            lines.append(f"    💡 Suggestion: {self.suggestion}")
+        if self.traceback:
+            # Condense traceback to key lines
+            tb_lines = self.traceback.strip().split('\n')
+            if len(tb_lines) > 6:
+                lines.append("    Traceback (condensed):")
+                lines.append(f"      {tb_lines[0]}")
+                lines.append("      ...")
+                for line in tb_lines[-3:]:
+                    lines.append(f"      {line}")
+            else:
+                lines.append("    Traceback:")
+                for line in tb_lines:
+                    lines.append(f"      {line}")
+        return '\n'.join(lines)
+
+
+class StartupIssueCollector:
+    """
+    Singleton collector for all startup issues.
+
+    Collects warnings, errors, and tracebacks during startup,
+    then displays an organized summary at the end.
+
+    Usage:
+        collector = StartupIssueCollector.get_instance()
+        collector.add_warning("GCP libraries not installed", IssueCategory.GCP)
+        collector.add_error("Database connection failed", IssueCategory.DATABASE)
+        ...
+        collector.print_health_report()  # At end of startup
+    """
+
+    _instance: Optional["StartupIssueCollector"] = None
+    _lock = threading.Lock()
+
+    def __new__(cls) -> "StartupIssueCollector":
+        """Singleton pattern."""
+        with cls._lock:
+            if cls._instance is None:
+                cls._instance = super().__new__(cls)
+                cls._instance._initialized = False
+            return cls._instance
+
+    def __init__(self) -> None:
+        if self._initialized:
+            return
+        self._issues: List[StartupIssue] = []
+        self._phase_stack: List[str] = []
+        self._zone_stack: List[str] = []
+        self._start_time = time.time()
+        self._initialized = True
+
+    @classmethod
+    def get_instance(cls) -> "StartupIssueCollector":
+        """Get the singleton instance."""
+        return cls()
+
+    def set_current_phase(self, phase: str) -> None:
+        """Set the current startup phase for issue context."""
+        self._phase_stack = [phase]
+
+    def set_current_zone(self, zone: str) -> None:
+        """Set the current zone for issue context."""
+        self._zone_stack = [zone]
+
+    def push_context(self, phase: Optional[str] = None, zone: Optional[str] = None) -> None:
+        """Push a context level."""
+        if phase:
+            self._phase_stack.append(phase)
+        if zone:
+            self._zone_stack.append(zone)
+
+    def pop_context(self) -> None:
+        """Pop a context level."""
+        if len(self._phase_stack) > 1:
+            self._phase_stack.pop()
+        if len(self._zone_stack) > 1:
+            self._zone_stack.pop()
+
+    def _auto_categorize(self, message: str) -> IssueCategory:
+        """Auto-detect category from message content."""
+        msg_lower = message.lower()
+
+        if any(kw in msg_lower for kw in ['gcp', 'google cloud', 'cloud run', 'spot vm', 'cloud sql']):
+            return IssueCategory.GCP
+        if any(kw in msg_lower for kw in ['trinity', 'prime', 'reactor', 'cross-repo']):
+            return IssueCategory.TRINITY
+        if any(kw in msg_lower for kw in ['database', 'sql', 'postgres', 'sqlite', 'cloudsql']):
+            return IssueCategory.DATABASE
+        if any(kw in msg_lower for kw in ['docker', 'container', 'daemon']):
+            return IssueCategory.DOCKER
+        if any(kw in msg_lower for kw in ['voice', 'audio', 'ecapa', 'speaker', 'biometric']):
+            return IssueCategory.VOICE
+        if any(kw in msg_lower for kw in ['ml', 'model', 'intelligence', 'inference', 'neural']):
+            return IssueCategory.INTELLIGENCE
+        if any(kw in msg_lower for kw in ['port', 'network', 'socket', 'http', 'websocket']):
+            return IssueCategory.NETWORK
+        if any(kw in msg_lower for kw in ['file', 'directory', 'path', 'permission']):
+            return IssueCategory.FILESYSTEM
+        if any(kw in msg_lower for kw in ['import', 'module', 'library', 'package', 'dependency']):
+            return IssueCategory.IMPORT
+        if any(kw in msg_lower for kw in ['config', 'setting', 'environment', 'env var']):
+            return IssueCategory.CONFIG
+
+        return IssueCategory.GENERAL
+
+    def add_issue(
+        self,
+        severity: IssueSeverity,
+        message: str,
+        category: Optional[IssueCategory] = None,
+        traceback_str: Optional[str] = None,
+        suggestion: Optional[str] = None,
+    ) -> None:
+        """Add an issue to the collector."""
+        if category is None:
+            category = self._auto_categorize(message)
+
+        issue = StartupIssue(
+            severity=severity,
+            category=category,
+            message=message,
+            phase=self._phase_stack[-1] if self._phase_stack else "",
+            zone=self._zone_stack[-1] if self._zone_stack else "",
+            traceback=traceback_str,
+            suggestion=suggestion,
+        )
+        self._issues.append(issue)
+
+    def add_info(
+        self,
+        message: str,
+        category: Optional[IssueCategory] = None,
+        suggestion: Optional[str] = None,
+    ) -> None:
+        """Add an informational issue."""
+        self.add_issue(IssueSeverity.INFO, message, category, suggestion=suggestion)
+
+    def add_warning(
+        self,
+        message: str,
+        category: Optional[IssueCategory] = None,
+        suggestion: Optional[str] = None,
+    ) -> None:
+        """Add a warning issue."""
+        self.add_issue(IssueSeverity.WARNING, message, category, suggestion=suggestion)
+
+    def add_error(
+        self,
+        message: str,
+        category: Optional[IssueCategory] = None,
+        traceback_str: Optional[str] = None,
+        suggestion: Optional[str] = None,
+    ) -> None:
+        """Add an error issue."""
+        self.add_issue(IssueSeverity.ERROR, message, category, traceback_str, suggestion)
+
+    def add_critical(
+        self,
+        message: str,
+        category: Optional[IssueCategory] = None,
+        traceback_str: Optional[str] = None,
+        suggestion: Optional[str] = None,
+    ) -> None:
+        """Add a critical issue."""
+        self.add_issue(IssueSeverity.CRITICAL, message, category, traceback_str, suggestion)
+
+    def get_issues_by_severity(self, severity: IssueSeverity) -> List[StartupIssue]:
+        """Get all issues of a specific severity."""
+        return [i for i in self._issues if i.severity == severity]
+
+    def get_issues_by_category(self, category: IssueCategory) -> List[StartupIssue]:
+        """Get all issues of a specific category."""
+        return [i for i in self._issues if i.category == category]
+
+    def has_critical_issues(self) -> bool:
+        """Check if there are any critical issues."""
+        return any(i.severity == IssueSeverity.CRITICAL for i in self._issues)
+
+    def has_errors(self) -> bool:
+        """Check if there are any errors."""
+        return any(i.severity in (IssueSeverity.ERROR, IssueSeverity.CRITICAL) for i in self._issues)
+
+    def clear(self) -> None:
+        """Clear all collected issues."""
+        self._issues.clear()
+        self._phase_stack.clear()
+        self._zone_stack.clear()
+        self._start_time = time.time()
+
+    def print_health_report(self, show_all: bool = False) -> None:
+        """
+        Print a beautiful health report summary.
+
+        Args:
+            show_all: If True, show all issues including info level.
+                     If False, only show warnings, errors, and critical.
+        """
+        # Filter issues for display
+        if show_all:
+            display_issues = self._issues
+        else:
+            display_issues = [
+                i for i in self._issues
+                if i.severity in (IssueSeverity.WARNING, IssueSeverity.ERROR, IssueSeverity.CRITICAL)
+            ]
+
+        # Count by severity
+        critical_count = len(self.get_issues_by_severity(IssueSeverity.CRITICAL))
+        error_count = len(self.get_issues_by_severity(IssueSeverity.ERROR))
+        warning_count = len(self.get_issues_by_severity(IssueSeverity.WARNING))
+        info_count = len(self.get_issues_by_severity(IssueSeverity.INFO))
+
+        # ANSI colors
+        RESET = "\033[0m"
+        BOLD = "\033[1m"
+        DIM = "\033[2m"
+        RED = "\033[31m"
+        GREEN = "\033[32m"
+        YELLOW = "\033[33m"
+        BLUE = "\033[34m"
+        MAGENTA = "\033[35m"
+        CYAN = "\033[36m"
+        WHITE = "\033[37m"
+        BG_RED = "\033[41m"
+        BG_GREEN = "\033[42m"
+        BG_YELLOW = "\033[43m"
+
+        # Determine overall health status
+        if critical_count > 0:
+            health_status = f"{BG_RED}{WHITE}{BOLD} CRITICAL {RESET}"
+            health_icon = "🔥"
+            border_color = RED
+        elif error_count > 0:
+            health_status = f"{RED}{BOLD} DEGRADED {RESET}"
+            health_icon = "⚠️"
+            border_color = RED
+        elif warning_count > 0:
+            health_status = f"{YELLOW}{BOLD} WARNINGS {RESET}"
+            health_icon = "⚡"
+            border_color = YELLOW
+        else:
+            health_status = f"{BG_GREEN}{WHITE}{BOLD} HEALTHY {RESET}"
+            health_icon = "✅"
+            border_color = GREEN
+
+        # Print header
+        print()
+        print(f"{border_color}╔══════════════════════════════════════════════════════════════════════════════╗{RESET}")
+        print(f"{border_color}║{RESET}  {health_icon} {BOLD}JARVIS STARTUP HEALTH REPORT{RESET}                          {health_status}  {border_color}║{RESET}")
+        print(f"{border_color}╠══════════════════════════════════════════════════════════════════════════════╣{RESET}")
+
+        # Print summary counts
+        elapsed = time.time() - self._start_time
+        print(f"{border_color}║{RESET}  {DIM}Startup Time:{RESET} {elapsed:.2f}s                                                       {border_color}║{RESET}")
+        print(f"{border_color}║{RESET}                                                                              {border_color}║{RESET}")
+
+        # Severity counts bar
+        print(f"{border_color}║{RESET}  {BOLD}Issue Summary:{RESET}                                                             {border_color}║{RESET}")
+
+        # Critical
+        if critical_count > 0:
+            print(f"{border_color}║{RESET}    {MAGENTA}🔥 Critical:{RESET} {critical_count:<3} {'█' * min(critical_count * 2, 30):<30}                  {border_color}║{RESET}")
+
+        # Errors
+        if error_count > 0:
+            print(f"{border_color}║{RESET}    {RED}✗ Errors:{RESET}   {error_count:<3} {'█' * min(error_count * 2, 30):<30}                  {border_color}║{RESET}")
+
+        # Warnings
+        if warning_count > 0:
+            print(f"{border_color}║{RESET}    {YELLOW}⚠ Warnings:{RESET} {warning_count:<3} {'█' * min(warning_count * 2, 30):<30}                  {border_color}║{RESET}")
+
+        # Info (only if showing all)
+        if show_all and info_count > 0:
+            print(f"{border_color}║{RESET}    {CYAN}ℹ Info:{RESET}     {info_count:<3} {'█' * min(info_count * 2, 30):<30}                  {border_color}║{RESET}")
+
+        # If no issues at all
+        if critical_count == 0 and error_count == 0 and warning_count == 0:
+            print(f"{border_color}║{RESET}    {GREEN}✓ All systems operational - no issues detected{RESET}                          {border_color}║{RESET}")
+
+        print(f"{border_color}║{RESET}                                                                              {border_color}║{RESET}")
+
+        # Group issues by category for detailed display
+        if display_issues:
+            print(f"{border_color}╠══════════════════════════════════════════════════════════════════════════════╣{RESET}")
+            print(f"{border_color}║{RESET}  {BOLD}Issues by Category:{RESET}                                                        {border_color}║{RESET}")
+            print(f"{border_color}║{RESET}                                                                              {border_color}║{RESET}")
+
+            # Group by category
+            issues_by_cat: Dict[IssueCategory, List[StartupIssue]] = {}
+            for issue in display_issues:
+                if issue.category not in issues_by_cat:
+                    issues_by_cat[issue.category] = []
+                issues_by_cat[issue.category].append(issue)
+
+            # Sort categories by severity of their issues
+            def cat_priority(cat: IssueCategory) -> int:
+                issues = issues_by_cat[cat]
+                if any(i.severity == IssueSeverity.CRITICAL for i in issues):
+                    return 0
+                if any(i.severity == IssueSeverity.ERROR for i in issues):
+                    return 1
+                if any(i.severity == IssueSeverity.WARNING for i in issues):
+                    return 2
+                return 3
+
+            sorted_cats = sorted(issues_by_cat.keys(), key=cat_priority)
+
+            for cat in sorted_cats:
+                issues = issues_by_cat[cat]
+                cat_name = cat.value
+
+                # Category header with icon based on most severe issue
+                most_severe = min(issues, key=lambda i: list(IssueSeverity).index(i.severity))
+                cat_color = most_severe.severity.value[1]
+                cat_icon = most_severe.severity.value[2]
+
+                print(f"{border_color}║{RESET}  {cat_color}┌─ {cat_icon} {cat_name} ({len(issues)}){RESET}")
+
+                # Show each issue (condensed)
+                for issue in issues[:5]:  # Limit to 5 per category
+                    sev_color = issue.severity.value[1]
+                    sev_icon = issue.severity.value[2]
+                    msg = issue.message[:55] + "..." if len(issue.message) > 55 else issue.message
+                    print(f"{border_color}║{RESET}  {DIM}│{RESET}   {sev_color}{sev_icon}{RESET} {msg}")
+
+                    # Show suggestion if available
+                    if issue.suggestion:
+                        sugg = issue.suggestion[:50] + "..." if len(issue.suggestion) > 50 else issue.suggestion
+                        print(f"{border_color}║{RESET}  {DIM}│{RESET}     {DIM}💡 {sugg}{RESET}")
+
+                if len(issues) > 5:
+                    print(f"{border_color}║{RESET}  {DIM}│{RESET}   {DIM}... and {len(issues) - 5} more{RESET}")
+
+                print(f"{border_color}║{RESET}  {DIM}└{'─' * 70}{RESET}")
+                print(f"{border_color}║{RESET}                                                                              {border_color}║{RESET}")
+
+        # Suggestions section
+        suggestions = [i for i in display_issues if i.suggestion]
+        if suggestions:
+            print(f"{border_color}╠══════════════════════════════════════════════════════════════════════════════╣{RESET}")
+            print(f"{border_color}║{RESET}  {BOLD}💡 Quick Fixes:{RESET}                                                             {border_color}║{RESET}")
+
+            for i, issue in enumerate(suggestions[:3], 1):
+                sugg = issue.suggestion[:65] if issue.suggestion else ""
+                print(f"{border_color}║{RESET}    {i}. {sugg:<65}     {border_color}║{RESET}")
+
+            print(f"{border_color}║{RESET}                                                                              {border_color}║{RESET}")
+
+        # Tracebacks section (collapsed by default)
+        tracebacks = [i for i in display_issues if i.traceback]
+        if tracebacks:
+            print(f"{border_color}╠══════════════════════════════════════════════════════════════════════════════╣{RESET}")
+            print(f"{border_color}║{RESET}  {BOLD}📋 Tracebacks Available:{RESET} {len(tracebacks)}                                              {border_color}║{RESET}")
+            print(f"{border_color}║{RESET}  {DIM}Run with --debug to see full tracebacks{RESET}                                    {border_color}║{RESET}")
+            print(f"{border_color}║{RESET}                                                                              {border_color}║{RESET}")
+
+        # Footer
+        print(f"{border_color}╚══════════════════════════════════════════════════════════════════════════════╝{RESET}")
+        print()
+
+    def print_tracebacks(self) -> None:
+        """Print all collected tracebacks in detail."""
+        tracebacks = [i for i in self._issues if i.traceback]
+        if not tracebacks:
+            print("No tracebacks collected.")
+            return
+
+        RED = "\033[31m"
+        DIM = "\033[2m"
+        RESET = "\033[0m"
+        BOLD = "\033[1m"
+
+        print()
+        print(f"{RED}{BOLD}═══════════════════════════════════════════════════════════════════════════════{RESET}")
+        print(f"{RED}{BOLD}                           DETAILED TRACEBACKS{RESET}")
+        print(f"{RED}{BOLD}═══════════════════════════════════════════════════════════════════════════════{RESET}")
+
+        for i, issue in enumerate(tracebacks, 1):
+            print()
+            print(f"{RED}┌─── Traceback #{i}: {issue.message[:50]}...{RESET}")
+            print(f"{DIM}│ Category: {issue.category.value}{RESET}")
+            print(f"{DIM}│ Phase: {issue.phase or 'N/A'} | Zone: {issue.zone or 'N/A'}{RESET}")
+            print(f"{RED}├───────────────────────────────────────────────────────────────────────────────{RESET}")
+
+            for line in issue.traceback.split('\n'):
+                print(f"{DIM}│{RESET} {line}")
+
+            print(f"{RED}└───────────────────────────────────────────────────────────────────────────────{RESET}")
+
+        print()
+
+
+# Global instance for easy access
+def get_startup_issue_collector() -> StartupIssueCollector:
+    """Get the global startup issue collector instance."""
+    return StartupIssueCollector.get_instance()
+
+
+# =============================================================================
+# ANIMATED PROGRESS BAR
+# =============================================================================
+class AnimatedProgressBar:
+    """
+    Animated progress bar for multi-step operations.
+
+    Features:
+    - Smooth animation with multiple styles
+    - ETA calculation
+    - Color-coded status
+    - Step descriptions
+    """
+
+    STYLES = {
+        "blocks": ("█", "░"),
+        "dots": ("●", "○"),
+        "arrows": ("▸", "▹"),
+        "gradient": ("▓", "░"),
+    }
+
+    def __init__(
+        self,
+        total: int,
+        width: int = 40,
+        style: str = "blocks",
+        description: str = "",
+    ) -> None:
+        self.total = total
+        self.width = width
+        self.description = description
+        self.current = 0
+        self._start_time = time.time()
+        self._step_times: List[float] = []
+
+        filled_char, empty_char = self.STYLES.get(style, self.STYLES["blocks"])
+        self._filled = filled_char
+        self._empty = empty_char
+
+    def update(self, step: int = 1, description: Optional[str] = None) -> None:
+        """Update progress by step amount."""
+        self.current = min(self.current + step, self.total)
+        self._step_times.append(time.time())
+        if description:
+            self.description = description
+        self._render()
+
+    def set(self, value: int, description: Optional[str] = None) -> None:
+        """Set progress to specific value."""
+        self.current = min(value, self.total)
+        self._step_times.append(time.time())
+        if description:
+            self.description = description
+        self._render()
+
+    def _calculate_eta(self) -> str:
+        """Calculate estimated time remaining."""
+        if self.current == 0:
+            return "calculating..."
+
+        elapsed = time.time() - self._start_time
+        rate = self.current / elapsed
+        remaining = self.total - self.current
+
+        if rate > 0:
+            eta_seconds = remaining / rate
+            if eta_seconds < 60:
+                return f"{eta_seconds:.0f}s"
+            elif eta_seconds < 3600:
+                return f"{eta_seconds/60:.1f}m"
+            else:
+                return f"{eta_seconds/3600:.1f}h"
+        return "unknown"
+
+    def _render(self) -> None:
+        """Render the progress bar."""
+        # Calculate fill amount
+        fill_width = int(self.width * self.current / self.total) if self.total > 0 else 0
+        empty_width = self.width - fill_width
+
+        # Build bar
+        bar = self._filled * fill_width + self._empty * empty_width
+
+        # Calculate percentage
+        pct = (self.current / self.total * 100) if self.total > 0 else 0
+
+        # Color based on progress
+        if pct < 33:
+            color = "\033[31m"  # Red
+        elif pct < 66:
+            color = "\033[33m"  # Yellow
+        else:
+            color = "\033[32m"  # Green
+
+        reset = "\033[0m"
+        dim = "\033[2m"
+
+        # ETA
+        eta = self._calculate_eta()
+
+        # Description (truncate if needed)
+        desc = self.description[:30] if self.description else ""
+
+        # Render
+        sys.stdout.write(f"\r\033[K  {color}[{bar}]{reset} {pct:5.1f}% {dim}ETA: {eta:<10}{reset} {desc}")
+        sys.stdout.flush()
+
+    def finish(self, message: str = "Complete") -> None:
+        """Mark progress as complete."""
+        self.current = self.total
+        elapsed = time.time() - self._start_time
+
+        green = "\033[32m"
+        reset = "\033[0m"
+        bold = "\033[1m"
+
+        bar = self._filled * self.width
+        sys.stdout.write(f"\r\033[K  {green}[{bar}]{reset} {bold}100%{reset} ✓ {message} ({elapsed:.1f}s)\n")
+        sys.stdout.flush()
+
+
 # ╔═══════════════════════════════════════════════════════════════════════════════╗
 # ║                                                                               ║
 # ║   END OF ZONE 2                                                               ║
@@ -2784,6 +3364,16 @@ class GCPInstanceManager(ResourceManagerBase):
 
         except ImportError:
             self._logger.warning("Google Cloud libraries not installed, GCP features limited")
+            # Add to startup issue collector for organized display
+            try:
+                collector = get_startup_issue_collector()
+                collector.add_warning(
+                    "Google Cloud libraries not installed - GCP features limited",
+                    IssueCategory.GCP,
+                    suggestion="Run: pip install google-cloud-compute google-cloud-run"
+                )
+            except Exception:
+                pass  # Collector might not be initialized yet
             self._compute_client = None
             self._run_client = None
 
@@ -46325,6 +46915,16 @@ class TrinityIntegrator:
 
         if not launch_script:
             self.logger.warning(f"[Trinity] No launch script found for {component.name}")
+            # Add to startup issue collector for organized display
+            try:
+                collector = get_startup_issue_collector()
+                collector.add_warning(
+                    f"No launch script found for {component.name}",
+                    IssueCategory.TRINITY,
+                    suggestion=f"Create run.py or start.py in {component.repo_path}"
+                )
+            except Exception:
+                pass
             return False
 
         try:
@@ -47700,6 +48300,10 @@ class JarvisSystemKernel:
         Returns:
             Exit code (0 for success, non-zero for failure)
         """
+        # Initialize startup issue collector for organized error/warning display
+        issue_collector = get_startup_issue_collector()
+        issue_collector.clear()  # Fresh start
+
         self.logger.info("="*70)
         self.logger.info("JARVIS SYSTEM KERNEL - Starting")
         self.logger.info("="*70)
@@ -47722,30 +48326,65 @@ class JarvisSystemKernel:
 
         try:
             # Phase 1: Preflight (Zone 5.1-5.4)
+            issue_collector.set_current_phase("Phase 1: Preflight")
+            issue_collector.set_current_zone("Zone 5")
             if not await self._phase_preflight():
+                issue_collector.add_critical(
+                    "Preflight phase failed - cannot continue startup",
+                    IssueCategory.GENERAL,
+                    suggestion="Check startup lock and process manager"
+                )
+                issue_collector.print_health_report()
                 return 1
 
             # Phase 2: Resources (Zone 3)
+            issue_collector.set_current_phase("Phase 2: Resources")
+            issue_collector.set_current_zone("Zone 3")
             if not await self._phase_resources():
+                issue_collector.add_critical(
+                    "Resource initialization failed - cannot continue startup",
+                    IssueCategory.GENERAL,
+                    suggestion="Check Docker, GCP, and port availability"
+                )
+                issue_collector.print_health_report()
                 return 1
 
             # Phase 3: Backend (Zone 6.1)
+            issue_collector.set_current_phase("Phase 3: Backend")
+            issue_collector.set_current_zone("Zone 6")
             if not await self._phase_backend():
+                issue_collector.add_critical(
+                    "Backend server failed to start",
+                    IssueCategory.NETWORK,
+                    suggestion="Check if port is already in use or backend code has errors"
+                )
+                issue_collector.print_health_report()
                 return 1
 
             # Phase 4: Intelligence (Zone 4)
+            issue_collector.set_current_phase("Phase 4: Intelligence")
+            issue_collector.set_current_zone("Zone 4")
             if not await self._phase_intelligence():
                 # Non-fatal - continue without intelligence
-                self.logger.warning("[Zone4] Intelligence layer failed - continuing without ML")
+                issue_collector.add_warning(
+                    "Intelligence layer failed - continuing without ML features",
+                    IssueCategory.INTELLIGENCE,
+                    suggestion="Check ML model availability and Python dependencies"
+                )
 
             # Phase 5: Trinity (Zone 5.7)
+            issue_collector.set_current_phase("Phase 5: Trinity")
+            issue_collector.set_current_zone("Zone 5.7")
             if self.config.trinity_enabled:
                 await self._phase_trinity()
 
             # Phase 6: Enterprise Services (Zone 6.4)
+            issue_collector.set_current_phase("Phase 6: Enterprise Services")
+            issue_collector.set_current_zone("Zone 6.4")
             await self._phase_enterprise_services()
 
             # Start background pre-warming task (non-blocking)
+            issue_collector.set_current_phase("Background Tasks")
             prewarm_task = asyncio.create_task(
                 self._prewarm_python_modules(),
                 name="module-prewarm"
@@ -47758,6 +48397,7 @@ class JarvisSystemKernel:
                 self._readiness_manager.mark_tier(ReadinessTier.FULLY_READY)
 
             # Final service verification
+            issue_collector.set_current_phase("Service Verification")
             verification = await self._verify_all_services(timeout=10.0)
             if not verification["all_healthy"]:
                 unhealthy = [
@@ -47765,16 +48405,29 @@ class JarvisSystemKernel:
                     if isinstance(v, dict) and not v.get("healthy") and not v.get("note")
                 ]
                 if unhealthy:
-                    self.logger.warning(f"[Kernel] Some services unhealthy: {unhealthy}")
-                else:
-                    self.logger.info("[Kernel] All configured services operational")
+                    for svc in unhealthy:
+                        issue_collector.add_warning(
+                            f"Service unhealthy: {svc}",
+                            IssueCategory.GENERAL,
+                        )
+
+            # Print startup health report
+            self.logger.info("")
+            issue_collector.print_health_report()
 
             self.logger.success(f"[Kernel] ✅ Startup complete in {time.time() - self._started_at:.2f}s")
             return 0
 
         except Exception as e:
+            issue_collector.add_critical(
+                f"Startup failed with exception: {e}",
+                IssueCategory.GENERAL,
+                traceback_str=traceback.format_exc(),
+            )
             self.logger.error(f"[Kernel] Startup failed: {e}")
-            self.logger.error(traceback.format_exc())
+            issue_collector.print_health_report()
+            if self.config.debug:
+                issue_collector.print_tracebacks()
             self._state = KernelState.FAILED
             return 1
 
@@ -48134,6 +48787,16 @@ class JarvisSystemKernel:
             self.logger.warning(
                 f"[Zone6/{name}] ⏱️ TIMEOUT after {timeout_seconds}s - skipping"
             )
+            # Add to startup issue collector
+            try:
+                collector = get_startup_issue_collector()
+                collector.add_warning(
+                    f"Enterprise service '{name}' timed out after {timeout_seconds}s",
+                    IssueCategory.DATABASE if "SQL" in name else IssueCategory.VOICE if "Voice" in name else IssueCategory.GENERAL,
+                    suggestion=f"Check network connectivity and service dependencies for {name}"
+                )
+            except Exception:
+                pass
             return {
                 "error": f"Timeout after {timeout_seconds}s",
                 "timed_out": True,
@@ -48147,6 +48810,17 @@ class JarvisSystemKernel:
         except Exception as e:
             elapsed = (time.time() - start_time) * 1000
             self.logger.warning(f"[Zone6/{name}] Failed: {e}")
+            # Add to startup issue collector
+            try:
+                collector = get_startup_issue_collector()
+                collector.add_error(
+                    f"Enterprise service '{name}' failed: {e}",
+                    IssueCategory.DATABASE if "SQL" in name else IssueCategory.VOICE if "Voice" in name else IssueCategory.GENERAL,
+                    traceback_str=traceback.format_exc(),
+                    suggestion=f"Check logs and configuration for {name}"
+                )
+            except Exception:
+                pass
             return {
                 "error": str(e),
                 "elapsed_ms": elapsed,
