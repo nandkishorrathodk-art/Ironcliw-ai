@@ -1282,7 +1282,10 @@ class HybridDatabaseSync:
     async def _init_sqlite(self):
         """Initialize local SQLite connection"""
         try:
-            self.sqlite_path.parent.mkdir(parents=True, exist_ok=True)
+            # v124.0: Wrap blocking mkdir in asyncio.to_thread to prevent blocking event loop
+            await asyncio.to_thread(
+                lambda: self.sqlite_path.parent.mkdir(parents=True, exist_ok=True)
+            )
             self.sqlite_conn = await aiosqlite.connect(str(self.sqlite_path))
 
             # Enable WAL mode for better concurrency
@@ -2707,15 +2710,23 @@ class HybridDatabaseSync:
             search_names.append(hint_name)
 
         # Strategy 2: Read from enrollment config
+        # v124.0: Wrap file I/O in asyncio.to_thread to prevent blocking event loop
         try:
             enrollment_path = os.path.expanduser('~/.jarvis/voice_enrollment.json')
-            if os.path.exists(enrollment_path):
-                with open(enrollment_path, 'r') as f:
-                    enrollment = json.load(f)
-                    config_name = enrollment.get('owner_name')
-                    if config_name and config_name not in search_names:
-                        search_names.append(config_name)
-                        logger.debug(f"📄 Found owner name in enrollment config: {config_name}")
+
+            def _load_enrollment_sync():
+                """Sync file I/O - runs in thread pool."""
+                if os.path.exists(enrollment_path):
+                    with open(enrollment_path, 'r') as f:
+                        return json.load(f)
+                return None
+
+            enrollment = await asyncio.to_thread(_load_enrollment_sync)
+            if enrollment:
+                config_name = enrollment.get('owner_name')
+                if config_name and config_name not in search_names:
+                    search_names.append(config_name)
+                    logger.debug(f"📄 Found owner name in enrollment config: {config_name}")
         except Exception as e:
             logger.debug(f"Could not read enrollment config: {e}")
 

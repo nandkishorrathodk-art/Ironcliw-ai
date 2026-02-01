@@ -556,6 +556,7 @@ import asyncio
 import contextlib
 import functools
 import hashlib
+import heapq
 import inspect
 import json
 import logging
@@ -50585,15 +50586,17 @@ class JarvisSystemKernel:
             if str(backend_dir) not in sys.path:
                 sys.path.insert(0, str(backend_dir))
 
-            # Initialize learning database
-            self.logger.info("[VoiceBio] Loading learning database...")
+            # Initialize learning database (fast mode for parallel initialization)
+            self.logger.info("[VoiceBio] Loading learning database (fast mode)...")
             try:
                 from intelligence.learning_database import JARVISLearningDatabase
 
                 learning_db = JARVISLearningDatabase()
-                await learning_db.initialize()
+                # v124.0: Use fast_mode=True for parallel initialization
+                # This reduces startup from 30+ seconds to ~5 seconds
+                await learning_db.initialize(fast_mode=True)
 
-                self.logger.success("[VoiceBio] Learning database initialized")
+                self.logger.success("[VoiceBio] Learning database initialized (fast mode)")
 
                 # Check for Phase 2 features
                 if hasattr(learning_db, 'hybrid_sync') and learning_db.hybrid_sync:

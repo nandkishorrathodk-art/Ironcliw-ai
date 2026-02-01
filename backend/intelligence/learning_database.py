@@ -3393,14 +3393,21 @@ class JARVISLearningDatabase:
             import json
 
             # Load CloudSQL config
+            # v124.0: Wrap file I/O in asyncio.to_thread to prevent blocking event loop
             config_path = Path.home() / ".jarvis" / "gcp" / "database_config.json"
-            if not config_path.exists():
+
+            def _load_gcp_config_sync():
+                """Sync file I/O - runs in thread pool."""
+                if not config_path.exists():
+                    return None
+                with open(config_path, 'r') as f:
+                    return json.load(f)
+
+            gcp_config = await asyncio.to_thread(_load_gcp_config_sync)
+            if gcp_config is None:
                 logger.warning("⚠️  CloudSQL config not found - hybrid sync disabled")
                 self._sync_enabled = False
                 return
-
-            with open(config_path, 'r') as f:
-                gcp_config = json.load(f)
 
             cloudsql_config = gcp_config.get("cloud_sql", {})
 
