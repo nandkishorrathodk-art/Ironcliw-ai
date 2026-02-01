@@ -1332,6 +1332,7 @@ class UnifiedLogger:
 
             with self._log_lock:
                 print(f"{color}{level_str}{reset} {time_str} │ {indent}{message}")
+                sys.stdout.flush()  # Ensure output appears immediately during async ops
 
     def _log_json(self, level: LogLevel, message: str, elapsed: float, **kwargs) -> None:
         """Log in JSON format."""
@@ -47618,21 +47619,44 @@ class TrinityIntegrator:
         if not venv_python.exists():
             venv_python = Path(sys.executable)  # Fallback to current Python
 
-        # Find launch script
+        # Find launch script - expanded search list for common entry points
+        # Includes repo-specific names (e.g., run_reactor.py for reactor-core)
+        component_underscore = component.name.replace('-', '_')
         launch_scripts = [
+            # Direct entry points
             component.repo_path / "run_server.py",
             component.repo_path / "main.py",
-            component.repo_path / f"{component.name.replace('-', '_')}" / "server.py",
+            component.repo_path / "run.py",
+            component.repo_path / "start.py",
+            component.repo_path / "__main__.py",
+            # Component-specific names (e.g., run_reactor.py for reactor-core)
+            component.repo_path / f"run_{component_underscore}.py",
+            component.repo_path / f"{component_underscore}_server.py",
+            component.repo_path / "run_supervisor.py",
+            # Package entry points
+            component.repo_path / component_underscore / "server.py",
+            component.repo_path / component_underscore / "main.py",
+            component.repo_path / component_underscore / "__main__.py",
+            component.repo_path / component_underscore / "cli.py",
         ]
 
         launch_script = None
         for script in launch_scripts:
             if script.exists():
                 launch_script = script
+                self.logger.debug(f"[Trinity] Found launch script: {script}")
                 break
 
         if not launch_script:
-            self.logger.warning(f"[Trinity] No launch script found for {component.name}")
+            # Log available .py files for debugging
+            try:
+                available_py = list(component.repo_path.glob("*.py"))[:5]
+                self.logger.warning(
+                    f"[Trinity] No launch script found for {component.name}. "
+                    f"Available: {[p.name for p in available_py]}"
+                )
+            except Exception:
+                self.logger.warning(f"[Trinity] No launch script found for {component.name}")
             return False
 
         try:
@@ -49598,56 +49622,55 @@ class JarvisSystemKernel:
         All services are optional - failures don't stop startup.
         """
         with self.logger.section_start(LogSection.BOOT, "Zone 6.4 | Phase 6: Enterprise Services"):
-            self.logger.info("[Zone6] Initializing enterprise services (parallel with 30s timeouts)...")
-
-            # Define service initializations with individual timeouts
-            # Configurable via JARVIS_SERVICE_TIMEOUT env var (default: 30s)
+            # Configurable timeout via JARVIS_SERVICE_TIMEOUT env var (default: 30s)
             SERVICE_TIMEOUT = float(os.getenv("JARVIS_SERVICE_TIMEOUT", "30.0"))
+            self.logger.info(f"[Zone6] Initializing 4 enterprise services (parallel, {SERVICE_TIMEOUT}s timeout each)...")
 
-            # Run all service initializations in parallel with timeouts
-            init_results = await asyncio.gather(
-                self._init_enterprise_service_with_timeout(
-                    "CloudSQL",
-                    self._initialize_cloud_sql_proxy(),
-                    SERVICE_TIMEOUT,
-                ),
-                self._init_enterprise_service_with_timeout(
-                    "VoiceBio",
-                    self._initialize_voice_biometrics(),
-                    SERVICE_TIMEOUT,
-                ),
-                self._init_enterprise_service_with_timeout(
-                    "SemanticCache",
-                    self._initialize_semantic_voice_cache(),
-                    SERVICE_TIMEOUT,
-                ),
-                self._init_enterprise_service_with_timeout(
-                    "InfraOrch",
-                    self._initialize_infrastructure_orchestrator(),
-                    SERVICE_TIMEOUT,
-                ),
-                return_exceptions=True
-            )
-
-            # Process results
-            service_names = [
-                "cloud_sql",
-                "voice_biometrics",
-                "semantic_cache",
-                "infra_orchestrator"
+            # Service definitions with display names
+            services = [
+                ("CloudSQL", "cloud_sql", self._initialize_cloud_sql_proxy),
+                ("VoiceBio", "voice_biometrics", self._initialize_voice_biometrics),
+                ("SemanticCache", "semantic_cache", self._initialize_semantic_voice_cache),
+                ("InfraOrch", "infra_orchestrator", self._initialize_infrastructure_orchestrator),
             ]
 
-            init_status: Dict[str, Any] = {}
-            for name, result in zip(service_names, init_results):
-                if isinstance(result, Exception):
-                    self.logger.warning(f"[Zone6/{name}] Unexpected error: {result}")
-                    init_status[name] = {"error": str(result)}
-                elif isinstance(result, dict) and result.get("timed_out"):
-                    init_status[name] = result
-                else:
-                    init_status[name] = result
+            # Log service list
+            self.logger.info("[Zone6] Services: " + ", ".join(s[0] for s in services))
 
-            # Report status
+            # Create coroutines for parallel execution
+            coros = [
+                self._init_enterprise_service_with_timeout(
+                    display_name,
+                    init_func(),
+                    SERVICE_TIMEOUT,
+                )
+                for display_name, _, init_func in services
+            ]
+
+            # Run all service initializations in parallel with timeouts
+            init_results = await asyncio.gather(*coros, return_exceptions=True)
+
+            # Process and log results for each service
+            init_status: Dict[str, Any] = {}
+            for (display_name, internal_name, _), result in zip(services, init_results):
+                if isinstance(result, Exception):
+                    self.logger.warning(f"[Zone6/{display_name}] ✗ Exception: {result}")
+                    init_status[internal_name] = {"error": str(result), "exception": True}
+                elif isinstance(result, dict):
+                    if result.get("timed_out"):
+                        self.logger.warning(f"[Zone6/{display_name}] ⏱️ Timed out")
+                    elif result.get("initialized") or result.get("enabled") or result.get("running"):
+                        self.logger.info(f"[Zone6/{display_name}] ✓ Ready")
+                    elif result.get("error"):
+                        self.logger.warning(f"[Zone6/{display_name}] ⚠ {result.get('error', 'Failed')[:50]}")
+                    else:
+                        self.logger.info(f"[Zone6/{display_name}] ○ Skipped/Disabled")
+                    init_status[internal_name] = result
+                else:
+                    self.logger.warning(f"[Zone6/{display_name}] ⚠ Unknown result type")
+                    init_status[internal_name] = {"error": "Unknown result", "raw": str(result)[:100]}
+
+            # Calculate summary statistics
             successful = [
                 name for name, status in init_status.items()
                 if isinstance(status, dict) and (
@@ -49660,14 +49683,22 @@ class JarvisSystemKernel:
                 name for name, status in init_status.items()
                 if isinstance(status, dict) and status.get("timed_out")
             ]
+            failed = [
+                name for name, status in init_status.items()
+                if isinstance(status, dict) and (
+                    status.get("error") or status.get("exception")
+                ) and not status.get("timed_out")
+            ]
 
+            # Log summary
             if timed_out:
-                self.logger.warning(
-                    f"[Zone6] Services timed out: {', '.join(timed_out)}"
-                )
+                self.logger.warning(f"[Zone6] ⏱️ Timed out: {', '.join(timed_out)}")
+            if failed:
+                self.logger.warning(f"[Zone6] ⚠ Failed: {', '.join(failed)}")
 
             self.logger.success(
-                f"[Zone6] Enterprise services: {len(successful)}/{len(service_names)} active"
+                f"[Zone6] Enterprise services complete: {len(successful)}/{len(services)} active, "
+                f"{len(timed_out)} timed out, {len(failed)} failed"
             )
 
             # Store results for later reference
