@@ -830,6 +830,83 @@ def _detect_gcp_project() -> Optional[str]:
     return None
 
 
+# =============================================================================
+# SAFE FILE I/O UTILITIES (v119.0)
+# =============================================================================
+def _safe_read_file(path: Path, default: str = "") -> str:
+    """
+    v119.0: Robust file reading that handles "Bad file descriptor" and other I/O errors.
+
+    The pathlib.read_text() method can fail with errno 9 (EBADF) when:
+    - File descriptors are exhausted or recycled
+    - Race conditions with file operations
+    - System file descriptor limits are stressed (e.g., after setrlimit)
+
+    This function uses explicit file opening with proper error handling.
+
+    Args:
+        path: Path object to read
+        default: Default value to return on error
+
+    Returns:
+        File contents as string, or default on error
+    """
+    import errno
+
+    if not isinstance(path, Path):
+        path = Path(path)
+
+    try:
+        # Check existence first
+        if not path.exists():
+            return default
+    except OSError:
+        return default
+
+    try:
+        # Use explicit file open instead of path.read_text()
+        with open(str(path), 'r', encoding='utf-8') as f:
+            return f.read()
+    except (OSError, IOError) as e:
+        # Handle specific error codes gracefully
+        if hasattr(e, 'errno') and e.errno in (
+            errno.EBADF,    # Bad file descriptor
+            errno.ENOENT,   # File not found
+            errno.EACCES,   # Permission denied
+            errno.EIO,      # I/O error
+            errno.ESTALE,   # Stale file handle
+        ):
+            return default
+        # Return default for unexpected errors
+        return default
+    except Exception:
+        return default
+
+
+def _safe_read_json(path: Path, default: dict = None) -> dict:
+    """
+    v119.0: Robust JSON file reading with error handling.
+
+    Args:
+        path: Path to JSON file
+        default: Default value to return on error (None becomes {})
+
+    Returns:
+        Parsed JSON data or default on error
+    """
+    if default is None:
+        default = {}
+
+    content = _safe_read_file(path, default="")
+    if not content:
+        return default
+
+    try:
+        return json.loads(content)
+    except (json.JSONDecodeError, TypeError):
+        return default
+
+
 def _calculate_memory_budget() -> float:
     """Calculate memory budget based on system RAM."""
     if not PSUTIL_AVAILABLE:
@@ -48782,6 +48859,10 @@ class JarvisSystemKernel:
 
     _instance: Optional["JarvisSystemKernel"] = None
 
+    # v119.0: Cross-process browser lock for safe window management
+    BROWSER_LOCK_FILE = Path("/tmp/jarvis_browser.lock")
+    BROWSER_PID_FILE = Path("/tmp/jarvis_browser_opener.pid")
+
     def __new__(cls, *args: Any, **kwargs: Any) -> "JarvisSystemKernel":
         """Singleton pattern."""
         if cls._instance is None:
@@ -48991,6 +49072,9 @@ class JarvisSystemKernel:
         for task in self._background_tasks:
             task.cancel()
 
+        # v119.0: Release browser lock if held
+        self._release_browser_lock()
+
         # Release lock
         self._startup_lock.release()
 
@@ -49102,6 +49186,64 @@ class JarvisSystemKernel:
             )
 
         return selected_mode
+
+    # =========================================================================
+    # v119.0: BROWSER LOCK FOR CROSS-PROCESS SAFETY
+    # =========================================================================
+    async def _acquire_browser_lock(self) -> bool:
+        """
+        Acquire exclusive lock for browser operations.
+
+        Uses file-based locking to prevent multiple processes from
+        opening browser windows simultaneously.
+
+        Returns:
+            True if lock acquired, False if another process holds it
+        """
+        try:
+            # Check if lock exists and is recent (within 30 seconds)
+            if self.BROWSER_LOCK_FILE.exists():
+                lock_age = time.time() - self.BROWSER_LOCK_FILE.stat().st_mtime
+                if lock_age < 30:
+                    # Check if the PID that created it is still running
+                    if self.BROWSER_PID_FILE.exists():
+                        try:
+                            # v119.0: Use safe file reading to avoid "Bad file descriptor" errors
+                            pid_content = _safe_read_file(self.BROWSER_PID_FILE, default="").strip()
+                            pid = int(pid_content) if pid_content else 0
+                            if not pid:
+                                raise ValueError("Empty or invalid PID file")
+                            # Check if process is still alive
+                            os.kill(pid, 0)
+                            self.logger.debug(f"Browser lock held by PID {pid}")
+                            return False
+                        except (ProcessLookupError, ValueError):
+                            # Process is dead, we can take the lock
+                            pass
+                    else:
+                        self.logger.debug(f"Browser lock exists but no PID file, age={lock_age:.1f}s")
+                        return False
+
+            # Create lock file with timestamp
+            self.BROWSER_LOCK_FILE.write_text(str(time.time()))
+            self.BROWSER_PID_FILE.write_text(str(os.getpid()))
+            self.logger.debug(f"Acquired browser lock (PID {os.getpid()})")
+            return True
+
+        except Exception as e:
+            self.logger.debug(f"Lock acquisition error: {e}")
+            return False
+
+    def _release_browser_lock(self) -> None:
+        """Release the browser lock."""
+        try:
+            if self.BROWSER_LOCK_FILE.exists():
+                self.BROWSER_LOCK_FILE.unlink()
+            if self.BROWSER_PID_FILE.exists():
+                self.BROWSER_PID_FILE.unlink()
+            self.logger.debug("Released browser lock")
+        except Exception as e:
+            self.logger.debug(f"Lock release error: {e}")
 
     async def startup(self) -> int:
         """
@@ -49387,8 +49529,11 @@ class JarvisSystemKernel:
         with self.logger.section_start(LogSection.BOOT, "Zone 5.1 | Phase 1: Preflight"):
             # Acquire startup lock
             if not self._startup_lock.acquire(force=self._force):
-                holder_pid = self._startup_lock.get_current_holder()
-                self.logger.error(f"[Kernel] Another kernel is running (PID: {holder_pid})")
+                # v119.0: Extract PID from holder dict (root-cause fix)
+                holder_info = self._startup_lock.get_current_holder()
+                holder_pid = (holder_info or {}).get("pid", "unknown")
+                holder_entry = (holder_info or {}).get("kernel_version", "unknown")
+                self.logger.error(f"[Kernel] Another kernel is running (PID: {holder_pid}, Version: {holder_entry})")
                 self.logger.error("[Kernel] Use --force to take over")
                 return False
             self.logger.success("[Kernel] Startup lock acquired")
@@ -49405,6 +49550,11 @@ class JarvisSystemKernel:
             cleanup_result = await self._zombie_cleanup.run_comprehensive_cleanup()
             if cleanup_result["zombies_killed"] > 0:
                 self.logger.info(f"[Kernel] Cleaned {cleanup_result['zombies_killed']} zombie processes")
+
+            # v119.0: Signal cleanup done to prevent redundant cleanup by other scripts
+            os.environ["JARVIS_CLEANUP_DONE"] = "1"
+            os.environ["JARVIS_CLEANUP_TIMESTAMP"] = str(int(time.time()))
+            self.logger.debug("[Kernel] Set JARVIS_CLEANUP_DONE=1")
 
             # Install signal handlers
             loop = asyncio.get_event_loop()
@@ -49969,34 +50119,47 @@ class JarvisSystemKernel:
             self.logger.debug(f"[Kernel] Loading server error (non-fatal): {e}")
 
         # Step 2: Open Chrome Incognito to loading page with query params
+        # v119.0: Use browser lock for cross-process safety
         if loading_server_started:
+            browser_lock_acquired = False
             try:
                 # Build loading URL with frontend_optional param (matches run_supervisor behavior)
                 frontend_optional = os.environ.get("FRONTEND_OPTIONAL", "false").lower() == "true"
                 loading_url = f"http://localhost:{loading_port}"
                 loading_url_with_params = f"{loading_url}?frontend_optional={str(frontend_optional).lower()}"
 
-                # Open Chrome Incognito (clean slate - single window)
-                if sys.platform == "darwin":  # macOS
-                    chrome_manager = get_chrome_manager()
-                    result = await chrome_manager.ensure_single_incognito_window(loading_url_with_params)
-                    if result.get("success"):
-                        action = result.get("action", "unknown")
-                        self.logger.success(f"[Kernel] Chrome Incognito opened ({action})")
-
-                        # Step 3: Set environment variable to signal other processes
-                        os.environ["JARVIS_SUPERVISOR_LOADING"] = "1"
-                        self.logger.debug("[Kernel] Set JARVIS_SUPERVISOR_LOADING=1")
-                    else:
-                        error = result.get("error", "unknown")
-                        self.logger.info(f"[Kernel] Chrome not opened: {error}")
-                        self.logger.info(f"[Kernel] Open manually: {loading_url_with_params}")
+                # v119.0: Acquire browser lock before opening
+                browser_lock_acquired = await self._acquire_browser_lock()
+                if not browser_lock_acquired:
+                    self.logger.info("[Kernel] Another process is managing browser - skipping")
+                    # Wait a bit and assume the other process handled it
+                    await asyncio.sleep(2.0)
                 else:
-                    self.logger.info(f"[Kernel] Non-macOS platform - open manually: {loading_url_with_params}")
+                    # Open Chrome Incognito (clean slate - single window)
+                    if sys.platform == "darwin":  # macOS
+                        chrome_manager = get_chrome_manager()
+                        result = await chrome_manager.ensure_single_incognito_window(loading_url_with_params)
+                        if result.get("success"):
+                            action = result.get("action", "unknown")
+                            self.logger.success(f"[Kernel] Chrome Incognito opened ({action})")
+
+                            # Step 3: Set environment variable to signal other processes
+                            os.environ["JARVIS_SUPERVISOR_LOADING"] = "1"
+                            self.logger.debug("[Kernel] Set JARVIS_SUPERVISOR_LOADING=1")
+                        else:
+                            error = result.get("error", "unknown")
+                            self.logger.info(f"[Kernel] Chrome not opened: {error}")
+                            self.logger.info(f"[Kernel] Open manually: {loading_url_with_params}")
+                    else:
+                        self.logger.info(f"[Kernel] Non-macOS platform - open manually: {loading_url_with_params}")
 
             except Exception as e:
                 self.logger.debug(f"[Kernel] Chrome Incognito error (non-fatal): {e}")
                 self.logger.info(f"[Kernel] Open manually: http://localhost:{loading_port}")
+            finally:
+                # v119.0: Always release browser lock
+                if browser_lock_acquired:
+                    self._release_browser_lock()
 
         # Step 4: Voice narration (if enabled)
         if self._narrator and loading_server_started:
@@ -50058,26 +50221,37 @@ class JarvisSystemKernel:
         self.logger.debug("[Kernel] Set JARVIS_STARTUP_COMPLETE=true")
 
         # Step 3: Redirect Chrome to the main frontend
+        # v119.0: Use browser lock for cross-process safety
         if frontend_started:
+            browser_lock_acquired = False
             try:
                 frontend_url = f"http://localhost:{frontend_port}"
 
-                if sys.platform == "darwin":  # macOS
-                    chrome_manager = get_chrome_manager()
-                    result = await chrome_manager.ensure_single_incognito_window(frontend_url)
-                    if result.get("success"):
-                        action = result.get("action", "unknown")
-                        self.logger.success(f"[Kernel] Chrome redirected ({action}) → {frontend_url}")
-                    else:
-                        self.logger.info(
-                            f"[Kernel] Chrome redirect skipped: {result.get('error', 'unknown')}"
-                        )
-                        self.logger.info(f"[Kernel] Open manually: {frontend_url}")
+                # v119.0: Acquire browser lock before redirecting
+                browser_lock_acquired = await self._acquire_browser_lock()
+                if not browser_lock_acquired:
+                    self.logger.info("[Kernel] Another process is managing browser - skipping redirect")
                 else:
-                    self.logger.info(f"[Kernel] Non-macOS - open manually: {frontend_url}")
+                    if sys.platform == "darwin":  # macOS
+                        chrome_manager = get_chrome_manager()
+                        result = await chrome_manager.ensure_single_incognito_window(frontend_url)
+                        if result.get("success"):
+                            action = result.get("action", "unknown")
+                            self.logger.success(f"[Kernel] Chrome redirected ({action}) → {frontend_url}")
+                        else:
+                            self.logger.info(
+                                f"[Kernel] Chrome redirect skipped: {result.get('error', 'unknown')}"
+                            )
+                            self.logger.info(f"[Kernel] Open manually: {frontend_url}")
+                    else:
+                        self.logger.info(f"[Kernel] Non-macOS - open manually: {frontend_url}")
 
             except Exception as e:
                 self.logger.debug(f"[Kernel] Chrome redirect error (non-fatal): {e}")
+            finally:
+                # v119.0: Always release browser lock
+                if browser_lock_acquired:
+                    self._release_browser_lock()
 
             # Step 4: Gracefully stop the loading server
             # The graceful shutdown will wait for Chrome to naturally disconnect
@@ -50833,6 +51007,9 @@ class JarvisSystemKernel:
                 except Exception:
                     pass
 
+            # v119.0: Release browser lock if held
+            self._release_browser_lock()
+
             # Release lock
             self._startup_lock.release()
 
@@ -50857,13 +51034,56 @@ class JarvisSystemKernel:
         self._ipc_server.register_handler(IPCCommand.SHUTDOWN, self._ipc_shutdown)
 
     async def _ipc_health(self) -> Dict[str, Any]:
-        """Handle health IPC command."""
+        """
+        Handle health IPC command (v119.0 enterprise-compatible).
+
+        Returns health data compatible with:
+        - Legacy supervisor_singleton checks (health_level)
+        - Fast kernel check (_fast_kernel_check)
+        - External monitoring tools
+
+        Health Level Progression:
+        - UNKNOWN: Initial state or error
+        - PROCESS_EXISTS: Process is alive
+        - IPC_RESPONSIVE: IPC socket accepting connections (this response proves it)
+        - HTTP_HEALTHY: Backend HTTP health check passing
+        - FULLY_READY: All components initialized and healthy
+        """
+        # Determine health_level based on kernel state and component readiness
+        health_level = "UNKNOWN"
+
+        if self._state == KernelState.RUNNING:
+            # Kernel is running - check component readiness
+            if self._readiness_manager:
+                readiness_status = self._readiness_manager.get_status()
+                tier = readiness_status.get("tier", "")
+
+                if tier == "FULLY_READY":
+                    health_level = "FULLY_READY"
+                elif tier in ("HTTP_HEALTHY", "BACKEND_READY"):
+                    health_level = "HTTP_HEALTHY"
+                else:
+                    health_level = "IPC_RESPONSIVE"
+            else:
+                # No readiness manager, but kernel is running
+                health_level = "IPC_RESPONSIVE"
+
+        elif self._state in (KernelState.STARTING_BACKEND, KernelState.STARTING_RESOURCES):
+            # Kernel is starting - IPC is responsive (we're here)
+            health_level = "IPC_RESPONSIVE"
+
+        elif self._state == KernelState.PREFLIGHT:
+            # Very early stage
+            health_level = "PROCESS_EXISTS"
+
         return {
             "healthy": self._state == KernelState.RUNNING,
+            "health_level": health_level,  # v119.0: Critical for fast kernel check
             "state": self._state.value,
             "uptime_seconds": self.uptime_seconds,
             "pid": os.getpid(),
             "kernel_id": self.config.kernel_id,
+            "entry_point": "unified_supervisor",  # v119.0: Identify entry point
             "readiness": self._readiness_manager.get_status() if self._readiness_manager else {},
         }
 
@@ -53625,13 +53845,66 @@ async def async_main(args: argparse.Namespace) -> int:
         subprocess_mode=args.subprocess if hasattr(args, 'subprocess') else None,
     )
 
-    # Run startup
-    exit_code = await kernel.startup()
-    if exit_code != 0:
+    # v119.0: Enterprise-grade try/finally with guaranteed lock release
+    # This ensures resources are always cleaned up, even on unexpected exits
+    exit_code = 1  # Default to failure
+    try:
+        # Run startup
+        exit_code = await kernel.startup()
+        if exit_code != 0:
+            return exit_code
+
+        # Run main loop
+        exit_code = await kernel.run()
         return exit_code
 
-    # Run main loop
-    return await kernel.run()
+    except Exception as e:
+        # Log unexpected exception
+        kernel.logger.error(f"[Kernel] Unexpected exception in main: {e}")
+        import traceback
+        kernel.logger.error(f"[Kernel] Traceback: {traceback.format_exc()}")
+        exit_code = 1
+        raise
+
+    finally:
+        # v119.0: Guaranteed cleanup on ALL exit paths (normal, exception, signal)
+        try:
+            # Step 1: Ensure kernel shutdown is complete
+            if kernel._state not in (KernelState.STOPPED, KernelState.INITIALIZING):
+                kernel.logger.warning("[Kernel] Forcing shutdown in finally block...")
+                try:
+                    await asyncio.wait_for(kernel.emergency_shutdown(), timeout=5.0)
+                except (asyncio.TimeoutError, Exception) as cleanup_err:
+                    kernel.logger.error(f"[Kernel] Emergency shutdown error: {cleanup_err}")
+
+            # Step 2: Release startup lock if still held
+            if hasattr(kernel, '_startup_lock') and kernel._startup_lock._acquired:
+                kernel.logger.info("[Kernel] Releasing startup lock in finally block...")
+                try:
+                    kernel._startup_lock.release()
+                except Exception as lock_err:
+                    kernel.logger.error(f"[Kernel] Lock release error: {lock_err}")
+
+            # Step 3: Final thread cleanup (import dynamically to avoid circular imports)
+            try:
+                from backend.core.thread_manager import final_thread_cleanup
+                cleanup_stats = final_thread_cleanup(
+                    timeout=5.0,
+                    force_terminate=True,
+                    allow_daemon_conversion=False,  # Don't convert to daemon, we're exiting
+                )
+                if cleanup_stats.get("remaining_non_daemon", 0) > 0:
+                    kernel.logger.warning(
+                        f"[Kernel] {cleanup_stats['remaining_non_daemon']} non-daemon threads "
+                        f"still alive: {cleanup_stats.get('remaining_thread_names', [])}"
+                    )
+            except ImportError:
+                pass  # thread_manager not available
+            except Exception as thread_err:
+                kernel.logger.error(f"[Kernel] Thread cleanup error: {thread_err}")
+
+        except Exception as final_err:
+            print(f"[Kernel] Error in finally cleanup: {final_err}")
 
 
 def main() -> int:
@@ -53639,17 +53912,47 @@ def main() -> int:
     Main entry point for JARVIS Unified System Kernel.
 
     Parses CLI arguments and runs the appropriate command.
+
+    v119.0: Enterprise-grade exit handling with guaranteed process termination.
     """
     # Parse arguments
     parser = create_argument_parser()
     args = parser.parse_args()
 
     # Run async main
+    exit_code = 1  # Default to failure
     try:
-        return asyncio.run(async_main(args))
+        exit_code = asyncio.run(async_main(args))
     except KeyboardInterrupt:
         print("\n[Kernel] Interrupted by user")
-        return 130  # 128 + SIGINT(2)
+        exit_code = 130  # 128 + SIGINT(2)
+    except SystemExit as e:
+        exit_code = e.code if isinstance(e.code, int) else 1
+    except Exception as e:
+        print(f"\n[Kernel] Fatal error: {e}")
+        import traceback
+        traceback.print_exc()
+        exit_code = 1
+
+    # v119.0: Guaranteed process exit with os._exit fallback
+    # If non-daemon threads are still alive after cleanup, sys.exit won't work
+    # because Python waits for all non-daemon threads before exiting
+    try:
+        remaining_threads = [
+            t for t in threading.enumerate()
+            if t != threading.main_thread() and not t.daemon and t.is_alive()
+        ]
+        if remaining_threads:
+            thread_names = [t.name for t in remaining_threads]
+            print(f"[Kernel] Warning: {len(remaining_threads)} non-daemon threads still alive: {thread_names}")
+            print(f"[Kernel] Using os._exit({exit_code}) for guaranteed exit")
+            # Give a brief moment for any final I/O
+            time.sleep(0.1)
+            os._exit(exit_code)
+    except Exception:
+        pass  # If we can't enumerate threads, just return normally
+
+    return exit_code
 
 
 # =============================================================================
