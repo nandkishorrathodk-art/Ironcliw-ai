@@ -901,6 +901,10 @@ class LoadingServer:
             "reactor_core": {"progress": 0, "status": "unknown", "last_update": 0},
         }
 
+        # v185.0: Trinity summary from supervisor broadcasts
+        self._trinity_summary: Optional[Dict[str, Any]] = None
+        self._trinity_ready: bool = False
+
         # Integration with unified hub (if available)
         self._hub = None
         self._try_connect_hub()
@@ -933,9 +937,12 @@ class LoadingServer:
             "data": {
                 "progress": self._progress,
                 "phase": self._phase,
+                "stage": self._phase,  # v185.0: Alias for frontend compatibility
                 "message": self._message,
                 "eta": eta_data,
                 "components": self._components,
+                "trinity": self._trinity_summary,  # v185.0: Trinity component summary
+                "trinity_ready": self._trinity_ready,  # v185.0: Trinity ready flag
                 "timestamp": datetime.now().isoformat()
             }
         })
@@ -1094,9 +1101,12 @@ class LoadingServer:
         return {
             "progress": self._progress,
             "phase": self._phase,
+            "stage": self._phase,  # v185.0: Alias for frontend compatibility
             "message": self._message,
             "eta": eta,
             "components": self._components,
+            "trinity": self._trinity_summary,  # v185.0: Trinity component summary
+            "trinity_ready": self._trinity_ready,  # v185.0: Trinity ready flag
             "dependency_graph": self._dependency_graph.get_progress(),
             "timestamp": datetime.now().isoformat(),
         }
@@ -1183,6 +1193,12 @@ class LoadingServer:
                 else:
                     # Legacy format: metadata IS the components dict
                     self._components.update(metadata)
+                
+                # v185.0: Persist Trinity summary from supervisor broadcasts
+                if "trinity" in metadata:
+                    self._trinity_summary = metadata["trinity"]
+                if "trinity_ready" in metadata:
+                    self._trinity_ready = metadata["trinity_ready"]
 
             self._eta_engine.update_progress(self._progress)
             # v183.0: Track supervisor activity

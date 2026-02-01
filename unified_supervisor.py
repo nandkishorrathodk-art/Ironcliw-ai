@@ -48055,14 +48055,15 @@ class TrinityIntegrator:
         launch_scripts = [
             # Direct entry points
             component.repo_path / "run_server.py",
+            component.repo_path / "run_reactor.py",  # v185.0: Explicit reactor-core entry point
             component.repo_path / "main.py",
             component.repo_path / "run.py",
             component.repo_path / "start.py",
             component.repo_path / "__main__.py",
-            # Component-specific names (e.g., run_reactor.py for reactor-core)
+            # Component-specific names (e.g., run_jarvis_prime.py)
             component.repo_path / f"run_{component_underscore}.py",
             component.repo_path / f"{component_underscore}_server.py",
-            component.repo_path / "run_supervisor.py",
+            component.repo_path / "run_supervisor.py",  # Fallback supervisor entry
             # Package entry points
             component.repo_path / component_underscore / "server.py",
             component.repo_path / component_underscore / "main.py",

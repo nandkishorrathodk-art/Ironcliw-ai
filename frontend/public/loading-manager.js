@@ -590,7 +590,7 @@ class JARVISLoadingManager {
                 expectedProgress: [0, 0],
                 substeps: ['Error occurred']
             },
-            
+
             // === v3.0: ZERO-TOUCH AUTONOMOUS UPDATE STAGES ===
             'zero_touch_initiated': {
                 name: 'Zero-Touch Update',
@@ -1332,15 +1332,15 @@ class JARVISLoadingManager {
      */
     addLogEntry(source, message, type = 'info') {
         if (!this.elements.logEntries) return;
-        
+
         const now = new Date();
-        const timeStr = now.toLocaleTimeString('en-US', { 
-            hour12: false, 
-            hour: '2-digit', 
+        const timeStr = now.toLocaleTimeString('en-US', {
+            hour12: false,
+            hour: '2-digit',
             minute: '2-digit',
             second: '2-digit'
         });
-        
+
         // Map source to CSS class
         const sourceClass = {
             'supervisor': 'supervisor',
@@ -1351,7 +1351,7 @@ class JARVISLoadingManager {
             'error': 'error',
             'success': 'success'
         }[source.toLowerCase()] || 'system';
-        
+
         // Create log entry
         const entry = document.createElement('div');
         entry.className = `log-entry ${sourceClass}`;
@@ -1360,24 +1360,24 @@ class JARVISLoadingManager {
             <span class="log-source">${source.substring(0, 12)}</span>
             <span class="log-message">${this._escapeHtml(message)}</span>
         `;
-        
+
         // Add to DOM
         this.elements.logEntries.appendChild(entry);
-        
+
         // Keep only last N entries
         while (this.elements.logEntries.children.length > this.state.maxLogEntries) {
             this.elements.logEntries.removeChild(this.elements.logEntries.firstChild);
         }
-        
+
         // Auto-scroll to bottom
         this.elements.logEntries.scrollTop = this.elements.logEntries.scrollHeight;
-        
+
         // Update count
         if (this.elements.logCount) {
             const count = this.elements.logEntries.children.length;
             this.elements.logCount.textContent = count;
         }
-        
+
         // Store in state
         this.state.operationsLog.push({
             time: timeStr,
@@ -1385,12 +1385,12 @@ class JARVISLoadingManager {
             message,
             type
         });
-        
+
         // Trim state array too
         if (this.state.operationsLog.length > this.state.maxLogEntries) {
             this.state.operationsLog.shift();
         }
-        
+
     }
 
     _escapeHtml(text) {
@@ -1411,7 +1411,7 @@ class JARVISLoadingManager {
             console.log('[LoadingManager] Using existing details-panel from HTML');
             return;
         }
-        
+
         // Fallback: Only create if HTML panel doesn't exist (shouldn't happen)
         if (document.getElementById('detailed-status')) return;
 
@@ -1642,7 +1642,7 @@ class JARVISLoadingManager {
                 }
             }
         `;
-        
+
         // Only add styles once
         if (!document.getElementById('detailed-status-styles')) {
             document.head.appendChild(style);
@@ -1652,7 +1652,7 @@ class JARVISLoadingManager {
         // This places it below the progress bar in the flex layout
         const statusMessage = document.getElementById('status-message');
         const stagesContainer = document.getElementById('stages-container');
-        
+
         if (statusMessage && statusMessage.parentNode) {
             // Insert after status message
             statusMessage.parentNode.insertBefore(panel, statusMessage.nextSibling);
@@ -1691,7 +1691,7 @@ class JARVISLoadingManager {
         this.createParticles();
         this.createDetailedStatusPanel();
         this.startSmoothProgress();
-        
+
         // Make details panel visible immediately and add initial log
         if (this.elements.detailsPanel) {
             this.elements.detailsPanel.classList.add('visible');
@@ -1756,9 +1756,9 @@ class JARVISLoadingManager {
                 // Backend is healthy if status is healthy/ok and ECAPA is ready
                 const isHealthy = data.status === 'healthy' || data.status === 'ok';
                 const ecapaReady = data.ecapa_ready === true;
-                
+
                 console.log(`[Health] Backend: ${data.status}, ECAPA: ${data.ecapa_ready}`);
-                
+
                 // Consider ready if healthy (ECAPA can initialize later)
                 return isHealthy;
             }
@@ -1780,7 +1780,7 @@ class JARVISLoadingManager {
                 cache: 'no-cache',
                 signal: AbortSignal.timeout(2000)
             });
-            
+
             const isReady = response.ok || response.status === 304;
             console.log(`[Health] Frontend (${this.config.mainAppPort}): ${isReady ? 'ready' : 'not ready'}`);
             return isReady;
@@ -1800,7 +1800,7 @@ class JARVISLoadingManager {
             this.checkBackendHealth(),
             this.checkFrontendReady()
         ]);
-        
+
         console.log(`[Health] Full system check - Backend: ${backendReady}, Frontend: ${frontendReady}`);
         return backendReady && frontendReady;
     }
@@ -1835,7 +1835,7 @@ class JARVISLoadingManager {
          */
         // Stop polling
         this.state.redirecting = true;
-        
+
         // Update UI to show ready state
         if (this.elements.statusMessage) {
             this.elements.statusMessage.textContent = 'JARVIS is already online!';
@@ -1875,7 +1875,7 @@ class JARVISLoadingManager {
         let stuckAt95Timer = null;
         // v6.0: Increased from 30s to 60s - webpack can take 30-60+ seconds to compile
         const STUCK_TIMEOUT_MS = 60000; // 60 seconds stuck = start checking
-        
+
         const pollInterval = setInterval(async () => {
             try {
                 // ═══════════════════════════════════════════════════════════════════════════
@@ -1888,7 +1888,7 @@ class JARVISLoadingManager {
                         console.log('[Stuck Detection] Progress at 95%+, starting timer...');
                     } else {
                         const stuckDuration = Date.now() - stuckAt95Timer;
-                        console.log(`[Stuck Detection] At ${Math.round(this.state.progress)}% for ${Math.round(stuckDuration/1000)}s`);
+                        console.log(`[Stuck Detection] At ${Math.round(this.state.progress)}% for ${Math.round(stuckDuration / 1000)}s`);
 
                         if (stuckDuration >= STUCK_TIMEOUT_MS) {
                             // We're stuck - check if services are actually ready
@@ -1948,24 +1948,24 @@ class JARVISLoadingManager {
                     consecutiveHealthyChecks = 0;
                     return;
                 }
-                
+
                 const backendHealthy = await this.checkBackendHealth();
-                
+
                 if (backendHealthy) {
                     consecutiveHealthyChecks++;
                     console.log(`[Health Polling] Backend healthy (${consecutiveHealthyChecks}/${requiredConsecutiveChecks})`);
-                    
+
                     if (consecutiveHealthyChecks >= requiredConsecutiveChecks) {
                         const frontendReady = await this.checkFrontendReady();
-                        
+
                         if (!frontendReady) {
                             console.log('[Health Polling] Backend ready but frontend not yet available, waiting...');
                             return;
                         }
-                        
+
                         console.log('[JARVIS] ✅ Full system ready via fallback polling');
                         clearInterval(pollInterval);
-                        
+
                         this.handleProgressUpdate({
                             stage: 'complete',
                             message: 'JARVIS is online - All systems operational',
@@ -2039,7 +2039,7 @@ class JARVISLoadingManager {
                 this.state.reconnectAttempts = 0;
                 this.state.lastWsMessage = Date.now();
                 this.updateStatusText('Connected', 'connected');
-                
+
                 // WebSocket is primary - reduce polling aggression
                 console.log('[WebSocket] 🔗 Primary connection established - polling will back off');
             };
@@ -2065,7 +2065,29 @@ class JARVISLoadingManager {
                     }
 
                     if (data.type !== 'pong') {
-                        this.handleProgressUpdate(data);
+                        // ═══════════════════════════════════════════════════════
+                        // v185.0: NORMALIZE WEBSOCKET PAYLOAD
+                        // Handle nested data.data structure from loading server
+                        // ═══════════════════════════════════════════════════════
+                        let normalized;
+                        if (data.data) {
+                            // WebSocket wraps payload in data.data
+                            const inner = data.data;
+                            normalized = {
+                                stage: inner.stage || inner.phase,
+                                message: inner.message,
+                                progress: inner.progress,
+                                metadata: {
+                                    ...(inner.metadata || {}),
+                                    components: inner.components || (inner.metadata || {}).components,
+                                    trinity: inner.trinity || (inner.metadata || {}).trinity,
+                                    trinity_ready: inner.trinity_ready ?? (inner.metadata || {}).trinity_ready
+                                }
+                            };
+                        } else {
+                            normalized = data;
+                        }
+                        this.handleProgressUpdate(normalized);
                     }
                 } catch (error) {
                     console.error('[WebSocket] Parse error:', error);
@@ -2135,7 +2157,7 @@ class JARVISLoadingManager {
 
         console.log('[Polling] 🚀 Starting adaptive HTTP polling (WebSocket primary, HTTP fallback)');
         console.log(`[Polling] Base interval: ${this.config.polling.baseInterval}ms, Max: ${this.config.polling.maxInterval}ms`);
-        
+
         // Use recursive setTimeout instead of setInterval for adaptive timing
         this.scheduleNextPoll();
     }
@@ -2168,7 +2190,7 @@ class JARVISLoadingManager {
 
         // Calculate next interval with jitter
         const interval = this.calculatePollingInterval();
-        
+
         this.state.pollingTimeout = setTimeout(() => this.executePollingRequest(), interval);
     }
 
@@ -2201,14 +2223,14 @@ class JARVISLoadingManager {
         this.pollingState.lastRequestTime = startTime;
 
         try {
-                const url = `${this.config.httpProtocol}//${this.config.hostname}:${this.config.loadingServerPort}/api/startup-progress`;
-            
+            const url = `${this.config.httpProtocol}//${this.config.hostname}:${this.config.loadingServerPort}/api/startup-progress`;
+
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), this.config.polling.timeout);
-            
+
             this.pollingState.pendingRequest = fetch(url, {
-                    method: 'GET',
-                    cache: 'no-cache',
+                method: 'GET',
+                cache: 'no-cache',
                 headers: {
                     'Accept': 'application/json',
                     'X-Client-Version': '5.0',
@@ -2219,19 +2241,19 @@ class JARVISLoadingManager {
 
             const response = await this.pollingState.pendingRequest;
             clearTimeout(timeoutId);
-            
+
             const responseTime = Date.now() - startTime;
             this.updateResponseTimeAverage(responseTime);
 
-                if (response.ok) {
-                    const data = await response.json();
+            if (response.ok) {
+                const data = await response.json();
                 this.handlePollingSuccess(data, responseTime);
             } else if (response.status === 429) {
                 this.handleRateLimit(response);
             } else {
                 this.handlePollingError(new Error(`HTTP ${response.status}`));
-                }
-            } catch (error) {
+            }
+        } catch (error) {
             if (error.name === 'AbortError') {
                 console.warn('[Polling] ⏱️ Request timed out');
             }
@@ -2265,6 +2287,26 @@ class JARVISLoadingManager {
                 this.pollingState.circuitState = 'closed';
                 console.log('[Polling] 🟢 Circuit CLOSED - server recovered');
             }
+        }
+
+        // ═══════════════════════════════════════════════════════════════════
+        // v185.0: NORMALIZE POLLING PAYLOAD
+        // Ensure consistent format before calling handleProgressUpdate
+        // ═══════════════════════════════════════════════════════════════════
+        // Map phase -> stage for consistency
+        if (data.phase && !data.stage) {
+            data.stage = data.phase;
+        }
+        // Ensure metadata exists and includes top-level components/trinity
+        data.metadata = data.metadata || {};
+        if (data.components) {
+            data.metadata.components = data.metadata.components || data.components;
+        }
+        if (data.trinity) {
+            data.metadata.trinity = data.metadata.trinity || data.trinity;
+        }
+        if (data.trinity_ready !== undefined) {
+            data.metadata.trinity_ready = data.metadata.trinity_ready ?? data.trinity_ready;
         }
 
         // Process the data
@@ -2382,7 +2424,7 @@ class JARVISLoadingManager {
         // Backend stages complete in different orders, but UI should only show forward progress
         const effectiveProgress = typeof progress === 'number' ? progress : 0;
         const currentMax = Math.max(this.state.targetProgress || 0, this.state.progress || 0);
-        
+
         // Only log and update if progress is increasing (or same stage update)
         if (effectiveProgress >= currentMax || stage === 'complete') {
             console.log(`[Progress] ${effectiveProgress}% - ${stage}: ${message}`);
@@ -2462,7 +2504,7 @@ class JARVISLoadingManager {
             if (metadata.sublabel) {
                 this.state.displaySublabel = metadata.sublabel;
             }
-            
+
             // Process operations log from metadata
             if (metadata.operations && Array.isArray(metadata.operations)) {
                 for (const op of metadata.operations) {
@@ -2473,7 +2515,7 @@ class JARVISLoadingManager {
                     );
                 }
             }
-            
+
             // Single operation log entry
             if (metadata.log_entry) {
                 this.addLogEntry(
@@ -2482,7 +2524,7 @@ class JARVISLoadingManager {
                     metadata.log_type || 'info'
                 );
             }
-            
+
             // Auto-log stage changes with source info
             if (metadata.source && message) {
                 this.addLogEntry(metadata.source, message, 'info');
@@ -2866,11 +2908,26 @@ class JARVISLoadingManager {
                     this.state.trinityComponents.enterprise = components.enterprise;
                 }
 
+                // v185.0: Map snake_case keys to expected camelCase/short names
+                // unified_supervisor sends jarvis_prime and reactor_core
+                if (components.jarvis_prime) {
+                    this.state.trinityComponents.prime = {
+                        ...components.jarvis_prime,
+                        status: components.jarvis_prime.status === 'ready' ? 'complete' : components.jarvis_prime.status
+                    };
+                }
+                if (components.reactor_core) {
+                    this.state.trinityComponents.reactor = {
+                        ...components.reactor_core,
+                        status: components.reactor_core.status === 'ready' ? 'complete' : components.reactor_core.status
+                    };
+                }
+
                 // Calculate overall Trinity progress
                 const trinityPhases = ['jarvis', 'prime', 'reactor'];
                 const completedTrinity = trinityPhases.filter(
                     p => this.state.trinityComponents[p]?.status === 'complete' ||
-                         this.state.trinityComponents[p]?.status === 'ready'
+                        this.state.trinityComponents[p]?.status === 'ready'
                 ).length;
                 this.state.trinityComponents.overallProgress = Math.round((completedTrinity / trinityPhases.length) * 100);
 
@@ -2974,9 +3031,9 @@ class JARVISLoadingManager {
 
         // Log stage transitions automatically
         if (stage && stage !== this.state.stage && message) {
-            const source = stage.includes('supervisor') ? 'Supervisor' : 
-                          stage.includes('backend') || stage === 'api' ? 'Backend' : 
-                          'System';
+            const source = stage.includes('supervisor') ? 'Supervisor' :
+                stage.includes('backend') || stage === 'api' ? 'Backend' :
+                    'System';
             this.addLogEntry(source, message, stage === 'failed' ? 'error' : 'info');
         }
 
@@ -2996,18 +3053,18 @@ class JARVISLoadingManager {
         if (stage === 'partial_complete') {
             const success = true; // Partial is still a success, just limited
             const redirectUrl = metadata.redirect_url || `${this.config.httpProtocol}//${this.config.hostname}:${this.config.mainAppPort}`;
-            
+
             // Show warning about partial completion
             console.warn('[Progress] ⚠️ Partial completion - some services unavailable');
             console.warn('[Progress] Services ready:', metadata.services_ready || []);
             console.warn('[Progress] Services failed:', metadata.services_failed || []);
-            
+
             // Update status to reflect partial state
             this.updateStatusText('Partially ready - some features limited', 'warning');
-            
+
             // Show notification about partial completion
             this.showPartialCompletionNotice(metadata.services_ready, metadata.services_failed);
-            
+
             // Still proceed to main app after brief delay
             setTimeout(() => {
                 this.handleCompletion(success, redirectUrl, message || 'JARVIS partially ready');
@@ -3116,9 +3173,9 @@ class JARVISLoadingManager {
 
             if (skewMs > this.state.clockSkew.threshold) {
                 if (!this.state.clockSkew.detected) {
-                    console.warn(`[v87.0] ⏰ Clock skew detected: ${(skewMs/1000).toFixed(1)}s difference`);
+                    console.warn(`[v87.0] ⏰ Clock skew detected: ${(skewMs / 1000).toFixed(1)}s difference`);
                     this.state.clockSkew.detected = true;
-                    this.addLogEntry('System', `Clock skew: ${(skewMs/1000).toFixed(1)}s`, 'warning');
+                    this.addLogEntry('System', `Clock skew: ${(skewMs / 1000).toFixed(1)}s`, 'warning');
                 }
             } else {
                 this.state.clockSkew.detected = false;
@@ -3812,13 +3869,13 @@ class JARVISLoadingManager {
             this.elements.statusText.textContent = text;
             this.elements.statusText.className = `status-text ${status}`;
         }
-        
+
         // Also update the status indicator visual if it exists
         const statusIndicator = document.getElementById('status-indicator');
         if (statusIndicator) {
             statusIndicator.className = `status-indicator ${status}`;
         }
-        
+
         // v4.0: Keep subtitle in sync with phase for consistency
         // The subtitle below JARVIS logo should match the connection status
         if (this.elements.subtitle) {
@@ -3841,7 +3898,7 @@ class JARVISLoadingManager {
                 this.elements.subtitle.textContent = newSubtitle;
             }
         }
-        
+
         console.log(`[Status] ${text} (${status})`);
     }
 
@@ -3851,7 +3908,7 @@ class JARVISLoadingManager {
         // Never redirect until BOTH backend AND frontend are VERIFIED operational
         // This prevents the "OFFLINE - SEARCHING FOR BACKEND" issue
         // ═══════════════════════════════════════════════════════════════════════════
-        
+
         // Stop regular polling - we're in completion mode now
         this.state.redirecting = true;
         console.log('[Complete] Starting completion verification...');
@@ -3867,9 +3924,9 @@ class JARVISLoadingManager {
         // ═══════════════════════════════════════════════════════════════════════════
         console.log('[Complete] Step 1: Waiting for backend to be operationally ready...');
         this.updateStatusText('Waiting for backend services...', 'loading');
-        
+
         const backendOperational = await this.waitForBackendOperational();
-        
+
         if (!backendOperational) {
             // Backend didn't become operational in time
             console.warn('[Complete] Backend not operational - showing error');
@@ -3877,7 +3934,7 @@ class JARVISLoadingManager {
             this.updateStatusText('Backend services unavailable', 'error');
             return;
         }
-        
+
         console.log('[Complete] ✓ Backend operationally ready');
         this.state.progress = 96;
         this.state.targetProgress = 96;
@@ -3908,7 +3965,7 @@ class JARVISLoadingManager {
         // ═══════════════════════════════════════════════════════════════════════════
         console.log('[Complete] Step 3: Waiting for frontend...');
         this.updateStatusText('Waiting for user interface...', 'loading');
-        
+
         const frontendReady = await this.waitForFrontendWithRetries();
 
         if (!frontendReady) {
@@ -3927,7 +3984,7 @@ class JARVISLoadingManager {
         // ═══════════════════════════════════════════════════════════════════════════
         console.log('[Complete] Step 4: Final system verification...');
         this.updateStatusText('Final system check...', 'verifying');
-        
+
         const finalBackendCheck = await this.quickBackendCheck();
         if (!finalBackendCheck) {
             console.warn('[Complete] Final backend check failed - retrying...');
@@ -4003,7 +4060,7 @@ class JARVISLoadingManager {
 
         const backendPort = this.config.backendPort || 8010;
         const backendUrl = `${this.config.httpProtocol}//${this.config.hostname}:${backendPort}`;
-        
+
         const startTime = Date.now();
         let attempt = 0;
         let delay = config.initialDelay;
@@ -4041,7 +4098,7 @@ class JARVISLoadingManager {
 
                     if (readyResponse.ok) {
                         const readyData = await readyResponse.json();
-                        
+
                         // Log status changes
                         const status = readyData.status || 'unknown';
                         if (status !== lastStatus) {
@@ -4052,8 +4109,8 @@ class JARVISLoadingManager {
                         // Check if operationally ready
                         // v6.0: Accept more status values as "ready" to match backend progressive readiness
                         // The backend returns ready=true for: ready, degraded, warming_up, websocket_ready
-                        const isOperational = 
-                            readyData.ready === true || 
+                        const isOperational =
+                            readyData.ready === true ||
                             readyData.operational === true ||
                             status === 'ready' ||
                             status === 'operational' ||
@@ -4065,7 +4122,7 @@ class JARVISLoadingManager {
                             // v5.0: Also verify WebSocket connectivity before declaring ready
                             console.log(`[Backend Wait] Backend operational, verifying WebSocket...`);
                             this.elements.statusMessage.textContent = 'Verifying WebSocket connection...';
-                            
+
                             const wsReady = await this.verifyWebSocketConnectivity();
                             if (wsReady) {
                                 console.log(`[Backend Wait] ✓ Backend + WebSocket operational after ${attempt} attempts (${elapsed}s)`);
@@ -4082,7 +4139,7 @@ class JARVISLoadingManager {
                         const details = readyData.details || {};
                         const mlStatus = details.ml_models_status || 'initializing';
                         this.elements.statusMessage.textContent = `Initializing services... (${mlStatus})`;
-                        
+
                         // If we have WebSocket ready indication, verify it actually works
                         if (elapsed > 30 && (details.websocket_ready === true || readyData.operational === true)) {
                             // Verify WebSocket actually connects
@@ -4098,7 +4155,7 @@ class JARVISLoadingManager {
                 } catch (readyError) {
                     // /health/ready might not exist - fall back to basic check + WebSocket
                     console.debug('[Backend Wait] /health/ready failed:', readyError.message);
-                    
+
                     // If basic health works and WebSocket connects, we're good
                     if (elapsed > 30) {
                         const wsVerified = await this.verifyWebSocketConnectivity();
@@ -4114,7 +4171,7 @@ class JARVISLoadingManager {
                 // Backend is responding but not fully ready - keep waiting
                 console.log(`[Backend Wait] Attempt ${attempt}: Backend responding but not operational (${elapsed}s)`);
                 this.elements.statusMessage.textContent = `Backend initializing... (${elapsed}s)`;
-                
+
             } catch (error) {
                 console.debug(`[Backend Wait] Attempt ${attempt} failed: ${error.message}`);
                 this.elements.statusMessage.textContent = `Waiting for backend... (${elapsed}s)`;
@@ -4149,33 +4206,33 @@ class JARVISLoadingManager {
         const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         // NOTE: The unified WebSocket endpoint is at /ws, not /ws/chat
         const wsUrl = `${wsProtocol}//${this.config.hostname}:${backendPort}/ws`;
-        
+
         return new Promise((resolve) => {
             const timeout = setTimeout(() => {
                 console.log('[WebSocket Verify] Connection timeout');
                 resolve(false);
             }, 5000);
-            
+
             try {
                 const ws = new WebSocket(wsUrl);
-                
+
                 ws.onopen = () => {
                     clearTimeout(timeout);
                     console.log('[WebSocket Verify] ✓ Connection successful');
                     ws.close(1000, 'Verification complete');
                     resolve(true);
                 };
-                
+
                 ws.onerror = (error) => {
                     clearTimeout(timeout);
                     console.log('[WebSocket Verify] Connection failed:', error);
                     resolve(false);
                 };
-                
+
                 ws.onclose = () => {
                     // This fires after successful open+close or on error
                 };
-                
+
             } catch (error) {
                 clearTimeout(timeout);
                 console.log('[WebSocket Verify] Exception:', error.message);
@@ -4213,13 +4270,13 @@ class JARVISLoadingManager {
             // Check trinityComponents state
             if (this.state.trinityComponents) {
                 const jarvisReady = this.state.trinityComponents.jarvis?.status === 'complete' ||
-                                   this.state.trinityComponents.jarvis?.status === 'ready';
+                    this.state.trinityComponents.jarvis?.status === 'ready';
                 const primeReady = this.state.trinityComponents.prime?.status === 'complete' ||
-                                  this.state.trinityComponents.prime?.status === 'ready' ||
-                                  this.state.trinityComponents.prime?.status === 'skipped';
+                    this.state.trinityComponents.prime?.status === 'ready' ||
+                    this.state.trinityComponents.prime?.status === 'skipped';
                 const reactorReady = this.state.trinityComponents.reactor?.status === 'complete' ||
-                                    this.state.trinityComponents.reactor?.status === 'ready' ||
-                                    this.state.trinityComponents.reactor?.status === 'skipped';
+                    this.state.trinityComponents.reactor?.status === 'ready' ||
+                    this.state.trinityComponents.reactor?.status === 'skipped';
 
                 // JARVIS Body (backend) is required
                 // Prime and Reactor are optional (skipped counts as ready)
@@ -4231,7 +4288,7 @@ class JARVISLoadingManager {
 
                 const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
                 console.log(`[Trinity Wait] Waiting... (${elapsed}s) - ` +
-                           `JARVIS:${jarvisReady}, Prime:${primeReady}, Reactor:${reactorReady}`);
+                    `JARVIS:${jarvisReady}, Prime:${primeReady}, Reactor:${reactorReady}`);
             }
 
             await this.sleep(config.checkInterval);
@@ -4360,9 +4417,9 @@ class JARVISLoadingManager {
          */
         const backendPort = this.config.backendPort || 8010;
         const backendUrl = `${this.config.httpProtocol}//${this.config.hostname}:${backendPort}`;
-        
+
         this.updateStatusText('Checking health...', 'verifying');
-        
+
         try {
             // Check 1: HTTP health
             console.log(`[Verify] Checking backend health at ${backendUrl}/health...`);
@@ -4371,43 +4428,43 @@ class JARVISLoadingManager {
                 headers: { 'Accept': 'application/json' },
                 signal: AbortSignal.timeout(5000)
             });
-            
+
             if (!healthResponse.ok) {
                 console.warn(`[Verify] Health check failed: ${healthResponse.status}`);
                 this.updateStatusText('Health check failed', 'warning');
                 return false;
             }
-            
+
             const healthData = await healthResponse.json();
             console.log('[Verify] Health check passed:', healthData);
             this.updateStatusText('Testing WebSocket...', 'verifying');
-            
+
             // Check 2: Try WebSocket connection (quick test)
             // Use /ws which is the unified WebSocket endpoint
             console.log(`[Verify] Testing WebSocket at ws://${this.config.hostname}:${backendPort}/ws...`);
             const wsReady = await this.testWebSocket(`ws://${this.config.hostname}:${backendPort}/ws`);
-            
+
             if (!wsReady) {
                 console.warn('[Verify] WebSocket not ready yet');
                 this.updateStatusText('WebSocket not ready', 'warning');
                 return false;
             }
-            
+
             // Check 3: Verify frontend is accessible (CRITICAL)
             this.updateStatusText('Checking frontend...', 'verifying');
             console.log(`[Verify] Checking frontend at ${this.config.hostname}:${this.config.mainAppPort}...`);
             const frontendReady = await this.checkFrontendReady();
-            
+
             if (!frontendReady) {
                 console.warn('[Verify] Frontend not ready yet');
                 this.updateStatusText('Frontend starting...', 'warning');
                 return false;
             }
-            
+
             console.log('[Verify] ✓ All services verified (backend + frontend)!');
             this.updateStatusText('System ready', 'ready');
             return true;
-            
+
         } catch (error) {
             console.warn('[Verify] System verification failed:', error.message);
             this.updateStatusText('Verification failed', 'warning');
@@ -4425,26 +4482,26 @@ class JARVISLoadingManager {
                 console.warn('[Verify] WebSocket test timeout');
                 resolve(false);
             }, 3000);
-            
+
             try {
                 const ws = new WebSocket(wsUrl);
-                
+
                 ws.onopen = () => {
                     clearTimeout(timeout);
                     console.log('[Verify] WebSocket test succeeded');
                     ws.close();
                     resolve(true);
                 };
-                
+
                 ws.onerror = () => {
                     clearTimeout(timeout);
                     resolve(false);
                 };
-                
+
                 ws.onclose = () => {
                     // If closed before open, it failed
                 };
-                
+
             } catch (error) {
                 clearTimeout(timeout);
                 resolve(false);
@@ -4764,33 +4821,33 @@ class JARVISLoadingManager {
          */
         const readyCount = servicesReady.length;
         const failedCount = servicesFailed.length;
-        
+
         // Update the status message to reflect partial state
         if (this.elements.statusMessage) {
             if (failedCount > 0) {
-                this.elements.statusMessage.textContent = 
+                this.elements.statusMessage.textContent =
                     `${readyCount} services ready, ${failedCount} unavailable`;
             } else {
-                this.elements.statusMessage.textContent = 
+                this.elements.statusMessage.textContent =
                     'System partially ready - loading remaining services...';
             }
         }
-        
+
         // Update subtitle to warning state
         if (this.elements.subtitle) {
             this.elements.subtitle.textContent = 'PARTIALLY READY';
         }
-        
+
         // Change progress bar to warning color
         if (this.elements.progressBar) {
-            this.elements.progressBar.style.background = 
+            this.elements.progressBar.style.background =
                 'linear-gradient(90deg, #ff9500 0%, #ffcc00 100%)';
         }
-        
+
         // Log details
         console.warn('[Partial] Services ready:', servicesReady);
         console.warn('[Partial] Services failed:', servicesFailed);
-        
+
         // Add to operation log
         this.addLogEntry('System', `Partial startup: ${readyCount} ready, ${failedCount} unavailable`, 'warning');
         if (failedCount > 0) {
@@ -4800,19 +4857,19 @@ class JARVISLoadingManager {
 
     async showError(message) {
         console.error('[Error]', message);
-        
+
         // Before showing error, do a quick sanity check
         // Maybe backend is actually fine and we can recover
         const backendUp = await this.quickBackendCheck();
-        
+
         if (backendUp && this.state.progress >= 30) {
             // Backend is up! Try recovery instead of showing error
             console.warn('[Error] Backend is UP despite error - attempting recovery redirect');
             this.updateStatusText('Recovering...', 'warning');
-            
+
             // Give frontend a moment to stabilize, then try redirect
             await this.sleep(3000);
-            
+
             const frontendUp = await this.checkFrontendReady();
             if (frontendUp) {
                 console.log('[Error] Recovery successful - redirecting');
@@ -4821,7 +4878,7 @@ class JARVISLoadingManager {
                 return;
             }
         }
-        
+
         // Actually show the error
         this.cleanup();
 
@@ -4830,7 +4887,7 @@ class JARVISLoadingManager {
         }
         if (this.elements.errorMessage) {
             // Make error message more helpful
-            const helpfulMessage = backendUp 
+            const helpfulMessage = backendUp
                 ? `${message}\n\nNote: Backend is running. Try refreshing or accessing http://localhost:3000 directly.`
                 : message;
             this.elements.errorMessage.textContent = helpfulMessage;
@@ -4911,8 +4968,8 @@ class JARVISLoadingManager {
         // Add confidence indicator
         const confidencePercent = Math.round((eta.confidence || 0) * 100);
         const confidenceIndicator = confidencePercent >= 80 ? '●●●' :
-                                     confidencePercent >= 60 ? '●●○' :
-                                     confidencePercent >= 40 ? '●○○' : '○○○';
+            confidencePercent >= 60 ? '●●○' :
+                confidencePercent >= 40 ? '●○○' : '○○○';
 
         console.log(`[v87.0] 📊 ETA: ${etaText} (${confidencePercent}% confidence, ${eta.predictionMethod})`);
 
@@ -5484,8 +5541,8 @@ class JARVISLoadingManager {
                     padding: 2px 8px;
                     border-radius: 4px;
                     background: ${componentData.state === 'ready' ? 'rgba(0, 255, 0, 0.2)' :
-                                 componentData.state === 'starting' ? 'rgba(255, 255, 0, 0.2)' :
-                                 'rgba(255, 0, 0, 0.2)'};
+                        componentData.state === 'starting' ? 'rgba(255, 255, 0, 0.2)' :
+                            'rgba(255, 0, 0, 0.2)'};
                 `;
             }
 
@@ -5626,7 +5683,7 @@ class JARVISLoadingManager {
 
     cleanup() {
         console.log('[Cleanup] 🧹 Cleaning up resources...');
-        
+
         if (this.state.ws) {
             this.state.ws.close();
             this.state.ws = null;
