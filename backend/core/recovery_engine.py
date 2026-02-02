@@ -14,7 +14,7 @@ import errno
 import logging
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Dict, Optional, Type, Union
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Type, Union
 
 from backend.core.component_registry import (
     ComponentRegistry,
@@ -54,6 +54,7 @@ class RecoveryStrategy(Enum):
     FALLBACK_MODE = "fallback_mode"      # Use fallback capability
     DISABLE_AND_CONTINUE = "disable"     # Disable and continue without
     ESCALATE_TO_USER = "escalate"        # Needs human intervention
+    CUSTOM_HANDLED = "custom_handled"    # v192.0: Handled by custom recovery handler
 
 
 @dataclass
@@ -178,6 +179,11 @@ class RecoveryEngine:
     # Exponential backoff multiplier
     BACKOFF_MULTIPLIER = 1.5
 
+    # Type alias for custom recovery handlers
+    # Handler signature: async def handler(component: str, error: Exception, context: Dict) -> bool
+    # Returns True if handled, False to fall through to standard logic
+    CustomRecoveryHandler = Callable[[str, Exception, Dict[str, Any]], Awaitable[bool]]
+
     def __init__(
         self,
         registry: ComponentRegistry,
@@ -193,6 +199,9 @@ class RecoveryEngine:
         self._registry = registry
         self._classifier = error_classifier
         self._attempt_count: Dict[str, int] = {}
+        # v192.0: Custom recovery handlers registry
+        # Maps error type names to async handler functions
+        self._custom_handlers: Dict[str, List[RecoveryEngine.CustomRecoveryHandler]] = {}
 
     async def handle_failure(
         self,
@@ -229,6 +238,23 @@ class RecoveryEngine:
             f"class={classification.error_class.value}, "
             f"attempt={self._attempt_count[component] + 1}"
         )
+
+        # v192.0: Try custom recovery handlers first
+        # Map error classifications to error type strings for custom handler lookup
+        error_types_to_try = self._get_error_types(classification, error)
+        for error_type in error_types_to_try:
+            context = {
+                "component": component,
+                "phase": phase.value,
+                "error_class": classification.error_class.value,
+                "attempt": self._attempt_count[component] + 1,
+            }
+            if await self.try_custom_recovery(error_type, component, error, context):
+                logger.info(f"Custom handler handled {error_type} for {component}")
+                return RecoveryAction(
+                    strategy=RecoveryStrategy.CUSTOM_HANDLED,
+                    message=f"Handled by custom recovery handler for '{error_type}'",
+                )
 
         # Check if component has fallback and error needs fallback
         if classification.needs_fallback and definition.fallback_for_capabilities:
@@ -267,6 +293,71 @@ class RecoveryEngine:
 
         # Retries exhausted
         return self._handle_exhausted_retries(component, error, definition)
+
+    def _get_error_types(
+        self,
+        classification: ErrorClassification,
+        error: Exception,
+    ) -> List[str]:
+        """
+        v192.0: Map error classification to error type strings for custom handler lookup.
+
+        Returns a list of error types to try, in order of specificity:
+        1. Exception class name (e.g., "TimeoutError", "MemoryError")
+        2. Error class value (e.g., "timeout", "resource_exhausted")
+        3. Semantic type based on error characteristics
+
+        Args:
+            classification: The error classification result
+            error: The original exception
+
+        Returns:
+            List of error type strings to try
+        """
+        error_types = []
+
+        # 1. Exception class name (most specific)
+        error_types.append(type(error).__name__.lower())
+
+        # 2. Error class value
+        error_types.append(classification.error_class.value)
+
+        # 3. Semantic mappings based on error characteristics
+        error_str = str(error).lower()
+
+        # GCP-related errors
+        if "gcp" in error_str or "google" in error_str or "cloud" in error_str:
+            if classification.error_class == ErrorClass.TIMEOUT:
+                error_types.append("gcp_timeout")
+            else:
+                error_types.append("gcp_error")
+
+        # Memory-related errors
+        if (
+            classification.error_class in (ErrorClass.RESOURCE_EXHAUSTED, ErrorClass.RESOURCE_EXHAUSTION)
+            or "memory" in error_str
+            or "ram" in error_str
+            or isinstance(error, MemoryError)
+        ):
+            error_types.append("memory_pressure")
+
+        # Timeout-related (general)
+        if classification.error_class == ErrorClass.TIMEOUT:
+            error_types.append("timeout")
+
+        # Network-related
+        if classification.error_class in (ErrorClass.NETWORK, ErrorClass.TRANSIENT_NETWORK):
+            error_types.append("network_error")
+
+        # Remove duplicates while preserving order
+        seen = set()
+        unique_types = []
+        for t in error_types:
+            if t not in seen:
+                seen.add(t)
+                unique_types.append(t)
+
+        return unique_types
 
     def _handle_exhausted_retries(
         self,
@@ -308,6 +399,83 @@ class RecoveryEngine:
         if component in self._attempt_count:
             logger.debug(f"Resetting attempt count for {component}")
             del self._attempt_count[component]
+
+    def register_custom_recovery(
+        self,
+        error_type: str,
+        handler: CustomRecoveryHandler,
+    ) -> None:
+        """
+        v192.0: Register a custom recovery handler for a specific error type.
+
+        Custom handlers are called BEFORE the standard recovery logic.
+        If a handler returns True, it means the error was handled and
+        standard recovery logic is skipped.
+
+        Multiple handlers can be registered for the same error type.
+        They are called in registration order until one returns True.
+
+        Args:
+            error_type: Identifier for the error type (e.g., "gcp_timeout", "memory_pressure")
+            handler: Async function that handles the error
+                     Signature: async def handler(component: str, error: Exception, context: Dict) -> bool
+                     Returns True if handled, False to fall through
+
+        Example:
+            async def gcp_timeout_recovery(component: str, error: Exception, context: Dict) -> bool:
+                # Custom recovery logic
+                return True  # Error was handled
+
+            engine.register_custom_recovery("gcp_timeout", gcp_timeout_recovery)
+        """
+        if error_type not in self._custom_handlers:
+            self._custom_handlers[error_type] = []
+
+        self._custom_handlers[error_type].append(handler)
+        logger.info(f"Registered custom recovery handler for error type: {error_type}")
+
+    def get_custom_handlers(self, error_type: str) -> List[CustomRecoveryHandler]:
+        """Get all custom handlers for an error type."""
+        return self._custom_handlers.get(error_type, [])
+
+    async def try_custom_recovery(
+        self,
+        error_type: str,
+        component: str,
+        error: Exception,
+        context: Optional[Dict[str, Any]] = None,
+    ) -> bool:
+        """
+        v192.0: Try custom recovery handlers for an error type.
+
+        Calls all registered handlers for the error type in order.
+        Stops and returns True as soon as one handler succeeds.
+
+        Args:
+            error_type: Identifier for the error type
+            component: Name of the failed component
+            error: The exception that occurred
+            context: Optional additional context
+
+        Returns:
+            True if a handler successfully handled the error, False otherwise
+        """
+        handlers = self.get_custom_handlers(error_type)
+        if not handlers:
+            return False
+
+        ctx = context or {}
+        for handler in handlers:
+            try:
+                if await handler(component, error, ctx):
+                    logger.info(f"Custom recovery handler succeeded for {error_type} on {component}")
+                    return True
+            except Exception as handler_error:
+                logger.warning(
+                    f"Custom recovery handler for {error_type} failed: {handler_error}"
+                )
+
+        return False
 
 
 # =============================================================================
