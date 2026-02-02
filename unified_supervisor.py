@@ -3462,6 +3462,41 @@ def update_dashboard_gcp_progress(
         )
 
 
+def update_dashboard_component_status(
+    component: str,
+    status: str,
+    detail: str = ""
+) -> None:
+    """
+    Helper to update component status on the dashboard (if available).
+
+    v197.1: Provides global access to dashboard component updates
+    for use in TrinityIntegrator and other modules.
+
+    Args:
+        component: Component name (e.g., "jarvis-prime", "reactor-core")
+        status: Status string ("pending", "starting", "healthy", "error", "stopped")
+        detail: Optional detail message
+    """
+    if _live_dashboard:
+        _live_dashboard.update_component(component, status, detail)
+
+
+def update_dashboard_memory() -> None:
+    """Helper to refresh memory stats on the dashboard (if available)."""
+    if _live_dashboard:
+        try:
+            import psutil
+            mem = psutil.virtual_memory()
+            _live_dashboard.update_memory(
+                percent=mem.percent,
+                used_gb=mem.used / (1024**3),
+                total_gb=mem.total / (1024**3)
+            )
+        except Exception:
+            pass  # psutil may not be available
+
+
 # =============================================================================
 # STARTUP ISSUE COLLECTOR & HEALTH REPORT
 # =============================================================================
@@ -11124,6 +11159,311 @@ def get_chrome_manager() -> IntelligentChromeIncognitoManager:
     if _chrome_manager is None:
         _chrome_manager = IntelligentChromeIncognitoManager()
     return _chrome_manager
+
+
+# =============================================================================
+# BROWSER CRASH MONITOR - v197.1 Intelligent Browser Crash Detection & Recovery
+# =============================================================================
+# Monitors browser health across all subsystems (Chrome Incognito Manager,
+# Ghost Hands Playwright Backend) and provides:
+# - Crash detection with error code parsing
+# - Auto-recovery orchestration
+# - System-wide crash statistics
+# - Circuit breaker coordination
+# - Memory pressure correlation with crashes
+# =============================================================================
+
+class BrowserCrashSeverity(Enum):
+    """Severity levels for browser crashes."""
+    LOW = "low"           # Recoverable, minor impact
+    MEDIUM = "medium"     # Recoverable, feature degradation
+    HIGH = "high"         # Critical, requires intervention
+    CRITICAL = "critical" # System-wide impact
+
+
+@dataclass
+class BrowserCrashEvent:
+    """Record of a browser crash event."""
+    timestamp: datetime
+    crash_reason: str
+    crash_code: str
+    severity: BrowserCrashSeverity
+    source: str  # "playwright", "chrome_incognito", "cdp"
+    memory_pressure_at_crash: Optional[float] = None
+    recovery_attempted: bool = False
+    recovery_successful: bool = False
+    error_message: str = ""
+    stack_trace: Optional[str] = None
+
+
+class BrowserCrashMonitor:
+    """
+    v197.1: System-wide browser crash monitoring and recovery coordination.
+    
+    This monitor:
+    1. Tracks all browser crashes across JARVIS subsystems
+    2. Correlates crashes with memory pressure
+    3. Coordinates recovery attempts across subsystems
+    4. Provides crash statistics for diagnostics
+    5. Implements adaptive backoff for repeated crashes
+    6. Integrates with the LiveProgressDashboard
+    
+    Crash Codes and Their Meanings:
+    - Code 5: GPU process crash / OOM
+    - Code 6: Renderer process crash
+    - Code 11: Page unresponsive
+    - Code 15: Browser terminated by signal (SIGTERM)
+    - Code 137: OOM killed by system (SIGKILL + 128)
+    - Code 139: Segmentation fault (SIGSEGV + 128)
+    """
+    
+    CRASH_CODE_MEANINGS = {
+        "5": ("GPU process crash / OOM", BrowserCrashSeverity.HIGH),
+        "6": ("Renderer process crash", BrowserCrashSeverity.MEDIUM),
+        "11": ("Page unresponsive", BrowserCrashSeverity.LOW),
+        "15": ("Browser terminated (SIGTERM)", BrowserCrashSeverity.MEDIUM),
+        "137": ("OOM killed by system", BrowserCrashSeverity.CRITICAL),
+        "139": ("Segmentation fault", BrowserCrashSeverity.CRITICAL),
+    }
+    
+    def __init__(self):
+        self._crashes: List[BrowserCrashEvent] = []
+        self._lock = asyncio.Lock()
+        self._logger = logging.getLogger("BrowserCrashMonitor")
+        self._recovery_callbacks: List[Callable] = []
+        self._max_crash_history = 100
+        self._crash_rate_window = 300.0  # 5 minutes
+        self._high_crash_threshold = 5   # Crashes in window before alert
+        self._last_recovery_attempt: Optional[float] = None
+        self._recovery_cooldown = 30.0   # Minimum seconds between recoveries
+        self._consecutive_failures = 0
+        self._max_consecutive_failures = 3
+        
+        # Statistics
+        self._total_crashes = 0
+        self._total_recoveries = 0
+        self._successful_recoveries = 0
+    
+    def register_recovery_callback(self, callback: Callable) -> None:
+        """Register a callback to be invoked on recovery attempts."""
+        self._recovery_callbacks.append(callback)
+    
+    async def record_crash(
+        self,
+        crash_reason: str,
+        crash_code: str,
+        source: str,
+        error_message: str = "",
+        stack_trace: Optional[str] = None,
+    ) -> BrowserCrashEvent:
+        """
+        Record a browser crash event.
+        
+        Args:
+            crash_reason: The crash reason string (e.g., "crashed", "target_closed")
+            crash_code: The numeric crash code as string
+            source: The subsystem that detected the crash
+            error_message: Full error message
+            stack_trace: Optional stack trace
+            
+        Returns:
+            The recorded crash event
+        """
+        async with self._lock:
+            # Determine severity
+            meaning, severity = self.CRASH_CODE_MEANINGS.get(
+                crash_code, ("Unknown crash", BrowserCrashSeverity.MEDIUM)
+            )
+            
+            # Get current memory pressure
+            memory_pressure = await self._get_memory_pressure()
+            
+            event = BrowserCrashEvent(
+                timestamp=datetime.now(),
+                crash_reason=crash_reason,
+                crash_code=crash_code,
+                severity=severity,
+                source=source,
+                memory_pressure_at_crash=memory_pressure,
+                error_message=error_message,
+                stack_trace=stack_trace,
+            )
+            
+            self._crashes.append(event)
+            self._total_crashes += 1
+            
+            # Trim history
+            if len(self._crashes) > self._max_crash_history:
+                self._crashes = self._crashes[-self._max_crash_history:]
+            
+            # Log the crash
+            self._logger.warning(
+                f"🔴 Browser crash recorded: code={crash_code} ({meaning}), "
+                f"source={source}, severity={severity.value}, "
+                f"memory={memory_pressure:.1f}%" if memory_pressure else ""
+            )
+            
+            # Check crash rate
+            crash_rate = self._calculate_crash_rate()
+            if crash_rate >= self._high_crash_threshold:
+                self._logger.error(
+                    f"⚠️ HIGH BROWSER CRASH RATE: {crash_rate} crashes in last "
+                    f"{self._crash_rate_window}s. Consider reducing browser usage."
+                )
+            
+            # Update dashboard
+            try:
+                dashboard = get_live_dashboard()
+                if dashboard.enabled:
+                    dashboard.update_component(
+                        "browser", "error",
+                        f"Crash (code {crash_code})"
+                    )
+            except Exception:
+                pass
+            
+            return event
+    
+    async def attempt_recovery(self, crash_event: BrowserCrashEvent) -> bool:
+        """
+        Attempt to recover from a browser crash.
+        
+        Args:
+            crash_event: The crash event to recover from
+            
+        Returns:
+            True if recovery was successful
+        """
+        async with self._lock:
+            # Check cooldown
+            now = time.time()
+            if self._last_recovery_attempt:
+                elapsed = now - self._last_recovery_attempt
+                if elapsed < self._recovery_cooldown:
+                    self._logger.info(
+                        f"[Recovery] Cooldown active ({self._recovery_cooldown - elapsed:.1f}s remaining)"
+                    )
+                    return False
+            
+            # Check consecutive failure limit
+            if self._consecutive_failures >= self._max_consecutive_failures:
+                self._logger.error(
+                    f"[Recovery] Max consecutive failures reached ({self._max_consecutive_failures}). "
+                    "Manual intervention required."
+                )
+                return False
+            
+            self._last_recovery_attempt = now
+            self._total_recoveries += 1
+            crash_event.recovery_attempted = True
+            
+            self._logger.info(
+                f"[Recovery] Attempting recovery from {crash_event.source} crash "
+                f"(code={crash_event.crash_code})..."
+            )
+        
+        # Invoke recovery callbacks outside lock
+        success = False
+        for callback in self._recovery_callbacks:
+            try:
+                if asyncio.iscoroutinefunction(callback):
+                    result = await callback(crash_event)
+                else:
+                    result = callback(crash_event)
+                if result:
+                    success = True
+            except Exception as e:
+                self._logger.error(f"[Recovery] Callback error: {e}")
+        
+        async with self._lock:
+            crash_event.recovery_successful = success
+            if success:
+                self._successful_recoveries += 1
+                self._consecutive_failures = 0
+                self._logger.info("[Recovery] ✅ Recovery successful")
+                
+                # Update dashboard
+                try:
+                    dashboard = get_live_dashboard()
+                    if dashboard.enabled:
+                        dashboard.update_component("browser", "healthy", "Recovered")
+                except Exception:
+                    pass
+            else:
+                self._consecutive_failures += 1
+                self._logger.warning(
+                    f"[Recovery] ❌ Recovery failed (consecutive: {self._consecutive_failures})"
+                )
+        
+        return success
+    
+    async def _get_memory_pressure(self) -> Optional[float]:
+        """Get current memory pressure as percentage."""
+        try:
+            mem = psutil.virtual_memory()
+            return mem.percent
+        except Exception:
+            return None
+    
+    def _calculate_crash_rate(self) -> int:
+        """Calculate crash rate in the recent window."""
+        now = datetime.now()
+        window_start = now - timedelta(seconds=self._crash_rate_window)
+        recent_crashes = [c for c in self._crashes if c.timestamp >= window_start]
+        return len(recent_crashes)
+    
+    def get_statistics(self) -> Dict[str, Any]:
+        """Get crash statistics for diagnostics."""
+        return {
+            "total_crashes": self._total_crashes,
+            "total_recoveries": self._total_recoveries,
+            "successful_recoveries": self._successful_recoveries,
+            "recovery_success_rate": (
+                self._successful_recoveries / max(1, self._total_recoveries)
+            ),
+            "consecutive_failures": self._consecutive_failures,
+            "recent_crash_rate": self._calculate_crash_rate(),
+            "crashes_by_code": self._get_crashes_by_code(),
+            "crashes_by_source": self._get_crashes_by_source(),
+            "avg_memory_at_crash": self._get_avg_memory_at_crash(),
+        }
+    
+    def _get_crashes_by_code(self) -> Dict[str, int]:
+        """Get crash count by error code."""
+        result: Dict[str, int] = {}
+        for crash in self._crashes:
+            result[crash.crash_code] = result.get(crash.crash_code, 0) + 1
+        return result
+    
+    def _get_crashes_by_source(self) -> Dict[str, int]:
+        """Get crash count by source."""
+        result: Dict[str, int] = {}
+        for crash in self._crashes:
+            result[crash.source] = result.get(crash.source, 0) + 1
+        return result
+    
+    def _get_avg_memory_at_crash(self) -> Optional[float]:
+        """Get average memory pressure at crash time."""
+        pressures = [
+            c.memory_pressure_at_crash
+            for c in self._crashes
+            if c.memory_pressure_at_crash is not None
+        ]
+        if pressures:
+            return sum(pressures) / len(pressures)
+        return None
+
+
+# Global browser crash monitor singleton
+_browser_crash_monitor: Optional[BrowserCrashMonitor] = None
+
+
+def get_browser_crash_monitor() -> BrowserCrashMonitor:
+    """Get the global browser crash monitor."""
+    global _browser_crash_monitor
+    if _browser_crash_monitor is None:
+        _browser_crash_monitor = BrowserCrashMonitor()
+    return _browser_crash_monitor
 
 
 # =============================================================================
@@ -50409,6 +50749,12 @@ class TrinityIntegrator:
                 except Exception as e:
                     self.logger.debug(f"[Trinity] Progress callback error: {e}")
 
+            # v197.1: Update live dashboard with starting status
+            update_dashboard_component_status(
+                component.name, "starting",
+                f"PID {component.pid}, waiting for health..."
+            )
+
             # Wait for health check
             # v192.0: Use intelligent timeout based on component type and deployment mode
             component_timeout = self._calculate_intelligent_timeout(component)
@@ -50561,6 +50907,11 @@ class TrinityIntegrator:
                             f"{component.name} process died during startup (exit code {exit_code})",
                             attempt, elapsed
                         )
+                    # v197.1: Update dashboard with error status
+                    update_dashboard_component_status(
+                        component.name, "error",
+                        f"Process died (exit code {exit_code})"
+                    )
                     return False
 
                 # Perform semantic readiness check
@@ -50605,6 +50956,11 @@ class TrinityIntegrator:
                             f"{component.name} ready after {elapsed:.1f}s",
                             attempt, elapsed
                         )
+                    # v197.1: Update dashboard with healthy status
+                    update_dashboard_component_status(
+                        component.name, "healthy",
+                        f"Ready ({elapsed:.1f}s)"
+                    )
                     return True
 
                 # Handle degraded state - may be usable
@@ -50622,6 +50978,11 @@ class TrinityIntegrator:
                                 f"{component.name} ready (degraded) after {elapsed:.1f}s",
                                 attempt, elapsed
                             )
+                        # v197.1: Update dashboard with degraded-but-ready status
+                        update_dashboard_component_status(
+                            component.name, "healthy",
+                            f"Degraded ({elapsed:.1f}s)"
+                        )
                         return True
 
                 # Call progress callback periodically
@@ -50654,6 +51015,12 @@ class TrinityIntegrator:
                 f"{component.name} not ready after {elapsed:.0f}s (state={final_result.state.value})",
                 attempt, elapsed
             )
+
+        # v197.1: Update dashboard with timeout error
+        update_dashboard_component_status(
+            component.name, "error",
+            f"Timeout ({timeout:.0f}s)"
+        )
 
         return False
 
@@ -51903,6 +52270,10 @@ class JarvisSystemKernel:
         # v186.0: Dead Man's Switch for startup phase monitoring
         self._startup_watchdog: Optional[StartupWatchdog] = None
 
+        # v197.1: Browser crash monitor for system-wide crash tracking
+        self._browser_crash_monitor: Optional[BrowserCrashMonitor] = None
+        self._init_browser_crash_monitor()
+
     @property
     def state(self) -> KernelState:
         """Current kernel state."""
@@ -51914,6 +52285,48 @@ class JarvisSystemKernel:
         if self._started_at is None:
             return 0.0
         return time.time() - self._started_at
+
+    def _init_browser_crash_monitor(self) -> None:
+        """
+        v197.1: Initialize the browser crash monitor with recovery callbacks.
+        
+        This sets up system-wide browser crash tracking and configures
+        automatic recovery strategies for different crash types.
+        """
+        try:
+            self._browser_crash_monitor = get_browser_crash_monitor()
+            
+            # Register recovery callback for Chrome Incognito Manager
+            async def _chrome_recovery_callback(crash_event: BrowserCrashEvent) -> bool:
+                """Attempt to recover Chrome Incognito session after crash."""
+                try:
+                    self.logger.info("[BrowserRecovery] Attempting Chrome recovery...")
+                    chrome_manager = get_chrome_manager()
+                    
+                    # Try to relaunch Chrome to a safe URL
+                    result = await chrome_manager.ensure_single_incognito_window(
+                        "about:blank",  # Safe URL to test recovery
+                        force_new=True,
+                    )
+                    
+                    if result.get("success"):
+                        self.logger.info("[BrowserRecovery] ✅ Chrome recovered successfully")
+                        return True
+                    else:
+                        self.logger.warning(
+                            f"[BrowserRecovery] Chrome recovery failed: {result.get('error')}"
+                        )
+                        return False
+                except Exception as e:
+                    self.logger.error(f"[BrowserRecovery] Chrome recovery error: {e}")
+                    return False
+            
+            self._browser_crash_monitor.register_recovery_callback(_chrome_recovery_callback)
+            
+            self.logger.debug("[v197.1] Browser crash monitor initialized with recovery callbacks")
+            
+        except Exception as e:
+            self.logger.debug(f"[v197.1] Browser crash monitor init failed (non-critical): {e}")
 
     # =========================================================================
     # SAFE PHASE INITIALIZATION (v107.0)
@@ -53032,6 +53445,13 @@ class JarvisSystemKernel:
 
             startup_duration = time.time() - self._started_at
 
+            # v197.1: Stop the live progress dashboard before completion banner
+            try:
+                dashboard = get_live_dashboard()
+                dashboard.stop()
+            except Exception:
+                pass
+
             # =====================================================================
             # v186.0: ENTERPRISE COMPLETION BANNER (with Rich CLI support)
             # =====================================================================
@@ -53040,6 +53460,13 @@ class JarvisSystemKernel:
             # v186.0: Stop the startup watchdog - we made it!
             if self._startup_watchdog:
                 await self._startup_watchdog.stop()
+
+            # v197.1: Stop live progress dashboard and show final summary
+            dashboard = get_live_dashboard()
+            if dashboard.enabled:
+                dashboard.stop()
+                # Update all components to final healthy status
+                update_dashboard_memory()
 
             self.logger.success(f"[Kernel] ✅ Startup complete in {startup_duration:.2f}s")
 
@@ -53068,6 +53495,13 @@ class JarvisSystemKernel:
                 traceback_str=traceback.format_exc(),
             )
             self.logger.error(f"[Kernel] Startup failed: {e}")
+
+            # v197.1: Stop the live progress dashboard on error
+            try:
+                dashboard = get_live_dashboard()
+                dashboard.stop()
+            except Exception:
+                pass
 
             # Voice narrator error announcement
             if self._narrator:
@@ -55799,6 +56233,7 @@ class JarvisSystemKernel:
         Update a component's status in the tracking system.
 
         v182.0: Dynamic component tracking for accurate progress display.
+        v197.1: Integrated with LiveProgressDashboard for real-time CLI updates.
 
         Args:
             component: Component name (e.g., "backend", "jarvis_prime")
@@ -55823,6 +56258,23 @@ class JarvisSystemKernel:
             self._trinity_ready["jarvis_prime"] = True
         elif component == "reactor_core" and status == "complete":
             self._trinity_ready["reactor_core"] = True
+
+        # v197.1: Update LiveProgressDashboard with component status
+        try:
+            dashboard = get_live_dashboard()
+            if dashboard.enabled:
+                # Map internal status to dashboard status
+                dashboard_status_map = {
+                    "pending": "pending",
+                    "running": "starting",
+                    "complete": "healthy",
+                    "error": "error",
+                    "skipped": "stopped",
+                }
+                dash_status = dashboard_status_map.get(status, status)
+                dashboard.update_component(component, dash_status, message[:60] if message else "")
+        except Exception:
+            pass  # Dashboard updates are non-critical
 
     def _calculate_dynamic_progress(self) -> int:
         """

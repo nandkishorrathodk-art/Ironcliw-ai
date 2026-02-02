@@ -57,6 +57,40 @@ logger = logging.getLogger(__name__)
 
 
 # =============================================================================
+# v197.1: Global Crash Monitor Integration
+# =============================================================================
+
+async def _report_crash_to_monitor(
+    crash_reason: str,
+    crash_code: str,
+    source: str = "playwright",
+    error_message: str = "",
+) -> None:
+    """
+    Report a browser crash to the global BrowserCrashMonitor.
+    
+    This function is safe to call even if the monitor is not available.
+    """
+    try:
+        # Lazy import to avoid circular dependency
+        from unified_supervisor import get_browser_crash_monitor
+        monitor = get_browser_crash_monitor()
+        event = await monitor.record_crash(
+            crash_reason=crash_reason,
+            crash_code=crash_code,
+            source=source,
+            error_message=error_message,
+        )
+        # Optionally attempt recovery
+        if event.severity.value in ("high", "critical"):
+            await monitor.attempt_recovery(event)
+    except ImportError:
+        logger.debug("[GHOST-HANDS] BrowserCrashMonitor not available - skipping crash report")
+    except Exception as e:
+        logger.debug(f"[GHOST-HANDS] Failed to report crash to monitor: {e}")
+
+
+# =============================================================================
 # Configuration
 # =============================================================================
 
@@ -547,12 +581,142 @@ class AppleScriptBackend(ActuatorBackend):
 
 
 # =============================================================================
-# Playwright Backend
+# Playwright Backend - v197.1 Enhanced with Crash Recovery
 # =============================================================================
+
+class BrowserCrashError(Exception):
+    """Raised when browser crashes with specific error codes."""
+    def __init__(self, reason: str, code: str, message: str = ""):
+        self.reason = reason
+        self.code = code
+        super().__init__(f"Browser crash: reason='{reason}', code='{code}'. {message}")
+
+
+class CircuitBreakerState(Enum):
+    """Circuit breaker states for browser operations."""
+    CLOSED = auto()       # Normal operation
+    OPEN = auto()         # Failing, reject requests
+    HALF_OPEN = auto()    # Testing if recovered
+
+
+@dataclass
+class CircuitBreakerConfig:
+    """Configuration for browser circuit breaker."""
+    failure_threshold: int = 3          # Failures before opening
+    recovery_timeout: float = 30.0      # Seconds before half-open
+    success_threshold: int = 2          # Successes to close from half-open
+    crash_codes_critical: List[str] = field(default_factory=lambda: ["5", "6", "11"])
+
+
+class BrowserCircuitBreaker:
+    """
+    Circuit breaker pattern for browser operations.
+    
+    v197.1: Prevents cascade failures when browser repeatedly crashes.
+    
+    States:
+    - CLOSED: Normal operation, allows all requests
+    - OPEN: Browser is failing, rejects requests to prevent resource exhaustion
+    - HALF_OPEN: Testing recovery, allows limited requests
+    """
+    
+    def __init__(self, config: CircuitBreakerConfig = None):
+        self.config = config or CircuitBreakerConfig()
+        self._state = CircuitBreakerState.CLOSED
+        self._failure_count = 0
+        self._success_count = 0
+        self._last_failure_time: Optional[float] = None
+        self._last_crash_reason: Optional[str] = None
+        self._last_crash_code: Optional[str] = None
+        self._lock = asyncio.Lock()
+        self._logger = logging.getLogger("BrowserCircuitBreaker")
+    
+    @property
+    def state(self) -> CircuitBreakerState:
+        return self._state
+    
+    @property
+    def is_open(self) -> bool:
+        return self._state == CircuitBreakerState.OPEN
+    
+    async def can_execute(self) -> bool:
+        """Check if operation should be allowed."""
+        async with self._lock:
+            if self._state == CircuitBreakerState.CLOSED:
+                return True
+            
+            if self._state == CircuitBreakerState.OPEN:
+                # Check if recovery timeout has passed
+                if self._last_failure_time and \
+                   (time.time() - self._last_failure_time) >= self.config.recovery_timeout:
+                    self._state = CircuitBreakerState.HALF_OPEN
+                    self._success_count = 0
+                    self._logger.info("[CircuitBreaker] Transitioning to HALF_OPEN for testing")
+                    return True
+                return False
+            
+            # HALF_OPEN allows limited requests
+            return True
+    
+    async def record_success(self) -> None:
+        """Record successful operation."""
+        async with self._lock:
+            if self._state == CircuitBreakerState.HALF_OPEN:
+                self._success_count += 1
+                if self._success_count >= self.config.success_threshold:
+                    self._state = CircuitBreakerState.CLOSED
+                    self._failure_count = 0
+                    self._logger.info("[CircuitBreaker] ✅ Recovery confirmed, CLOSED")
+            elif self._state == CircuitBreakerState.CLOSED:
+                # Decay failure count on success
+                self._failure_count = max(0, self._failure_count - 1)
+    
+    async def record_failure(self, reason: str = None, code: str = None) -> None:
+        """Record failed operation."""
+        async with self._lock:
+            self._failure_count += 1
+            self._last_failure_time = time.time()
+            self._last_crash_reason = reason
+            self._last_crash_code = code
+            
+            # Critical crash codes trigger immediate opening
+            if code in self.config.crash_codes_critical:
+                self._state = CircuitBreakerState.OPEN
+                self._logger.warning(
+                    f"[CircuitBreaker] 🔴 CRITICAL CRASH (code={code}), circuit OPEN"
+                )
+                return
+            
+            if self._state == CircuitBreakerState.HALF_OPEN:
+                self._state = CircuitBreakerState.OPEN
+                self._logger.warning("[CircuitBreaker] HALF_OPEN test failed, back to OPEN")
+            elif self._failure_count >= self.config.failure_threshold:
+                self._state = CircuitBreakerState.OPEN
+                self._logger.warning(
+                    f"[CircuitBreaker] Threshold reached ({self._failure_count}), circuit OPEN"
+                )
+    
+    async def reset(self) -> None:
+        """Manually reset the circuit breaker."""
+        async with self._lock:
+            self._state = CircuitBreakerState.CLOSED
+            self._failure_count = 0
+            self._success_count = 0
+            self._last_failure_time = None
+            self._logger.info("[CircuitBreaker] Manually reset to CLOSED")
+
 
 class PlaywrightBackend(ActuatorBackend):
     """
     Playwright backend for browser automation.
+    
+    v197.1 Enhanced with:
+    - Automatic crash detection and recovery
+    - Circuit breaker pattern to prevent cascade failures
+    - Intelligent reconnection with exponential backoff
+    - Resource monitoring before operations
+    - Graceful degradation on repeated crashes
+    - Memory pressure detection
 
     Supports:
     - Chrome, Chromium, Arc, Brave
@@ -566,12 +730,31 @@ class PlaywrightBackend(ActuatorBackend):
     - Screenshot capture
     """
 
+    # Known crash codes and their meanings
+    CRASH_CODE_MEANINGS = {
+        "5": "GPU process crash or out of memory",
+        "6": "Renderer process crash",
+        "11": "Page unresponsive",
+        "15": "Browser terminated by signal",
+        "139": "Segmentation fault",
+        "137": "OOM killed by system",
+    }
+
     def __init__(self, config: ActuatorConfig):
         self.config = config
         self._initialized = False
         self._playwright = None
         self._browser = None
         self._context = None
+        self._circuit_breaker = BrowserCircuitBreaker()
+        self._reconnect_attempts = 0
+        self._max_reconnect_attempts = 5
+        self._reconnect_backoff = [1.0, 2.0, 5.0, 10.0, 30.0]
+        self._last_health_check: Optional[float] = None
+        self._health_check_interval = 30.0  # seconds
+        self._crash_count = 0
+        self._total_operations = 0
+        self._lock = asyncio.Lock()
 
     @property
     def name(self) -> str:
@@ -581,10 +764,158 @@ class PlaywrightBackend(ActuatorBackend):
     def supported_apps(self) -> List[str]:
         return ["Chrome", "Chromium", "Arc", "Brave", "Firefox", "Safari"]
 
-    async def initialize(self) -> bool:
-        if self._initialized:
+    def _parse_crash_error(self, error: Exception) -> Tuple[Optional[str], Optional[str]]:
+        """
+        Parse crash information from Playwright error.
+        
+        Returns (reason, code) tuple.
+        """
+        error_str = str(error).lower()
+        
+        # Pattern: "window terminated unexpectedly (reason: 'crashed', code: '5')"
+        reason = None
+        code = None
+        
+        if "terminated unexpectedly" in error_str or "crashed" in error_str:
+            reason = "crashed"
+            # Extract code
+            import re
+            code_match = re.search(r"code[:\s]*['\"]?(\d+)['\"]?", error_str)
+            if code_match:
+                code = code_match.group(1)
+            
+            # Also check for specific patterns
+            if "target closed" in error_str:
+                reason = "target_closed"
+            elif "context closed" in error_str:
+                reason = "context_closed"
+            elif "browser closed" in error_str:
+                reason = "browser_closed"
+        
+        return reason, code
+
+    async def _check_memory_pressure(self) -> bool:
+        """
+        Check if system is under memory pressure before browser operations.
+        
+        Returns True if safe to proceed, False if should back off.
+        """
+        try:
+            import psutil
+            mem = psutil.virtual_memory()
+            
+            # High memory pressure thresholds
+            if mem.percent > 90:
+                logger.warning(
+                    f"[GHOST-HANDS] 🔴 Critical memory pressure: {mem.percent}% used. "
+                    "Skipping browser operation to prevent crash."
+                )
+                return False
+            elif mem.percent > 80:
+                logger.info(
+                    f"[GHOST-HANDS] ⚠️ High memory pressure: {mem.percent}% used. "
+                    "Proceeding with caution."
+                )
+            
+            return True
+        except ImportError:
+            return True  # psutil not available, proceed anyway
+        except Exception as e:
+            logger.debug(f"[GHOST-HANDS] Memory check failed: {e}")
             return True
 
+    async def _health_check(self) -> bool:
+        """
+        Perform browser health check.
+        
+        Returns True if browser is healthy, False otherwise.
+        """
+        if not self._browser:
+            return False
+        
+        try:
+            # Try to access browser contexts - lightweight check
+            contexts = self._browser.contexts
+            if not contexts:
+                return False
+            
+            # Try to get a page
+            pages = contexts[0].pages if contexts else []
+            if not pages:
+                return False
+            
+            # Try a lightweight operation
+            await pages[0].evaluate("() => true")
+            
+            self._last_health_check = time.time()
+            return True
+            
+        except Exception as e:
+            logger.debug(f"[GHOST-HANDS] Health check failed: {e}")
+            return False
+
+    async def _reconnect(self) -> bool:
+        """
+        Attempt to reconnect to browser with exponential backoff.
+        
+        v197.1: Intelligent reconnection with crash recovery.
+        """
+        if self._reconnect_attempts >= self._max_reconnect_attempts:
+            logger.error(
+                f"[GHOST-HANDS] Max reconnect attempts ({self._max_reconnect_attempts}) "
+                "reached. Giving up."
+            )
+            return False
+        
+        # Calculate backoff delay
+        delay = self._reconnect_backoff[
+            min(self._reconnect_attempts, len(self._reconnect_backoff) - 1)
+        ]
+        
+        logger.info(
+            f"[GHOST-HANDS] Reconnect attempt {self._reconnect_attempts + 1}/"
+            f"{self._max_reconnect_attempts} after {delay}s delay..."
+        )
+        
+        await asyncio.sleep(delay)
+        
+        # Clean up existing connection
+        await self._cleanup_connection()
+        
+        # Try to reinitialize
+        self._reconnect_attempts += 1
+        success = await self._do_initialize()
+        
+        if success:
+            self._reconnect_attempts = 0  # Reset on success
+            logger.info("[GHOST-HANDS] ✅ Reconnection successful!")
+            await self._circuit_breaker.record_success()
+        else:
+            logger.warning("[GHOST-HANDS] Reconnection failed")
+        
+        return success
+
+    async def _cleanup_connection(self) -> None:
+        """Clean up existing browser connection."""
+        try:
+            if self._browser:
+                await self._browser.close()
+        except Exception:
+            pass
+        
+        try:
+            if self._playwright:
+                await self._playwright.stop()
+        except Exception:
+            pass
+        
+        self._browser = None
+        self._playwright = None
+        self._context = None
+        self._initialized = False
+
+    async def _do_initialize(self) -> bool:
+        """Internal initialization logic."""
         try:
             from playwright.async_api import async_playwright
 
@@ -592,10 +923,12 @@ class PlaywrightBackend(ActuatorBackend):
 
             # Connect to existing browser via CDP
             self._browser = await self._playwright.chromium.connect_over_cdp(
-                "http://localhost:9222"
+                "http://localhost:9222",
+                timeout=10000  # 10 second timeout
             )
 
             self._initialized = True
+            self._last_health_check = time.time()
             logger.info("[GHOST-HANDS] Playwright backend initialized")
             return True
 
@@ -611,6 +944,12 @@ class PlaywrightBackend(ActuatorBackend):
             )
             return False
 
+    async def initialize(self) -> bool:
+        if self._initialized:
+            return True
+        
+        return await self._do_initialize()
+
     async def can_handle(self, action: Action) -> bool:
         if not self._initialized:
             return False
@@ -624,8 +963,35 @@ class PlaywrightBackend(ActuatorBackend):
         return False
 
     async def execute(self, action: Action) -> ActionReport:
-        """Execute an action using Playwright."""
+        """
+        Execute an action using Playwright with crash recovery.
+        
+        v197.1: Enhanced with circuit breaker and auto-recovery.
+        """
         start_time = time.time()
+        self._total_operations += 1
+
+        # Check circuit breaker first
+        if not await self._circuit_breaker.can_execute():
+            return ActionReport(
+                action=action,
+                result=ActionResult.FAILED,
+                backend_used=self.name,
+                duration_ms=0,
+                focus_preserved=True,
+                error="Circuit breaker OPEN - browser unstable, please wait for recovery",
+            )
+
+        # Check memory pressure
+        if not await self._check_memory_pressure():
+            return ActionReport(
+                action=action,
+                result=ActionResult.FAILED,
+                backend_used=self.name,
+                duration_ms=0,
+                focus_preserved=True,
+                error="System under memory pressure - skipping to prevent crash",
+            )
 
         if not self._initialized or not self._browser:
             return ActionReport(
@@ -637,77 +1003,176 @@ class PlaywrightBackend(ActuatorBackend):
                 error="Playwright not initialized",
             )
 
-        try:
-            # Get the first page/tab
-            contexts = self._browser.contexts
-            if not contexts:
+        # Periodic health check
+        if self._last_health_check and \
+           (time.time() - self._last_health_check) > self._health_check_interval:
+            if not await self._health_check():
+                logger.warning("[GHOST-HANDS] Health check failed, attempting reconnect...")
+                if not await self._reconnect():
+                    return ActionReport(
+                        action=action,
+                        result=ActionResult.FAILED,
+                        backend_used=self.name,
+                        duration_ms=(time.time() - start_time) * 1000,
+                        focus_preserved=True,
+                        error="Browser disconnected and reconnection failed",
+                    )
+
+        async with self._lock:
+            try:
+                result = await self._execute_with_retry(action, start_time)
+                
+                if result.result == ActionResult.SUCCESS:
+                    await self._circuit_breaker.record_success()
+                
+                return result
+
+            except Exception as e:
+                # Parse crash information
+                reason, code = self._parse_crash_error(e)
+                
+                if reason:
+                    self._crash_count += 1
+                    crash_meaning = self.CRASH_CODE_MEANINGS.get(code, "Unknown crash")
+                    
+                    logger.error(
+                        f"[GHOST-HANDS] 🔴 Browser CRASHED: reason='{reason}', "
+                        f"code='{code}' ({crash_meaning}). "
+                        f"Total crashes: {self._crash_count}/{self._total_operations} operations"
+                    )
+                    
+                    # Record failure in circuit breaker
+                    await self._circuit_breaker.record_failure(reason, code)
+                    
+                    # v197.1: Report to global crash monitor for system-wide tracking
+                    await _report_crash_to_monitor(
+                        crash_reason=reason,
+                        crash_code=code or "unknown",
+                        source="playwright",
+                        error_message=str(e),
+                    )
+                    
+                    # Attempt recovery
+                    if await self._reconnect():
+                        # Retry the operation once after successful reconnect
+                        try:
+                            return await self._execute_single(action, time.time())
+                        except Exception as retry_error:
+                            logger.error(f"[GHOST-HANDS] Retry after reconnect failed: {retry_error}")
+                    
+                    return ActionReport(
+                        action=action,
+                        result=ActionResult.FAILED,
+                        backend_used=self.name,
+                        duration_ms=(time.time() - start_time) * 1000,
+                        focus_preserved=True,
+                        error=f"Browser crash (code={code}): {crash_meaning}. Recovery attempted.",
+                    )
+                
+                # Non-crash error
                 return ActionReport(
                     action=action,
                     result=ActionResult.FAILED,
                     backend_used=self.name,
-                    duration_ms=0,
+                    duration_ms=(time.time() - start_time) * 1000,
                     focus_preserved=True,
-                    error="No browser contexts available",
+                    error=str(e),
                 )
 
-            pages = contexts[0].pages
-            if not pages:
-                return ActionReport(
-                    action=action,
-                    result=ActionResult.FAILED,
-                    backend_used=self.name,
-                    duration_ms=0,
-                    focus_preserved=True,
-                    error="No pages available",
-                )
+    async def _execute_with_retry(self, action: Action, start_time: float, max_retries: int = 2) -> ActionReport:
+        """Execute with retry logic for transient failures."""
+        last_error = None
+        
+        for attempt in range(max_retries):
+            try:
+                return await self._execute_single(action, start_time)
+            except Exception as e:
+                last_error = e
+                reason, code = self._parse_crash_error(e)
+                
+                if reason:
+                    # This is a crash - don't retry, let the outer handler deal with it
+                    raise
+                
+                if attempt < max_retries - 1:
+                    logger.debug(f"[GHOST-HANDS] Retry {attempt + 1}/{max_retries} after error: {e}")
+                    await asyncio.sleep(0.5 * (attempt + 1))
+        
+        raise last_error
 
-            page = pages[0]
-
-            # Execute action
-            if action.action_type == ActionType.CLICK:
-                if action.element_selector:
-                    await page.click(action.element_selector)
-                elif action.coordinates:
-                    await page.mouse.click(action.coordinates[0], action.coordinates[1])
-
-            elif action.action_type == ActionType.TYPE:
-                if action.element_selector:
-                    await page.fill(action.element_selector, action.text or "")
-                else:
-                    await page.keyboard.type(action.text or "")
-
-            elif action.action_type == ActionType.KEY:
-                await page.keyboard.press(action.key or "Enter")
-
-            elif action.action_type == ActionType.SCROLL:
-                await page.mouse.wheel(0, 100)
-
-            duration_ms = (time.time() - start_time) * 1000
-
-            return ActionReport(
-                action=action,
-                result=ActionResult.SUCCESS,
-                backend_used=self.name,
-                duration_ms=duration_ms,
-                focus_preserved=True,
-            )
-
-        except Exception as e:
+    async def _execute_single(self, action: Action, start_time: float) -> ActionReport:
+        """Execute a single action without retry."""
+        # Get the first page/tab
+        contexts = self._browser.contexts
+        if not contexts:
             return ActionReport(
                 action=action,
                 result=ActionResult.FAILED,
                 backend_used=self.name,
-                duration_ms=(time.time() - start_time) * 1000,
+                duration_ms=0,
                 focus_preserved=True,
-                error=str(e),
+                error="No browser contexts available",
             )
 
+        pages = contexts[0].pages
+        if not pages:
+            return ActionReport(
+                action=action,
+                result=ActionResult.FAILED,
+                backend_used=self.name,
+                duration_ms=0,
+                focus_preserved=True,
+                error="No pages available",
+            )
+
+        page = pages[0]
+
+        # Execute action with timeout
+        timeout_ms = self.config.action_timeout_ms
+
+        # Execute action
+        if action.action_type == ActionType.CLICK:
+            if action.element_selector:
+                await page.click(action.element_selector, timeout=timeout_ms)
+            elif action.coordinates:
+                await page.mouse.click(action.coordinates[0], action.coordinates[1])
+
+        elif action.action_type == ActionType.TYPE:
+            if action.element_selector:
+                await page.fill(action.element_selector, action.text or "", timeout=timeout_ms)
+            else:
+                await page.keyboard.type(action.text or "")
+
+        elif action.action_type == ActionType.KEY:
+            await page.keyboard.press(action.key or "Enter")
+
+        elif action.action_type == ActionType.SCROLL:
+            await page.mouse.wheel(0, 100)
+
+        duration_ms = (time.time() - start_time) * 1000
+
+        return ActionReport(
+            action=action,
+            result=ActionResult.SUCCESS,
+            backend_used=self.name,
+            duration_ms=duration_ms,
+            focus_preserved=True,
+        )
+
+    async def get_crash_stats(self) -> Dict[str, Any]:
+        """Get crash statistics for diagnostics."""
+        return {
+            "total_operations": self._total_operations,
+            "crash_count": self._crash_count,
+            "crash_rate": self._crash_count / max(1, self._total_operations),
+            "circuit_breaker_state": self._circuit_breaker.state.name,
+            "reconnect_attempts": self._reconnect_attempts,
+            "initialized": self._initialized,
+            "last_health_check": self._last_health_check,
+        }
+
     async def cleanup(self) -> None:
-        if self._browser:
-            await self._browser.close()
-        if self._playwright:
-            await self._playwright.stop()
-        self._initialized = False
+        await self._cleanup_connection()
 
 
 # =============================================================================
