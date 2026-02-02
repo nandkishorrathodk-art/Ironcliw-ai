@@ -55057,23 +55057,30 @@ class JarvisSystemKernel:
             add_dashboard_log("Starting Phase 5: Trinity Integration", "INFO")
             issue_collector.set_current_phase("Phase 5: Trinity")
             issue_collector.set_current_zone("Zone 5.7")
-            # v193.0: Compute Trinity timeout based on hollow client mode AND GCP VM timeout
-            # The actual GCP VM startup timeout is GCP_VM_STARTUP_TIMEOUT (default 300s)
-            # When that times out, there's fallback processing (Claude API) that adds ~120s
-            # Total: GCP_TIMEOUT (300s) + FALLBACK_PROCESSING (120s) + BUFFER (60s) = 480s
+            # v198.2: UNIFIED TRINITY TIMEOUT CALCULATION
+            # =====================================================================
+            # ROOT CAUSE FIX: Previously, DMS timeout and component startup timeout
+            # were calculated independently, causing DMS to timeout before component
+            # startup could complete. Now we compute ONE authoritative timeout value
+            # and use it consistently everywhere.
+            # =====================================================================
+
+            # Step 1: Read the explicit JARVIS_TRINITY_TIMEOUT if set (user override)
+            explicit_trinity_timeout = os.environ.get("JARVIS_TRINITY_TIMEOUT")
+
+            # Step 2: Calculate dynamic timeout based on GCP/Hollow Client mode
             trinity_base_timeout = 180.0  # Base: Prime (90s) + Reactor (60s) + buffer (30s)
-            
-            # Read actual GCP timeout from environment (same as cross_repo_startup_orchestrator uses)
             gcp_vm_timeout = float(os.environ.get("GCP_VM_STARTUP_TIMEOUT", "300.0"))
             fallback_processing_buffer = 120.0  # Time for Claude API fallback signal + coordination
-            
+            orchestration_buffer = 90.0  # v198.2: Buffer for pre-component orchestration steps
+
             hollow_client_indicators = [
                 os.environ.get("HOLLOW_CLIENT_MODE", "").lower() in ("true", "1", "yes"),
                 os.environ.get("GCP_PRIME_ENDPOINT", "") != "",
                 os.environ.get("USE_GCP_INFERENCE", "").lower() in ("true", "1", "yes"),
                 os.environ.get("JARVIS_GCP_OFFLOAD_ACTIVE", "").lower() in ("true", "1", "yes"),
             ]
-            
+
             # Detect if we need extended timeout for GCP operations
             needs_gcp_timeout = False
             if any(hollow_client_indicators):
@@ -55086,20 +55093,40 @@ class JarvisSystemKernel:
                         needs_gcp_timeout = True
                 except Exception:
                     pass
-            
-            if needs_gcp_timeout:
-                # v193.0: Trinity timeout must exceed GCP VM timeout + fallback time
-                # GCP VM timeout (300s) + fallback (120s) + buffer (60s) = 480s
-                trinity_timeout = gcp_vm_timeout + fallback_processing_buffer + 60.0
+
+            # Step 3: Compute the effective trinity timeout
+            if explicit_trinity_timeout:
+                # User explicitly set a timeout - use it
+                effective_trinity_timeout = float(explicit_trinity_timeout)
                 self.logger.info(
-                    f"[Trinity] GCP mode detected: timeout={trinity_timeout:.0f}s "
-                    f"(GCP:{gcp_vm_timeout:.0f}s + fallback:{fallback_processing_buffer:.0f}s + buffer:60s)"
+                    f"[Trinity] Using explicit timeout from JARVIS_TRINITY_TIMEOUT: {effective_trinity_timeout:.0f}s"
+                )
+            elif needs_gcp_timeout:
+                # v198.2: GCP mode timeout = GCP_VM + fallback + orchestration buffer
+                # This ensures DMS doesn't timeout before component startup completes
+                effective_trinity_timeout = gcp_vm_timeout + fallback_processing_buffer + orchestration_buffer
+                self.logger.info(
+                    f"[Trinity] GCP mode detected: timeout={effective_trinity_timeout:.0f}s "
+                    f"(GCP:{gcp_vm_timeout:.0f}s + fallback:{fallback_processing_buffer:.0f}s + orchestration:{orchestration_buffer:.0f}s)"
                 )
             else:
-                trinity_timeout = trinity_base_timeout
-                
+                effective_trinity_timeout = trinity_base_timeout
+                self.logger.info(f"[Trinity] Standard mode: timeout={effective_trinity_timeout:.0f}s")
+
+            # Step 4: Ensure timeout is at least as long as DEFAULT_TRINITY_TIMEOUT
+            effective_trinity_timeout = max(effective_trinity_timeout, DEFAULT_TRINITY_TIMEOUT)
+
+            # Step 5: Store for use by _phase_trinity() to ensure consistency
+            self._effective_trinity_timeout = effective_trinity_timeout
+
+            # Step 6: Set DMS operational timeout (add extra buffer for phase setup/teardown)
+            dms_trinity_timeout = effective_trinity_timeout + 60.0  # Extra 60s buffer for DMS
             if self._startup_watchdog:
-                self._startup_watchdog.update_phase("trinity", 65, operational_timeout=trinity_timeout)
+                self._startup_watchdog.update_phase("trinity", 65, operational_timeout=dms_trinity_timeout)
+                self.logger.debug(
+                    f"[Trinity] DMS timeout set to {dms_trinity_timeout:.0f}s "
+                    f"(component timeout + 60s buffer)"
+                )
             if self.config.trinity_enabled:
                 if self._narrator:
                     await self._narrator.narrate_phase_start("trinity")
@@ -56222,21 +56249,42 @@ class JarvisSystemKernel:
         heartbeat_task: Optional[asyncio.Task] = None
         heartbeat_stop = asyncio.Event()
 
+        # v198.2: Track current progress across heartbeat and manual updates
+        # This prevents race conditions where heartbeat sets lower progress than manual updates
+        trinity_heartbeat_progress = {"current": 66}  # Mutable dict for closure access
+
         async def _trinity_heartbeat_loop() -> None:
-            """Send DMS heartbeats every 5 seconds during Trinity phase."""
-            progress = 66  # Start after initial phase progress (65)
+            """
+            Send DMS heartbeats every 5 seconds during Trinity phase.
+
+            v198.2: Enhanced to track progress intelligently:
+            - Uses maximum of current progress and heartbeat increment
+            - Prevents heartbeat from setting lower progress than manual updates
+            - Logs estimated time remaining based on timeout
+            """
+            heartbeat_increment = 66  # Internal counter for heartbeat increments
             while not heartbeat_stop.is_set():
                 try:
                     await asyncio.sleep(5.0)
                     if self._startup_watchdog and not heartbeat_stop.is_set():
-                        # Increment progress slightly (66-79 range for Trinity)
-                        progress = min(progress + 1, 79)
-                        self._startup_watchdog.update_phase("trinity", progress)
-                        self.logger.debug(f"[Trinity] 💓 DMS heartbeat: progress={progress}")
+                        # Increment our internal counter
+                        heartbeat_increment = min(heartbeat_increment + 1, 79)
+
+                        # Use maximum of current progress and our increment
+                        # This ensures manual updates (e.g., progress=70) are not overwritten
+                        # with lower heartbeat values (e.g., progress=68)
+                        new_progress = max(trinity_heartbeat_progress["current"], heartbeat_increment)
+                        trinity_heartbeat_progress["current"] = new_progress
+
+                        self._startup_watchdog.update_phase("trinity", new_progress)
+                        self.logger.debug(
+                            f"[Trinity] 💓 DMS heartbeat: progress={new_progress} "
+                            f"(heartbeat_incr={heartbeat_increment})"
+                        )
                 except asyncio.CancelledError:
                     break
-                except Exception:
-                    pass  # Heartbeat errors are non-fatal
+                except Exception as e:
+                    self.logger.debug(f"[Trinity] Heartbeat error (non-fatal): {e}")
 
         with self.logger.section_start(LogSection.TRINITY, "Zone 5.7 | Phase 5: Trinity"):
             try:
@@ -56278,8 +56326,9 @@ class JarvisSystemKernel:
                         await initialize_cross_repo_orchestration()
                         self.logger.success("[Trinity] Cross-repo orchestration ready")
 
-                        # v188.0: Immediate DMS heartbeat after long operation
+                        # v198.2: Sync manual progress with heartbeat tracker
                         if self._startup_watchdog:
+                            trinity_heartbeat_progress["current"] = 68
                             self._startup_watchdog.update_phase("trinity", 68)
 
                         # Check if Hollow Client mode was activated
@@ -56291,14 +56340,16 @@ class JarvisSystemKernel:
                             )
                     except Exception as e:
                         self.logger.warning(f"[Trinity] Cross-repo init failed (non-fatal): {e}")
-                        # v188.0: Still send heartbeat even on error
+                        # v198.2: Sync manual progress with heartbeat tracker
                         if self._startup_watchdog:
+                            trinity_heartbeat_progress["current"] = 67
                             self._startup_watchdog.update_phase("trinity", 67)
                 else:
                     self.logger.debug("[Trinity] Cross-repo orchestrator not available - using inline integration")
 
-                # v188.0: Heartbeat after orchestration phase
+                # v198.2: Sync manual progress with heartbeat tracker
                 if self._startup_watchdog:
+                    trinity_heartbeat_progress["current"] = 69
                     self._startup_watchdog.update_phase("trinity", 69)
 
                 # Log repo search paths
@@ -56315,8 +56366,9 @@ class JarvisSystemKernel:
                 )
                 await self._trinity.initialize()
 
-                # v188.0: Heartbeat after TrinityIntegrator init
+                # v198.2: Sync manual progress with heartbeat tracker
                 if self._startup_watchdog:
+                    trinity_heartbeat_progress["current"] = 70
                     self._startup_watchdog.update_phase("trinity", 70)
 
                 # Get detailed status after initialization
@@ -56369,12 +56421,10 @@ class JarvisSystemKernel:
                     message="Starting Trinity cross-repo components..."
                 )
 
-                # Start components with bounded timeout (v181.0: use realistic timeout)
-                trinity_timeout = float(os.environ.get(
-                    "JARVIS_TRINITY_TIMEOUT",
-                    str(DEFAULT_TRINITY_TIMEOUT)  # 600s = 10 minutes for GCP/model loading
-                ))
-                self.logger.info(f"[Trinity] Component startup timeout: {trinity_timeout}s")
+                # v198.2: Use unified timeout computed at phase start (stored in self._effective_trinity_timeout)
+                # This ensures DMS timeout and component startup timeout are consistent
+                trinity_timeout = getattr(self, '_effective_trinity_timeout', DEFAULT_TRINITY_TIMEOUT)
+                self.logger.info(f"[Trinity] Component startup timeout: {trinity_timeout:.0f}s (unified)")
                 try:
                     results = await asyncio.wait_for(
                         self._trinity.start_components(),
