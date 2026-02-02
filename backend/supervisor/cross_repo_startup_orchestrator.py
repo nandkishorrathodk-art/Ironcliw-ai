@@ -1320,6 +1320,101 @@ async def _background_gcp_prewarm_task(timeout: Optional[float] = None) -> None:
         logger.error(f"[v146.0] TRINITY PROTOCOL: GCP pre-warm error: {e}")
 
 
+async def _background_gcp_retry_for_hollow_client(
+    max_retries: int = 5,
+    retry_interval: float = 60.0,
+) -> None:
+    """
+    v192.0: Background task that retries GCP provisioning for hollow client mode.
+
+    When jarvis-prime starts in hollow client mode without GCP (because initial
+    provisioning failed), this task keeps trying in the background. Once GCP
+    becomes available, it updates the environment so subsequent inference
+    requests can be routed to GCP.
+
+    This is NON-BLOCKING and runs independently of the main startup flow.
+    """
+    global _active_rescue_gcp_endpoint, _active_rescue_gcp_ready, _trinity_gcp_ready_event
+
+    logger.info(
+        f"[v192.0] 🔄 Starting background GCP retry for hollow client "
+        f"(max_retries={max_retries}, interval={retry_interval}s)"
+    )
+
+    for attempt in range(1, max_retries + 1):
+        # Wait before retry (except first attempt)
+        if attempt > 1:
+            logger.info(f"[v192.0] Waiting {retry_interval}s before GCP retry attempt {attempt}/{max_retries}...")
+            await asyncio.sleep(retry_interval)
+
+        try:
+            # Check if GCP is already available (maybe another path provisioned it)
+            if _active_rescue_gcp_ready and _active_rescue_gcp_endpoint:
+                logger.info(
+                    f"[v192.0] ✅ GCP already available: {_active_rescue_gcp_endpoint} - stopping retry loop"
+                )
+                return
+
+            logger.info(f"[v192.0] 🔄 GCP retry attempt {attempt}/{max_retries}...")
+
+            success, endpoint = await ensure_gcp_vm_ready_for_prime(
+                timeout_seconds=float(os.environ.get("GCP_VM_STARTUP_TIMEOUT", "300.0")),
+                force_provision=True,  # Force fresh provisioning attempt
+            )
+
+            if success and endpoint:
+                logger.info(
+                    f"[v192.0] ✅ GCP VM ready on retry attempt {attempt}: {endpoint}"
+                )
+
+                # Update global state
+                with _active_rescue_lock:
+                    _active_rescue_gcp_endpoint = endpoint
+                    _active_rescue_gcp_ready = True
+
+                # Update environment for all processes
+                os.environ["GCP_PRIME_ENDPOINT"] = endpoint
+                os.environ["JARVIS_GCP_PRIME_ENDPOINT"] = endpoint
+                os.environ["JARVIS_GCP_OFFLOAD_ACTIVE"] = "true"
+                os.environ["JARVIS_HOLLOW_CLIENT_MODE"] = "true"
+                # Keep JARVIS_SKIP_LOCAL_MODEL_LOAD=true - model is still on GCP
+
+                # Signal GCP ready
+                if _trinity_gcp_ready_event:
+                    _trinity_gcp_ready_event.set()
+
+                await _emit_event(
+                    "HOLLOW_CLIENT_GCP_RECOVERED",
+                    priority="HIGH",
+                    details={
+                        "endpoint": endpoint,
+                        "retry_attempt": attempt,
+                        "mode": "hollow_client_gcp_active",
+                    }
+                )
+                return
+
+        except asyncio.CancelledError:
+            logger.info("[v192.0] GCP retry task cancelled")
+            raise
+        except Exception as e:
+            logger.warning(f"[v192.0] GCP retry attempt {attempt} failed: {e}")
+
+    # All retries exhausted
+    logger.error(
+        f"[v192.0] ❌ All {max_retries} GCP retry attempts failed. "
+        f"Hollow client will continue without GCP - inference will fail."
+    )
+    await _emit_event(
+        "HOLLOW_CLIENT_GCP_RETRY_EXHAUSTED",
+        priority="CRITICAL",
+        details={
+            "max_retries": max_retries,
+            "status": "hollow_client_no_inference",
+        }
+    )
+
+
 def start_trinity_gcp_prewarm() -> Optional[asyncio.Task]:
     """
     v146.0: Start the background GCP pre-warm task.
@@ -17165,6 +17260,23 @@ echo "=== JARVIS Prime started ==="
             force_cloud = os.environ.get("JARVIS_FORCE_CLOUD_HYBRID", "").lower() in ("true", "1", "yes", "on")
             slim_mode = os.environ.get("JARVIS_ENABLE_SLIM_MODE", "").lower() in ("true", "1", "yes", "on")
 
+            # v192.0: Auto-detect slim mode for hardware with <32GB RAM
+            # This MUST happen here, BEFORE Active Rescue decision, not later in memory gate
+            if not slim_mode and not force_cloud:
+                try:
+                    import psutil
+                    total_ram_gb = psutil.virtual_memory().total / (1024 ** 3)
+                    if total_ram_gb < 32:
+                        slim_mode = True
+                        # Set the env var so downstream code sees it too
+                        os.environ["JARVIS_ENABLE_SLIM_MODE"] = "true"
+                        logger.info(
+                            f"[v192.0] 🔍 Auto-detected SLIM hardware: {total_ram_gb:.1f}GB RAM (<32GB). "
+                            f"Activating GCP-first mode for jarvis-prime."
+                        )
+                except Exception as e:
+                    logger.debug(f"[v192.0] RAM detection failed: {e}")
+
             if force_cloud or slim_mode:
                 logger.info(
                     f"[v144.0] 🚀 Active Rescue: Ensuring GCP VM is ready BEFORE spawning {definition.name}..."
@@ -17207,18 +17319,35 @@ echo "=== JARVIS Prime started ==="
                 else:
                     logger.warning(
                         f"[v144.0] ⚠️ Active Rescue: GCP VM not available - "
-                        f"jarvis-prime will attempt local startup in Hollow Client mode. "
-                        f"Heavy inference may fail without GCP."
+                        f"jarvis-prime will run in Hollow Client mode WITHOUT local model loading. "
+                        f"Inference requests will fail until GCP becomes available."
                     )
-                    # Still proceed - Hollow Client can handle some basic requests
-                    # and will gracefully fail inference requests that need GCP
+
+                    # v192.0: CRITICAL - Even without GCP, we MUST prevent local model loading
+                    # on slim hardware. Set hollow client mode to skip model loading entirely.
+                    os.environ["JARVIS_HOLLOW_CLIENT_MODE"] = "true"
+                    os.environ["JARVIS_SKIP_LOCAL_MODEL_LOAD"] = "true"
+                    os.environ["JARVIS_MODEL_LOADING_MODE"] = "disabled"
+                    # Don't set GCP_PRIME_ENDPOINT - there's no GCP to route to
+                    # jarvis-prime will start but report model_loaded=false
+                    # Health checks will pass, inference will gracefully fail
+
+                    logger.info(
+                        f"[v192.0] 🛡️ Set JARVIS_HOLLOW_CLIENT_MODE=true, JARVIS_SKIP_LOCAL_MODEL_LOAD=true "
+                        f"to prevent OOM from local model loading on {psutil.virtual_memory().total / (1024**3):.1f}GB system"
+                    )
+
+                    # Start background task to retry GCP provisioning
+                    asyncio.create_task(_background_gcp_retry_for_hollow_client())
+
                     await _emit_event(
                         "ACTIVE_RESCUE_GCP_UNAVAILABLE",
                         service_name=definition.name,
                         priority="HIGH",
                         details={
                             "reason": "GCP VM provisioning failed or timed out",
-                            "fallback": "hollow_client_without_gcp",
+                            "fallback": "hollow_client_no_model",
+                            "model_loading": "disabled",
                         }
                     )
 
