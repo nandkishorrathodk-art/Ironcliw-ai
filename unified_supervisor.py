@@ -2004,7 +2004,10 @@ class IntelligentKernelTakeover:
                 if orphans:
                     cleaned = await self._cleanup_orphaned_processes(orphans)
                     result.processes_cleaned = cleaned
-                    result.warnings.append(f"Cleaned {cleaned} orphaned processes")
+                    result.warnings.append(
+                        f"Cleaned {cleaned} orphaned processes (likely from previous crashed session - "
+                        f"v193.0 heartbeat system now prevents future orphans)"
+                    )
 
                 # Acquire lock
                 if self.startup_lock.acquire(force=False):
@@ -55811,6 +55814,14 @@ class JarvisSystemKernel:
             # v119.0: Release browser lock if held
             self._release_browser_lock()
 
+            # v193.0: Stop supervisor heartbeat (clean shutdown path)
+            try:
+                from backend.core.supervisor_singleton import SupervisorHeartbeat
+                SupervisorHeartbeat.stop()
+                self.logger.debug("[Kernel] Supervisor heartbeat stopped")
+            except Exception:
+                pass
+
             # Release lock
             self._startup_lock.release()
 
@@ -58706,6 +58717,12 @@ async def async_main(args: argparse.Namespace) -> int:
             # Step 2: Release startup lock if still held
             if hasattr(kernel, '_startup_lock') and kernel._startup_lock._acquired:
                 kernel.logger.info("[Kernel] Releasing startup lock in finally block...")
+                # v193.0: Stop heartbeat before releasing lock
+                try:
+                    from backend.core.supervisor_singleton import SupervisorHeartbeat
+                    SupervisorHeartbeat.stop()
+                except Exception:
+                    pass
                 try:
                     kernel._startup_lock.release()
                 except Exception as lock_err:
