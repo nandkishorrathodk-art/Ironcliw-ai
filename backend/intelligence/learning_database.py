@@ -3916,7 +3916,7 @@ class JARVISLearningDatabase:
                         response_type,
                         confidence_score,
                         execution_time_ms,
-                        1 if success else 0,
+                        bool(success),  # v192.0: PostgreSQL requires actual boolean, not int
                         json.dumps(context or {}),
                         json.dumps(context.get("active_apps", []) if context else []),
                         context.get("current_space") if context else None,
