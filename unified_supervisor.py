@@ -3259,10 +3259,24 @@ class LiveProgressDashboard:
             "elapsed_seconds": 0,
             "status": "pending",
         }
+        # v197.2: Use dynamic ports from environment (matching TrinityIntegrator)
+        # This fixes the port mismatch where dashboard showed 8001 but component used 8000
         self._components = {
-            "jarvis-body": {"status": "pending", "port": 8010, "pid": None},
-            "jarvis-prime": {"status": "pending", "port": 8001, "pid": None},
-            "reactor-core": {"status": "pending", "port": 8090, "pid": None},
+            "jarvis-body": {
+                "status": "pending",
+                "port": int(os.getenv("JARVIS_BACKEND_PORT", "8010")),
+                "pid": None
+            },
+            "jarvis-prime": {
+                "status": "pending",
+                "port": int(os.getenv("TRINITY_JPRIME_PORT", "8000")),
+                "pid": None
+            },
+            "reactor-core": {
+                "status": "pending",
+                "port": int(os.getenv("TRINITY_REACTOR_PORT", "8090")),
+                "pid": None
+            },
             "gcp-vm": {"status": "pending", "ip": None},
         }
         self._memory = {"percent": 0.0, "used_gb": 0.0, "total_gb": 0.0}
@@ -50414,19 +50428,61 @@ class TrinityIntegrator:
         return None
 
     async def start_components(self) -> Dict[str, bool]:
-        """Start Trinity components."""
+        """
+        Start Trinity components.
+        
+        v197.2: Enhanced with PARALLEL component startup for faster boot.
+        Previously components started sequentially, causing long waits.
+        Now J-Prime and Reactor-Core start simultaneously, reducing total
+        startup time from (90s + 60s) to max(90s, 60s).
+        """
         if not self._enabled:
             return {}
 
         results: Dict[str, bool] = {}
-
-        # Start J-Prime
+        
+        # v197.2: Collect all components to start
+        components_to_start = []
         if self._jprime:
-            results["jarvis-prime"] = await self._start_component(self._jprime)
-
-        # Start Reactor-Core
+            components_to_start.append(("jarvis-prime", self._jprime))
         if self._reactor:
-            results["reactor-core"] = await self._start_component(self._reactor)
+            components_to_start.append(("reactor-core", self._reactor))
+        
+        if not components_to_start:
+            self.logger.info("[Trinity] No components configured to start")
+            return results
+        
+        # v197.2: PARALLEL startup - start all components simultaneously
+        self.logger.info(f"[Trinity] Starting {len(components_to_start)} component(s) in PARALLEL...")
+        
+        async def _start_with_name(name: str, component: TrinityComponent) -> Tuple[str, bool]:
+            """Wrapper to preserve component name in result."""
+            try:
+                success = await self._start_component(component)
+                return (name, success)
+            except Exception as e:
+                self.logger.error(f"[Trinity] Component {name} startup error: {e}")
+                return (name, False)
+        
+        # Create parallel tasks
+        tasks = [
+            asyncio.create_task(_start_with_name(name, comp))
+            for name, comp in components_to_start
+        ]
+        
+        # Wait for all components (with individual timeouts handled inside _start_component)
+        completed = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        # Process results
+        for result in completed:
+            if isinstance(result, Exception):
+                self.logger.error(f"[Trinity] Parallel startup exception: {result}")
+                continue
+            if isinstance(result, tuple) and len(result) == 2:
+                name, success = result
+                results[name] = success
+        
+        self.logger.info(f"[Trinity] Parallel startup complete: {results}")
 
         # Start health monitoring
         if any(results.values()):
