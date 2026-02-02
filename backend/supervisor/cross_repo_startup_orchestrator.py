@@ -3769,16 +3769,17 @@ def get_service_port_from_registry(
 ) -> Optional[int]:
     """
     v112.0: Get the actual port for a service from the distributed port registry.
+    v192.2: Now checks both ports.json AND services.json (jarvis-prime uses services.json)
 
     This is the CRITICAL utility for cross-repo coordination. When a service
     cannot bind to its preferred port, it allocates a fallback port and registers
-    it at ~/.jarvis/registry/ports.json. Other services use this function to
-    discover where to connect.
+    it. Other services use this function to discover where to connect.
 
     Port resolution order:
-    1. Check ~/.jarvis/registry/ports.json for dynamically allocated ports
-    2. Return fallback_port if provided
-    3. Return None if service not found
+    1. Check ~/.jarvis/registry/services.json (jarvis-prime, reactor-core)
+    2. Check ~/.jarvis/registry/ports.json for dynamically allocated ports
+    3. Return fallback_port if provided
+    4. Return None if service not found
 
     Args:
         service_name: Name of the service (e.g., "jarvis-prime", "reactor-core")
@@ -3792,11 +3793,46 @@ def get_service_port_from_registry(
         >>> port = get_service_port_from_registry("jarvis-prime", fallback_port=8000)
         >>> print(f"Connecting to jarvis-prime on port {port}")
     """
-    registry_file = Path.home() / ".jarvis" / "registry" / "ports.json"
+    registry_dir = Path.home() / ".jarvis" / "registry"
 
-    if registry_file.exists():
+    # v192.2: Check services.json FIRST (this is where jarvis-prime registers)
+    # Services like jarvis-prime use this file with alternate names like ["jarvis-prime", "jprime"]
+    services_file = registry_dir / "services.json"
+    if services_file.exists():
         try:
-            registry = json.loads(registry_file.read_text())
+            services_registry = json.loads(services_file.read_text())
+
+            # Check all alternate names (jarvis-prime registers as "jarvis_prime" with alternates)
+            service_variants = [
+                service_name,
+                service_name.replace("-", "_"),
+                service_name.replace("_", "-"),
+                service_name.lower(),
+                service_name.lower().replace("-", "_"),
+                service_name.lower().replace("_", "-"),
+            ]
+
+            for variant in service_variants:
+                if variant in services_registry:
+                    service_info = services_registry[variant]
+                    allocated_port = service_info.get("port")
+                    if allocated_port:
+                        is_fallback = service_info.get("is_fallback_port", False)
+                        if is_fallback:
+                            logger.debug(
+                                f"[v192.2] get_service_port_from_registry: "
+                                f"{service_name} using fallback port {allocated_port} "
+                                f"(original was {service_info.get('primary_port')})"
+                            )
+                        return int(allocated_port)
+        except (json.JSONDecodeError, KeyError, TypeError) as e:
+            logger.debug(f"[v192.2] Could not read services registry: {e}")
+
+    # v112.0: Also check ports.json (legacy/alternate format)
+    ports_file = registry_dir / "ports.json"
+    if ports_file.exists():
+        try:
+            registry = json.loads(ports_file.read_text())
             if service_name in registry.get("ports", {}):
                 port_info = registry["ports"][service_name]
                 allocated_port = port_info.get("port")
@@ -3807,7 +3843,7 @@ def get_service_port_from_registry(
                             f"{service_name} using fallback port {allocated_port} "
                             f"(original was {port_info.get('original_port')})"
                         )
-                    return allocated_port
+                    return int(allocated_port)
         except (json.JSONDecodeError, KeyError, TypeError) as e:
             logger.debug(f"[v112.0] Could not read port registry: {e}")
 
@@ -18103,6 +18139,14 @@ echo "=== JARVIS Prime started ==="
                     env["JARVIS_API_ONLY_MODE"] = "true"
                     env["JARVIS_CLAUDE_FALLBACK_ONLY"] = "true"
                     env["JARVIS_MODEL_LOADING_MODE"] = "disabled"
+                    # v192.1: CRITICAL - These are the vars jarvis-prime actually checks
+                    # Without these, server.py still tries to load models locally
+                    env["JARVIS_HOLLOW_CLIENT_MODE"] = "true"
+                    env["JARVIS_SKIP_LOCAL_MODEL_LOAD"] = "true"
+                    logger.info(
+                        f"[v192.1] 🔌 {definition.name} hollow client mode ENABLED "
+                        f"(JARVIS_SKIP_LOCAL_MODEL_LOAD=true)"
+                    )
 
             # v4.0: Build command using the detected Python executable
             cmd: List[str] = []
@@ -18621,6 +18665,21 @@ echo "=== JARVIS Prime started ==="
                     f"(exit code: {exit_code})"
                 )
                 return False
+
+            # v192.2: Check port registry for fallback port BEFORE health check
+            # Services like jarvis-prime may fall back to different ports (e.g., 18001 instead of 8000)
+            # if their primary port was occupied. We need to discover this before health checking.
+            registry_port = get_service_port_from_registry(
+                managed.definition.name,
+                fallback_port=managed.port
+            )
+            if registry_port and registry_port != managed.port:
+                logger.info(
+                    f"    [v192.2] 🔍 Port discovery: {managed.definition.name} is on port {registry_port} "
+                    f"(was checking {managed.port})"
+                )
+                managed.port = registry_port
+                managed.definition.default_port = registry_port
 
             # Check if server is responding (any status including "starting")
             if await self._check_service_responding(managed):
