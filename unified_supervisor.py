@@ -3208,6 +3208,7 @@ def get_startup_display(enabled: bool = True) -> StartupProgressDisplay:
 class LiveProgressDashboard:
     """
     v197.1: Real-time CLI dashboard showing all component status.
+    v197.3: Enhanced with LOG PASSTHROUGH mode - see logs alongside status!
     
     Features:
     - Live-updating progress bars for GCP VM
@@ -3215,12 +3216,20 @@ class LiveProgressDashboard:
     - Memory/CPU usage
     - ETA and elapsed time
     - Color-coded status
+    - **NEW** Log passthrough mode (shows recent logs in dashboard)
+    - **NEW** Configurable display mode via JARVIS_DASHBOARD_MODE env var
+    
+    Display Modes (set via JARVIS_DASHBOARD_MODE):
+    - "overlay" (default): Dashboard overwrites previous output (clean look)
+    - "passthrough": Logs flow through, dashboard prints periodically (see everything)
+    - "compact": Minimal single-line status (least intrusive)
     
     Usage:
         dashboard = LiveProgressDashboard()
         dashboard.start()
         dashboard.update_gcp_progress(phase=3, progress=45, eta=120)
         dashboard.update_component("jarvis-prime", "healthy")
+        dashboard.add_log("Starting component...")  # NEW: Add log to buffer
         dashboard.stop()
     """
     
@@ -3241,6 +3250,9 @@ class LiveProgressDashboard:
     RESET = "\033[0m"
     BOLD = "\033[1m"
     DIM = "\033[2m"
+    GREEN = "\033[32m"
+    YELLOW = "\033[33m"
+    CYAN = "\033[36m"
     
     def __init__(self, enabled: bool = True, refresh_rate: float = 1.0):
         self.enabled = enabled and sys.stdout.isatty()
@@ -3248,6 +3260,14 @@ class LiveProgressDashboard:
         self._running = False
         self._task: Optional[asyncio.Task] = None
         self._lock = threading.Lock()
+        
+        # v197.3: Display mode configuration
+        # "overlay" = overwrites (clean), "passthrough" = logs flow, "compact" = minimal
+        self._display_mode = os.getenv("JARVIS_DASHBOARD_MODE", "passthrough").lower()
+        self._max_log_lines = int(os.getenv("JARVIS_DASHBOARD_LOG_LINES", "8"))
+        self._log_buffer: List[str] = []
+        self._render_count = 0
+        self._passthrough_interval = 5  # Print full dashboard every N renders in passthrough mode
         
         # State
         self._gcp_state = {
@@ -3282,6 +3302,7 @@ class LiveProgressDashboard:
         self._memory = {"percent": 0.0, "used_gb": 0.0, "total_gb": 0.0}
         self._start_time = time.time()
         self._last_render = ""
+        self._last_status_line = ""  # For compact mode
         
     def start(self) -> None:
         """Start the live dashboard."""
@@ -3358,6 +3379,35 @@ class LiveProgressDashboard:
             if total_gb is not None:
                 self._memory["total_gb"] = total_gb
     
+    def add_log(self, message: str, level: str = "INFO") -> None:
+        """
+        v197.3: Add a log message to the dashboard buffer.
+        
+        This allows important logs to appear in the dashboard
+        so users can see what's happening.
+        """
+        with self._lock:
+            timestamp = datetime.now().strftime("%H:%M:%S")
+            level_colors = {
+                "DEBUG": self.DIM,
+                "INFO": self.CYAN,
+                "WARNING": self.YELLOW,
+                "ERROR": self.STATUS_COLORS["error"],
+                "SUCCESS": self.GREEN,
+            }
+            color = level_colors.get(level.upper(), "")
+            formatted = f"{self.DIM}{timestamp}{self.RESET} {color}{level[:1]}{self.RESET} {message}"
+            
+            self._log_buffer.append(formatted)
+            # Keep only recent logs
+            if len(self._log_buffer) > self._max_log_lines * 2:
+                self._log_buffer = self._log_buffer[-self._max_log_lines:]
+    
+    def set_mode(self, mode: str) -> None:
+        """Change display mode at runtime."""
+        if mode in ("overlay", "passthrough", "compact"):
+            self._display_mode = mode
+    
     async def _render_loop(self) -> None:
         """Main render loop."""
         while self._running:
@@ -3370,10 +3420,110 @@ class LiveProgressDashboard:
                 pass
     
     def _render(self, final: bool = False) -> None:
-        """Render the dashboard to terminal."""
+        """
+        Render the dashboard to terminal.
+        
+        v197.3: Supports multiple display modes:
+        - "overlay": Overwrites previous output (original behavior)
+        - "passthrough": Prints periodically, lets logs flow through
+        - "compact": Single-line status only
+        """
         if not self.enabled:
             return
         
+        self._render_count += 1
+        
+        if self._display_mode == "compact":
+            self._render_compact(final)
+        elif self._display_mode == "passthrough":
+            self._render_passthrough(final)
+        else:  # overlay (default)
+            self._render_overlay(final)
+    
+    def _render_compact(self, final: bool = False) -> None:
+        """Render a single-line status bar (minimal intrusion)."""
+        elapsed = time.time() - self._start_time
+        
+        # Count component statuses
+        healthy = sum(1 for c in self._components.values() if c.get("status") == "healthy")
+        starting = sum(1 for c in self._components.values() if c.get("status") == "starting")
+        total = len(self._components)
+        
+        # Build compact status
+        gcp = self._gcp_state
+        mem = self._memory
+        
+        status_line = (
+            f"\r{self.BOLD}[JARVIS]{self.RESET} "
+            f"{elapsed:>5.0f}s | "
+            f"GCP:{gcp['progress']:>3.0f}% | "
+            f"Components: {self.GREEN}{healthy}{self.RESET}/{self.CYAN}{starting}{self.RESET}/{total} | "
+            f"Mem: {mem['percent']:.0f}%"
+        )
+        
+        if status_line != self._last_status_line or final:
+            # Clear line and print
+            sys.stdout.write(f"\r\033[K{status_line}")
+            sys.stdout.flush()
+            self._last_status_line = status_line
+    
+    def _render_passthrough(self, final: bool = False) -> None:
+        """
+        v197.3: Passthrough mode - prints dashboard periodically but lets logs flow.
+        
+        This mode:
+        - Prints full dashboard every N seconds
+        - Doesn't overwrite previous output
+        - Shows recent logs from buffer
+        - Logs from logger still appear normally
+        """
+        # Only print full dashboard periodically (every 5 renders = 5 seconds)
+        if self._render_count % self._passthrough_interval != 0 and not final:
+            return
+        
+        lines = []
+        elapsed = time.time() - self._start_time
+        
+        # Separator to distinguish from logs
+        lines.append("")
+        lines.append(f"{self.DIM}{'─' * 70}{self.RESET}")
+        lines.append(f"{self.BOLD}🚀 JARVIS STATUS{self.RESET} @ {elapsed:.0f}s")
+        
+        # Component summary (compact)
+        comp_parts = []
+        for name, comp in self._components.items():
+            status = comp.get("status", "pending")
+            color = self.STATUS_COLORS.get(status, self.STATUS_COLORS["pending"])
+            short_name = name.replace("jarvis-", "").replace("-", "")[:8]
+            comp_parts.append(f"{short_name}:{color}{status[:4].upper()}{self.RESET}")
+        lines.append(f"  {' | '.join(comp_parts)}")
+        
+        # GCP Progress
+        gcp = self._gcp_state
+        progress_bar = self._make_progress_bar(gcp["progress"], width=20)
+        lines.append(f"  GCP: {progress_bar} {gcp['progress']:.0f}% - {gcp['checkpoint']}")
+        
+        # Memory
+        mem = self._memory
+        mem_color = self.GREEN if mem["percent"] < 70 else (self.YELLOW if mem["percent"] < 85 else self.STATUS_COLORS["error"])
+        lines.append(f"  Memory: {mem_color}{mem['percent']:.0f}%{self.RESET} ({mem['used_gb']:.1f}/{mem['total_gb']:.1f} GB)")
+        
+        # Recent logs from buffer (if any)
+        if self._log_buffer:
+            lines.append(f"  {self.DIM}─ Recent Activity ─{self.RESET}")
+            for log_line in self._log_buffer[-self._max_log_lines:]:
+                lines.append(f"  {log_line}")
+        
+        lines.append(f"{self.DIM}{'─' * 70}{self.RESET}")
+        lines.append("")
+        
+        # Print (no cursor manipulation - just append)
+        output = "\n".join(lines)
+        sys.stdout.write(output)
+        sys.stdout.flush()
+    
+    def _render_overlay(self, final: bool = False) -> None:
+        """Original overlay mode - overwrites previous output."""
         lines = []
         elapsed = time.time() - self._start_time
         
@@ -3408,6 +3558,15 @@ class LiveProgressDashboard:
             port_str = f":{port}" if port else ""
             lines.append(f"║      {name:<15} {status_color}[{status.upper():^10}]{self.RESET} {port_str:<6} {pid_str}")
         lines.append(f"║")
+        
+        # Recent logs section (v197.3)
+        if self._log_buffer and self._max_log_lines > 0:
+            lines.append(f"║  {self.BOLD}📋 RECENT LOGS:{self.RESET}")
+            for log_line in self._log_buffer[-min(4, self._max_log_lines):]:
+                # Truncate long logs
+                truncated = log_line[:62] + "..." if len(log_line) > 65 else log_line
+                lines.append(f"║    {truncated}")
+            lines.append(f"║")
         
         # Memory Section
         mem = self._memory
@@ -3474,6 +3633,90 @@ def update_dashboard_gcp_progress(
             eta_seconds=eta_seconds,
             **kwargs
         )
+
+
+def add_dashboard_log(message: str, level: str = "INFO") -> None:
+    """
+    v197.3: Add a log message to the dashboard buffer.
+    
+    This allows important events to appear in the dashboard
+    so users can see what's happening alongside the status.
+    
+    Args:
+        message: The log message
+        level: Log level (DEBUG, INFO, WARNING, ERROR, SUCCESS)
+    """
+    if _live_dashboard:
+        _live_dashboard.add_log(message, level)
+
+
+class DashboardLogHandler(logging.Handler):
+    """
+    v197.3: Custom logging handler that feeds logs to the dashboard.
+    
+    This allows the dashboard to show recent log activity
+    without hiding the normal log output.
+    """
+    
+    def __init__(self, dashboard: LiveProgressDashboard = None, level: int = logging.INFO):
+        super().__init__(level)
+        self._dashboard = dashboard
+        
+        # Filter patterns - only show important logs
+        self._include_patterns = [
+            "Trinity", "GCP", "Phase", "Starting", "Ready", "Error",
+            "Warning", "Health", "Component", "Backend", "Prime",
+            "Reactor", "APARS", "Memory", "Timeout", "Recovery",
+        ]
+    
+    def set_dashboard(self, dashboard: LiveProgressDashboard) -> None:
+        self._dashboard = dashboard
+    
+    def emit(self, record: logging.LogRecord) -> None:
+        if not self._dashboard:
+            return
+        
+        try:
+            msg = self.format(record)
+            
+            # Only include relevant logs (not spam)
+            if any(pattern.lower() in msg.lower() for pattern in self._include_patterns):
+                # Map logging levels
+                level_map = {
+                    logging.DEBUG: "DEBUG",
+                    logging.INFO: "INFO",
+                    logging.WARNING: "WARNING",
+                    logging.ERROR: "ERROR",
+                    logging.CRITICAL: "ERROR",
+                }
+                level = level_map.get(record.levelno, "INFO")
+                
+                # Clean up the message (remove timestamps, etc.)
+                # Just get the core message
+                clean_msg = msg
+                if "|" in msg:
+                    parts = msg.split("|")
+                    clean_msg = parts[-1].strip() if parts else msg
+                
+                # Truncate very long messages
+                if len(clean_msg) > 80:
+                    clean_msg = clean_msg[:77] + "..."
+                
+                self._dashboard.add_log(clean_msg, level)
+        except Exception:
+            pass  # Never let logging errors crash the app
+
+
+# Global dashboard log handler
+_dashboard_log_handler: Optional[DashboardLogHandler] = None
+
+
+def get_dashboard_log_handler() -> DashboardLogHandler:
+    """Get or create the global dashboard log handler."""
+    global _dashboard_log_handler
+    if _dashboard_log_handler is None:
+        _dashboard_log_handler = DashboardLogHandler()
+    return _dashboard_log_handler
 
 
 def update_dashboard_component_status(
@@ -53266,8 +53509,21 @@ class JarvisSystemKernel:
         issue_collector.clear()  # Fresh start
         
         # v197.1: Initialize live progress dashboard for real-time CLI feedback
+        # v197.3: Now supports display modes - set JARVIS_DASHBOARD_MODE=passthrough to see logs
         dashboard = get_live_dashboard(enabled=sys.stdout.isatty())
         dashboard.start()
+        
+        # v197.3: Connect dashboard to logging system for real-time log display
+        try:
+            log_handler = get_dashboard_log_handler()
+            log_handler.set_dashboard(dashboard)
+            # Add to root logger to capture all important logs
+            logging.getLogger().addHandler(log_handler)
+            # Also add to our main logger
+            logging.getLogger("unified_supervisor").addHandler(log_handler)
+            dashboard.add_log(f"Dashboard mode: {dashboard._display_mode}", "INFO")
+        except Exception as log_err:
+            self.logger.debug(f"[Dashboard] Log handler setup failed: {log_err}")
         
         # Initialize memory tracking for dashboard
         try:
@@ -53375,7 +53631,82 @@ class JarvisSystemKernel:
                 }
             )
 
+            # =====================================================================
+            # v197.3: STARTUP PROGRESS HEARTBEAT - Keeps loading page alive
+            # =====================================================================
+            # This background task sends progress updates every 3 seconds to the
+            # loading page. This fixes the "stuck at 5%" issue by ensuring the
+            # loading page always has fresh data, even during blocking operations.
+            # =====================================================================
+            heartbeat_stop_event = asyncio.Event()
+            self._current_startup_phase = "preflight"
+            self._current_startup_progress = 5
+            
+            async def _startup_progress_heartbeat() -> None:
+                """Background task to keep loading page updated during startup."""
+                last_progress = 5
+                start_time = time.time()
+                
+                while not heartbeat_stop_event.is_set():
+                    try:
+                        await asyncio.sleep(3.0)  # Every 3 seconds
+                        
+                        if heartbeat_stop_event.is_set():
+                            break
+                        
+                        elapsed = time.time() - start_time
+                        current_phase = getattr(self, '_current_startup_phase', 'unknown')
+                        base_progress = getattr(self, '_current_startup_progress', last_progress)
+                        
+                        # Slightly increment progress to show activity (max +2% per heartbeat)
+                        # This gives visual feedback that system is working
+                        increment = min(2, max(0.5, 0.1 * elapsed / 10))
+                        effective_progress = min(95, base_progress + increment)
+                        
+                        # Build component status from dashboard
+                        components = {}
+                        try:
+                            dash = get_live_dashboard()
+                            for name, comp in dash._components.items():
+                                components[name] = {"status": comp.get("status", "pending")}
+                        except Exception:
+                            pass
+                        
+                        # Send heartbeat
+                        await self._broadcast_startup_progress(
+                            stage=current_phase,
+                            message=f"Phase: {current_phase} (elapsed: {elapsed:.0f}s)...",
+                            progress=int(effective_progress),
+                            metadata={
+                                "icon": "spinner",
+                                "phase_name": current_phase,
+                                "elapsed_seconds": int(elapsed),
+                                "components": components,
+                                "heartbeat": True,
+                            }
+                        )
+                        
+                        # Also update dashboard log
+                        add_dashboard_log(f"Heartbeat: {current_phase} @ {effective_progress:.0f}%", "DEBUG")
+                        
+                        last_progress = effective_progress
+                        
+                    except asyncio.CancelledError:
+                        break
+                    except Exception as e:
+                        self.logger.debug(f"[Heartbeat] Error: {e}")
+            
+            # Start heartbeat in background
+            heartbeat_task = asyncio.create_task(
+                _startup_progress_heartbeat(),
+                name="startup-progress-heartbeat"
+            )
+            self._background_tasks.append(heartbeat_task)
+
             # Phase 1: Preflight (Zone 5.1-5.4)
+            self._current_startup_phase = "preflight"
+            self._current_startup_progress = 8
+            add_dashboard_log("Starting Phase 1: Preflight", "INFO")
             issue_collector.set_current_phase("Phase 1: Preflight")
             issue_collector.set_current_zone("Zone 5")
             # v187.0: Update DMS at phase START to fix timeout tracking
@@ -53413,6 +53744,9 @@ class JarvisSystemKernel:
             )
 
             # Phase 2: Resources (Zone 3)
+            self._current_startup_phase = "resources"
+            self._current_startup_progress = 18
+            add_dashboard_log("Starting Phase 2: Resources", "INFO")
             issue_collector.set_current_phase("Phase 2: Resources")
             issue_collector.set_current_zone("Zone 3")
             # v192.0: Compute resource timeout and register with DMS for synchronized monitoring
@@ -53456,6 +53790,9 @@ class JarvisSystemKernel:
             )
 
             # Phase 3: Backend (Zone 6.1)
+            self._current_startup_phase = "backend"
+            self._current_startup_progress = 35
+            add_dashboard_log("Starting Phase 3: Backend Server", "INFO")
             issue_collector.set_current_phase("Phase 3: Backend")
             issue_collector.set_current_zone("Zone 6")
             # v192.0: Register backend operational timeout with DMS
@@ -53496,6 +53833,9 @@ class JarvisSystemKernel:
             )
 
             # Phase 4: Intelligence (Zone 4)
+            self._current_startup_phase = "intelligence"
+            self._current_startup_progress = 52
+            add_dashboard_log("Starting Phase 4: Intelligence Layer", "INFO")
             issue_collector.set_current_phase("Phase 4: Intelligence")
             issue_collector.set_current_zone("Zone 4")
             # v192.0: Register intelligence operational timeout with DMS
@@ -53560,6 +53900,9 @@ class JarvisSystemKernel:
                     self.logger.warning(f"[Kernel] WebSocket pre-init failed (non-fatal): {ws_err}")
 
             # Phase 5: Trinity (Zone 5.7)
+            self._current_startup_phase = "trinity"
+            self._current_startup_progress = 68
+            add_dashboard_log("Starting Phase 5: Trinity Integration", "INFO")
             issue_collector.set_current_phase("Phase 5: Trinity")
             issue_collector.set_current_zone("Zone 5.7")
             # v193.0: Compute Trinity timeout based on hollow client mode AND GCP VM timeout
