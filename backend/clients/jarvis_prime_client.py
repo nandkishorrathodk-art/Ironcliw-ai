@@ -178,10 +178,11 @@ class IntelligentServiceDiscovery:
     """
 
     # Known ports to probe (ordered by preference)
+    # v192.2: Changed default from 8000 to 8001 to avoid conflict with unified_supervisor
     PROBE_PORTS: List[int] = [
-        int(os.getenv("JARVIS_PRIME_PORT", "8000")),  # Default/configured
-        8000,  # Standard J-Prime port
-        8001,  # Alternate
+        int(os.getenv("JARVIS_PRIME_PORT", "8001")),  # Default/configured
+        8001,  # Standard J-Prime port (v192.2)
+        8000,  # Legacy (conflicts with jarvis-body)
         8002,  # Legacy
         11434, # Ollama compatibility
     ]
@@ -450,9 +451,10 @@ class IntelligentServiceDiscovery:
         discovered = []
 
         # Get unique ports to probe
+        # v192.2: Changed default from 8000 to 8001
         probe_ports = list(dict.fromkeys([
-            int(os.getenv("JARVIS_PRIME_PORT", "8000")),
-            8000, 8001, 8002, 11434
+            int(os.getenv("JARVIS_PRIME_PORT", "8001")),
+            8001, 8000, 8002, 11434
         ]))
 
         # Probe ports in parallel
@@ -718,14 +720,15 @@ class ModelInfo:
 class JARVISPrimeConfig(ClientConfig):
     """
     v84.0: Configuration for JARVIS Prime client.
+    v192.2: Changed default port from 8000 to 8001 to avoid conflicts.
 
-    NOTE: base_url defaults to port 8000 (J-Prime standard port).
+    NOTE: base_url defaults to port 8001 (J-Prime standard port).
     Set JARVIS_PRIME_URL environment variable to override.
     """
     name: str = "jarvis_prime"
-    # v84.0: Fixed port to 8000 (was incorrectly 8002)
+    # v192.2: Changed from 8000 to 8001 to avoid conflict with jarvis-body
     base_url: str = field(default_factory=lambda: _env_str(
-        "JARVIS_PRIME_URL", "http://localhost:8000"  # ✅ Correct port
+        "JARVIS_PRIME_URL", "http://localhost:8001"
     ))
     timeout: float = field(default_factory=lambda: _env_float(
         "JARVIS_PRIME_TIMEOUT", 60.0

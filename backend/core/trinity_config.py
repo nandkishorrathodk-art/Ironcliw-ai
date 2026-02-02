@@ -283,7 +283,9 @@ class TrinityConfig:
 
     jarvis_prime_endpoint: ServiceEndpoint = field(default_factory=lambda: ServiceEndpoint(
         host=_env_str("JARVIS_PRIME_HOST", "localhost"),
-        port=_env_int("JARVIS_PRIME_PORT", 8000),  # v89.0: Fixed to 8000 (was incorrectly 8002)
+        # v192.2: Changed from 8000 to 8001 - port 8000 can conflict with unified_supervisor
+        # jarvis-prime needs its own dedicated port to avoid fallback issues
+        port=_env_int("JARVIS_PRIME_PORT", 8001),
         health_path=_env_str("JARVIS_PRIME_HEALTH_PATH", "/health"),
     ))
 

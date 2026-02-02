@@ -19,12 +19,13 @@ Features (v5.0):
 - 📊 Service Health Monitoring with progressive backoff
 
 Service Ports (v5.0 - from trinity_config.py):
-- jarvis-prime: port 8000 (run_server.py --port 8000 --host 0.0.0.0)
+- jarvis-prime: port 8001 (run_server.py --port 8001 --host 0.0.0.0)  # v192.2: Changed from 8000
 - reactor-core: port 8090 (run_reactor.py --port 8090)
 - jarvis-body: port 8010 (main JARVIS)
+- unified_supervisor backend: port 8000 (can vary)
 
 Legacy ports cleaned up automatically:
-- jarvis-prime: 8001, 8002 (killed if found)
+- jarvis-prime: 8000, 8002 (killed if found)  # v192.2: 8000 is now legacy for jarvis-prime
 - reactor-core: 8003, 8004, 8005 (killed if found)
 
 Architecture:
@@ -3961,7 +3962,8 @@ class OrchestratorConfig:
     )
 
     # Legacy ports to clean up (processes on these should be killed)
-    legacy_jarvis_prime_ports: List[int] = field(default_factory=lambda: [8001, 8002])
+    # v192.2: jarvis-prime now uses 8001, so 8000 and 8002 are legacy
+    legacy_jarvis_prime_ports: List[int] = field(default_factory=lambda: [8000, 8002])
     legacy_reactor_core_ports: List[int] = field(default_factory=lambda: [8003, 8004, 8005])
 
     # Feature flags
