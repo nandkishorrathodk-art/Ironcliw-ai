@@ -20401,6 +20401,49 @@ echo "=== JARVIS Prime started ==="
         # v95.1: Close shared HTTP session with error handling
         await self._close_http_session()
 
+        # v191.0: Shutdown cross-repo integration components
+        logger.info("[v191.0] Shutting down cross-repo integration components...")
+
+        # Shutdown cross-repo cost sync
+        try:
+            from backend.core.cross_repo_cost_sync import shutdown_cross_repo_cost_sync
+            await shutdown_cross_repo_cost_sync()
+            logger.info("[v191.0] ✅ Cross-repo cost sync shutdown")
+        except ImportError:
+            pass
+        except Exception as e:
+            logger.debug(f"[v191.0] Cost sync shutdown note: {e}")
+
+        # Shutdown GCP hybrid prime router
+        try:
+            from backend.core.gcp_hybrid_prime_router import shutdown_gcp_hybrid_prime_router
+            await shutdown_gcp_hybrid_prime_router()
+            logger.info("[v191.0] ✅ GCP hybrid prime router shutdown")
+        except ImportError:
+            pass
+        except Exception as e:
+            logger.debug(f"[v191.0] GCP router shutdown note: {e}")
+
+        # Shutdown neural mesh bridge
+        try:
+            from backend.core.registry.cross_repo_neural_mesh import shutdown_cross_repo_neural_mesh
+            await shutdown_cross_repo_neural_mesh()
+            logger.info("[v191.0] ✅ Neural mesh bridge shutdown")
+        except ImportError:
+            pass
+        except Exception as e:
+            logger.debug(f"[v191.0] Neural mesh shutdown note: {e}")
+
+        # Shutdown cross-repo state
+        try:
+            from backend.core.cross_repo_state_initializer import shutdown_cross_repo_state
+            await shutdown_cross_repo_state()
+            logger.info("[v191.0] ✅ Cross-repo state shutdown")
+        except ImportError:
+            pass
+        except Exception as e:
+            logger.debug(f"[v191.0] State shutdown note: {e}")
+
         # v95.12: Cleanup multiprocessing resources (ProcessPoolExecutors, semaphores)
         try:
             from backend.core.resilience.graceful_shutdown import cleanup_multiprocessing_resources
@@ -20652,10 +20695,35 @@ async def start_all_repos() -> Dict[str, bool]:
 
 async def initialize_cross_repo_orchestration() -> None:
     """
-    Initialize cross-repo orchestration.
+    Initialize cross-repo orchestration v191.0 - Full Trinity Integration.
 
-    This is called by run_supervisor.py during startup.
+    This is called by unified_supervisor.py during startup.
+
+    v191.0 Enhancements:
+    - Cross-repo state initialization (directory structure, distributed locks)
+    - Cross-repo cost synchronization (unified budget tracking)
+    - Cross-repo neural mesh bridge (Prime/Reactor as Neural Mesh agents)
+    - GCP hybrid prime router (intelligent memory-aware routing)
+    - Parallel initialization where safe, sequential where dependencies exist
+
+    Initialization Order:
+    1. Reset global shutdown signal
+    2. Initialize cross-repo state (directories, locks) - FIRST, others depend on this
+    3. Start process orchestrator (spawns Prime/Reactor processes)
+    4. Start GCP hybrid router (memory monitoring, routing decisions)
+    5. Start cross-repo cost sync (unified budget tracking)
+    6. Start neural mesh bridge (registers repos as mesh agents)
+    7. Initialize advanced training coordinator (if Reactor-Core available)
     """
+    integration_results: Dict[str, bool] = {
+        "state_initializer": False,
+        "orchestrator": False,
+        "gcp_router": False,
+        "cost_sync": False,
+        "neural_mesh": False,
+        "training_coordinator": False,
+    }
+
     # v95.13: Reset global shutdown signal from previous runs
     try:
         from backend.core.resilience.graceful_shutdown import reset_global_shutdown
@@ -20664,24 +20732,165 @@ async def initialize_cross_repo_orchestration() -> None:
     except Exception as e:
         logger.warning(f"[v95.13] Could not reset global shutdown signal: {e}")
 
+    # =========================================================================
+    # v191.0: PHASE 1 - Cross-Repo State Initialization (FIRST - others depend)
+    # =========================================================================
+    # Creates ~/.jarvis/cross_repo/ directory structure and distributed locks
+    # This MUST happen before other cross-repo components start
     try:
-        orchestrator = get_orchestrator()
-        results = await orchestrator.start_all_services()
+        logger.info("[v191.0] ═══════════════════════════════════════════════════════")
+        logger.info("[v191.0] CROSS-REPO INTEGRATION v191.0 - FULL TRINITY")
+        logger.info("[v191.0] ═══════════════════════════════════════════════════════")
 
-        # Initialize advanced training coordinator if Reactor-Core available
-        if results.get("reactor-core"):
-            logger.info("Initializing Advanced Training Coordinator...")
+        logger.info("[v191.0] Phase 1: Cross-repo state initialization...")
+        try:
+            from backend.core.cross_repo_state_initializer import (
+                initialize_cross_repo_state,
+            )
+            state_result = await initialize_cross_repo_state()
+            integration_results["state_initializer"] = state_result
+            if state_result:
+                logger.info("[v191.0] ✅ Cross-repo state initialized (directories, locks)")
+            else:
+                logger.warning("[v191.0] ⚠️ Cross-repo state initialization returned False")
+        except ImportError:
+            logger.debug("[v191.0] Cross-repo state initializer not available (optional)")
+        except Exception as e:
+            logger.warning(f"[v191.0] Cross-repo state init failed (non-fatal): {e}")
+    except Exception as e:
+        logger.warning(f"[v191.0] Phase 1 failed (non-fatal): {e}")
+
+    # =========================================================================
+    # v191.0: PHASE 2 - Start Process Orchestrator (spawns Prime/Reactor)
+    # =========================================================================
+    service_results: Dict[str, bool] = {}
+    try:
+        logger.info("[v191.0] Phase 2: Starting cross-repo process orchestrator...")
+        orchestrator = get_orchestrator()
+        service_results = await orchestrator.start_all_services()
+        integration_results["orchestrator"] = any(service_results.values())
+
+        for service, started in service_results.items():
+            status = "✅ started" if started else "❌ failed"
+            logger.info(f"[v191.0]   {service}: {status}")
+
+        if integration_results["orchestrator"]:
+            logger.info("[v191.0] ✅ Process orchestrator started services")
+        else:
+            logger.warning("[v191.0] ⚠️ No services started by orchestrator")
+
+    except Exception as e:
+        logger.error(f"[v191.0] Phase 2 (orchestrator) error: {e}", exc_info=True)
+
+    # =========================================================================
+    # v191.0: PHASE 3 - Start GCP Hybrid Prime Router (memory-aware routing)
+    # =========================================================================
+    # This provides predictive memory defense and intelligent routing
+    # NOTE: get_gcp_hybrid_prime_router() already calls start() internally
+    try:
+        logger.info("[v191.0] Phase 3: Starting GCP hybrid prime router...")
+        try:
+            from backend.core.gcp_hybrid_prime_router import (
+                get_gcp_hybrid_prime_router,
+            )
+            # get_gcp_hybrid_prime_router() creates and starts the router atomically
+            gcp_router = await get_gcp_hybrid_prime_router()
+            integration_results["gcp_router"] = gcp_router is not None
+            if gcp_router is not None:
+                logger.info("[v191.0] ✅ GCP hybrid prime router started")
+                # Log router configuration
+                memory_status = gcp_router.get_memory_status() if hasattr(gcp_router, 'get_memory_status') else {}
+                if memory_status:
+                    logger.info(f"[v191.0]   Memory: {memory_status.get('percent_used', 0):.1f}% used")
+            else:
+                logger.warning("[v191.0] ⚠️ GCP hybrid router returned None")
+        except ImportError:
+            logger.debug("[v191.0] GCP hybrid prime router not available (optional)")
+        except Exception as e:
+            logger.warning(f"[v191.0] GCP hybrid router start failed (non-fatal): {e}")
+    except Exception as e:
+        logger.warning(f"[v191.0] Phase 3 failed (non-fatal): {e}")
+
+    # =========================================================================
+    # v191.0: PHASE 4 - Start Cross-Repo Cost Sync (unified budget tracking)
+    # =========================================================================
+    # NOTE: get_cross_repo_cost_sync() already calls start() internally
+    try:
+        logger.info("[v191.0] Phase 4: Starting cross-repo cost synchronization...")
+        try:
+            from backend.core.cross_repo_cost_sync import (
+                get_cross_repo_cost_sync,
+            )
+            # get_cross_repo_cost_sync() creates and starts the sync atomically
+            cost_sync = await get_cross_repo_cost_sync(repo_name="jarvis")
+            integration_results["cost_sync"] = cost_sync is not None
+            if cost_sync is not None:
+                logger.info("[v191.0] ✅ Cross-repo cost sync started (unified budget)")
+            else:
+                logger.warning("[v191.0] ⚠️ Cost sync returned None")
+        except ImportError:
+            logger.debug("[v191.0] Cross-repo cost sync not available (optional)")
+        except Exception as e:
+            logger.warning(f"[v191.0] Cost sync start failed (non-fatal): {e}")
+    except Exception as e:
+        logger.warning(f"[v191.0] Phase 4 failed (non-fatal): {e}")
+
+    # =========================================================================
+    # v191.0: PHASE 5 - Start Neural Mesh Bridge (repos as mesh agents)
+    # =========================================================================
+    try:
+        logger.info("[v191.0] Phase 5: Starting cross-repo neural mesh bridge...")
+        try:
+            from backend.core.registry.cross_repo_neural_mesh import (
+                CrossRepoNeuralMeshBridge,
+            )
+            neural_mesh_bridge = CrossRepoNeuralMeshBridge()
+            bridge_started = await neural_mesh_bridge.start()
+            integration_results["neural_mesh"] = bridge_started
+            if bridge_started:
+                logger.info("[v191.0] ✅ Neural mesh bridge started (Prime/Reactor as agents)")
+            else:
+                logger.warning("[v191.0] ⚠️ Neural mesh bridge start returned False")
+        except ImportError:
+            logger.debug("[v191.0] Neural mesh bridge not available (optional)")
+        except Exception as e:
+            logger.warning(f"[v191.0] Neural mesh bridge start failed (non-fatal): {e}")
+    except Exception as e:
+        logger.warning(f"[v191.0] Phase 5 failed (non-fatal): {e}")
+
+    # =========================================================================
+    # v191.0: PHASE 6 - Initialize Advanced Training Coordinator
+    # =========================================================================
+    if service_results.get("reactor-core"):
+        try:
+            logger.info("[v191.0] Phase 6: Initializing Advanced Training Coordinator...")
             try:
                 from backend.intelligence.advanced_training_coordinator import (
                     AdvancedTrainingCoordinator
                 )
                 coordinator = await AdvancedTrainingCoordinator.create()
-                logger.info("✅ Advanced Training Coordinator initialized")
+                integration_results["training_coordinator"] = True
+                logger.info("[v191.0] ✅ Advanced Training Coordinator initialized")
+            except ImportError:
+                logger.debug("[v191.0] Advanced Training Coordinator not available")
             except Exception as e:
-                logger.warning(f"Advanced Training Coordinator initialization failed: {e}")
+                logger.warning(f"[v191.0] Training Coordinator init failed (non-fatal): {e}")
+        except Exception as e:
+            logger.warning(f"[v191.0] Phase 6 failed (non-fatal): {e}")
+    else:
+        logger.debug("[v191.0] Phase 6 skipped: Reactor-Core not running")
 
-    except Exception as e:
-        logger.error(f"Cross-repo orchestration error: {e}", exc_info=True)
+    # =========================================================================
+    # v191.0: Summary
+    # =========================================================================
+    success_count = sum(1 for v in integration_results.values() if v)
+    total_count = len(integration_results)
+    logger.info("[v191.0] ═══════════════════════════════════════════════════════")
+    logger.info(f"[v191.0] CROSS-REPO INTEGRATION COMPLETE: {success_count}/{total_count} components")
+    for component, success in integration_results.items():
+        status = "✅" if success else "⚠️"
+        logger.info(f"[v191.0]   {status} {component}")
+    logger.info("[v191.0] ═══════════════════════════════════════════════════════")
 
 
 # =============================================================================

@@ -48470,7 +48470,7 @@ class ComponentType(Enum):
     GENERIC = "generic"  # Unknown component (HTTP 200 only)
 
 
-class ReadinessState(Enum):
+class ComponentReadinessState(Enum):
     """Semantic readiness states for Trinity components."""
     UNKNOWN = "unknown"           # Cannot determine state
     UNREACHABLE = "unreachable"   # Network/connection failure
@@ -48489,7 +48489,7 @@ class SemanticReadinessResult:
     Captures not just binary ready/not-ready but rich semantic information
     about the component's current state, enabling intelligent decision making.
     """
-    state: ReadinessState
+    state: ComponentReadinessState
     is_ready: bool
     component_type: ComponentType
 
@@ -48523,17 +48523,17 @@ class SemanticReadinessResult:
 
     def _derive_recommendation(self) -> str:
         """Intelligently derive recommended action based on state."""
-        if self.state == ReadinessState.READY:
+        if self.state == ComponentReadinessState.READY:
             return "proceed"
-        elif self.state == ReadinessState.STARTING:
+        elif self.state == ComponentReadinessState.STARTING:
             return "wait_short"  # Brief wait, startup in progress
-        elif self.state == ReadinessState.LOADING:
+        elif self.state == ComponentReadinessState.LOADING:
             return "wait_long"   # Longer wait, heavy resource loading
-        elif self.state == ReadinessState.DEGRADED:
+        elif self.state == ComponentReadinessState.DEGRADED:
             return "proceed_cautiously"  # May work, but with limitations
         elif self.state == ReadinessState.ERROR:
             return "investigate"  # Don't retry blindly
-        elif self.state == ReadinessState.UNREACHABLE:
+        elif self.state == ComponentReadinessState.UNREACHABLE:
             return "retry_connection"  # Network issue, retry
         else:
             return "unknown"
@@ -48590,14 +48590,14 @@ class SemanticReadinessChecker:
 
     # Phase-to-state mapping for more accurate state detection
     PHASE_STATE_MAP: Dict[str, ReadinessState] = {
-        "pre-init": ReadinessState.STARTING,
-        "initializing": ReadinessState.STARTING,
-        "loading_model": ReadinessState.LOADING,
-        "model_loading": ReadinessState.LOADING,
-        "warming_up": ReadinessState.LOADING,
-        "ready": ReadinessState.READY,
-        "healthy": ReadinessState.READY,
-        "running": ReadinessState.READY,
+        "pre-init": ComponentReadinessState.STARTING,
+        "initializing": ComponentReadinessState.STARTING,
+        "loading_model": ComponentReadinessState.LOADING,
+        "model_loading": ComponentReadinessState.LOADING,
+        "warming_up": ComponentReadinessState.LOADING,
+        "ready": ComponentReadinessState.READY,
+        "healthy": ComponentReadinessState.READY,
+        "running": ComponentReadinessState.READY,
         "error": ReadinessState.ERROR,
         "failed": ReadinessState.ERROR,
     }
@@ -48658,7 +48658,7 @@ class SemanticReadinessChecker:
 
             if response_data is None:
                 return SemanticReadinessResult(
-                    state=ReadinessState.UNREACHABLE,
+                    state=ComponentReadinessState.UNREACHABLE,
                     is_ready=False,
                     component_type=component_type,
                     http_status=http_status,
@@ -48676,7 +48676,7 @@ class SemanticReadinessChecker:
 
         except asyncio.TimeoutError:
             return SemanticReadinessResult(
-                state=ReadinessState.UNREACHABLE,
+                state=ComponentReadinessState.UNREACHABLE,
                 is_ready=False,
                 component_type=component_type,
                 error_message=f"Health check timeout after {timeout}s",
@@ -48684,7 +48684,7 @@ class SemanticReadinessChecker:
             )
         except Exception as e:
             return SemanticReadinessResult(
-                state=ReadinessState.UNKNOWN,
+                state=ComponentReadinessState.UNKNOWN,
                 is_ready=False,
                 component_type=component_type,
                 error_message=str(e),
@@ -48738,16 +48738,16 @@ class SemanticReadinessChecker:
 
         # Determine base state from phase (more specific) or status (fallback)
         # Priority: phase-based state > status-based state
-        state = self.PHASE_STATE_MAP.get(phase.lower(), ReadinessState.UNKNOWN)
+        state = self.PHASE_STATE_MAP.get(phase.lower(), ComponentReadinessState.UNKNOWN)
 
         # Only use status for state determination if phase didn't give us a useful state
-        if state == ReadinessState.UNKNOWN:
+        if state == ComponentReadinessState.UNKNOWN:
             if status.lower() in ("healthy", "ready"):
-                state = ReadinessState.READY
+                state = ComponentReadinessState.READY
             elif status.lower() == "starting":
-                state = ReadinessState.STARTING
+                state = ComponentReadinessState.STARTING
             else:
-                state = ReadinessState.UNKNOWN
+                state = ComponentReadinessState.UNKNOWN
 
         # Check component-specific readiness criteria
         criteria = self.READINESS_CRITERIA.get(component_type, [])
@@ -48778,10 +48778,10 @@ class SemanticReadinessChecker:
 
         # Refine state based on criteria analysis
         if is_ready and any_non_critical_failed:
-            state = ReadinessState.DEGRADED
-        elif not is_ready and state == ReadinessState.READY:
+            state = ComponentReadinessState.DEGRADED
+        elif not is_ready and state == ComponentReadinessState.READY:
             # Criteria not met but phase says ready - it's actually still loading
-            state = ReadinessState.LOADING
+            state = ComponentReadinessState.LOADING
 
         # Extract component-specific fields
         model_loaded = response.get("model_loaded")
@@ -48815,7 +48815,7 @@ class SemanticReadinessChecker:
 
     def _estimate_wait_time(
         self,
-        state: ReadinessState,
+        state: ComponentReadinessState,
         component_type: ComponentType,
         response: Dict[str, Any],
     ) -> Optional[float]:
@@ -48827,10 +48827,10 @@ class SemanticReadinessChecker:
         - Reactor initialization: 10-30s
         - Generic startup: 5-15s
         """
-        if state == ReadinessState.READY:
+        if state == ComponentReadinessState.READY:
             return 0.0
 
-        if state == ReadinessState.STARTING:
+        if state == ComponentReadinessState.STARTING:
             # Early startup phase - estimate based on component type
             if component_type == ComponentType.PRIME:
                 return 60.0  # Model loading ahead
@@ -48839,7 +48839,7 @@ class SemanticReadinessChecker:
             else:
                 return 10.0
 
-        if state == ReadinessState.LOADING:
+        if state == ComponentReadinessState.LOADING:
             # Active loading - check progress if available
             progress = response.get("startup_progress", 0)
             if progress and progress > 0:
@@ -48856,7 +48856,7 @@ class SemanticReadinessChecker:
             else:
                 return 5.0
 
-        if state == ReadinessState.DEGRADED:
+        if state == ComponentReadinessState.DEGRADED:
             return 5.0  # Might recover quickly
 
         # Unknown or error - don't estimate
@@ -49300,7 +49300,7 @@ class TrinityIntegrator:
                     return True
 
                 # Handle degraded state - may be usable
-                if result.state == ReadinessState.DEGRADED:
+                if result.state == ComponentReadinessState.DEGRADED:
                     self.logger.warning(
                         f"[Trinity] ⚠️  {component.name} in DEGRADED state after {elapsed:.1f}s"
                     )
@@ -49369,7 +49369,7 @@ class TrinityIntegrator:
         self,
         component_name: str,
         old_state: Optional[ReadinessState],
-        new_state: ReadinessState,
+        new_state: ComponentReadinessState,
         old_phase: Optional[str],
         new_phase: Optional[str],
     ) -> None:
@@ -49396,15 +49396,15 @@ class TrinityIntegrator:
         """Format a human-readable progress message."""
         base_msg = f"Waiting for {component_name}"
 
-        if result.state == ReadinessState.STARTING:
+        if result.state == ComponentReadinessState.STARTING:
             return f"{base_msg} to initialize ({elapsed:.0f}s)..."
-        elif result.state == ReadinessState.LOADING:
+        elif result.state == ComponentReadinessState.LOADING:
             if result.startup_progress:
                 return f"{base_msg} to load ({result.startup_progress}% complete, {elapsed:.0f}s)..."
             if result.component_type == ComponentType.PRIME:
                 return f"{base_msg} model to load ({elapsed:.0f}s)..."
             return f"{base_msg} to load resources ({elapsed:.0f}s)..."
-        elif result.state == ReadinessState.UNREACHABLE:
+        elif result.state == ComponentReadinessState.UNREACHABLE:
             return f"{base_msg} to become reachable ({elapsed:.0f}s)..."
         else:
             return f"{base_msg} ({elapsed:.0f}s)..."
@@ -49419,11 +49419,11 @@ class TrinityIntegrator:
         - Near ready: Poll frequently again (1s)
         - Unreachable: Back off (5s) to avoid hammering
         """
-        if result.state == ReadinessState.UNREACHABLE:
+        if result.state == ComponentReadinessState.UNREACHABLE:
             return 5.0  # Back off if unreachable
-        elif result.state == ReadinessState.STARTING:
+        elif result.state == ComponentReadinessState.STARTING:
             return 1.5  # Poll frequently during early startup
-        elif result.state == ReadinessState.LOADING:
+        elif result.state == ComponentReadinessState.LOADING:
             # If we have estimated wait time, adjust interval
             if result.estimated_wait_seconds:
                 if result.estimated_wait_seconds < 10:
@@ -49433,7 +49433,7 @@ class TrinityIntegrator:
                 else:
                     return 3.0
             return 2.0  # Default for loading
-        elif result.state == ReadinessState.DEGRADED:
+        elif result.state == ComponentReadinessState.DEGRADED:
             return 1.0  # Poll frequently to catch full recovery
         else:
             return 2.0  # Default interval
@@ -49536,7 +49536,7 @@ class TrinityIntegrator:
                 return True
 
             # DEGRADED state - log but still consider operational
-            if result.state == ReadinessState.DEGRADED:
+            if result.state == ComponentReadinessState.DEGRADED:
                 self.logger.debug(
                     f"[Trinity] {component.name} in degraded state: {result.status_message}"
                 )
