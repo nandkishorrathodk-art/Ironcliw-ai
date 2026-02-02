@@ -49882,6 +49882,128 @@ class TrinityIntegrator:
         except Exception:
             return False
 
+    async def _preflight_dependency_check(
+        self, 
+        component: TrinityComponent, 
+        python_path: Path
+    ) -> bool:
+        """
+        v197.1: Pre-flight dependency check BEFORE starting component.
+        
+        This prevents the frustrating "exit code 1" errors by:
+        1. Checking if core dependencies are installed
+        2. Attempting auto-installation if missing
+        3. Providing clear error messages if dependencies can't be installed
+        
+        Returns:
+            True if dependencies OK, False if issues detected (but may still work)
+        """
+        self.logger.info(f"[Trinity] 🔍 Running pre-flight dependency check for {component.name}...")
+        
+        # Define required packages for each component type
+        component_deps = {
+            "jarvis-prime": ["fastapi", "uvicorn", "pydantic", "aiohttp"],
+            "reactor-core": ["fastapi", "uvicorn", "pydantic", "aiohttp"],
+        }
+        
+        # Get deps for this component (or empty if unknown)
+        required_deps = component_deps.get(component.name, ["fastapi", "uvicorn"])
+        
+        # Check each dependency using the component's Python
+        missing_deps = []
+        for dep in required_deps:
+            try:
+                check_cmd = [
+                    str(python_path), "-c", 
+                    f"import importlib; importlib.import_module('{dep}')"
+                ]
+                result = await asyncio.create_subprocess_exec(
+                    *check_cmd,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                await asyncio.wait_for(result.wait(), timeout=10.0)
+                
+                if result.returncode != 0:
+                    missing_deps.append(dep)
+            except asyncio.TimeoutError:
+                self.logger.debug(f"[Trinity]   Timeout checking {dep}")
+            except Exception as e:
+                self.logger.debug(f"[Trinity]   Error checking {dep}: {e}")
+                missing_deps.append(dep)
+        
+        if not missing_deps:
+            self.logger.info(f"[Trinity] ✅ All dependencies OK for {component.name}")
+            return True
+        
+        # Try to install missing dependencies
+        self.logger.warning(f"[Trinity] ⚠️ Missing dependencies for {component.name}: {missing_deps}")
+        self.logger.info(f"[Trinity] 📦 Attempting to install missing packages...")
+        
+        pip_path = python_path.parent / "pip"
+        if not pip_path.exists():
+            pip_path = python_path.parent / "pip3"
+        
+        for dep in missing_deps:
+            try:
+                # Map import name to pip package name
+                pip_name = {
+                    "fastapi": "fastapi",
+                    "uvicorn": "uvicorn",
+                    "pydantic": "pydantic",
+                    "aiohttp": "aiohttp",
+                    "llama_cpp": "llama-cpp-python",
+                }.get(dep, dep)
+                
+                install_cmd = [
+                    str(python_path), "-m", "pip", "install", "--quiet", pip_name
+                ]
+                self.logger.info(f"[Trinity]   Installing {pip_name}...")
+                
+                result = await asyncio.create_subprocess_exec(
+                    *install_cmd,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                await asyncio.wait_for(result.wait(), timeout=120.0)
+                
+                if result.returncode == 0:
+                    self.logger.info(f"[Trinity]   ✅ Installed {pip_name}")
+                else:
+                    stderr = await result.stderr.read()
+                    self.logger.warning(f"[Trinity]   ❌ Failed to install {pip_name}: {stderr.decode()[:100]}")
+                    
+            except asyncio.TimeoutError:
+                self.logger.warning(f"[Trinity]   ⏰ Timeout installing {dep}")
+            except Exception as e:
+                self.logger.warning(f"[Trinity]   ❌ Error installing {dep}: {e}")
+        
+        # Re-check after installation
+        still_missing = []
+        for dep in missing_deps:
+            try:
+                check_cmd = [str(python_path), "-c", f"import {dep}"]
+                result = await asyncio.create_subprocess_exec(
+                    *check_cmd,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                await asyncio.wait_for(result.wait(), timeout=10.0)
+                if result.returncode != 0:
+                    still_missing.append(dep)
+            except Exception:
+                still_missing.append(dep)
+        
+        if still_missing:
+            self.logger.error(
+                f"[Trinity] ❌ Still missing after install attempt: {still_missing}\n"
+                f"[Trinity]   Manual fix: {python_path} -m pip install {' '.join(still_missing)}"
+            )
+            return False
+        
+        self.logger.info(f"[Trinity] ✅ Dependencies fixed for {component.name}")
+        return True
+
     async def _start_component(self, component: TrinityComponent) -> bool:
         """
         Start a single Trinity component (v170.0 enhanced with detailed logging).
@@ -49969,6 +50091,14 @@ class TrinityIntegrator:
             except Exception as e:
                 self.logger.error(f"[Trinity] ✗ No launch script found for {component.name}: {e}")
             return False
+
+        # =====================================================================
+        # v197.1: PRE-FLIGHT DEPENDENCY CHECK - Detect & fix missing deps BEFORE spawn
+        # =====================================================================
+        # This prevents the frustrating "exit code 1" errors by checking deps first
+        preflight_ok = await self._preflight_dependency_check(component, venv_python)
+        if not preflight_ok:
+            self.logger.warning(f"[Trinity] ⚠️ Preflight check failed for {component.name}, attempting anyway...")
 
         try:
             # Start process with Trinity environment
