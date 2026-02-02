@@ -51934,19 +51934,190 @@ class TrinityIntegrator:
         except Exception:
             return False
 
+    async def _ensure_port_available(
+        self,
+        component: TrinityComponent,
+        max_attempts: int = 3,
+        fallback_range: int = 10
+    ) -> int:
+        """
+        v198.0: CRITICAL - Ensure port is available BEFORE launching component.
+
+        This is the ROOT CAUSE FIX for the trinity startup port conflicts.
+        The previous implementation would launch a component without checking
+        if its port was available, causing "Address already in use" crashes.
+
+        Strategy:
+        1. Check if preferred port is available
+        2. If not, identify and kill stale JARVIS/Trinity processes on that port
+        3. If still occupied by non-JARVIS process, try fallback ports
+        4. Return the port that will be used (may differ from original)
+
+        Args:
+            component: Trinity component to start
+            max_attempts: Maximum cleanup attempts before falling back
+            fallback_range: Range of ports to try if preferred is unavailable
+
+        Returns:
+            The port to use (either original or fallback)
+
+        Raises:
+            RuntimeError: If no port can be secured
+        """
+        import socket
+
+        original_port = component.port
+        self.logger.info(f"[Trinity] 🔌 Ensuring port {original_port} is available for {component.name}...")
+
+        def _is_port_free(port: int) -> bool:
+            """
+            Check if port is available for binding.
+
+            Uses a two-phase check:
+            1. Connect test - detects if something is actively listening
+            2. Bind test - confirms we can actually bind to the port
+
+            This is more reliable than just bind with SO_REUSEADDR, which
+            can succeed even when another process is listening.
+            """
+            # Phase 1: Check if anything is listening (connect test)
+            try:
+                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+                    sock.settimeout(0.5)
+                    result = sock.connect_ex(('127.0.0.1', port))
+                    if result == 0:
+                        # Connection succeeded = something is listening
+                        return False
+            except Exception:
+                pass  # Connection error = probably no listener
+
+            # Phase 2: Verify we can actually bind
+            try:
+                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+                    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                    sock.settimeout(0.5)
+                    sock.bind(('127.0.0.1', port))
+                    return True
+            except (socket.error, OSError):
+                return False
+
+        def _get_pid_on_port(port: int) -> Optional[int]:
+            """Get the PID of process holding a port."""
+            try:
+                import psutil
+                for conn in psutil.net_connections(kind='inet'):
+                    if conn.laddr.port == port and conn.pid:
+                        return conn.pid
+            except (ImportError, psutil.AccessDenied, PermissionError):
+                pass
+            return None
+
+        def _is_jarvis_process(pid: int) -> bool:
+            """Check if a PID belongs to a JARVIS/Trinity process (safe to kill)."""
+            try:
+                import psutil
+                proc = psutil.Process(pid)
+                cmdline = ' '.join(proc.cmdline()).lower()
+                name = proc.name().lower()
+
+                jarvis_indicators = [
+                    'jarvis', 'prime', 'reactor', 'trinity',
+                    'run_server.py', 'run_reactor.py', 'unified_supervisor'
+                ]
+                return any(ind in cmdline or ind in name for ind in jarvis_indicators)
+            except Exception:
+                return False
+
+        async def _kill_process_on_port(port: int) -> bool:
+            """Kill the process holding a port if it's a JARVIS process."""
+            pid = _get_pid_on_port(port)
+            if not pid:
+                return True  # Port already free
+
+            # Don't kill our own process or parent
+            my_pid = os.getpid()
+            my_parent = os.getppid()
+            if pid in (my_pid, my_parent):
+                self.logger.warning(f"[Trinity]   Port {port} held by current process - cannot free")
+                return False
+
+            # Only kill JARVIS-related processes
+            if not _is_jarvis_process(pid):
+                self.logger.warning(
+                    f"[Trinity]   Port {port} held by non-JARVIS process (PID {pid}) - "
+                    f"will try fallback port"
+                )
+                return False
+
+            # Kill the stale JARVIS process
+            self.logger.info(f"[Trinity]   🔪 Killing stale JARVIS process on port {port} (PID {pid})...")
+            try:
+                os.kill(pid, signal.SIGTERM)
+                await asyncio.sleep(0.5)  # Give it time to terminate
+
+                # Check if it's really gone
+                if _get_pid_on_port(port) == pid:
+                    self.logger.warning(f"[Trinity]   SIGTERM didn't work, using SIGKILL...")
+                    os.kill(pid, signal.SIGKILL)
+                    await asyncio.sleep(0.3)
+
+                return _is_port_free(port)
+            except (ProcessLookupError, PermissionError) as e:
+                self.logger.debug(f"[Trinity]   Kill failed (process may have exited): {e}")
+                return _is_port_free(port)
+
+        # Attempt 1: Check if port is already free
+        if _is_port_free(original_port):
+            self.logger.info(f"[Trinity] ✅ Port {original_port} is available")
+            return original_port
+
+        # Attempt 2: Try to free the port by killing stale processes
+        for attempt in range(max_attempts):
+            self.logger.info(f"[Trinity]   Port {original_port} in use, cleanup attempt {attempt + 1}/{max_attempts}...")
+
+            if await _kill_process_on_port(original_port):
+                if _is_port_free(original_port):
+                    self.logger.success(f"[Trinity] ✅ Port {original_port} freed after cleanup")
+                    return original_port
+
+            await asyncio.sleep(0.3)  # Brief pause before retry
+
+        # Attempt 3: Fall back to alternative ports
+        self.logger.warning(
+            f"[Trinity] ⚠️ Could not free port {original_port}, searching for fallback..."
+        )
+
+        for offset in range(1, fallback_range + 1):
+            fallback_port = original_port + offset
+            if _is_port_free(fallback_port):
+                self.logger.warning(
+                    f"[Trinity] 🔄 Using fallback port {fallback_port} instead of {original_port}"
+                )
+                # Update component with new port
+                component.port = fallback_port
+                component.health_url = f"http://localhost:{fallback_port}/health"
+                return fallback_port
+
+        # All attempts failed
+        raise RuntimeError(
+            f"Cannot secure port for {component.name}: "
+            f"port {original_port} in use and no fallback available in range "
+            f"{original_port + 1}-{original_port + fallback_range}"
+        )
+
     async def _preflight_dependency_check(
-        self, 
-        component: TrinityComponent, 
+        self,
+        component: TrinityComponent,
         python_path: Path
     ) -> bool:
         """
         v197.1: Pre-flight dependency check BEFORE starting component.
-        
+
         This prevents the frustrating "exit code 1" errors by:
         1. Checking if core dependencies are installed
         2. Attempting auto-installation if missing
         3. Providing clear error messages if dependencies can't be installed
-        
+
         Returns:
             True if dependencies OK, False if issues detected (but may still work)
         """
@@ -52151,6 +52322,31 @@ class TrinityIntegrator:
         preflight_ok = await self._preflight_dependency_check(component, venv_python)
         if not preflight_ok:
             self.logger.warning(f"[Trinity] ⚠️ Preflight check failed for {component.name}, attempting anyway...")
+
+        # =====================================================================
+        # v198.0: CRITICAL PORT VERIFICATION - ROOT CAUSE FIX FOR PORT CONFLICTS
+        # =====================================================================
+        # This is the ROOT CAUSE fix for the "PORT CONFLICT: Port 8000 already in use"
+        # errors that cause trinity startup timeouts. Previously, the code would
+        # launch components without checking port availability, leading to immediate
+        # crashes with "Address already in use" errors.
+        #
+        # The fix ensures:
+        # 1. Port is verified available BEFORE launching
+        # 2. Stale JARVIS processes are killed if holding the port
+        # 3. Fallback to alternative port if original cannot be freed
+        # =====================================================================
+        try:
+            actual_port = await self._ensure_port_available(component)
+            if actual_port != component.port:
+                self.logger.warning(
+                    f"[Trinity]   📌 Port changed: {component.port} → {actual_port}"
+                )
+                # component.port is already updated by _ensure_port_available
+        except RuntimeError as port_err:
+            self.logger.error(f"[Trinity] ✗ Port acquisition failed for {component.name}: {port_err}")
+            component.state = "failed"
+            return False
 
         try:
             # Start process with Trinity environment
