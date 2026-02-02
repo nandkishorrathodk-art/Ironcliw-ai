@@ -48531,7 +48531,7 @@ class SemanticReadinessResult:
             return "wait_long"   # Longer wait, heavy resource loading
         elif self.state == ComponentReadinessState.DEGRADED:
             return "proceed_cautiously"  # May work, but with limitations
-        elif self.state == ReadinessState.ERROR:
+        elif self.state == ComponentReadinessState.ERROR:
             return "investigate"  # Don't retry blindly
         elif self.state == ComponentReadinessState.UNREACHABLE:
             return "retry_connection"  # Network issue, retry
@@ -48598,8 +48598,8 @@ class SemanticReadinessChecker:
         "ready": ComponentReadinessState.READY,
         "healthy": ComponentReadinessState.READY,
         "running": ComponentReadinessState.READY,
-        "error": ReadinessState.ERROR,
-        "failed": ReadinessState.ERROR,
+        "error": ComponentReadinessState.ERROR,
+        "failed": ComponentReadinessState.ERROR,
     }
 
     def __init__(self, logger: Optional[logging.Logger] = None):
