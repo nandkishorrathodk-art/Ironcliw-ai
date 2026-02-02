@@ -73,6 +73,7 @@ class RecoveryAction:
     delay: float = 0.0
     fallback_targets: Dict[str, str] = field(default_factory=dict)
     message: Optional[str] = None
+    success: bool = True  # v192.0: Indicates if recovery was successful
 
 
 class ErrorClassifier:
