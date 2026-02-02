@@ -169,6 +169,14 @@ MEMORY_DERIVATIVE_WINDOW_SEC = float(os.getenv("MEMORY_DERIVATIVE_WINDOW_SEC", "
 EMERGENCY_OFFLOAD_RAM_PERCENT = float(os.getenv("EMERGENCY_OFFLOAD_RAM_PERCENT", "80.0"))  # SIGSTOP at 80%
 EMERGENCY_OFFLOAD_TIMEOUT_SEC = float(os.getenv("EMERGENCY_OFFLOAD_TIMEOUT_SEC", "60.0"))  # Max time processes paused
 
+# v192.0: Emergency offload anti-cycle protection
+# Cooldown after releasing offload - prevents immediate re-trigger
+EMERGENCY_OFFLOAD_COOLDOWN_SEC = float(os.getenv("EMERGENCY_OFFLOAD_COOLDOWN_SEC", "120.0"))  # 2 min cooldown
+# Hysteresis threshold - RAM must drop this much below trigger before re-enabling
+EMERGENCY_OFFLOAD_HYSTERESIS = float(os.getenv("EMERGENCY_OFFLOAD_HYSTERESIS", "10.0"))  # 10% below threshold
+# Max consecutive offloads before forcing termination instead of pause
+EMERGENCY_OFFLOAD_MAX_CYCLES = int(os.getenv("EMERGENCY_OFFLOAD_MAX_CYCLES", "3"))  # After 3 cycles, terminate
+
 # Cross-repo signaling for memory pressure
 from pathlib import Path
 CROSS_REPO_DIR = Path.home() / ".jarvis" / "cross_repo"
@@ -731,6 +739,11 @@ class GCPHybridPrimeRouter:
         self._paused_processes: Dict[int, str] = {}  # pid -> process_name
         self._offload_lock: Optional[asyncio.Lock] = None  # Lazy init
 
+        # v192.0: Anti-cycle protection for emergency offload
+        self._emergency_offload_released_at: float = 0.0  # When last offload ended
+        self._emergency_offload_cycle_count: int = 0  # Consecutive offload cycles
+        self._emergency_offload_hysteresis_armed: bool = False  # True = waiting for RAM to drop
+
         # Process tracking for emergency offload
         self._ml_loader_ref = None  # Reference to ProcessIsolatedMLLoader
         self._local_llm_pids: Set[int] = set()  # PIDs of local LLM processes to pause
@@ -1056,11 +1069,63 @@ class GCPHybridPrimeRouter:
                             rate_mb_sec=memory_rate_mb_sec,
                         )
 
+                # v192.0: Reset hysteresis and cycle count when RAM drops below safe threshold
+                hysteresis_threshold = EMERGENCY_OFFLOAD_RAM_PERCENT - EMERGENCY_OFFLOAD_HYSTERESIS
+                if self._emergency_offload_hysteresis_armed and used_percent < hysteresis_threshold:
+                    self.logger.info(
+                        f"[v192.0] RAM dropped to {used_percent:.1f}% (below {hysteresis_threshold:.1f}%) - "
+                        f"disarming hysteresis, resetting cycle count from {self._emergency_offload_cycle_count}"
+                    )
+                    self._emergency_offload_hysteresis_armed = False
+                    self._emergency_offload_cycle_count = 0
+
                 # v93.0: Emergency offload check - highest priority
                 # v148.1: Consult enterprise recovery engine for strategy
+                # v192.0: Anti-cycle protection with cooldown, hysteresis, and cycle escalation
                 if used_percent >= EMERGENCY_OFFLOAD_RAM_PERCENT and not self._emergency_offload_active:
+                    # v192.0: Check cooldown period
+                    time_since_release = time.time() - self._emergency_offload_released_at
+                    in_cooldown = (
+                        self._emergency_offload_released_at > 0 and
+                        time_since_release < EMERGENCY_OFFLOAD_COOLDOWN_SEC
+                    )
+
+                    if in_cooldown:
+                        remaining_cooldown = EMERGENCY_OFFLOAD_COOLDOWN_SEC - time_since_release
+                        self.logger.warning(
+                            f"[v192.0] RAM at {used_percent:.1f}% but in cooldown - "
+                            f"{remaining_cooldown:.1f}s remaining before re-trigger allowed"
+                        )
+                        # Don't trigger, but we're not in a healthy state
+                        continue
+
+                    # v192.0: Check hysteresis - if armed, must wait for RAM to drop first
+                    if self._emergency_offload_hysteresis_armed:
+                        self.logger.warning(
+                            f"[v192.0] RAM at {used_percent:.1f}% but hysteresis armed - "
+                            f"waiting for RAM to drop below {hysteresis_threshold:.1f}% before re-trigger"
+                        )
+                        continue
+
+                    # v192.0: Check cycle count for escalation
+                    if self._emergency_offload_cycle_count >= EMERGENCY_OFFLOAD_MAX_CYCLES:
+                        self.logger.critical(
+                            f"[v192.0] EMERGENCY: RAM at {used_percent:.1f}% - "
+                            f"CYCLE LIMIT REACHED ({self._emergency_offload_cycle_count} cycles). "
+                            f"SIGSTOP is ineffective - escalating to process TERMINATION"
+                        )
+                        # Terminate instead of pause - SIGSTOP isn't freeing memory
+                        await self._terminate_local_llm_processes(
+                            reason=f"cycle_limit_termination_ram_{used_percent:.0f}pct"
+                        )
+                        # Reset cycle tracking after termination
+                        self._emergency_offload_cycle_count = 0
+                        self._emergency_offload_hysteresis_armed = False
+                        continue
+
                     self.logger.critical(
-                        f"[v93.0] EMERGENCY: RAM at {used_percent:.1f}% - initiating emergency offload"
+                        f"[v93.0] EMERGENCY: RAM at {used_percent:.1f}% - initiating emergency offload "
+                        f"(cycle {self._emergency_offload_cycle_count + 1}/{EMERGENCY_OFFLOAD_MAX_CYCLES})"
                     )
 
                     # v148.1: Get recovery strategy from enterprise hooks
@@ -1523,7 +1588,14 @@ class GCPHybridPrimeRouter:
                 await self._aggressive_memory_cleanup(memory_trend)
 
     async def _release_emergency_offload(self, reason: str) -> None:
-        """v93.0: Release emergency offload - SIGCONT all paused processes."""
+        """
+        v93.0/v192.0: Release emergency offload - SIGCONT all paused processes.
+
+        v192.0 Enhancement: Track cycles for anti-cycling protection:
+        - Records release timestamp for cooldown enforcement
+        - Increments cycle count (reset only when RAM drops significantly)
+        - Arms hysteresis to require RAM drop before re-trigger
+        """
         if not self._emergency_offload_active:
             return
 
@@ -1537,6 +1609,16 @@ class GCPHybridPrimeRouter:
         self._paused_processes.clear()
         self._emergency_offload_active = False
         self._emergency_offload_started_at = 0.0
+
+        # v192.0: Track release for anti-cycle protection
+        self._emergency_offload_released_at = time.time()
+        self._emergency_offload_cycle_count += 1
+        self._emergency_offload_hysteresis_armed = True
+
+        self.logger.info(
+            f"[v192.0] Cycle tracking: count={self._emergency_offload_cycle_count}, "
+            f"hysteresis armed, cooldown={EMERGENCY_OFFLOAD_COOLDOWN_SEC}s starts now"
+        )
 
         # v93.0: Signal to other repos that pressure is normal
         await self._signal_memory_pressure_to_repos(
@@ -1647,6 +1729,130 @@ class GCPHybridPrimeRouter:
                 self.logger.warning(f"[v93.0] Error terminating PID {pid}: {e}")
 
         self._paused_processes.clear()
+
+    async def _terminate_local_llm_processes(self, reason: str) -> int:
+        """
+        v192.0: Terminate local LLM processes directly (for cycle escalation).
+
+        Unlike _terminate_paused_processes which terminates already-paused processes,
+        this method finds and terminates LLM processes directly without SIGSTOP first.
+        Used when SIGSTOP/SIGCONT cycling is detected and doesn't free memory.
+
+        Args:
+            reason: Why termination is happening (for logging)
+
+        Returns:
+            Number of processes terminated
+        """
+        terminated_count = 0
+
+        try:
+            import psutil
+
+            self.logger.critical(
+                f"[v192.0] TERMINATING local LLM processes (reason: {reason})"
+            )
+
+            # Signal to other repos that we're terminating
+            await self._signal_memory_pressure_to_repos(
+                status="offload_active",
+                action="terminate",
+                used_percent=0.0,
+            )
+
+            # Get processes from ML loader if available
+            if self._ml_loader_ref is None:
+                try:
+                    from backend.core.process_isolated_ml_loader import get_ml_loader
+                    self._ml_loader_ref = await get_ml_loader()
+                except Exception:
+                    pass
+
+            pids_to_terminate: Set[int] = set()
+
+            if self._ml_loader_ref and hasattr(self._ml_loader_ref, '_active_processes'):
+                pids_to_terminate.update(self._ml_loader_ref._active_processes.keys())
+
+            # Scan for known LLM process patterns
+            llm_patterns = [
+                "ollama", "llama", "llama.cpp", "llamacpp",
+                "text-generation", "vllm", "transformers",
+                "jarvis-prime", "jarvis_prime",
+            ]
+
+            for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+                try:
+                    proc_info = proc.info
+                    pid = proc_info['pid']
+
+                    # Skip system processes
+                    if pid <= 1:
+                        continue
+
+                    name = (proc_info.get('name') or '').lower()
+                    cmdline = ' '.join(proc_info.get('cmdline') or []).lower()
+
+                    is_llm_process = any(
+                        pattern in name or pattern in cmdline
+                        for pattern in llm_patterns
+                    )
+
+                    if is_llm_process:
+                        pids_to_terminate.add(pid)
+
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    continue
+
+            # Terminate each process
+            for pid in pids_to_terminate:
+                try:
+                    if not psutil.pid_exists(pid):
+                        continue
+
+                    proc = psutil.Process(pid)
+                    proc_name = proc.name()
+
+                    # First try graceful termination
+                    os.kill(pid, signal.SIGTERM)
+                    self.logger.info(
+                        f"[v192.0] Sent SIGTERM to LLM process PID {pid} ({proc_name})"
+                    )
+
+                    # Wait briefly for graceful exit
+                    await asyncio.sleep(1.0)
+
+                    # Force kill if still alive
+                    if psutil.pid_exists(pid):
+                        os.kill(pid, signal.SIGKILL)
+                        self.logger.warning(f"[v192.0] Force killed PID {pid}")
+
+                    terminated_count += 1
+
+                except psutil.NoSuchProcess:
+                    continue
+                except Exception as e:
+                    self.logger.warning(f"[v192.0] Error terminating PID {pid}: {e}")
+
+            # Clear any paused process tracking
+            self._paused_processes.clear()
+            self._local_llm_pids.clear()
+
+            # Force garbage collection
+            try:
+                import gc
+                gc.collect()
+                self.logger.info("[v192.0] Forced garbage collection after termination")
+            except Exception:
+                pass
+
+            self.logger.info(
+                f"[v192.0] Terminated {terminated_count} local LLM processes"
+            )
+
+        except Exception as e:
+            self.logger.error(f"[v192.0] Error terminating LLM processes: {e}")
+
+        return terminated_count
 
     async def _signal_memory_pressure_to_repos(
         self,
