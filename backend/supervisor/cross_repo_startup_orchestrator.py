@@ -2915,6 +2915,14 @@ class GlobalSpawnCoordinator:
         """
         state = self._get_state(service_name)
 
+        # #region agent log
+        try:
+            import json as _json
+            with open("/Users/djrussell23/Documents/repos/JARVIS-AI-Agent/.cursor/debug.log", "a") as _f:
+                _f.write(_json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"cross_repo_startup_orchestrator.py:should_attempt_spawn","message":"spawn_check_state","data":{"service":service_name,"is_spawning":state["is_spawning"],"is_ready":state["is_ready"],"pid":state.get("pid"),"component":component_name},"timestamp":int(time.time()*1000)}) + "\n")
+        except: pass
+        # #endregion
+
         # Check if already spawning
         if state["is_spawning"]:
             return (
@@ -2924,6 +2932,13 @@ class GlobalSpawnCoordinator:
 
         # Check if already ready
         if state["is_ready"]:
+            # #region agent log
+            try:
+                import json as _json
+                with open("/Users/djrussell23/Documents/repos/JARVIS-AI-Agent/.cursor/debug.log", "a") as _f:
+                    _f.write(_json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"cross_repo_startup_orchestrator.py:should_attempt_spawn:BLOCKED","message":"spawn_blocked_already_ready","data":{"service":service_name,"is_ready":True,"pid":state.get("pid"),"last_success":state.get("last_spawn_success")},"timestamp":int(time.time()*1000)}) + "\n")
+            except: pass
+            # #endregion
             return (False, "Service already ready")
 
         # Check cooldown
@@ -2978,6 +2993,13 @@ class GlobalSpawnCoordinator:
         port: Optional[int] = None,
     ) -> None:
         """Mark a service as ready (spawn completed successfully)."""
+        # #region agent log
+        try:
+            import json as _json
+            with open("/Users/djrussell23/Documents/repos/JARVIS-AI-Agent/.cursor/debug.log", "a") as _f:
+                _f.write(_json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"C","location":"cross_repo_startup_orchestrator.py:mark_ready","message":"mark_ready_called","data":{"service":service_name,"pid":pid,"port":port},"timestamp":int(time.time()*1000)}) + "\n")
+        except: pass
+        # #endregion
         with self._state_lock:
             state = self._get_state(service_name)
             state["is_spawning"] = False
@@ -3007,6 +3029,13 @@ class GlobalSpawnCoordinator:
 
     def mark_stopped(self, service_name: str) -> None:
         """Mark a service as stopped (allows respawn)."""
+        # #region agent log
+        try:
+            import json as _json
+            with open("/Users/djrussell23/Documents/repos/JARVIS-AI-Agent/.cursor/debug.log", "a") as _f:
+                _f.write(_json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"B","location":"cross_repo_startup_orchestrator.py:mark_stopped","message":"mark_stopped_called","data":{"service":service_name},"timestamp":int(time.time()*1000)}) + "\n")
+        except: pass
+        # #endregion
         with self._state_lock:
             state = self._get_state(service_name)
             state["is_ready"] = False
@@ -7277,6 +7306,20 @@ class ProcessOrchestrator:
                 f"[v132.3] 🔴 OOM DETECTED: Service {service_name} killed by SIGKILL "
                 f"(PID: {managed.pid}, uptime: {uptime:.1f}s, exit code: {return_code})"
             )
+            
+            # v193.0: FIX - Clear the GlobalSpawnCoordinator state IMMEDIATELY on OOM
+            # This is CRITICAL - without this, restart attempts fail with "Service already ready"
+            mark_service_stopped(service_name)
+            
+            # #region agent log
+            try:
+                import json as _json
+                coord = get_spawn_coordinator()
+                state = coord._get_state(service_name)
+                with open("/Users/djrussell23/Documents/repos/JARVIS-AI-Agent/.cursor/debug.log", "a") as _f:
+                    _f.write(_json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"E","location":"cross_repo_startup_orchestrator.py:OOM_DETECTED","message":"oom_detected_coordinator_cleared","data":{"service":service_name,"pid":managed.pid,"is_ready_after_clear":state.get("is_ready"),"is_spawning":state.get("is_spawning"),"mark_stopped_called":True},"timestamp":int(time.time()*1000)}) + "\n")
+            except: pass
+            # #endregion
             # Flag for GCP-assisted restart
             managed._oom_detected = True
 
@@ -18967,6 +19010,8 @@ echo "=== JARVIS Prime started ==="
                     f"    ❌ {managed.definition.name} process died during startup "
                     f"(exit code: {exit_code})"
                 )
+                # v193.0: FIX - Clear spawn coordinator state on process death during startup
+                mark_service_stopped(managed.definition.name)
                 return False
 
             # v192.2: Check port registry for fallback port BEFORE health check
@@ -19084,6 +19129,8 @@ echo "=== JARVIS Prime started ==="
                     f"    ❌ {managed.definition.name} process died during model loading "
                     f"(exit code: {exit_code})"
                 )
+                # v193.0: FIX - Clear spawn coordinator state on process death during model loading
+                mark_service_stopped(managed.definition.name)
                 return False
 
             # v93.7: SINGLE health check request that both checks status AND tracks progress
@@ -19319,6 +19366,8 @@ echo "=== JARVIS Prime started ==="
                         )
 
                     managed.status = ServiceStatus.FAILED
+                    # v193.0: FIX - Clear spawn coordinator state on process death
+                    mark_service_stopped(service_name)
                     await _emit_event(
                         "SERVICE_CRASHED",
                         service_name=service_name,
@@ -19469,6 +19518,19 @@ echo "=== JARVIS Prime started ==="
             logger.error(f"Error stopping {managed.definition.name}: {e}")
 
         managed.status = ServiceStatus.STOPPED
+
+        # #region agent log
+        try:
+            import json as _json
+            with open("/Users/djrussell23/Documents/repos/JARVIS-AI-Agent/.cursor/debug.log", "a") as _f:
+                _f.write(_json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"D","location":"cross_repo_startup_orchestrator.py:_stop_service:AFTER_KILL","message":"service_stopped_coordinator_notified","data":{"service":managed.definition.name,"pid":managed.pid,"status":"STOPPED","mark_stopped_called":True},"timestamp":int(time.time()*1000)}) + "\n")
+        except: pass
+        # #endregion
+
+        # v193.0: FIX - Clear the GlobalSpawnCoordinator state when service stops
+        # This allows the service to be respawned. Previously this was missing,
+        # causing "Service already ready" blocks on restart attempts.
+        mark_service_stopped(managed.definition.name)
 
         # Deregister from service registry
         if self.registry:
