@@ -810,12 +810,33 @@ except ImportError:
 # All timeouts configurable via JARVIS_* environment variables.
 # =============================================================================
 try:
-    from backend.config.startup_timeouts import get_timeouts, StartupTimeouts
+    from backend.config.startup_timeouts import (
+        get_timeouts,
+        StartupTimeouts,
+        get_startup_config,
+        StartupConfig,
+        StartupTimeoutCalculator,
+    )
     STARTUP_TIMEOUTS_AVAILABLE = True
 except ImportError:
     STARTUP_TIMEOUTS_AVAILABLE = False
     get_timeouts = None
     StartupTimeouts = None
+    get_startup_config = None
+    StartupConfig = None
+    StartupTimeoutCalculator = None
+
+# =============================================================================
+# v206.0: PILLAR 3 - HARDWARE ENFORCER (HOLLOW CLIENT)
+# =============================================================================
+# Automatically enforces Hollow Client mode on machines with insufficient RAM.
+# Import triggers module-level enforcement based on system RAM vs threshold.
+# =============================================================================
+try:
+    import backend.config.hardware_enforcer  # noqa: F401 - import triggers enforcement
+    HARDWARE_ENFORCER_AVAILABLE = True
+except ImportError:
+    HARDWARE_ENFORCER_AVAILABLE = False
 
 # =============================================================================
 # v185.0: JARVIS SUPERVISOR LIFECYCLE INTEGRATION
@@ -54920,24 +54941,24 @@ class JarvisSystemKernel:
         except Exception:
             pass
 
-        # v181.0: Stop Trinity components FIRST (prevents orphaned processes)
+        # v181.0/v206.0: Stop Trinity components FIRST (prevents orphaned processes)
+        # v206.0: PILLAR 5 - Use tiered_stop() for idempotent, bounded, never-raises cleanup
         if self._trinity:
             try:
-                # Give Trinity a short grace period for clean shutdown
-                await asyncio.wait_for(self._trinity.stop(), timeout=5.0)
-                self.logger.info("[Kernel] Trinity components stopped")
-            except asyncio.TimeoutError:
-                self.logger.warning("[Kernel] Trinity stop timed out - force killing")
-                # Force kill Trinity processes if graceful stop fails
-                if hasattr(self._trinity, '_processes'):
-                    for name, proc in getattr(self._trinity, '_processes', {}).items():
-                        try:
-                            proc.kill()
-                            self.logger.debug(f"[Kernel] Force killed Trinity process: {name}")
-                        except Exception:
-                            pass
+                # Get cleanup timeout from config or use default
+                _cleanup_timeout = 30.0
+                if STARTUP_TIMEOUTS_AVAILABLE and get_startup_config is not None:
+                    try:
+                        _cleanup_timeout = get_startup_config().budgets.CLEANUP
+                    except Exception:
+                        pass
+                # tiered_stop() handles SIGTERM -> SIGKILL -> abandon internally
+                # It never raises and completes within timeout
+                await self._trinity.tiered_stop(timeout=_cleanup_timeout)
+                self.logger.info("[Kernel] Trinity components stopped (tiered_stop)")
             except Exception as e:
-                self.logger.warning(f"[Kernel] Trinity stop failed: {e}")
+                # tiered_stop should never raise, but log just in case
+                self.logger.warning(f"[Kernel] Trinity tiered_stop unexpected error: {e}")
 
         # v181.0: Cleanup GCP VMs (prevents orphaned Spot VMs)
         try:
@@ -57698,8 +57719,25 @@ class JarvisSystemKernel:
                 # TrinityIntegrator is the sole process spawner in this path.
                 # =====================================================================
 
-                # v200.0: Get trinity budget from env or use placeholder (full calculus in Task 2.1)
-                trinity_budget = float(os.environ.get("JARVIS_TRINITY_BUDGET", "600.0"))
+                # =====================================================================
+                # v206.0: PILLAR 2 - TIMEOUT CALCULUS with StartupTimeoutCalculator
+                # =====================================================================
+                # Use centralized config for calculated timeouts instead of hardcoding.
+                # StartupTimeoutCalculator provides trinity_budget based on feature flags.
+                # =====================================================================
+                if STARTUP_TIMEOUTS_AVAILABLE and get_startup_config is not None:
+                    _startup_config = get_startup_config()
+                    _timeout_calculator = _startup_config.create_timeout_calculator()
+                    trinity_budget = _timeout_calculator.trinity_budget
+                    _cleanup_timeout = _startup_config.budgets.CLEANUP
+                    self.logger.info(f"[Trinity] Using calculated timeouts: trinity_budget={trinity_budget:.1f}s, cleanup={_cleanup_timeout:.1f}s")
+                    # v206.0: Log startup config for debugging (PILLAR 6)
+                    _startup_config.log_config()
+                else:
+                    # Fallback to environment variable if config not available
+                    trinity_budget = float(os.environ.get("JARVIS_TRINITY_BUDGET", "600.0"))
+                    _cleanup_timeout = 30.0
+                    self.logger.warning("[Trinity] StartupConfig not available, using fallback timeouts")
 
                 # Initialize results and trinity_integrator outside context for cleanup
                 results = {}
@@ -57833,12 +57871,14 @@ class JarvisSystemKernel:
                                 self.logger.warning(f"[Trinity] Component start timed out after {trinity_timeout}s")
                                 self.logger.warning("[Trinity] Consider increasing JARVIS_TRINITY_TIMEOUT if GCP/models need more time")
                             finally:
-                                # v200.0: Cleanup - stop integrator ONLY on error/timeout
-                                # On success, Trinity keeps running; stop() is called during shutdown
+                                # v200.0/v206.0: Cleanup - stop integrator ONLY on error/timeout
+                                # On success, Trinity keeps running; tiered_stop() is called during shutdown
+                                # v206.0: PILLAR 5 - Use tiered_stop() for idempotent, bounded cleanup
                                 if trinity_integrator is not None and _trinity_startup_error:
-                                    self.logger.info("[Trinity] Cleaning up after startup error...")
+                                    self.logger.info("[Trinity] Cleaning up after startup error using tiered_stop...")
                                     try:
-                                        await trinity_integrator.stop()
+                                        # Use tiered_stop() with cleanup timeout for guaranteed bounded cleanup
+                                        await trinity_integrator.tiered_stop(timeout=_cleanup_timeout)
                                     except Exception as e:
                                         self.logger.warning(f"[Trinity] Cleanup error (non-fatal): {e}")
 
@@ -60346,10 +60386,19 @@ class JarvisSystemKernel:
             if self._background_tasks:
                 await asyncio.gather(*self._background_tasks, return_exceptions=True)
 
-            # Stop Trinity
+            # Stop Trinity (v206.0: PILLAR 5 - use tiered_stop for guaranteed cleanup)
             if self._trinity:
-                await self._trinity.stop()
-                self.logger.info("[Kernel] Trinity stopped")
+                try:
+                    _cleanup_timeout = 30.0
+                    if STARTUP_TIMEOUTS_AVAILABLE and get_startup_config is not None:
+                        try:
+                            _cleanup_timeout = get_startup_config().budgets.CLEANUP
+                        except Exception:
+                            pass
+                    await self._trinity.tiered_stop(timeout=_cleanup_timeout)
+                    self.logger.info("[Kernel] Trinity stopped (tiered_stop)")
+                except Exception as e:
+                    self.logger.warning(f"[Kernel] Trinity tiered_stop error: {e}")
 
             # =====================================================================
             # v200.1: VOICE ORCHESTRATOR SHUTDOWN
