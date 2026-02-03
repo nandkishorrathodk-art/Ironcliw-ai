@@ -291,6 +291,11 @@ from backend.core.resilience.recovery import (
     BackgroundRecovery,
 )
 
+# v3.0: CapabilityUpgrade for hot-swapping modes
+from backend.core.resilience.capability import (
+    CapabilityUpgrade,
+)
+
 __all__ = [
     # Distributed Lock
     "DistributedLock",
@@ -521,4 +526,9 @@ __all__ = [
     # Adaptive background recovery with safety valves
     "RecoveryConfig",
     "BackgroundRecovery",
+    # =========================================================================
+    # v3.0: CAPABILITY UPGRADE
+    # =========================================================================
+    # Hot-swapping between degraded and full modes
+    "CapabilityUpgrade",
 ]
