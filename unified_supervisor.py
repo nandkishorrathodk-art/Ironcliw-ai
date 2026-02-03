@@ -1299,6 +1299,31 @@ class SystemKernelConfig:
     voice_cache_enabled: bool = field(default_factory=lambda: _get_env_bool("JARVIS_VOICE_CACHE", True))
 
     # ═══════════════════════════════════════════════════════════════════════════
+    # TWO-TIER SECURITY (VBIA/PAVA) - v200.0
+    # ═══════════════════════════════════════════════════════════════════════════
+    # Two-Tier Security Model with Voice Biometric Intelligence + Agentic Watchdog
+    # Tier 0: Local LLM (instant), Tier 1: Gemini (fast), Tier 2: Claude CU (agentic)
+    two_tier_security_enabled: bool = field(default_factory=lambda: _get_env_bool("JARVIS_TWO_TIER_ENABLED", True))
+    watchdog_enabled: bool = field(default_factory=lambda: _get_env_bool("JARVIS_WATCHDOG_ENABLED", True))
+    vbia_tier1_threshold: float = field(default_factory=lambda: _get_env_float("JARVIS_TIER1_VBIA_THRESHOLD", 0.70))
+    vbia_tier2_threshold: float = field(default_factory=lambda: _get_env_float("JARVIS_TIER2_VBIA_THRESHOLD", 0.85))
+    tier2_require_liveness: bool = field(default_factory=lambda: _get_env_bool("JARVIS_TIER2_REQUIRE_LIVENESS", True))
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    # AGI OS - v200.0
+    # ═══════════════════════════════════════════════════════════════════════════
+    # Autonomous General Intelligence Operating System
+    # Proactive monitoring, voice approval workflows, neural mesh integration
+    agi_os_enabled: bool = field(default_factory=lambda: _get_env_bool("JARVIS_AGI_OS_ENABLED", True))
+    agi_os_proactive_mode: bool = field(default_factory=lambda: _get_env_bool("JARVIS_AGI_OS_PROACTIVE", True))
+    agi_os_voice_approvals: bool = field(default_factory=lambda: _get_env_bool("JARVIS_AGI_OS_VOICE_APPROVALS", True))
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    # BROWSER PREFERENCE - v200.0
+    # ═══════════════════════════════════════════════════════════════════════════
+    browser_preference: str = field(default_factory=lambda: os.environ.get("JARVIS_BROWSER", "auto"))
+
+    # ═══════════════════════════════════════════════════════════════════════════
     # VOICE / AUDIO
     # ═══════════════════════════════════════════════════════════════════════════
     voice_enabled: bool = field(default_factory=lambda: _get_env_bool("JARVIS_VOICE_ENABLED", True))
@@ -53885,16 +53910,19 @@ class JarvisSystemKernel:
 
         # v182.0: Dynamic component status tracking for accurate progress broadcasting
         # This tracks the REAL status of each component for the loading page
+        # v200.0: Added two_tier and agi_os components
         self._component_status: Dict[str, Dict[str, Any]] = {
             "loading_server": {"status": "pending", "message": "Waiting to start"},
             "preflight": {"status": "pending", "message": "Waiting to start"},
             "resources": {"status": "pending", "message": "Waiting to start"},
             "backend": {"status": "pending", "message": "Waiting to start"},
             "intelligence": {"status": "pending", "message": "Waiting to start"},
+            "two_tier": {"status": "pending", "message": "Waiting to start"},  # v200.0: VBIA/Watchdog
             "trinity": {"status": "pending", "message": "Waiting to start"},
             "jarvis_prime": {"status": "pending", "message": "Waiting to start"},
             "reactor_core": {"status": "pending", "message": "Waiting to start"},
             "enterprise": {"status": "pending", "message": "Waiting to start"},
+            "agi_os": {"status": "pending", "message": "Waiting to start"},  # v200.0: AGI OS
             "frontend": {"status": "pending", "message": "Waiting to start"},
         }
 
@@ -53928,6 +53956,44 @@ class JarvisSystemKernel:
         # v197.1: Browser crash monitor for system-wide crash tracking
         self._browser_crash_monitor: Optional[BrowserCrashMonitor] = None
         self._init_browser_crash_monitor()
+
+        # =====================================================================
+        # v200.0: Two-Tier Security (VBIA/PAVA) Components
+        # =====================================================================
+        # These components implement the Three-Tier Command Router with:
+        # - Agentic Watchdog (safety kill-switch for Computer Use)
+        # - Tiered VBIA Adapter (voice biometric with anti-spoofing)
+        # - Cross-Repo State (JARVIS ↔ Prime ↔ Reactor coordination)
+        # - Tiered Command Router (wake word → intent → authentication)
+        self._agentic_watchdog: Optional[Any] = None  # AgenticWatchdog
+        self._vbia_adapter: Optional[Any] = None  # TieredVBIAAdapter
+        self._tiered_router: Optional[Any] = None  # TieredCommandRouter
+        self._agentic_runner: Optional[Any] = None  # AgenticTaskRunner
+        self._cross_repo_initialized: bool = False
+
+        # =====================================================================
+        # v200.0: AGI OS Components
+        # =====================================================================
+        # Autonomous General Intelligence Operating System:
+        # - AGIOSCoordinator (central orchestrator)
+        # - Voice approval workflows
+        # - Proactive event streaming
+        self._agi_os: Optional[Any] = None  # AGIOSCoordinator
+
+        # v200.0: Two-Tier + AGI OS status tracking
+        self._two_tier_status: Dict[str, Any] = {
+            "watchdog": {"status": "pending", "mode": None},
+            "vbia_adapter": {"status": "pending", "initialized": False},
+            "cross_repo": {"status": "pending", "initialized": False},
+            "router": {"status": "pending", "initialized": False},
+            "runner_wired": False,
+        }
+        self._agi_os_status: Dict[str, Any] = {
+            "status": "pending",
+            "coordinator": False,
+            "voice_communicator": False,
+            "approval_manager": False,
+        }
 
     @property
     def state(self) -> KernelState:
@@ -55043,8 +55109,8 @@ class JarvisSystemKernel:
 
             await self._broadcast_startup_progress(
                 stage="intelligence",
-                message="Intelligence layer ready - connecting Trinity components...",
-                progress=65,
+                message="Intelligence layer ready - initializing Two-Tier Security...",
+                progress=55,
                 metadata={
                     "icon": "sparkles",
                     "phase": 4,
@@ -55054,6 +55120,51 @@ class JarvisSystemKernel:
                         "resources": {"status": "complete"},
                         "backend": {"status": "complete"},
                         "intelligence": {"status": "complete"},
+                        "two_tier": {"status": "running"},
+                        "trinity": {"status": "pending"},
+                        "enterprise": {"status": "pending"},
+                        "frontend": {"status": "pending"},
+                    }
+                }
+            )
+
+            # =====================================================================
+            # v200.0: TWO-TIER SECURITY INITIALIZATION
+            # =====================================================================
+            # Initialize the Two-Tier Security architecture after Intelligence:
+            # - Agentic Watchdog (safety system)
+            # - Tiered VBIA Adapter (voice biometrics)
+            # - Cross-Repo State (multi-repo coordination)
+            # - Tiered Command Router (intent classification)
+            # - Wire execute_tier2 → AgenticTaskRunner
+            # =====================================================================
+            issue_collector.set_current_zone("Zone 4.5")
+            two_tier_timeout = float(os.environ.get("JARVIS_TWO_TIER_TIMEOUT", "60.0"))
+            if self._startup_watchdog:
+                self._startup_watchdog.update_phase("two_tier", 55, operational_timeout=two_tier_timeout)
+
+            if not await self._initialize_two_tier_security():
+                # Non-fatal - continue without Two-Tier Security
+                issue_collector.add_warning(
+                    "Two-Tier Security failed - continuing without VBIA/Watchdog",
+                    IssueCategory.INTELLIGENCE,
+                    suggestion="Check VBIA adapter and watchdog modules"
+                )
+
+            await self._broadcast_startup_progress(
+                stage="two_tier",
+                message="Two-Tier Security ready - connecting Trinity components...",
+                progress=65,
+                metadata={
+                    "icon": "shield",
+                    "phase": 4.5,
+                    "components": {
+                        "loading_server": {"status": "complete"},
+                        "preflight": {"status": "complete"},
+                        "resources": {"status": "complete"},
+                        "backend": {"status": "complete"},
+                        "intelligence": {"status": "complete"},
+                        "two_tier": {"status": "complete"},
                         "trinity": {"status": "running"},
                         "enterprise": {"status": "pending"},
                         "frontend": {"status": "pending"},
@@ -55206,8 +55317,8 @@ class JarvisSystemKernel:
 
             await self._broadcast_startup_progress(
                 stage="enterprise",
-                message="Enterprise services online - launching frontend...",
-                progress=90,
+                message="Enterprise services online - initializing AGI OS...",
+                progress=85,
                 metadata={
                     "icon": "building",
                     "phase": 6,
@@ -55217,8 +55328,55 @@ class JarvisSystemKernel:
                         "resources": {"status": "complete"},
                         "backend": {"status": "complete"},
                         "intelligence": {"status": "complete"},
+                        "two_tier": {"status": "complete"},
                         "trinity": {"status": "complete"},
                         "enterprise": {"status": "complete"},
+                        "agi_os": {"status": "running"},
+                        "frontend": {"status": "pending"},
+                    }
+                }
+            )
+
+            # =================================================================
+            # PHASE 6.5: AGI OS INITIALIZATION (v200.0)
+            # =================================================================
+            # Initialize the Autonomous General Intelligence Operating System:
+            # - AGIOSCoordinator (central orchestrator)
+            # - RealTimeVoiceCommunicator (voice output)
+            # - VoiceApprovalManager (approval workflows)
+            # - ProactiveEventStream (event-driven notifications)
+            # =================================================================
+            issue_collector.set_current_phase("Phase 6.5: AGI OS")
+            issue_collector.set_current_zone("Zone 6.5")
+            agi_os_timeout = float(os.environ.get("JARVIS_AGI_OS_TIMEOUT", "60.0"))
+            if self._startup_watchdog:
+                self._startup_watchdog.update_phase("agi_os", 85, operational_timeout=agi_os_timeout)
+
+            if not await self._initialize_agi_os():
+                # Non-fatal - continue without AGI OS
+                issue_collector.add_warning(
+                    "AGI OS failed to initialize - continuing without autonomous features",
+                    IssueCategory.INTELLIGENCE,
+                    suggestion="Check AGI OS modules and dependencies"
+                )
+
+            await self._broadcast_startup_progress(
+                stage="agi_os",
+                message="AGI OS active - launching frontend...",
+                progress=90,
+                metadata={
+                    "icon": "brain",
+                    "phase": 6.5,
+                    "components": {
+                        "loading_server": {"status": "complete"},
+                        "preflight": {"status": "complete"},
+                        "resources": {"status": "complete"},
+                        "backend": {"status": "complete"},
+                        "intelligence": {"status": "complete"},
+                        "two_tier": {"status": "complete"},
+                        "trinity": {"status": "complete"},
+                        "enterprise": {"status": "complete"},
+                        "agi_os": {"status": "complete"},
                         "frontend": {"status": "running"},
                     }
                 }
@@ -56230,6 +56388,422 @@ class JarvisSystemKernel:
             except Exception as e:
                 self.logger.warning(f"[Kernel] Intelligence initialization failed: {e}")
                 return False
+
+    # =========================================================================
+    # v200.0: TWO-TIER SECURITY INITIALIZATION (VBIA/PAVA)
+    # =========================================================================
+    # Initialize the Two-Tier Security architecture:
+    # - Agentic Watchdog (safety kill-switch for Computer Use)
+    # - Tiered VBIA Adapter (voice biometric with anti-spoofing)
+    # - Cross-Repo State (JARVIS ↔ Prime ↔ Reactor coordination)
+    # - Tiered Command Router (wake word → intent → authentication)
+    # - Wire execute_tier2 → AgenticTaskRunner
+    # =========================================================================
+
+    async def _initialize_two_tier_security(self) -> bool:
+        """
+        v200.0: Initialize Two-Tier Security (VBIA/PAVA) components.
+
+        This phase initializes the complete Two-Tier Security architecture:
+        1. Agentic Watchdog - Safety system with kill-switch
+        2. Tiered VBIA Adapter - Voice biometric authentication
+        3. Cross-Repo State - Multi-repository coordination
+        4. Tiered Command Router - Three-tier command routing
+        5. Wire execute_tier2 to AgenticTaskRunner
+
+        On failure: Log warning and continue (graceful degradation)
+
+        Returns:
+            True if at least watchdog initialized, False otherwise
+        """
+        if not self.config.two_tier_security_enabled:
+            self.logger.info("[TwoTier] Two-Tier Security disabled via config")
+            self._update_component_status("two_tier", "skipped", "Disabled via config")
+            return True
+
+        self._update_component_status("two_tier", "running", "Initializing Two-Tier Security...")
+        await self._broadcast_progress(55, "two_tier_init", "Initializing Two-Tier Security...")
+
+        with self.logger.section_start(LogSection.BOOT, "Zone 4.5 | Two-Tier Security (VBIA/PAVA)"):
+            try:
+                # =====================================================================
+                # STEP 1: Initialize Agentic Watchdog
+                # =====================================================================
+                await self._broadcast_progress(56, "two_tier_watchdog", "Starting Agentic Watchdog...")
+
+                try:
+                    from core.agentic_watchdog import (
+                        start_watchdog,
+                        WatchdogConfig,
+                        AgenticMode,
+                        get_watchdog,
+                    )
+
+                    # Create TTS callback for watchdog voice announcements
+                    async def watchdog_tts(text: str) -> None:
+                        """TTS callback for watchdog safety announcements."""
+                        if self._narrator and self.config.voice_enabled:
+                            try:
+                                await self._narrator.speak(text, wait=False)
+                            except Exception as e:
+                                self.logger.debug(f"[TwoTier/Watchdog] TTS error: {e}")
+
+                    # Start watchdog with TTS callback
+                    watchdog_config = WatchdogConfig()
+                    self._agentic_watchdog = await start_watchdog(
+                        config=watchdog_config,
+                        tts_callback=watchdog_tts if self.config.voice_enabled else None,
+                    )
+
+                    self._two_tier_status["watchdog"] = {
+                        "status": "active",
+                        "mode": self._agentic_watchdog.mode.value if self._agentic_watchdog else None,
+                    }
+                    self.logger.success("[TwoTier] ✓ Agentic Watchdog active")
+
+                except ImportError as e:
+                    self.logger.warning(f"[TwoTier] Watchdog module not available: {e}")
+                    self._two_tier_status["watchdog"]["status"] = "unavailable"
+                except Exception as e:
+                    self.logger.warning(f"[TwoTier] Watchdog init failed: {e}")
+                    self._two_tier_status["watchdog"]["status"] = "error"
+
+                # =====================================================================
+                # STEP 2: Initialize Tiered VBIA Adapter
+                # =====================================================================
+                await self._broadcast_progress(57, "two_tier_vbia", "Initializing VBIA Adapter...")
+
+                try:
+                    from core.tiered_vbia_adapter import (
+                        TieredVBIAAdapter,
+                        TieredVBIAConfig,
+                        get_tiered_vbia_adapter,
+                    )
+
+                    # Get or create the VBIA adapter (singleton)
+                    self._vbia_adapter = await get_tiered_vbia_adapter()
+
+                    self._two_tier_status["vbia_adapter"] = {
+                        "status": "active",
+                        "initialized": True,
+                        "tier1_threshold": self.config.vbia_tier1_threshold,
+                        "tier2_threshold": self.config.vbia_tier2_threshold,
+                    }
+                    self.logger.success(
+                        f"[TwoTier] ✓ VBIA Adapter ready "
+                        f"(T1:{self.config.vbia_tier1_threshold:.0%}, T2:{self.config.vbia_tier2_threshold:.0%})"
+                    )
+
+                except ImportError as e:
+                    self.logger.warning(f"[TwoTier] VBIA module not available: {e}")
+                    self._two_tier_status["vbia_adapter"]["status"] = "unavailable"
+                except Exception as e:
+                    self.logger.warning(f"[TwoTier] VBIA init failed: {e}")
+                    self._two_tier_status["vbia_adapter"]["status"] = "error"
+
+                # =====================================================================
+                # STEP 3: Initialize Cross-Repo State
+                # =====================================================================
+                await self._broadcast_progress(58, "cross_repo_init", "Initializing Cross-Repo State...")
+
+                try:
+                    from core.cross_repo_state_initializer import (
+                        initialize_cross_repo_state,
+                        CrossRepoStateConfig,
+                        get_cross_repo_initializer,
+                    )
+
+                    # Initialize cross-repo communication
+                    self._cross_repo_initialized = await initialize_cross_repo_state()
+
+                    self._two_tier_status["cross_repo"] = {
+                        "status": "active" if self._cross_repo_initialized else "failed",
+                        "initialized": self._cross_repo_initialized,
+                    }
+                    if self._cross_repo_initialized:
+                        self.logger.success("[TwoTier] ✓ Cross-Repo State initialized")
+                    else:
+                        self.logger.warning("[TwoTier] ⚠ Cross-Repo State failed to initialize")
+
+                except ImportError as e:
+                    self.logger.warning(f"[TwoTier] Cross-Repo module not available: {e}")
+                    self._two_tier_status["cross_repo"]["status"] = "unavailable"
+                except Exception as e:
+                    self.logger.warning(f"[TwoTier] Cross-Repo init failed: {e}")
+                    self._two_tier_status["cross_repo"]["status"] = "error"
+
+                # =====================================================================
+                # STEP 4: Initialize Tiered Command Router
+                # =====================================================================
+                await self._broadcast_progress(59, "two_tier_router", "Initializing Tiered Command Router...")
+
+                try:
+                    from core.tiered_command_router import (
+                        TieredCommandRouter,
+                        TieredRouterConfig,
+                        set_tiered_router,
+                        get_tiered_router,
+                    )
+
+                    # Create TTS callback for router voice announcements
+                    async def router_tts(text: str) -> None:
+                        """TTS callback for router announcements."""
+                        if self._narrator and self.config.voice_enabled:
+                            try:
+                                await self._narrator.speak(text, wait=False)
+                            except Exception as e:
+                                self.logger.debug(f"[TwoTier/Router] TTS error: {e}")
+
+                    # Create router config
+                    router_config = TieredRouterConfig(
+                        tier1_vbia_threshold=self.config.vbia_tier1_threshold,
+                        tier2_vbia_threshold=self.config.vbia_tier2_threshold,
+                        tier2_require_liveness=self.config.tier2_require_liveness,
+                    )
+
+                    # Create router with VBIA callbacks
+                    vbia_callback = None
+                    liveness_callback = None
+                    if self._vbia_adapter:
+                        vbia_callback = self._vbia_adapter.verify_speaker
+                        liveness_callback = self._vbia_adapter.verify_liveness
+
+                    self._tiered_router = TieredCommandRouter(
+                        config=router_config,
+                        vbia_callback=vbia_callback,
+                        liveness_callback=liveness_callback,
+                        tts_callback=router_tts if self.config.voice_enabled else None,
+                    )
+
+                    # Register as global singleton
+                    set_tiered_router(self._tiered_router)
+
+                    self._two_tier_status["router"] = {
+                        "status": "active",
+                        "initialized": True,
+                        "vbia_connected": vbia_callback is not None,
+                    }
+                    self.logger.success("[TwoTier] ✓ Tiered Command Router ready")
+
+                except ImportError as e:
+                    self.logger.warning(f"[TwoTier] Router module not available: {e}")
+                    self._two_tier_status["router"]["status"] = "unavailable"
+                except Exception as e:
+                    self.logger.warning(f"[TwoTier] Router init failed: {e}")
+                    self._two_tier_status["router"]["status"] = "error"
+
+                # =====================================================================
+                # STEP 5: Wire execute_tier2 to AgenticTaskRunner
+                # =====================================================================
+                await self._broadcast_progress(60, "two_tier_wiring", "Wiring Tier 2 → AgenticTaskRunner...")
+
+                try:
+                    from core.agentic_task_runner import (
+                        RunnerMode,
+                        get_agentic_runner,
+                        AgenticTaskRunner,
+                    )
+
+                    # Get the agentic runner instance
+                    self._agentic_runner = get_agentic_runner()
+
+                    if self._tiered_router and self._agentic_runner:
+                        # Create execute_tier2 wrapper that routes to AgenticTaskRunner
+                        async def execute_tier2_via_runner(
+                            command: str,
+                            context: Optional[Dict[str, Any]] = None,
+                        ) -> Dict[str, Any]:
+                            """Execute Tier 2 (agentic) commands via AgenticTaskRunner."""
+                            try:
+                                result = await self._agentic_runner.run(
+                                    goal=command,
+                                    mode=RunnerMode.AUTONOMOUS,
+                                    context=context,
+                                    narrate=True,
+                                )
+                                return {
+                                    "success": result.success if result else False,
+                                    "result": result.result if result else None,
+                                    "task_id": result.task_id if result else None,
+                                    "actions_count": result.actions_count if result else 0,
+                                    "duration_ms": result.duration_ms if result else 0,
+                                }
+                            except Exception as e:
+                                self.logger.error(f"[TwoTier] execute_tier2 error: {e}")
+                                return {"success": False, "error": str(e)}
+
+                        # Wire the router's execute_tier2 to our wrapper
+                        self._tiered_router.execute_tier2 = execute_tier2_via_runner
+                        self._two_tier_status["runner_wired"] = True
+                        self.logger.success("[TwoTier] ✓ execute_tier2 → AgenticTaskRunner wired")
+                    else:
+                        self.logger.warning("[TwoTier] ⚠ Cannot wire execute_tier2 (router or runner unavailable)")
+
+                except ImportError as e:
+                    self.logger.warning(f"[TwoTier] AgenticTaskRunner not available: {e}")
+                except Exception as e:
+                    self.logger.warning(f"[TwoTier] Wiring failed: {e}")
+
+                # =====================================================================
+                # STEP 6: Voice announcement
+                # =====================================================================
+                await self._broadcast_progress(61, "two_tier_ready", "Two-Tier Security ready")
+
+                # Determine overall status
+                watchdog_ok = self._two_tier_status["watchdog"]["status"] == "active"
+                vbia_ok = self._two_tier_status["vbia_adapter"].get("status") == "active"
+                router_ok = self._two_tier_status["router"].get("status") == "active"
+
+                if watchdog_ok or vbia_ok or router_ok:
+                    # Voice announcement
+                    if self._narrator and self.config.voice_enabled:
+                        await self._narrator.speak(
+                            "Voice biometric authentication ready. Visual threat detection enabled.",
+                            wait=False,
+                        )
+
+                    self._update_component_status("two_tier", "complete", "Two-Tier Security active")
+                    self.logger.success(
+                        f"[TwoTier] Two-Tier Security initialized "
+                        f"(Watchdog: {'✓' if watchdog_ok else '✗'}, "
+                        f"VBIA: {'✓' if vbia_ok else '✗'}, "
+                        f"Router: {'✓' if router_ok else '✗'})"
+                    )
+                    return True
+                else:
+                    self._update_component_status("two_tier", "error", "All components failed")
+                    self.logger.warning("[TwoTier] All Two-Tier Security components failed")
+                    return False
+
+            except Exception as e:
+                self.logger.warning(f"[TwoTier] Two-Tier Security initialization failed: {e}")
+                self._update_component_status("two_tier", "error", f"Error: {e}")
+                return False  # Graceful degradation - don't crash kernel
+
+    # =========================================================================
+    # v200.0: AGI OS INITIALIZATION
+    # =========================================================================
+    # Initialize the AGI Operating System:
+    # - AGIOSCoordinator (central orchestrator)
+    # - Real-time voice communicator
+    # - Voice approval manager
+    # - Proactive event stream
+    # =========================================================================
+
+    async def _initialize_agi_os(self) -> bool:
+        """
+        v200.0: Initialize AGI OS (Autonomous General Intelligence Operating System).
+
+        This initializes the proactive autonomous system:
+        1. AGIOSCoordinator - Central coordinator
+        2. RealTimeVoiceCommunicator - Voice output
+        3. VoiceApprovalManager - Approval workflows
+        4. ProactiveEventStream - Event-driven notifications
+
+        On failure: Log warning and continue (graceful degradation)
+
+        Returns:
+            True if coordinator started, False otherwise
+        """
+        if not self.config.agi_os_enabled:
+            self.logger.info("[AGI-OS] AGI OS disabled via config")
+            self._update_component_status("agi_os", "skipped", "Disabled via config")
+            return True
+
+        self._update_component_status("agi_os", "running", "Initializing AGI OS...")
+        await self._broadcast_progress(85, "agi_os_init", "Initializing AGI Operating System...")
+
+        with self.logger.section_start(LogSection.BOOT, "Zone 6.5 | AGI OS"):
+            try:
+                # Voice announcement
+                if self._narrator and self.config.voice_enabled:
+                    await self._narrator.speak(
+                        "Initializing AGI Operating System... Neural Mesh active.",
+                        wait=False,
+                    )
+
+                # =====================================================================
+                # STEP 1: Import AGI OS components
+                # =====================================================================
+                try:
+                    from agi_os import (
+                        AGIOSCoordinator,
+                        get_agi_os,
+                        start_agi_os,
+                        stop_agi_os,
+                        RealTimeVoiceCommunicator,
+                        get_voice_communicator,
+                        VoiceApprovalManager,
+                        get_approval_manager,
+                        ProactiveEventStream,
+                        get_event_stream,
+                    )
+
+                    # =====================================================================
+                    # STEP 2: Start AGI OS Coordinator
+                    # =====================================================================
+                    await self._broadcast_progress(86, "agi_os_coordinator", "Starting AGI OS Coordinator...")
+
+                    self._agi_os = await start_agi_os()
+
+                    if self._agi_os:
+                        self._agi_os_status["coordinator"] = True
+                        self.logger.success("[AGI-OS] ✓ AGIOSCoordinator started")
+                    else:
+                        self.logger.warning("[AGI-OS] ⚠ AGIOSCoordinator failed to start")
+
+                    # =====================================================================
+                    # STEP 3: Verify voice communicator
+                    # =====================================================================
+                    try:
+                        voice_comm = get_voice_communicator()
+                        if voice_comm:
+                            self._agi_os_status["voice_communicator"] = True
+                            self.logger.success("[AGI-OS] ✓ RealTimeVoiceCommunicator ready")
+                    except Exception as e:
+                        self.logger.warning(f"[AGI-OS] Voice communicator unavailable: {e}")
+
+                    # =====================================================================
+                    # STEP 4: Verify approval manager
+                    # =====================================================================
+                    try:
+                        approval_mgr = get_approval_manager()
+                        if approval_mgr:
+                            self._agi_os_status["approval_manager"] = True
+                            self.logger.success("[AGI-OS] ✓ VoiceApprovalManager ready")
+                    except Exception as e:
+                        self.logger.warning(f"[AGI-OS] Approval manager unavailable: {e}")
+
+                    # =====================================================================
+                    # STEP 5: Complete
+                    # =====================================================================
+                    await self._broadcast_progress(87, "agi_os_ready", "AGI OS active")
+
+                    if self._agi_os_status["coordinator"]:
+                        self._agi_os_status["status"] = "active"
+                        self._update_component_status("agi_os", "complete", "AGI OS active")
+                        self.logger.success(
+                            f"[AGI-OS] AGI OS initialized "
+                            f"(Coordinator: ✓, Voice: {'✓' if self._agi_os_status['voice_communicator'] else '✗'}, "
+                            f"Approvals: {'✓' if self._agi_os_status['approval_manager'] else '✗'})"
+                        )
+                        return True
+                    else:
+                        self._agi_os_status["status"] = "failed"
+                        self._update_component_status("agi_os", "error", "Coordinator failed")
+                        return False
+
+                except ImportError as e:
+                    self.logger.warning(f"[AGI-OS] AGI OS module not available: {e}")
+                    self._agi_os_status["status"] = "unavailable"
+                    self._update_component_status("agi_os", "skipped", "Module not available")
+                    return True  # Not a failure, just unavailable
+
+            except Exception as e:
+                self.logger.warning(f"[AGI-OS] AGI OS initialization failed: {e}")
+                self._agi_os_status["status"] = "error"
+                self._update_component_status("agi_os", "error", f"Error: {e}")
+                return False  # Graceful degradation - don't crash kernel
 
     # =========================================================================
     # v186.0: TRINITY PROGRESS CALLBACK
@@ -58860,6 +59434,10 @@ class JarvisSystemKernel:
                 "mode": self.config.mode,
                 "backend_port": self.config.backend_port,
                 "dev_mode": self.config.dev_mode,
+                # v200.0: Two-Tier Security + AGI OS config
+                "two_tier_enabled": self.config.two_tier_security_enabled,
+                "agi_os_enabled": self.config.agi_os_enabled,
+                "browser_preference": self.config.browser_preference,
             },
         }
 
@@ -58874,6 +59452,25 @@ class JarvisSystemKernel:
 
         if self._process_manager:
             status["processes"] = self._process_manager.get_statistics()
+
+        # v200.0: Two-Tier Security status
+        status["two_tier"] = {
+            "enabled": self.config.two_tier_security_enabled,
+            "watchdog": self._two_tier_status.get("watchdog", {}),
+            "vbia_adapter": self._two_tier_status.get("vbia_adapter", {}),
+            "cross_repo": self._two_tier_status.get("cross_repo", {}),
+            "router": self._two_tier_status.get("router", {}),
+            "runner_wired": self._two_tier_status.get("runner_wired", False),
+        }
+
+        # v200.0: AGI OS status
+        status["agi_os"] = {
+            "enabled": self.config.agi_os_enabled,
+            "status": self._agi_os_status.get("status", "unknown"),
+            "coordinator": self._agi_os_status.get("coordinator", False),
+            "voice_communicator": self._agi_os_status.get("voice_communicator", False),
+            "approval_manager": self._agi_os_status.get("approval_manager", False),
+        }
 
         return status
 
@@ -61107,6 +61704,38 @@ Environment Variables:
     )
 
     # =========================================================================
+    # TWO-TIER SECURITY / AGI OS (v200.0)
+    # =========================================================================
+    security = parser.add_argument_group("Two-Tier Security / AGI OS")
+    security.add_argument(
+        "--skip-two-tier",
+        action="store_true",
+        help="Skip Two-Tier Security (VBIA/Watchdog) initialization",
+    )
+    security.add_argument(
+        "--skip-agi-os",
+        action="store_true",
+        help="Skip AGI OS (autonomous features) initialization",
+    )
+    security.add_argument(
+        "--browser",
+        choices=["chrome", "safari", "arc", "auto"],
+        default="auto",
+        help="Browser preference for Computer Use (default: auto)",
+    )
+    security.add_argument(
+        "--tier2-liveness",
+        action="store_true",
+        dest="tier2_liveness",
+        help="Require liveness check for Tier 2 (agentic) commands",
+    )
+    security.add_argument(
+        "--no-watchdog",
+        action="store_true",
+        help="Disable Agentic Watchdog (safety system)",
+    )
+
+    # =========================================================================
     # TRINITY
     # =========================================================================
     trinity = parser.add_argument_group("Trinity / Cross-Repo")
@@ -61789,6 +62418,18 @@ def apply_cli_to_config(args: argparse.Namespace, config: SystemKernelConfig) ->
         config.voice_enabled = False
     if args.skip_ecapa:
         config.ecapa_enabled = False
+
+    # Two-Tier Security / AGI OS (v200.0)
+    if hasattr(args, 'skip_two_tier') and args.skip_two_tier:
+        config.two_tier_security_enabled = False
+    if hasattr(args, 'skip_agi_os') and args.skip_agi_os:
+        config.agi_os_enabled = False
+    if hasattr(args, 'browser') and args.browser:
+        config.browser_preference = args.browser
+    if hasattr(args, 'tier2_liveness') and args.tier2_liveness:
+        config.tier2_require_liveness = True
+    if hasattr(args, 'no_watchdog') and args.no_watchdog:
+        config.watchdog_enabled = False
 
     # Trinity
     if args.skip_trinity:
