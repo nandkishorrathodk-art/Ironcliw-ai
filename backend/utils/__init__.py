@@ -3,7 +3,8 @@ JARVIS Backend Utilities
 ========================
 
 This package provides utility modules for the JARVIS backend, including:
-- Async startup utilities for non-blocking operations
+- Async I/O utilities for non-blocking operations (generic wrappers)
+- Async startup utilities for non-blocking startup operations
 - Async lock wrappers for cross-repo locking
 - Audio processing utilities
 - Model loading and caching utilities
@@ -11,6 +12,12 @@ This package provides utility modules for the JARVIS backend, including:
 
 Usage:
     from backend.utils import (
+        # Generic async I/O utilities
+        run_sync,
+        path_exists,
+        read_file,
+        run_subprocess,
+        # Startup-specific utilities
         async_process_wait,
         async_subprocess_run,
         async_check_port,
@@ -18,6 +25,14 @@ Usage:
         CrossRepoLockManager,
     )
 """
+
+# Generic async I/O utilities - type-safe wrappers for blocking operations
+from backend.utils.async_io import (
+    run_sync,
+    path_exists,
+    read_file,
+    run_subprocess,
+)
 
 # Async startup utilities - run blocking ops without blocking the event loop
 from backend.utils.async_startup import (
@@ -53,6 +68,11 @@ from backend.utils.async_lock_wrapper import (
 
 
 __all__ = [
+    # === Generic Async I/O Utilities ===
+    "run_sync",
+    "path_exists",
+    "read_file",
+    "run_subprocess",
     # === Async Startup Utilities ===
     # Process wait
     "async_process_wait",
