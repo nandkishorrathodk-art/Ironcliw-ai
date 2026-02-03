@@ -9579,6 +9579,9 @@ class TrinityUnifiedOrchestrator:
         self._event_cleanup_task: Optional[asyncio.Task] = None
         self._running = False
 
+        # v97.0: Tiered stop idempotency flag
+        self._stopped = False
+
         # Callbacks
         self._on_state_change: List[Callable[[TrinityState, TrinityState], None]] = []
         self._on_component_change: List[Callable[[str, ComponentHealth], None]] = []
@@ -12650,6 +12653,253 @@ class TrinityUnifiedOrchestrator:
                 logger.error(f"[TrinityIntegrator] Shutdown error: {e}")
                 self._set_state(TrinityState.ERROR)
                 return False
+
+    # =========================================================================
+    # v97.0: Tiered Stop with Guarantees
+    # =========================================================================
+
+    async def tiered_stop(
+        self,
+        timeout: Optional[float] = None,
+    ) -> Dict[int, str]:
+        """
+        Tiered stop method with idempotent, never-raises, bounded behavior.
+
+        This method implements Pillar 5 of the 6 Critical Pillars refactor:
+        - Idempotent: Calling stop() multiple times is safe
+        - Never raises: All exceptions are caught and logged
+        - Bounded: Completes within timeout
+        - Tiered: SIGTERM -> SIGKILL -> abandon
+
+        Args:
+            timeout: Maximum time to wait for all processes to stop.
+                    Defaults to CLEANUP_BUDGET (30s) from startup_timeouts.
+
+        Returns:
+            Dict mapping PID to result:
+            - "stopped": Process terminated gracefully with SIGTERM
+            - "killed": Process required SIGKILL
+            - "abandoned": Process didn't respond to SIGKILL
+            - Error message string if exception occurred
+            - Empty dict if already stopped (idempotent)
+        """
+        # Import timeout config
+        try:
+            from backend.config.startup_timeouts import PhaseBudgets
+            budgets = PhaseBudgets()
+            default_timeout = budgets.CLEANUP
+        except ImportError:
+            default_timeout = 30.0
+
+        if timeout is None:
+            timeout = default_timeout
+
+        # Idempotent: return immediately if already stopped
+        if self._stopped:
+            return {}
+
+        async with self._lock:
+            # Double-check inside lock
+            if self._stopped:
+                return {}
+
+            self._stopped = True
+            self._running = False
+            results: Dict[int, str] = {}
+
+            try:
+                # Apply overall timeout
+                results = await asyncio.wait_for(
+                    self._tiered_stop_all_processes(timeout),
+                    timeout=timeout,
+                )
+            except asyncio.TimeoutError:
+                logger.warning(
+                    f"[TrinityIntegrator v97.0] tiered_stop timed out after {timeout}s"
+                )
+                # Mark remaining processes as abandoned
+                for pid in self._get_all_managed_pids():
+                    if pid not in results:
+                        results[pid] = "abandoned"
+            except Exception as e:
+                logger.error(
+                    f"[TrinityIntegrator v97.0] tiered_stop error: {e}"
+                )
+                # Never raise - return error info
+                for pid in self._get_all_managed_pids():
+                    if pid not in results:
+                        results[pid] = f"error: {e}"
+
+            # Update state
+            try:
+                self._set_state(TrinityState.STOPPED)
+            except Exception:
+                pass  # Never raise
+
+            if results:
+                logger.info(
+                    f"[TrinityIntegrator v97.0] tiered_stop complete: {len(results)} processes"
+                )
+
+            return results
+
+    def _get_all_managed_pids(self) -> List[int]:
+        """
+        Get all PIDs managed by this integrator.
+
+        Collects PIDs from:
+        - _managed_processes dict
+        - _process_supervisor
+        - Direct process handles (_jprime_process, _reactor_process)
+        """
+        pids: List[int] = []
+
+        # From _managed_processes
+        for name, info in self._managed_processes.items():
+            pid = info.get("pid")
+            if pid:
+                pids.append(pid)
+
+        # From ProcessSupervisor
+        if hasattr(self, "_process_supervisor") and self._process_supervisor:
+            try:
+                for component_id, proc_info in self._process_supervisor.get_all_processes().items():
+                    if hasattr(proc_info, 'pid') and proc_info.pid:
+                        pids.append(proc_info.pid)
+            except Exception:
+                pass
+
+        # Direct process handles
+        if self._jprime_process and self._jprime_process.pid:
+            pids.append(self._jprime_process.pid)
+        if self._reactor_process and self._reactor_process.pid:
+            pids.append(self._reactor_process.pid)
+
+        return list(set(pids))  # Deduplicate
+
+    async def _tiered_stop_all_processes(
+        self,
+        total_timeout: float,
+    ) -> Dict[int, str]:
+        """
+        Stop all managed processes using tiered approach.
+
+        Tier 1: SIGTERM (graceful, wait total_timeout/3)
+        Tier 2: SIGKILL (force, wait total_timeout/3)
+        Tier 3: Abandon (log and give up)
+        """
+        results: Dict[int, str] = {}
+        pids = self._get_all_managed_pids()
+
+        if not pids:
+            return results
+
+        tier_timeout = total_timeout / 3
+
+        for pid in pids:
+            try:
+                result = await self._stop_process_tiered(pid, tier_timeout)
+                results[pid] = result
+            except Exception as e:
+                logger.warning(
+                    f"[TrinityIntegrator v97.0] Error stopping PID {pid}: {e}"
+                )
+                results[pid] = f"error: {e}"
+
+        return results
+
+    async def _stop_process_tiered(
+        self,
+        pid: int,
+        tier_timeout: float,
+    ) -> str:
+        """
+        Stop a single process using tiered approach.
+
+        Tier 1: SIGTERM (graceful, wait tier_timeout)
+        Tier 2: SIGKILL (force, wait tier_timeout)
+        Tier 3: Abandon (log and give up)
+
+        Args:
+            pid: Process ID to stop
+            tier_timeout: Timeout for each tier
+
+        Returns:
+            "stopped", "killed", or "abandoned"
+        """
+        import psutil
+
+        # Check if process exists
+        try:
+            proc = psutil.Process(pid)
+        except psutil.NoSuchProcess:
+            return "stopped"  # Already gone
+
+        # Tier 1: SIGTERM (graceful)
+        try:
+            os.kill(pid, signal.SIGTERM)
+            logger.debug(f"[TrinityIntegrator v97.0] Sent SIGTERM to PID {pid}")
+
+            try:
+                await asyncio.wait_for(
+                    asyncio.get_event_loop().run_in_executor(
+                        None, lambda: proc.wait(timeout=tier_timeout)
+                    ),
+                    timeout=tier_timeout + 1,
+                )
+                logger.debug(f"[TrinityIntegrator v97.0] PID {pid} stopped gracefully")
+                return "stopped"
+            except (asyncio.TimeoutError, psutil.TimeoutExpired):
+                pass  # Continue to Tier 2
+        except ProcessLookupError:
+            return "stopped"  # Already gone
+        except Exception as e:
+            logger.debug(f"[TrinityIntegrator v97.0] SIGTERM failed for PID {pid}: {e}")
+            # Continue to Tier 2
+
+        # Tier 2: SIGKILL (force)
+        try:
+            os.kill(pid, signal.SIGKILL)
+            logger.debug(f"[TrinityIntegrator v97.0] Sent SIGKILL to PID {pid}")
+
+            try:
+                await asyncio.wait_for(
+                    asyncio.get_event_loop().run_in_executor(
+                        None, lambda: proc.wait(timeout=tier_timeout)
+                    ),
+                    timeout=tier_timeout + 1,
+                )
+                logger.warning(f"[TrinityIntegrator v97.0] PID {pid} required SIGKILL")
+                return "killed"
+            except (asyncio.TimeoutError, psutil.TimeoutExpired):
+                pass  # Continue to Tier 3
+        except ProcessLookupError:
+            return "killed"  # Died from SIGTERM
+        except Exception as e:
+            logger.debug(f"[TrinityIntegrator v97.0] SIGKILL failed for PID {pid}: {e}")
+            # Continue to Tier 3
+
+        # Tier 3: Abandon
+        logger.error(
+            f"[TrinityIntegrator v97.0] PID {pid} did not respond to SIGKILL, abandoning"
+        )
+        return "abandoned"
+
+    def register_pid(self, pid: int, name: str = "unnamed") -> None:
+        """
+        Register a PID for management by tiered_stop().
+
+        Args:
+            pid: Process ID to register
+            name: Human-readable name for the process
+        """
+        if pid not in self._managed_processes:
+            self._managed_processes[pid] = {
+                "name": name,
+                "pid": pid,
+                "registered_at": time.time(),
+            }
+            logger.debug(f"[TrinityIntegrator v97.0] Registered PID {pid} ({name})")
 
     # =========================================================================
     # State Management
