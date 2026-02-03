@@ -3445,7 +3445,10 @@ class JARVISLoadingManager {
                     'ready': 'Ready',
                     'error': 'Error',
                     'failed': 'Failed',
-                    'warning': 'Warning'
+                    'warning': 'Warning',
+                    'skipped': 'Not Configured',    // Distinct from stopped - component path not set
+                    'unavailable': 'Unavailable',   // Component unavailable
+                    'stopped': 'Stopped'            // Distinct from skipped - was running but stopped
                 };
                 statusEl.textContent = statusLabels[status] || status;
             }
@@ -4271,24 +4274,39 @@ class JARVISLoadingManager {
             if (this.state.trinityComponents) {
                 const jarvisReady = this.state.trinityComponents.jarvis?.status === 'complete' ||
                     this.state.trinityComponents.jarvis?.status === 'ready';
-                const primeReady = this.state.trinityComponents.prime?.status === 'complete' ||
-                    this.state.trinityComponents.prime?.status === 'ready' ||
-                    this.state.trinityComponents.prime?.status === 'skipped';
-                const reactorReady = this.state.trinityComponents.reactor?.status === 'complete' ||
-                    this.state.trinityComponents.reactor?.status === 'ready' ||
-                    this.state.trinityComponents.reactor?.status === 'skipped';
+                const primeStatus = this.state.trinityComponents.prime?.status;
+                const reactorStatus = this.state.trinityComponents.reactor?.status;
 
-                // JARVIS Body (backend) is required
-                // Prime and Reactor are optional (skipped counts as ready)
-                if (jarvisReady && primeReady && reactorReady) {
-                    console.log('[Trinity Wait] ✓ All Trinity components ready');
+                const primeReady = primeStatus === 'complete' || primeStatus === 'ready';
+                const primeSkipped = primeStatus === 'skipped' || primeStatus === 'unavailable';
+                const reactorReady = reactorStatus === 'complete' || reactorStatus === 'ready';
+                const reactorSkipped = reactorStatus === 'skipped' || reactorStatus === 'unavailable';
+
+                // JARVIS Body (backend) is REQUIRED
+                // Prime and Reactor can be ready OR skipped/unavailable
+                const primeAcceptable = primeReady || primeSkipped;
+                const reactorAcceptable = reactorReady || reactorSkipped;
+
+                if (jarvisReady && primeAcceptable && reactorAcceptable) {
+                    // Build accurate message based on actual component states
+                    const notConfigured = [];
+                    if (primeSkipped) notConfigured.push('Prime');
+                    if (reactorSkipped) notConfigured.push('Reactor');
+
+                    if (notConfigured.length > 0) {
+                        const message = `[Trinity Wait] ✓ Backend ready; ${notConfigured.join(' and ')} not configured`;
+                        console.log(message + ' (set JARVIS_PRIME_PATH/REACTOR_CORE_PATH if needed)');
+                    } else {
+                        console.log('[Trinity Wait] ✓ All Trinity components ready');
+                    }
                     this.state.trinityAllReady = true;
                     return true;
                 }
 
                 const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
                 console.log(`[Trinity Wait] Waiting... (${elapsed}s) - ` +
-                    `JARVIS:${jarvisReady}, Prime:${primeReady}, Reactor:${reactorReady}`);
+                    `JARVIS:${jarvisReady}, Prime:${primeAcceptable}(ready:${primeReady},skipped:${primeSkipped}), ` +
+                    `Reactor:${reactorAcceptable}(ready:${reactorReady},skipped:${reactorSkipped})`);
             }
 
             await this.sleep(config.checkInterval);
