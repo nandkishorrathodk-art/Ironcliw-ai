@@ -271,6 +271,15 @@ from backend.core.resilience.retry import (
     RetryExhausted,
 )
 
+# v3.0: CircuitBreaker primitive (simple state machine)
+# Note: This is distinct from the distributed CircuitBreaker in distributed_circuit_breaker.
+# Use PrimitivesCircuitBreaker for simple local circuit breaking.
+# Use CircuitBreaker (from distributed_circuit_breaker) for distributed/advanced scenarios.
+from backend.core.resilience.circuit_breaker import (
+    CircuitBreaker as PrimitivesCircuitBreaker,
+    CircuitOpen as PrimitivesCircuitOpen,
+)
+
 __all__ = [
     # Distributed Lock
     "DistributedLock",
@@ -484,4 +493,10 @@ __all__ = [
     # Retry with exponential backoff and jitter
     "RetryPolicy",
     "RetryExhausted",
+    # =========================================================================
+    # v3.0: CIRCUIT BREAKER PRIMITIVE
+    # =========================================================================
+    # Simple state machine circuit breaker (local, not distributed)
+    "PrimitivesCircuitBreaker",  # Aliased to avoid collision with distributed_circuit_breaker
+    "PrimitivesCircuitOpen",
 ]
