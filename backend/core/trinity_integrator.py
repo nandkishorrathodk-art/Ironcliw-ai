@@ -847,6 +847,9 @@ class ResourceAwareLauncher:
         """
         Check if system has required resources.
 
+        v204.0: Uses asyncio.to_thread() to avoid blocking the event loop
+        during psutil calls which can take 100-200ms.
+
         Returns:
             Tuple of (can_proceed, warnings)
         """
@@ -854,8 +857,9 @@ class ResourceAwareLauncher:
         can_proceed = True
 
         try:
-            # Memory check
-            mem = psutil.virtual_memory()
+            # v204.0: Run blocking psutil calls in thread pool
+            # Memory check - psutil.virtual_memory() can block for 10-50ms
+            mem = await asyncio.to_thread(psutil.virtual_memory)
             available_mb = mem.available / (1024 * 1024)
 
             if available_mb < requirements.min_memory_mb:
@@ -870,8 +874,8 @@ class ResourceAwareLauncher:
                     f"{requirements.recommended_memory_mb}MB recommended"
                 )
 
-            # CPU check
-            cpu_percent = psutil.cpu_percent(interval=0.1)
+            # CPU check - psutil.cpu_percent(interval=0.1) blocks for 100ms!
+            cpu_percent = await asyncio.to_thread(psutil.cpu_percent, interval=0.1)
             available_cpu = 100.0 - cpu_percent
 
             if available_cpu < requirements.min_cpu_percent:
@@ -881,7 +885,7 @@ class ResourceAwareLauncher:
                 )
                 # Don't fail on CPU, just warn
 
-            # Port check
+            # Port check - socket operations are fast, no async needed
             for port in requirements.required_ports:
                 if self._is_port_in_use(port):
                     can_proceed = False

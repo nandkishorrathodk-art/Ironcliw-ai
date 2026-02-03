@@ -9150,9 +9150,10 @@ class DynamicRepoDiscovery:
         return any(f.exists() for f in signature_files)
 
     async def _scan_for_git_remote(self, repo_name: str, search_paths: List[Path]) -> Optional[Path]:
-        """Scan for repos by checking git remote URLs."""
-        import subprocess
+        """Scan for repos by checking git remote URLs.
 
+        v204.0: Uses async subprocess to avoid blocking the event loop during startup.
+        """
         for search_path in search_paths:
             if not search_path.exists():
                 continue
@@ -9166,13 +9167,29 @@ class DynamicRepoDiscovery:
                         continue
 
                     try:
-                        result = subprocess.run(
-                            ["git", "-C", str(entry), "remote", "-v"],
-                            capture_output=True, text=True, timeout=5
+                        # v204.0: Use async subprocess instead of blocking subprocess.run()
+                        proc = await asyncio.create_subprocess_exec(
+                            "git", "-C", str(entry), "remote", "-v",
+                            stdout=asyncio.subprocess.PIPE,
+                            stderr=asyncio.subprocess.PIPE,
                         )
-                        if repo_name in result.stdout.lower():
-                            return entry
-                    except (subprocess.TimeoutExpired, FileNotFoundError):
+                        try:
+                            stdout, _ = await asyncio.wait_for(
+                                proc.communicate(),
+                                timeout=5.0
+                            )
+                            if repo_name in stdout.decode().lower():
+                                return entry
+                        except asyncio.TimeoutError:
+                            # Kill on timeout
+                            try:
+                                proc.kill()
+                                await proc.wait()
+                            except ProcessLookupError:
+                                pass
+                            continue
+                    except FileNotFoundError:
+                        # git not found
                         continue
             except PermissionError:
                 continue

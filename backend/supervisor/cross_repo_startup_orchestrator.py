@@ -7656,9 +7656,13 @@ class ProcessOrchestrator:
         Assesses hardware profile and sets environment variables appropriately.
         This ensures the supervisor and all spawned processes have consistent
         hardware-aware configuration.
+
+        v204.0: Wrapped in asyncio.to_thread() since assess_hardware_profile()
+        contains blocking psutil and subprocess calls.
         """
         try:
-            hw_assessment = assess_hardware_profile()
+            # v204.0: Run blocking hardware assessment in thread pool
+            hw_assessment = await asyncio.to_thread(assess_hardware_profile)
             set_hardware_env_in_supervisor(hw_assessment)
             log_hardware_assessment(hw_assessment)
 
@@ -18686,9 +18690,11 @@ echo "=== JARVIS Prime started ==="
                     slim_mode_source = "env:JARVIS_ENABLE_SLIM_MODE"
 
                 # Source 2: Hardware profile from global assessment (v138.0)
+                # v204.0: Wrapped in asyncio.to_thread() since assess_hardware_profile()
+                # contains blocking psutil and subprocess calls
                 if not is_slim_mode:
                     try:
-                        hw_assessment = assess_hardware_profile()
+                        hw_assessment = await asyncio.to_thread(assess_hardware_profile)
                         if hw_assessment.profile in (HardwareProfile.SLIM, HardwareProfile.CLOUD_ONLY):
                             is_slim_mode = True
                             slim_mode_source = f"hardware_profile:{hw_assessment.profile.name}"
@@ -19229,7 +19235,9 @@ echo "=== JARVIS Prime started ==="
                 logger.info(f"[v138.0] 🖥️ Assessing hardware for {definition.name}...")
                 try:
                     # Assess hardware profile (cached after first call)
-                    hw_assessment = assess_hardware_profile()
+                    # v204.0: Wrapped in asyncio.to_thread() since assess_hardware_profile()
+                    # contains blocking psutil and subprocess calls
+                    hw_assessment = await asyncio.to_thread(assess_hardware_profile)
                     log_hardware_assessment(hw_assessment)
 
                     # Get environment variables to pass to jarvis-prime
@@ -21237,10 +21245,12 @@ echo "=== JARVIS Prime started ==="
         # os.environ for JARVIS_ENABLE_SLIM_MODE to determine thresholds.
         # Without this, the memory gate won't detect Slim Mode and will use the
         # wrong thresholds (80% instead of 95%), blocking startup on low-memory systems.
+        # v204.0: Wrapped in asyncio.to_thread() since assess_hardware_profile()
+        # contains blocking psutil and subprocess calls.
         # =========================================================================
         hw_assessment = None
         try:
-            hw_assessment = assess_hardware_profile()
+            hw_assessment = await asyncio.to_thread(assess_hardware_profile)
             set_hardware_env_in_supervisor(hw_assessment)
             log_hardware_assessment(hw_assessment)
         except Exception as e:
