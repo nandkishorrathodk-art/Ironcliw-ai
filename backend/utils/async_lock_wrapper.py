@@ -324,7 +324,14 @@ class StartupFileLock:
         logger.debug(f"[AsyncLockWrapper] Initial acquire timed out for {self._lock_name}, checking for stale lock")
 
         if await self._is_holder_stale():
-            # Holder is dead, remove stale lock and retry
+            # Holder is dead, remove stale lock and retry.
+            # NOTE: There is a theoretical race window between _is_holder_stale() check
+            # and _remove_stale_lock() where another process could acquire the lock.
+            # This is mitigated by:
+            # 1. fcntl.flock() in RobustFileLock provides kernel-level atomicity
+            # 2. The retry uses a short timeout and will fail gracefully if beaten
+            # 3. Only stale locks (dead PIDs) trigger this path - active contention
+            #    is handled normally by RobustFileLock's polling mechanism
             if await self._remove_stale_lock():
                 # Retry with short timeout
                 retry_timeout = min(STALE_LOCK_RETRY_TIMEOUT, timeout_s)
