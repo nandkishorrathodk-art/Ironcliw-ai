@@ -594,7 +594,8 @@ class TestCapabilityUpgradeMonitoringState:
         )
 
         await upgrade.start_monitoring(interval=0.01)
-        await asyncio.sleep(0.15)
+        # Wait longer to ensure multiple check cycles complete
+        await asyncio.sleep(0.3)
         await upgrade.stop_monitoring()
 
         # Should have detected regression and downgraded
