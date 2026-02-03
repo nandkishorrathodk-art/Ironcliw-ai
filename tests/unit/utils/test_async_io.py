@@ -447,3 +447,322 @@ class TestEdgeCases:
 
         result = await run_sync(no_args)
         assert result == 42
+
+
+# =============================================================================
+# Test: psutil Process Utilities
+# =============================================================================
+
+
+class TestPidExists:
+    """Tests for pid_exists - async check if process exists."""
+
+    @pytest.mark.asyncio
+    async def test_pid_exists_current_process(self) -> None:
+        """Verify pid_exists returns True for current process."""
+        from backend.utils.async_io import pid_exists
+
+        current_pid = os.getpid()
+        result = await pid_exists(current_pid)
+        assert result is True
+
+    @pytest.mark.asyncio
+    async def test_pid_exists_invalid_pid(self) -> None:
+        """Verify pid_exists returns False for invalid/non-existent PID."""
+        from backend.utils.async_io import pid_exists
+
+        # Use an extremely large PID that's unlikely to exist
+        invalid_pid = 999999999
+        result = await pid_exists(invalid_pid)
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_pid_exists_zero_pid(self) -> None:
+        """Verify pid_exists handles PID 0 (kernel scheduler on Unix)."""
+        from backend.utils.async_io import pid_exists
+
+        # PID 0 is the kernel scheduler on Unix, may or may not be "accessible"
+        result = await pid_exists(0)
+        # Just verify it returns a boolean without crashing
+        assert isinstance(result, bool)
+
+
+class TestGetProcess:
+    """Tests for get_process - async get Process object."""
+
+    @pytest.mark.asyncio
+    async def test_get_process_current_process(self) -> None:
+        """Verify get_process returns Process object for current process."""
+        import psutil
+
+        from backend.utils.async_io import get_process
+
+        current_pid = os.getpid()
+        proc = await get_process(current_pid)
+
+        assert proc is not None
+        assert isinstance(proc, psutil.Process)
+        assert proc.pid == current_pid
+
+    @pytest.mark.asyncio
+    async def test_get_process_invalid_pid_returns_none(self) -> None:
+        """Verify get_process returns None (not raises) for invalid PID."""
+        from backend.utils.async_io import get_process
+
+        invalid_pid = 999999999
+        proc = await get_process(invalid_pid)
+
+        # Should return None, not raise an exception
+        assert proc is None
+
+    @pytest.mark.asyncio
+    async def test_get_process_negative_pid(self) -> None:
+        """Verify get_process handles negative PID gracefully."""
+        from backend.utils.async_io import get_process
+
+        # Negative PIDs are invalid
+        proc = await get_process(-1)
+        assert proc is None
+
+
+class TestProcessIsRunning:
+    """Tests for process_is_running - async check if process is running."""
+
+    @pytest.mark.asyncio
+    async def test_process_is_running_current_process(self) -> None:
+        """Verify process_is_running returns True for current running process."""
+        from backend.utils.async_io import process_is_running
+
+        current_pid = os.getpid()
+        result = await process_is_running(current_pid)
+        assert result is True
+
+    @pytest.mark.asyncio
+    async def test_process_is_running_invalid_pid(self) -> None:
+        """Verify process_is_running returns False for invalid PID."""
+        from backend.utils.async_io import process_is_running
+
+        invalid_pid = 999999999
+        result = await process_is_running(invalid_pid)
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_process_is_running_never_raises(self) -> None:
+        """Verify process_is_running never raises for any PID."""
+        from backend.utils.async_io import process_is_running
+
+        # Test various edge cases that might raise exceptions
+        test_pids = [-1, 0, 1, 999999999]
+
+        for pid in test_pids:
+            # Should never raise, always return bool
+            result = await process_is_running(pid)
+            assert isinstance(result, bool)
+
+
+class TestIterProcesses:
+    """Tests for iter_processes - async iterator over processes."""
+
+    @pytest.mark.asyncio
+    async def test_iter_processes_yields_dicts(self) -> None:
+        """Verify iter_processes yields dicts with pid and name."""
+        from backend.utils.async_io import iter_processes
+
+        processes = []
+        async for proc_info in iter_processes():
+            processes.append(proc_info)
+            # Collect a few to verify structure, don't need all
+            if len(processes) >= 5:
+                break
+
+        assert len(processes) >= 1  # At least our own process
+
+        # Verify structure of yielded dicts
+        for proc_info in processes:
+            assert isinstance(proc_info, dict)
+            assert "pid" in proc_info
+            assert "name" in proc_info
+            assert isinstance(proc_info["pid"], int)
+
+    @pytest.mark.asyncio
+    async def test_iter_processes_with_custom_attrs(self) -> None:
+        """Verify iter_processes respects custom attrs parameter."""
+        from backend.utils.async_io import iter_processes
+
+        processes = []
+        async for proc_info in iter_processes(attrs=["pid", "status"]):
+            processes.append(proc_info)
+            if len(processes) >= 3:
+                break
+
+        # Verify custom attributes are present
+        for proc_info in processes:
+            assert "pid" in proc_info
+            assert "status" in proc_info
+
+    @pytest.mark.asyncio
+    async def test_iter_processes_includes_current_process(self) -> None:
+        """Verify iter_processes includes the current process."""
+        from backend.utils.async_io import iter_processes
+
+        current_pid = os.getpid()
+        found_current = False
+
+        async for proc_info in iter_processes():
+            if proc_info.get("pid") == current_pid:
+                found_current = True
+                break
+
+        assert found_current, "Current process not found in iter_processes"
+
+
+# =============================================================================
+# Test: psutil Network Utilities
+# =============================================================================
+
+
+class TestGetNetConnections:
+    """Tests for get_net_connections - async network connections."""
+
+    @pytest.mark.asyncio
+    async def test_get_net_connections_returns_list(self) -> None:
+        """Verify get_net_connections returns a list or raises AccessDenied.
+
+        Note: On macOS, psutil.net_connections() requires elevated privileges.
+        This test accepts either a list result or AccessDenied exception.
+        """
+        import psutil
+
+        from backend.utils.async_io import get_net_connections
+
+        try:
+            connections = await get_net_connections()
+            assert isinstance(connections, list)
+            # May be empty on some systems, that's okay
+        except psutil.AccessDenied:
+            # On macOS without elevated privileges, this is expected
+            pytest.skip("net_connections requires elevated privileges on this platform")
+
+    @pytest.mark.asyncio
+    async def test_get_net_connections_with_kind(self) -> None:
+        """Verify get_net_connections accepts kind parameter.
+
+        Note: On macOS, psutil.net_connections() requires elevated privileges.
+        This test accepts either a list result or AccessDenied exception.
+        """
+        import psutil
+
+        from backend.utils.async_io import get_net_connections
+
+        # Test different connection types
+        for kind in ["inet", "inet4", "inet6", "tcp", "udp"]:
+            try:
+                connections = await get_net_connections(kind=kind)
+                assert isinstance(connections, list)
+            except psutil.AccessDenied:
+                # On macOS without elevated privileges, this is expected
+                pytest.skip("net_connections requires elevated privileges on this platform")
+
+
+# =============================================================================
+# Test: psutil System Resource Utilities
+# =============================================================================
+
+
+class TestGetCpuPercent:
+    """Tests for get_cpu_percent - async CPU usage."""
+
+    @pytest.mark.asyncio
+    async def test_get_cpu_percent_returns_float(self) -> None:
+        """Verify get_cpu_percent returns a float between 0 and 100."""
+        from backend.utils.async_io import get_cpu_percent
+
+        cpu = await get_cpu_percent()
+
+        assert isinstance(cpu, float)
+        assert 0.0 <= cpu <= 100.0
+
+    @pytest.mark.asyncio
+    async def test_get_cpu_percent_with_interval(self) -> None:
+        """Verify get_cpu_percent respects interval parameter."""
+        import time
+
+        from backend.utils.async_io import get_cpu_percent
+
+        start = time.monotonic()
+        cpu = await get_cpu_percent(interval=0.2)
+        elapsed = time.monotonic() - start
+
+        assert isinstance(cpu, float)
+        # Should take approximately the interval time
+        assert elapsed >= 0.15  # Allow some margin
+
+
+class TestGetVirtualMemory:
+    """Tests for get_virtual_memory - async memory stats."""
+
+    @pytest.mark.asyncio
+    async def test_get_virtual_memory_returns_svmem(self) -> None:
+        """Verify get_virtual_memory returns svmem with expected fields."""
+        from backend.utils.async_io import get_virtual_memory
+
+        mem = await get_virtual_memory()
+
+        # svmem is a named tuple with these fields
+        assert hasattr(mem, "total")
+        assert hasattr(mem, "available")
+        assert hasattr(mem, "percent")
+
+        # Verify types and reasonable values
+        assert isinstance(mem.total, int)
+        assert isinstance(mem.available, int)
+        assert isinstance(mem.percent, float)
+
+        assert mem.total > 0
+        assert mem.available > 0
+        assert 0.0 <= mem.percent <= 100.0
+
+
+class TestGetDiskUsage:
+    """Tests for get_disk_usage - async disk usage stats."""
+
+    @pytest.mark.asyncio
+    async def test_get_disk_usage_returns_sdiskusage(self) -> None:
+        """Verify get_disk_usage returns sdiskusage with expected fields."""
+        from backend.utils.async_io import get_disk_usage
+
+        disk = await get_disk_usage("/")
+
+        # sdiskusage is a named tuple with these fields
+        assert hasattr(disk, "total")
+        assert hasattr(disk, "used")
+        assert hasattr(disk, "free")
+        assert hasattr(disk, "percent")
+
+        # Verify types and reasonable values
+        assert isinstance(disk.total, int)
+        assert isinstance(disk.used, int)
+        assert isinstance(disk.free, int)
+        assert isinstance(disk.percent, float)
+
+        assert disk.total > 0
+        assert disk.used >= 0
+        assert disk.free >= 0
+        assert 0.0 <= disk.percent <= 100.0
+
+    @pytest.mark.asyncio
+    async def test_get_disk_usage_default_path(self) -> None:
+        """Verify get_disk_usage uses root as default path."""
+        from backend.utils.async_io import get_disk_usage
+
+        # Default should be root
+        disk = await get_disk_usage()
+        assert disk.total > 0
+
+    @pytest.mark.asyncio
+    async def test_get_disk_usage_custom_path(self, tmp_path: Path) -> None:
+        """Verify get_disk_usage works with custom paths."""
+        from backend.utils.async_io import get_disk_usage
+
+        disk = await get_disk_usage(str(tmp_path))
+        assert disk.total > 0

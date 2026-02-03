@@ -8,10 +8,29 @@ to ensure the event loop is never blocked during startup or other async contexts
 These utilities are designed to be generic, type-safe, and composable.
 
 Key Functions:
-    - run_sync: Generic wrapper for any blocking function
-    - path_exists: Async-safe file/directory existence check
-    - read_file: Async-safe file reading
-    - run_subprocess: Async subprocess execution with timeout support
+    Generic:
+        - run_sync: Generic wrapper for any blocking function
+
+    File System:
+        - path_exists: Async-safe file/directory existence check
+        - read_file: Async-safe file reading
+
+    Subprocess:
+        - run_subprocess: Async subprocess execution with timeout support
+
+    Process Utilities (psutil wrappers):
+        - pid_exists: Check if a process exists
+        - get_process: Get a Process object (returns None if not found)
+        - process_is_running: Check if a process is running (never raises)
+        - iter_processes: Async iterator over running processes
+
+    Network Utilities:
+        - get_net_connections: Get network connections
+
+    System Resources:
+        - get_cpu_percent: Get CPU usage percentage
+        - get_virtual_memory: Get memory statistics
+        - get_disk_usage: Get disk usage statistics
 
 Usage:
     from backend.utils.async_io import (
@@ -19,6 +38,11 @@ Usage:
         path_exists,
         read_file,
         run_subprocess,
+        pid_exists,
+        process_is_running,
+        iter_processes,
+        get_cpu_percent,
+        get_virtual_memory,
     )
 
     # Wrap any blocking function
@@ -31,11 +55,25 @@ Usage:
     # Run subprocess with timeout
     result = await run_subprocess(["ls", "-la"], timeout=5.0)
 
+    # Check if process is running (never raises)
+    if await process_is_running(1234):
+        print("Process is active")
+
+    # Iterate over processes
+    async for proc in iter_processes(attrs=['pid', 'name', 'status']):
+        print(f"PID {proc['pid']}: {proc['name']}")
+
+    # Get system resources
+    cpu = await get_cpu_percent()
+    mem = await get_virtual_memory()
+    disk = await get_disk_usage("/")
+
 Design Notes:
     - run_sync uses asyncio.to_thread() for Python 3.9+ compatibility
     - run_subprocess uses asyncio.create_subprocess_exec() for true async I/O
     - All functions are type-safe with proper generics
-    - Errors from blocking functions are propagated to the caller
+    - Process utilities follow "never raise" principle - return None/False for errors
+    - Network utilities may raise on platforms without elevated privileges
 """
 
 from __future__ import annotations
@@ -44,7 +82,9 @@ import asyncio
 import os
 import subprocess
 from pathlib import Path
-from typing import Any, Callable, TypeVar, Union
+from typing import Any, AsyncIterator, Callable, TypeVar, Union
+
+import psutil
 
 # Type variable for generic return type
 T = TypeVar("T")
@@ -243,12 +283,238 @@ async def run_subprocess(
 
 
 # =============================================================================
+# Process Utilities
+# =============================================================================
+
+
+async def pid_exists(pid: int) -> bool:
+    """
+    Check if a process exists without blocking the event loop.
+
+    This is an async-safe wrapper around psutil.pid_exists().
+
+    Args:
+        pid: The process ID to check
+
+    Returns:
+        True if the process exists, False otherwise
+
+    Example:
+        if await pid_exists(1234):
+            print("Process is running")
+    """
+    return await run_sync(psutil.pid_exists, pid)
+
+
+async def get_process(pid: int) -> psutil.Process | None:
+    """
+    Get a Process object for the given PID without blocking.
+
+    This function never raises exceptions for common error conditions.
+    Returns None if the process doesn't exist or is inaccessible.
+
+    Args:
+        pid: The process ID to get
+
+    Returns:
+        psutil.Process object if process exists and is accessible, None otherwise
+
+    Example:
+        proc = await get_process(1234)
+        if proc is not None:
+            print(f"Process name: {proc.name()}")
+    """
+    try:
+        return await run_sync(psutil.Process, pid)
+    except (psutil.NoSuchProcess, psutil.AccessDenied, ValueError):
+        # ValueError can occur for invalid PIDs (e.g., negative)
+        return None
+
+
+async def process_is_running(pid: int) -> bool:
+    """
+    Check if a process is running without blocking the event loop.
+
+    This function never raises exceptions - it returns False for any
+    error condition (process doesn't exist, access denied, etc.).
+
+    Args:
+        pid: The process ID to check
+
+    Returns:
+        True if the process exists and is running, False otherwise
+
+    Example:
+        if await process_is_running(1234):
+            print("Process is still active")
+        else:
+            print("Process has stopped")
+    """
+    proc = await get_process(pid)
+    if proc is None:
+        return False
+    try:
+        return await run_sync(proc.is_running)
+    except (psutil.NoSuchProcess, psutil.AccessDenied):
+        return False
+
+
+async def iter_processes(
+    attrs: list[str] | None = None,
+) -> AsyncIterator[dict[str, Any]]:
+    """
+    Iterate over running processes without blocking the event loop.
+
+    This function silently skips processes that disappear or become
+    inaccessible during iteration.
+
+    Args:
+        attrs: List of process attributes to include in each dict.
+               Default is ['pid', 'name'].
+
+    Yields:
+        dict: Process information dict with the requested attributes
+
+    Example:
+        async for proc in iter_processes(attrs=['pid', 'name', 'status']):
+            print(f"PID {proc['pid']}: {proc['name']} ({proc['status']})")
+    """
+    attrs = attrs or ["pid", "name"]
+    # Get all processes in one blocking call to minimize event loop blocking
+    procs = await run_sync(lambda: list(psutil.process_iter(attrs)))
+    for proc in procs:
+        try:
+            yield proc.info
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            # Process disappeared or became inaccessible, skip it
+            continue
+
+
+# =============================================================================
+# Network Utilities
+# =============================================================================
+
+
+async def get_net_connections(kind: str = "inet") -> list[Any]:
+    """
+    Get network connections without blocking the event loop.
+
+    This is an async-safe wrapper around psutil.net_connections().
+
+    Args:
+        kind: The type of connections to return. Common values:
+              - 'inet': IPv4 and IPv6
+              - 'inet4': IPv4 only
+              - 'inet6': IPv6 only
+              - 'tcp': TCP connections
+              - 'udp': UDP connections
+              - 'all': All types
+
+    Returns:
+        List of connection named tuples
+
+    Example:
+        connections = await get_net_connections(kind='tcp')
+        for conn in connections:
+            print(f"{conn.laddr} -> {conn.raddr}")
+    """
+    return await run_sync(psutil.net_connections, kind)
+
+
+# =============================================================================
+# System Resource Utilities
+# =============================================================================
+
+
+async def get_cpu_percent(interval: float = 0.1) -> float:
+    """
+    Get CPU usage percentage without blocking the event loop.
+
+    This is an async-safe wrapper around psutil.cpu_percent().
+    Uses a small default interval to minimize blocking time.
+
+    Args:
+        interval: Seconds to wait between CPU measurements.
+                  Smaller values are less accurate but faster.
+                  Default is 0.1 seconds.
+
+    Returns:
+        CPU usage percentage as a float (0.0 to 100.0)
+
+    Example:
+        cpu = await get_cpu_percent()
+        print(f"CPU usage: {cpu}%")
+    """
+    return await run_sync(psutil.cpu_percent, interval=interval)
+
+
+async def get_virtual_memory() -> Any:
+    """
+    Get virtual memory statistics without blocking the event loop.
+
+    This is an async-safe wrapper around psutil.virtual_memory().
+
+    Returns:
+        Named tuple with memory statistics:
+        - total: Total physical memory
+        - available: Memory available without swapping
+        - percent: Percentage of memory used
+        - used: Memory used
+        - free: Memory not being used at all
+
+    Example:
+        mem = await get_virtual_memory()
+        print(f"Memory usage: {mem.percent}%")
+        print(f"Available: {mem.available / (1024**3):.1f} GB")
+    """
+    return await run_sync(psutil.virtual_memory)
+
+
+async def get_disk_usage(path: str = "/") -> Any:
+    """
+    Get disk usage statistics without blocking the event loop.
+
+    This is an async-safe wrapper around psutil.disk_usage().
+
+    Args:
+        path: The path to check disk usage for. Default is root '/'.
+
+    Returns:
+        Named tuple with disk statistics:
+        - total: Total disk space in bytes
+        - used: Used disk space in bytes
+        - free: Free disk space in bytes
+        - percent: Percentage of disk used
+
+    Example:
+        disk = await get_disk_usage("/")
+        print(f"Disk usage: {disk.percent}%")
+        print(f"Free: {disk.free / (1024**3):.1f} GB")
+    """
+    return await run_sync(psutil.disk_usage, path)
+
+
+# =============================================================================
 # Exports
 # =============================================================================
 
 __all__ = [
+    # Generic wrapper
     "run_sync",
+    # File system utilities
     "path_exists",
     "read_file",
+    # Subprocess utilities
     "run_subprocess",
+    # Process utilities
+    "pid_exists",
+    "get_process",
+    "process_is_running",
+    "iter_processes",
+    # Network utilities
+    "get_net_connections",
+    # System resource utilities
+    "get_cpu_percent",
+    "get_virtual_memory",
+    "get_disk_usage",
 ]
