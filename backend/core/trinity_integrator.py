@@ -324,8 +324,8 @@ class IntelligentRepoDiscovery:
     # Environment variable names for each repo
     ENV_VARS: Final[Dict[str, str]] = {
         "jarvis": "JARVIS_REPO_PATH",
-        "jarvis_prime": "JARVIS_PRIME_REPO_PATH",
-        "reactor_core": "REACTOR_CORE_REPO_PATH",
+        "jarvis_prime": "JARVIS_PRIME_PATH",      # Match existing env var convention
+        "reactor_core": "REACTOR_CORE_PATH",       # Match existing env var convention
     }
 
     # Standard directory names for each repo

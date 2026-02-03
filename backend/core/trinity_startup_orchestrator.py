@@ -191,14 +191,36 @@ class TrinityStartupOrchestrator:
         self._init_components()
 
     def _init_components(self) -> None:
-        """Initialize component configurations."""
-        # Detect repo paths
-        jarvis_path = Path(__file__).parent.parent.parent.parent  # JARVIS-AI-Agent
-        prime_path = jarvis_path.parent / "jarvis-prime"
-        reactor_path = jarvis_path.parent / "reactor-core"
+        """Initialize component configurations using unified discovery."""
+        # Use IntelligentRepoDiscovery for path resolution
+        from backend.core.trinity_integrator import IntelligentRepoDiscovery
+
+        discovery = IntelligentRepoDiscovery()
+
+        # Discover paths (sync wrapper for init)
+        loop = asyncio.new_event_loop()
+        try:
+            prime_result = loop.run_until_complete(discovery.discover("jarvis_prime"))
+            reactor_result = loop.run_until_complete(discovery.discover("reactor_core"))
+        finally:
+            loop.close()
+
+        prime_path = prime_result.path or Path("/nonexistent")  # Will fail validation
+        reactor_path = reactor_result.path or Path("/nonexistent")
+
+        # Log discovery results
+        if prime_result.path:
+            self.logger.info(f"[Trinity] J-Prime discovered: {prime_result.path} (via {prime_result.strategy_used.name})")
+        else:
+            self.logger.warning("[Trinity] J-Prime not found. Set JARVIS_PRIME_PATH or clone to sibling directory.")
+
+        if reactor_result.path:
+            self.logger.info(f"[Trinity] Reactor-Core discovered: {reactor_result.path} (via {reactor_result.strategy_used.name})")
+        else:
+            self.logger.warning("[Trinity] Reactor-Core not found. Set REACTOR_CORE_PATH or clone to sibling directory.")
 
         # Get ports from config or defaults
-        prime_port = int(os.getenv("JARVIS_PRIME_PORT", "8000"))  # v89.0: Fixed to 8000
+        prime_port = int(os.getenv("JARVIS_PRIME_PORT", "8000"))
         reactor_port = int(os.getenv("REACTOR_CORE_PORT", "8090"))
 
         self.state.components = {
