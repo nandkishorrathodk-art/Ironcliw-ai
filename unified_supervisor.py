@@ -1356,6 +1356,18 @@ class CLIBoxDrawing:
     def bold(self, text: str) -> str:
         return f"{self.BOLD}{text}{self.RESET}"
 
+    def section_header(self, title: str) -> str:
+        """
+        Create a section header line: ╠═══ Title ═══════════════════════╣
+
+        Creates a visually distinct section divider with a centered title.
+        """
+        prefix = f"{self.H * 3} {title} "
+        suffix_len = self.width - 2 - len(prefix)  # -2 for left/right borders
+        if suffix_len < 0:
+            suffix_len = 0
+        return f"{self.SEP_L}{prefix}{self.H * suffix_len}{self.SEP_R}"
+
 
 # Global instance with default width
 _cli_box = CLIBoxDrawing(width=70)
@@ -63966,42 +63978,18 @@ async def handle_monitor_reactor() -> int:
     Handle --monitor-reactor command: Display Reactor-Core status dashboard.
 
     v201.1: Shows Reactor status whether kernel is running or not.
+    v201.5: Refactored to use centralized CLIBoxDrawing for proper ANSI-aware padding.
     """
     # v201.4: Suppress shutdown diagnostics for CLI-only commands
     set_cli_only_mode(True)
 
-    # ANSI colors
-    GREEN = "\033[92m"
-    RED = "\033[91m"
-    YELLOW = "\033[93m"
-    BLUE = "\033[94m"
-    CYAN = "\033[96m"
-    BOLD = "\033[1m"
-    DIM = "\033[2m"
-    RESET = "\033[0m"
-
-    # Box drawing characters
-    BOX_TL, BOX_TR, BOX_BL, BOX_BR = "\u2554", "\u2557", "\u255a", "\u255d"
-    BOX_H, BOX_V = "\u2550", "\u2551"
-    BOX_SEP_L, BOX_SEP_R = "\u2560", "\u2563"
-
-    def box_line(text: str, width: int = 70) -> str:
-        padded = f" {text}".ljust(width - 2)
-        return f"{BOX_V}{padded}{BOX_V}"
-
-    def header(width: int = 70) -> str:
-        return f"{BOX_TL}{BOX_H * (width - 2)}{BOX_TR}"
-
-    def footer(width: int = 70) -> str:
-        return f"{BOX_BL}{BOX_H * (width - 2)}{BOX_BR}"
-
-    def separator(width: int = 70) -> str:
-        return f"{BOX_SEP_L}{BOX_H * (width - 2)}{BOX_SEP_R}"
+    # Use centralized ANSI-aware box drawing
+    box = get_cli_box(width=70)
 
     print()
-    print(f"{BOLD}{BLUE}" + header() + RESET)
-    print(f"{BOLD}{BLUE}" + box_line("REACTOR-CORE STATUS MONITOR") + RESET)
-    print(f"{BOLD}{BLUE}" + separator() + RESET)
+    print(f"{box.BOLD}{box.BLUE}{box.header()}{box.RESET}")
+    print(f"{box.BOLD}{box.BLUE}{box.line('REACTOR-CORE STATUS MONITOR')}{box.RESET}")
+    print(f"{box.BOLD}{box.BLUE}{box.separator()}{box.RESET}")
 
     # Get port from environment
     reactor_port = int(os.getenv("TRINITY_REACTOR_PORT", "8090"))
@@ -64035,13 +64023,13 @@ async def handle_monitor_reactor() -> int:
         reactor_data = trinity_status.get("components", {}).get("reactor-core", {})
 
     if kernel_running:
-        print(box_line(f"Kernel:       {GREEN}Running{RESET}"))
+        print(box.line(f"Kernel:       {box.GREEN}Running{box.RESET}"))
     else:
-        print(box_line(f"Kernel:       {YELLOW}Not running{RESET} (direct health check)"))
+        print(box.line(f"Kernel:       {box.YELLOW}Not running{box.RESET} (direct health check)"))
 
-    print(separator())
-    print(box_line(f"Host:         {reactor_host}"))
-    print(box_line(f"Port:         {reactor_port}"))
+    print(box.separator())
+    print(box.line(f"Host:         {reactor_host}"))
+    print(box.line(f"Port:         {reactor_port}"))
 
     if reactor_data:
         configured = reactor_data.get("configured", False)
@@ -64052,19 +64040,19 @@ async def handle_monitor_reactor() -> int:
         repo_path = reactor_data.get("repo_path")
         restart_count = reactor_data.get("restart_count", 0)
 
-        print(box_line(f"Configured:   {GREEN}Yes{RESET}" if configured else f"Configured:   {RED}No{RESET}"))
-        print(box_line(f"State:        {state}"))
-        print(box_line(f"Running:      {GREEN}Yes{RESET}" if running else f"Running:      {RED}No{RESET}"))
-        print(box_line(f"Healthy:      {GREEN}Yes{RESET}" if healthy else f"Healthy:      {RED}No{RESET}"))
+        print(box.line(f"Configured:   {box.GREEN}Yes{box.RESET}" if configured else f"Configured:   {box.RED}No{box.RESET}"))
+        print(box.line(f"State:        {state}"))
+        print(box.line(f"Running:      {box.GREEN}Yes{box.RESET}" if running else f"Running:      {box.RED}No{box.RESET}"))
+        print(box.line(f"Healthy:      {box.GREEN}Yes{box.RESET}" if healthy else f"Healthy:      {box.RED}No{box.RESET}"))
         if pid:
-            print(box_line(f"PID:          {pid}"))
+            print(box.line(f"PID:          {pid}"))
         if repo_path:
-            print(box_line(f"Repo:         {DIM}{repo_path}{RESET}"))
+            print(box.line(f"Repo:         {box.DIM}{repo_path}{box.RESET}"))
         if restart_count > 0:
-            print(box_line(f"Restarts:     {YELLOW}{restart_count}{RESET}"))
+            print(box.line(f"Restarts:     {box.YELLOW}{restart_count}{box.RESET}"))
     else:
-        print(separator())
-        print(box_line(f"{CYAN}Direct Health Check{RESET}"))
+        print(box.separator())
+        print(box.line(f"{box.CYAN}Direct Health Check{box.RESET}"))
 
         try:
             import aiohttp
@@ -64073,21 +64061,21 @@ async def handle_monitor_reactor() -> int:
                 async with session.get(url, timeout=aiohttp.ClientTimeout(total=5)) as resp:
                     if resp.status == 200:
                         health = await resp.json()
-                        print(box_line(f"Reachable:    {GREEN}Yes{RESET}"))
+                        print(box.line(f"Reachable:    {box.GREEN}Yes{box.RESET}"))
                         status = health.get("status", "unknown")
                         if status == "healthy":
-                            print(box_line(f"Status:       {GREEN}{status}{RESET}"))
+                            print(box.line(f"Status:       {box.GREEN}{status}{box.RESET}"))
                         else:
-                            print(box_line(f"Status:       {YELLOW}{status}{RESET}"))
+                            print(box.line(f"Status:       {box.YELLOW}{status}{box.RESET}"))
                     else:
-                        print(box_line(f"Reachable:    {YELLOW}Yes (HTTP {resp.status}){RESET}"))
+                        print(box.line(f"Reachable:    {box.YELLOW}Yes (HTTP {resp.status}){box.RESET}"))
         except Exception:
-            print(box_line(f"Reachable:    {RED}No (connection failed){RESET}"))
+            print(box.line(f"Reachable:    {box.RED}No (connection failed){box.RESET}"))
 
-    print(footer())
+    print(box.footer())
 
     print()
-    print(f"{BOLD}Quick Actions:{RESET}")
+    print(f"{box.BOLD}Quick Actions:{box.RESET}")
     print(f"  - Full status:  python unified_supervisor.py --status")
     print(f"  - Health check: curl http://{reactor_host}:{reactor_port}/health")
     print()
@@ -64105,43 +64093,18 @@ async def handle_monitor_trinity() -> int:
     Handle --monitor-trinity command: Unified Trinity dashboard.
 
     v201.1: Shows Prime, Reactor, and Invincible Node status in one view.
+    v201.5: Refactored to use centralized CLIBoxDrawing for proper ANSI-aware padding.
     """
     # v201.4: Suppress shutdown diagnostics for CLI-only commands
     set_cli_only_mode(True)
 
-    GREEN = "\033[92m"
-    RED = "\033[91m"
-    YELLOW = "\033[93m"
-    BLUE = "\033[94m"
-    CYAN = "\033[96m"
-    BOLD = "\033[1m"
-    DIM = "\033[2m"
-    RESET = "\033[0m"
-
-    BOX_TL, BOX_TR, BOX_BL, BOX_BR = "\u2554", "\u2557", "\u255a", "\u255d"
-    BOX_H, BOX_V = "\u2550", "\u2551"
-    BOX_SEP_L, BOX_SEP_R = "\u2560", "\u2563"
-
-    def box_line(text: str, width: int = 70) -> str:
-        padded = f" {text}".ljust(width - 2)
-        return f"{BOX_V}{padded}{BOX_V}"
-
-    def header(width: int = 70) -> str:
-        return f"{BOX_TL}{BOX_H * (width - 2)}{BOX_TR}"
-
-    def footer(width: int = 70) -> str:
-        return f"{BOX_BL}{BOX_H * (width - 2)}{BOX_BR}"
-
-    def separator(width: int = 70) -> str:
-        return f"{BOX_SEP_L}{BOX_H * (width - 2)}{BOX_SEP_R}"
-
-    def section_header(title: str, width: int = 70) -> str:
-        dash = '\u2500'
+    # Use centralized ANSI-aware box drawing
+    box = get_cli_box(width=70)
 
     print()
-    print(f"{BOLD}{BLUE}" + header() + RESET)
-    print(f"{BOLD}{BLUE}" + box_line("TRINITY UNIFIED STATUS MONITOR") + RESET)
-    print(f"{BOLD}{BLUE}" + separator() + RESET)
+    print(f"{box.BOLD}{box.BLUE}{box.header()}{box.RESET}")
+    print(f"{box.BOLD}{box.BLUE}{box.line('TRINITY UNIFIED STATUS MONITOR')}{box.RESET}")
+    print(f"{box.BOLD}{box.BLUE}{box.separator()}{box.RESET}")
 
     # Try IPC
     socket_path = Path.home() / ".jarvis" / "locks" / "kernel.sock"
@@ -64170,15 +64133,15 @@ async def handle_monitor_trinity() -> int:
         state = ipc_result.get("state", "unknown")
         uptime = ipc_result.get("uptime_seconds", 0)
         uptime_str = f"{int(uptime // 60)}m {int(uptime % 60)}s"
-        print(box_line(f"Kernel:       {GREEN}{state}{RESET} (uptime: {uptime_str})"))
+        print(box.line(f"Kernel:       {box.GREEN}{state}{box.RESET} (uptime: {uptime_str})"))
     else:
-        print(box_line(f"Kernel:       {YELLOW}Not running{RESET}"))
+        print(box.line(f"Kernel:       {box.YELLOW}Not running{box.RESET}"))
 
     trinity_status = ipc_result.get("trinity", {}) if ipc_result else {}
     invincible_status = ipc_result.get("invincible_node", {}) if ipc_result else {}
 
     # Prime section
-    print(section_header("J-Prime"))
+    print(box.section_header("J-Prime"))
     prime_data = trinity_status.get("components", {}).get("jarvis-prime", {})
     prime_port = int(os.getenv("TRINITY_JPRIME_PORT", "8000"))
 
@@ -64186,13 +64149,13 @@ async def handle_monitor_trinity() -> int:
         running = prime_data.get("running", False)
         healthy = prime_data.get("healthy", False)
         state = prime_data.get("state", "unknown")
-        status_icon = f"{GREEN}*{RESET}" if healthy else (f"{YELLOW}*{RESET}" if running else f"{RED}*{RESET}")
-        print(box_line(f"{status_icon} State: {state}  |  Port: {prime_port}  |  PID: {prime_data.get('pid', '-')}"))
+        status_icon = f"{box.GREEN}*{box.RESET}" if healthy else (f"{box.YELLOW}*{box.RESET}" if running else f"{box.RED}*{box.RESET}")
+        print(box.line(f"{status_icon} State: {state}  |  Port: {prime_port}  |  PID: {prime_data.get('pid', '-')}"))
     else:
-        print(box_line(f"{DIM}Not configured or kernel not running{RESET}"))
+        print(box.line(f"{box.DIM}Not configured or kernel not running{box.RESET}"))
 
     # Reactor section
-    print(section_header("Reactor-Core"))
+    print(box.section_header("Reactor-Core"))
     reactor_data = trinity_status.get("components", {}).get("reactor-core", {})
     reactor_port = int(os.getenv("TRINITY_REACTOR_PORT", "8090"))
 
@@ -64200,13 +64163,13 @@ async def handle_monitor_trinity() -> int:
         running = reactor_data.get("running", False)
         healthy = reactor_data.get("healthy", False)
         state = reactor_data.get("state", "unknown")
-        status_icon = f"{GREEN}*{RESET}" if healthy else (f"{YELLOW}*{RESET}" if running else f"{RED}*{RESET}")
-        print(box_line(f"{status_icon} State: {state}  |  Port: {reactor_port}  |  PID: {reactor_data.get('pid', '-')}"))
+        status_icon = f"{box.GREEN}*{box.RESET}" if healthy else (f"{box.YELLOW}*{box.RESET}" if running else f"{box.RED}*{box.RESET}")
+        print(box.line(f"{status_icon} State: {state}  |  Port: {reactor_port}  |  PID: {reactor_data.get('pid', '-')}"))
     else:
-        print(box_line(f"{DIM}Not configured or kernel not running{RESET}"))
+        print(box.line(f"{box.DIM}Not configured or kernel not running{box.RESET}"))
 
     # Invincible Node section
-    print(section_header("Invincible Node"))
+    print(box.section_header("Invincible Node"))
     config = SystemKernelConfig()
 
     if config.invincible_node_enabled:
@@ -64218,20 +64181,20 @@ async def handle_monitor_trinity() -> int:
             ready = health.get("ready_for_inference", False)
 
             if gcp_status == "RUNNING" and ready:
-                status_icon = f"{GREEN}*{RESET}"
+                status_icon = f"{box.GREEN}*{box.RESET}"
             elif gcp_status == "RUNNING":
-                status_icon = f"{YELLOW}*{RESET}"
+                status_icon = f"{box.YELLOW}*{box.RESET}"
             else:
-                status_icon = f"{RED}*{RESET}"
+                status_icon = f"{box.RED}*{box.RESET}"
 
-            print(box_line(f"{status_icon} GCP: {gcp_status}  |  IP: {static_ip}  |  Inference: {'Ready' if ready else 'Not ready'}"))
+            print(box.line(f"{status_icon} GCP: {gcp_status}  |  IP: {static_ip}  |  Inference: {'Ready' if ready else 'Not ready'}"))
         else:
-            print(box_line(f"{YELLOW}*{RESET} Enabled but no status data (run --monitor for details)"))
+            print(box.line(f"{box.YELLOW}*{box.RESET} Enabled but no status data (run --monitor for details)"))
     else:
-        print(box_line(f"{DIM}Disabled{RESET}"))
+        print(box.line(f"{box.DIM}Disabled{box.RESET}"))
 
     # Overall health summary
-    print(separator())
+    print(box.separator())
     all_healthy = True
     if prime_data and not prime_data.get("healthy"):
         all_healthy = False
@@ -64239,16 +64202,16 @@ async def handle_monitor_trinity() -> int:
         all_healthy = False
 
     if all_healthy and kernel_running:
-        print(box_line(f"{GREEN}Trinity System: All components healthy{RESET}"))
+        print(box.line(f"{box.GREEN}Trinity System: All components healthy{box.RESET}"))
     elif kernel_running:
-        print(box_line(f"{YELLOW}Trinity System: Some components degraded{RESET}"))
+        print(box.line(f"{box.YELLOW}Trinity System: Some components degraded{box.RESET}"))
     else:
-        print(box_line(f"{DIM}Cannot determine health - kernel not running{RESET}"))
+        print(box.line(f"{box.DIM}Cannot determine health - kernel not running{box.RESET}"))
 
-    print(footer())
+    print(box.footer())
 
     print()
-    print(f"{BOLD}Component Dashboards:{RESET}")
+    print(f"{box.BOLD}Component Dashboards:{box.RESET}")
     print(f"  - J-Prime:     python unified_supervisor.py --monitor-prime")
     print(f"  - Reactor:     python unified_supervisor.py --monitor-reactor")
     print(f"  - Invincible:  python unified_supervisor.py --monitor")
