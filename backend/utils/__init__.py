@@ -3,6 +3,7 @@ JARVIS Backend Utilities
 ========================
 
 This package provides utility modules for the JARVIS backend, including:
+- Environment configuration utilities for type-safe env var parsing
 - Async I/O utilities for non-blocking operations (generic wrappers)
 - Async startup utilities for non-blocking startup operations
 - Async lock wrappers for cross-repo locking
@@ -12,6 +13,11 @@ This package provides utility modules for the JARVIS backend, including:
 
 Usage:
     from backend.utils import (
+        # Environment configuration utilities
+        get_env_str,
+        get_env_int,
+        get_env_bool,
+        EnvConfig,
         # Generic async I/O utilities
         run_sync,
         path_exists,
@@ -25,6 +31,17 @@ Usage:
         CrossRepoLockManager,
     )
 """
+
+# Environment configuration utilities - type-safe env var parsing
+from backend.utils.env_config import (
+    get_env_str,
+    get_env_optional_str,
+    get_env_int,
+    get_env_float,
+    get_env_bool,
+    get_env_list,
+    EnvConfig,
+)
 
 # Generic async I/O utilities - type-safe wrappers for blocking operations
 from backend.utils.async_io import (
@@ -68,6 +85,14 @@ from backend.utils.async_lock_wrapper import (
 
 
 __all__ = [
+    # === Environment Configuration Utilities ===
+    "get_env_str",
+    "get_env_optional_str",
+    "get_env_int",
+    "get_env_float",
+    "get_env_bool",
+    "get_env_list",
+    "EnvConfig",
     # === Generic Async I/O Utilities ===
     "run_sync",
     "path_exists",
