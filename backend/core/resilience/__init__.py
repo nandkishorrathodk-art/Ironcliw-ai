@@ -280,6 +280,11 @@ from backend.core.resilience.circuit_breaker import (
     CircuitOpen as PrimitivesCircuitOpen,
 )
 
+# v3.0: HealthProbe with cached health checks
+from backend.core.resilience.health import (
+    HealthProbe,
+)
+
 __all__ = [
     # Distributed Lock
     "DistributedLock",
@@ -499,4 +504,9 @@ __all__ = [
     # Simple state machine circuit breaker (local, not distributed)
     "PrimitivesCircuitBreaker",  # Aliased to avoid collision with distributed_circuit_breaker
     "PrimitivesCircuitOpen",
+    # =========================================================================
+    # v3.0: HEALTH PROBE
+    # =========================================================================
+    # Cached health checks with failure tracking
+    "HealthProbe",
 ]
