@@ -62484,6 +62484,31 @@ async def handle_check_only(args: argparse.Namespace) -> int:
     if not ws_free:
         warnings.append(f"Port {ws_port} in use - will attempt cleanup")
 
+    # 8. Trinity Repositories
+    print(f"{BOLD}{BLUE}║{RESET}")
+    print(f"{BOLD}{BLUE}║{RESET}  {CYAN}Trinity Repositories{RESET}")
+
+    prime_path = config.prime_repo_path or (Path(os.environ.get("JARVIS_PRIME_PATH", "")) if os.environ.get("JARVIS_PRIME_PATH") else None)
+    reactor_path = config.reactor_repo_path or (Path(os.environ.get("REACTOR_CORE_PATH", "")) if os.environ.get("REACTOR_CORE_PATH") else None)
+
+    if prime_path:
+        prime_exists = prime_path.exists() if isinstance(prime_path, Path) else Path(prime_path).exists()
+        print(f"{BOLD}{BLUE}║{RESET}    {check_mark(prime_exists)} J-Prime: {prime_path}")
+        if not prime_exists:
+            warnings.append("J-Prime path does not exist")
+    else:
+        print(f"{BOLD}{BLUE}║{RESET}    {warn_mark()} J-Prime: Not configured")
+        warnings.append("J-Prime path not set (JARVIS_PRIME_PATH)")
+
+    if reactor_path:
+        reactor_exists = reactor_path.exists() if isinstance(reactor_path, Path) else Path(reactor_path).exists()
+        print(f"{BOLD}{BLUE}║{RESET}    {check_mark(reactor_exists)} Reactor: {reactor_path}")
+        if not reactor_exists:
+            warnings.append("Reactor path does not exist")
+    else:
+        print(f"{BOLD}{BLUE}║{RESET}    {warn_mark()} Reactor: Not configured")
+        warnings.append("Reactor path not set (REACTOR_CORE_PATH)")
+
     # Summary
     print(f"{BOLD}{BLUE}╠══════════════════════════════════════════════════════════════════════╣{RESET}")
 
