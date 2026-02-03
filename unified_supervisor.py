@@ -62003,6 +62003,12 @@ Environment Variables:
         help="Display J-Prime component status dashboard",
     )
 
+
+    trinity.add_argument(
+        "--monitor-reactor",
+        action="store_true",
+        help="Display Reactor-Core component status dashboard",
+    )
     # =========================================================================
     # DEVELOPMENT
     # =========================================================================
@@ -62866,6 +62872,138 @@ async def handle_monitor_prime() -> int:
     return 0
 
 
+async def handle_monitor_reactor() -> int:
+    """
+    Handle --monitor-reactor command: Display Reactor-Core status dashboard.
+
+    v201.1: Shows Reactor status whether kernel is running or not.
+    """
+    # ANSI colors
+    GREEN = "\033[92m"
+    RED = "\033[91m"
+    YELLOW = "\033[93m"
+    BLUE = "\033[94m"
+    CYAN = "\033[96m"
+    BOLD = "\033[1m"
+    DIM = "\033[2m"
+    RESET = "\033[0m"
+
+    # Box drawing characters
+    BOX_TL, BOX_TR, BOX_BL, BOX_BR = "\u2554", "\u2557", "\u255a", "\u255d"
+    BOX_H, BOX_V = "\u2550", "\u2551"
+    BOX_SEP_L, BOX_SEP_R = "\u2560", "\u2563"
+
+    def box_line(text: str, width: int = 70) -> str:
+        padded = f" {text}".ljust(width - 2)
+        return f"{BOX_V}{padded}{BOX_V}"
+
+    def header(width: int = 70) -> str:
+        return f"{BOX_TL}{BOX_H * (width - 2)}{BOX_TR}"
+
+    def footer(width: int = 70) -> str:
+        return f"{BOX_BL}{BOX_H * (width - 2)}{BOX_BR}"
+
+    def separator(width: int = 70) -> str:
+        return f"{BOX_SEP_L}{BOX_H * (width - 2)}{BOX_SEP_R}"
+
+    print()
+    print(f"{BOLD}{BLUE}" + header() + RESET)
+    print(f"{BOLD}{BLUE}" + box_line("REACTOR-CORE STATUS MONITOR") + RESET)
+    print(f"{BOLD}{BLUE}" + separator() + RESET)
+
+    # Get port from environment
+    reactor_port = int(os.getenv("TRINITY_REACTOR_PORT", "8090"))
+    reactor_host = os.getenv("TRINITY_REACTOR_HOST", "localhost")
+
+    # Try IPC first
+    socket_path = Path.home() / ".jarvis" / "locks" / "kernel.sock"
+    trinity_status = None
+    kernel_running = False
+
+    if socket_path.exists():
+        try:
+            reader, writer = await asyncio.open_unix_connection(str(socket_path))
+            request = json.dumps({"command": "status"}) + "\n"
+            writer.write(request.encode())
+            await writer.drain()
+            response_data = await asyncio.wait_for(reader.readline(), timeout=5.0)
+            response = json.loads(response_data.decode())
+            writer.close()
+            await writer.wait_closed()
+
+            if response.get("success"):
+                result = response.get("result", {})
+                trinity_status = result.get("trinity", {})
+                kernel_running = True
+        except Exception:
+            pass
+
+    reactor_data = None
+    if trinity_status:
+        reactor_data = trinity_status.get("components", {}).get("reactor-core", {})
+
+    if kernel_running:
+        print(box_line(f"Kernel:       {GREEN}Running{RESET}"))
+    else:
+        print(box_line(f"Kernel:       {YELLOW}Not running{RESET} (direct health check)"))
+
+    print(separator())
+    print(box_line(f"Host:         {reactor_host}"))
+    print(box_line(f"Port:         {reactor_port}"))
+
+    if reactor_data:
+        configured = reactor_data.get("configured", False)
+        state = reactor_data.get("state", "unknown")
+        running = reactor_data.get("running", False)
+        healthy = reactor_data.get("healthy", False)
+        pid = reactor_data.get("pid")
+        repo_path = reactor_data.get("repo_path")
+        restart_count = reactor_data.get("restart_count", 0)
+
+        print(box_line(f"Configured:   {GREEN}Yes{RESET}" if configured else f"Configured:   {RED}No{RESET}"))
+        print(box_line(f"State:        {state}"))
+        print(box_line(f"Running:      {GREEN}Yes{RESET}" if running else f"Running:      {RED}No{RESET}"))
+        print(box_line(f"Healthy:      {GREEN}Yes{RESET}" if healthy else f"Healthy:      {RED}No{RESET}"))
+        if pid:
+            print(box_line(f"PID:          {pid}"))
+        if repo_path:
+            print(box_line(f"Repo:         {DIM}{repo_path}{RESET}"))
+        if restart_count > 0:
+            print(box_line(f"Restarts:     {YELLOW}{restart_count}{RESET}"))
+    else:
+        print(separator())
+        print(box_line(f"{CYAN}Direct Health Check{RESET}"))
+
+        try:
+            import aiohttp
+            async with aiohttp.ClientSession() as session:
+                url = f"http://{reactor_host}:{reactor_port}/health"
+                async with session.get(url, timeout=aiohttp.ClientTimeout(total=5)) as resp:
+                    if resp.status == 200:
+                        health = await resp.json()
+                        print(box_line(f"Reachable:    {GREEN}Yes{RESET}"))
+                        status = health.get("status", "unknown")
+                        if status == "healthy":
+                            print(box_line(f"Status:       {GREEN}{status}{RESET}"))
+                        else:
+                            print(box_line(f"Status:       {YELLOW}{status}{RESET}"))
+                    else:
+                        print(box_line(f"Reachable:    {YELLOW}Yes (HTTP {resp.status}){RESET}"))
+        except Exception:
+            print(box_line(f"Reachable:    {RED}No (connection failed){RESET}"))
+
+    print(footer())
+
+    print()
+    print(f"{BOLD}Quick Actions:{RESET}")
+    print(f"  - Full status:  python unified_supervisor.py --status")
+    print(f"  - Health check: curl http://{reactor_host}:{reactor_port}/health")
+    print()
+
+    return 0
+
+
+
 
 
 
@@ -63133,6 +63271,10 @@ async def async_main(args: argparse.Namespace) -> int:
     # Handle --monitor-prime
     if args.monitor_prime:
         return await handle_monitor_prime()
+
+    # Handle --monitor-reactor
+    if args.monitor_reactor:
+        return await handle_monitor_reactor()
     if args.cleanup:
         return await handle_cleanup()
 
