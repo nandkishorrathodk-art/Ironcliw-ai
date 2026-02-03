@@ -750,11 +750,14 @@ except ImportError:
     set_cli_only_mode = lambda *args: None  # No-op fallback
 
 # v181.0: Cross-Repo Startup Orchestrator - GCP/Hollow Client/Trinity Protocol
+# v200.0: Added ProcessOrchestrator and StartupLockError for Pillar 1 lock-guarded startup
 try:
     from backend.supervisor.cross_repo_startup_orchestrator import (
         initialize_cross_repo_orchestration,
         start_all_repos,
         get_active_rescue_env_vars,
+        ProcessOrchestrator,
+        StartupLockError,
     )
     CROSS_REPO_ORCHESTRATOR_AVAILABLE = True
 except ImportError:
@@ -762,6 +765,8 @@ except ImportError:
     initialize_cross_repo_orchestration = None
     start_all_repos = None
     get_active_rescue_env_vars = None
+    ProcessOrchestrator = None
+    StartupLockError = None
 
 # v181.0: Shutdown Hook - signal handlers for crash recovery
 try:
@@ -57669,133 +57674,263 @@ class JarvisSystemKernel:
                 self.logger.info(f"[Trinity] Auto-restart: {os.environ.get('JARVIS_TRINITY_AUTO_RESTART', 'true')}")
 
                 # =====================================================================
-                # v181.0: CROSS-REPO ORCHESTRATION INITIALIZATION
+                # v200.0: PILLAR 1 - LOCK-GUARDED SINGLE-OWNER STARTUP
                 # =====================================================================
-                # This sets up GCP Pre-warm, Hollow Client env vars, and Memory Gating
-                # BEFORE starting Trinity components. Critical for 16GB M1 Macs.
+                # Use ProcessOrchestrator.startup_lock_context(spawn_processes=False)
+                # to acquire cross-repo lock and initialize hardware environment.
+                # TrinityIntegrator is the sole process spawner in this path.
                 # =====================================================================
-                if CROSS_REPO_ORCHESTRATOR_AVAILABLE and initialize_cross_repo_orchestration:
-                    try:
-                        self.logger.info("[Trinity] Initializing cross-repo orchestration...")
-                        await initialize_cross_repo_orchestration()
-                        self.logger.success("[Trinity] Cross-repo orchestration ready")
 
+                # v200.0: Get trinity budget from env or use placeholder (full calculus in Task 2.1)
+                trinity_budget = float(os.environ.get("JARVIS_TRINITY_BUDGET", "600.0"))
+
+                # Initialize results and trinity_integrator outside context for cleanup
+                results = {}
+                trinity_integrator = None
+
+                if CROSS_REPO_ORCHESTRATOR_AVAILABLE and ProcessOrchestrator is not None:
+                    try:
+                        # v200.0: Create orchestrator instance
+                        orchestrator = ProcessOrchestrator()
+
+                        self.logger.info("[Trinity] Acquiring cross-repo startup lock...")
+                        async with orchestrator.startup_lock_context(spawn_processes=False) as ctx:
+                            self.logger.success("[Trinity] Cross-repo startup lock acquired")
+
+                            # v198.2: Sync manual progress with heartbeat tracker
+                            if self._startup_watchdog:
+                                trinity_heartbeat_progress["current"] = 68
+                                self._startup_watchdog.update_phase("trinity", 68)
+
+                            # Check if Hollow Client mode was activated by orchestrator
+                            if os.environ.get("JARVIS_GCP_OFFLOAD_ACTIVE", "").lower() == "true":
+                                gcp_endpoint = os.environ.get("GCP_PRIME_ENDPOINT", "")
+                                self.logger.info(
+                                    f"[Trinity] Hollow Client mode ACTIVE - "
+                                    f"routing to GCP at {gcp_endpoint}"
+                                )
+
+                            # v198.2: Sync manual progress with heartbeat tracker
+                            if self._startup_watchdog:
+                                trinity_heartbeat_progress["current"] = 69
+                                self._startup_watchdog.update_phase("trinity", 69)
+
+                            # Log repo search paths
+                            prime_path = self.config.prime_repo_path
+                            reactor_path = self.config.reactor_repo_path
+                            self.logger.info(f"[Trinity] Prime repo config: {prime_path or 'auto-discover'}")
+                            self.logger.info(f"[Trinity] Reactor repo config: {reactor_path or 'auto-discover'}")
+
+                            # v200.0: Initialize TrinityIntegrator INSIDE lock context
+                            # Use try/except TimeoutError/finally pattern for cleanup
+                            try:
+                                async with asyncio.timeout(trinity_budget):
+                                    # Initialize TrinityIntegrator with v186.0 progress callback
+                                    trinity_integrator = TrinityIntegrator(
+                                        self.config,
+                                        self.logger,
+                                        progress_callback=self._trinity_progress_callback,
+                                    )
+                                    self._trinity = trinity_integrator
+                                    await trinity_integrator.initialize()
+
+                                    # v198.2: Sync manual progress with heartbeat tracker
+                                    if self._startup_watchdog:
+                                        trinity_heartbeat_progress["current"] = 70
+                                        self._startup_watchdog.update_phase("trinity", 70)
+
+                                    # Get detailed status after initialization
+                                    status = trinity_integrator.get_status()
+                                    self.logger.info("[Trinity] ───────────────────────────────────────────────────────")
+                                    self.logger.info("[Trinity] DISCOVERY RESULTS:")
+
+                                    # Log Prime discovery result
+                                    prime_status = status.get("components", {}).get("jarvis-prime", {})
+                                    if prime_status.get("configured"):
+                                        self.logger.success(f"[Trinity] ✓ J-Prime: Discovered at {prime_status.get('repo_path', 'unknown')}")
+                                    else:
+                                        self.logger.warning("[Trinity] ✗ J-Prime: NOT FOUND - searched common locations:")
+                                        self.logger.warning("[Trinity]   ~/Documents/repos/jarvis-prime")
+                                        self.logger.warning("[Trinity]   ~/repos/jarvis-prime")
+                                        self.logger.warning("[Trinity]   Set JARVIS_PRIME_PATH env var to specify location")
+
+                                    # Log Reactor discovery result
+                                    reactor_status = status.get("components", {}).get("reactor-core", {})
+                                    if reactor_status.get("configured"):
+                                        self.logger.success(f"[Trinity] ✓ Reactor-Core: Discovered at {reactor_status.get('repo_path', 'unknown')}")
+                                    else:
+                                        self.logger.warning("[Trinity] ✗ Reactor-Core: NOT FOUND - searched common locations:")
+                                        self.logger.warning("[Trinity]   ~/Documents/repos/reactor-core")
+                                        self.logger.warning("[Trinity]   ~/repos/reactor-core")
+                                        self.logger.warning("[Trinity]   Set REACTOR_CORE_PATH env var to specify location")
+
+                                    self.logger.info("[Trinity] ───────────────────────────────────────────────────────")
+
+                                    # v182.0: Broadcast Trinity discovery status BEFORE starting
+                                    self._update_component_status("trinity", "running", "Starting Trinity components...")
+                                    if prime_status.get("configured"):
+                                        self._update_component_status(
+                                            "jarvis_prime", "running",
+                                            f"Starting J-Prime from {prime_status.get('repo_path', 'unknown')[:30]}..."
+                                        )
+                                    else:
+                                        self._update_component_status("jarvis_prime", "skipped", "J-Prime not configured")
+
+                                    if reactor_status.get("configured"):
+                                        self._update_component_status(
+                                            "reactor_core", "running",
+                                            f"Starting Reactor-Core from {reactor_status.get('repo_path', 'unknown')[:30]}..."
+                                        )
+                                    else:
+                                        self._update_component_status("reactor_core", "skipped", "Reactor-Core not configured")
+
+                                    await self._broadcast_component_update(
+                                        stage="trinity",
+                                        message="Starting Trinity cross-repo components..."
+                                    )
+
+                                    # v198.2: Use unified timeout computed at phase start
+                                    trinity_timeout = getattr(self, '_effective_trinity_timeout', DEFAULT_TRINITY_TIMEOUT)
+                                    self.logger.info(f"[Trinity] Component startup timeout: {trinity_timeout:.0f}s (unified)")
+
+                                    # v201.0: Check if Invincible Node is ready - if so, skip local Prime
+                                    invincible_ready = getattr(self, '_invincible_node_ready', False)
+                                    if invincible_ready:
+                                        self.logger.info("[Trinity] ☁️ Invincible Node ready - using Hollow Client for Prime")
+
+                                    # Start Trinity components (TrinityIntegrator is the sole spawner)
+                                    results = await asyncio.wait_for(
+                                        trinity_integrator.start_components(
+                                            invincible_node_ready=invincible_ready,
+                                        ),
+                                        timeout=trinity_timeout
+                                    )
+
+                            except TimeoutError:
+                                self.logger.error(f"[Trinity] Trinity phase timeout after {trinity_budget}s")
+                                self.logger.warning("[Trinity] Consider increasing JARVIS_TRINITY_BUDGET if startup needs more time")
+                            except asyncio.TimeoutError:
+                                self.logger.warning(f"[Trinity] Component start timed out after {trinity_timeout}s")
+                                self.logger.warning("[Trinity] Consider increasing JARVIS_TRINITY_TIMEOUT if GCP/models need more time")
+                            finally:
+                                # v200.0: Cleanup - stop integrator if it was initialized
+                                # Note: We do NOT stop here because Trinity should keep running
+                                # The stop() will be called during shutdown via self._trinity
+                                pass
+
+                        self.logger.info("[Trinity] Cross-repo startup lock released")
+
+                    except StartupLockError as e:
+                        self.logger.error(f"[Trinity] Failed to acquire startup lock: {e}")
+                        self.logger.warning("[Trinity] Another supervisor instance may be running")
                         # v198.2: Sync manual progress with heartbeat tracker
                         if self._startup_watchdog:
-                            trinity_heartbeat_progress["current"] = 68
-                            self._startup_watchdog.update_phase("trinity", 68)
-
-                        # Check if Hollow Client mode was activated
-                        if os.environ.get("JARVIS_GCP_OFFLOAD_ACTIVE", "").lower() == "true":
-                            gcp_endpoint = os.environ.get("GCP_PRIME_ENDPOINT", "")
-                            self.logger.info(
-                                f"[Trinity] Hollow Client mode ACTIVE - "
-                                f"routing to GCP at {gcp_endpoint}"
-                            )
+                            trinity_heartbeat_progress["current"] = 67
+                            self._startup_watchdog.update_phase("trinity", 67)
                     except Exception as e:
-                        self.logger.warning(f"[Trinity] Cross-repo init failed (non-fatal): {e}")
+                        self.logger.warning(f"[Trinity] Cross-repo orchestration failed (non-fatal): {e}")
                         # v198.2: Sync manual progress with heartbeat tracker
                         if self._startup_watchdog:
                             trinity_heartbeat_progress["current"] = 67
                             self._startup_watchdog.update_phase("trinity", 67)
                 else:
-                    self.logger.debug("[Trinity] Cross-repo orchestrator not available - using inline integration")
+                    # Fallback: ProcessOrchestrator not available - use legacy inline integration
+                    self.logger.debug("[Trinity] ProcessOrchestrator not available - using legacy inline integration")
 
-                # v198.2: Sync manual progress with heartbeat tracker
-                if self._startup_watchdog:
-                    trinity_heartbeat_progress["current"] = 69
-                    self._startup_watchdog.update_phase("trinity", 69)
+                    # v198.2: Sync manual progress with heartbeat tracker
+                    if self._startup_watchdog:
+                        trinity_heartbeat_progress["current"] = 69
+                        self._startup_watchdog.update_phase("trinity", 69)
 
-                # Log repo search paths
-                prime_path = self.config.prime_repo_path
-                reactor_path = self.config.reactor_repo_path
-                self.logger.info(f"[Trinity] Prime repo config: {prime_path or 'auto-discover'}")
-                self.logger.info(f"[Trinity] Reactor repo config: {reactor_path or 'auto-discover'}")
+                    # Log repo search paths
+                    prime_path = self.config.prime_repo_path
+                    reactor_path = self.config.reactor_repo_path
+                    self.logger.info(f"[Trinity] Prime repo config: {prime_path or 'auto-discover'}")
+                    self.logger.info(f"[Trinity] Reactor repo config: {reactor_path or 'auto-discover'}")
 
-                # Initialize TrinityIntegrator with v186.0 progress callback
-                self._trinity = TrinityIntegrator(
-                    self.config,
-                    self.logger,
-                    progress_callback=self._trinity_progress_callback,
-                )
-                await self._trinity.initialize()
-
-                # v198.2: Sync manual progress with heartbeat tracker
-                if self._startup_watchdog:
-                    trinity_heartbeat_progress["current"] = 70
-                    self._startup_watchdog.update_phase("trinity", 70)
-
-                # Get detailed status after initialization
-                status = self._trinity.get_status()
-                self.logger.info("[Trinity] ───────────────────────────────────────────────────────")
-                self.logger.info("[Trinity] DISCOVERY RESULTS:")
-
-                # Log Prime discovery result
-                prime_status = status.get("components", {}).get("jarvis-prime", {})
-                if prime_status.get("configured"):
-                    self.logger.success(f"[Trinity] ✓ J-Prime: Discovered at {prime_status.get('repo_path', 'unknown')}")
-                else:
-                    self.logger.warning("[Trinity] ✗ J-Prime: NOT FOUND - searched common locations:")
-                    self.logger.warning("[Trinity]   ~/Documents/repos/jarvis-prime")
-                    self.logger.warning("[Trinity]   ~/repos/jarvis-prime")
-                    self.logger.warning("[Trinity]   Set JARVIS_PRIME_PATH env var to specify location")
-
-                # Log Reactor discovery result
-                reactor_status = status.get("components", {}).get("reactor-core", {})
-                if reactor_status.get("configured"):
-                    self.logger.success(f"[Trinity] ✓ Reactor-Core: Discovered at {reactor_status.get('repo_path', 'unknown')}")
-                else:
-                    self.logger.warning("[Trinity] ✗ Reactor-Core: NOT FOUND - searched common locations:")
-                    self.logger.warning("[Trinity]   ~/Documents/repos/reactor-core")
-                    self.logger.warning("[Trinity]   ~/repos/reactor-core")
-                    self.logger.warning("[Trinity]   Set REACTOR_CORE_PATH env var to specify location")
-
-                self.logger.info("[Trinity] ───────────────────────────────────────────────────────")
-
-                # v182.0: Broadcast Trinity discovery status BEFORE starting
-                self._update_component_status("trinity", "running", "Starting Trinity components...")
-                if prime_status.get("configured"):
-                    self._update_component_status(
-                        "jarvis_prime", "running",
-                        f"Starting J-Prime from {prime_status.get('repo_path', 'unknown')[:30]}..."
+                    # Initialize TrinityIntegrator with v186.0 progress callback
+                    self._trinity = TrinityIntegrator(
+                        self.config,
+                        self.logger,
+                        progress_callback=self._trinity_progress_callback,
                     )
-                else:
-                    self._update_component_status("jarvis_prime", "skipped", "J-Prime not configured")
+                    await self._trinity.initialize()
 
-                if reactor_status.get("configured"):
-                    self._update_component_status(
-                        "reactor_core", "running",
-                        f"Starting Reactor-Core from {reactor_status.get('repo_path', 'unknown')[:30]}..."
+                    # v198.2: Sync manual progress with heartbeat tracker
+                    if self._startup_watchdog:
+                        trinity_heartbeat_progress["current"] = 70
+                        self._startup_watchdog.update_phase("trinity", 70)
+
+                    # Get detailed status after initialization
+                    status = self._trinity.get_status()
+                    self.logger.info("[Trinity] ───────────────────────────────────────────────────────")
+                    self.logger.info("[Trinity] DISCOVERY RESULTS:")
+
+                    # Log Prime discovery result
+                    prime_status = status.get("components", {}).get("jarvis-prime", {})
+                    if prime_status.get("configured"):
+                        self.logger.success(f"[Trinity] ✓ J-Prime: Discovered at {prime_status.get('repo_path', 'unknown')}")
+                    else:
+                        self.logger.warning("[Trinity] ✗ J-Prime: NOT FOUND - searched common locations:")
+                        self.logger.warning("[Trinity]   ~/Documents/repos/jarvis-prime")
+                        self.logger.warning("[Trinity]   ~/repos/jarvis-prime")
+                        self.logger.warning("[Trinity]   Set JARVIS_PRIME_PATH env var to specify location")
+
+                    # Log Reactor discovery result
+                    reactor_status = status.get("components", {}).get("reactor-core", {})
+                    if reactor_status.get("configured"):
+                        self.logger.success(f"[Trinity] ✓ Reactor-Core: Discovered at {reactor_status.get('repo_path', 'unknown')}")
+                    else:
+                        self.logger.warning("[Trinity] ✗ Reactor-Core: NOT FOUND - searched common locations:")
+                        self.logger.warning("[Trinity]   ~/Documents/repos/reactor-core")
+                        self.logger.warning("[Trinity]   ~/repos/reactor-core")
+                        self.logger.warning("[Trinity]   Set REACTOR_CORE_PATH env var to specify location")
+
+                    self.logger.info("[Trinity] ───────────────────────────────────────────────────────")
+
+                    # v182.0: Broadcast Trinity discovery status BEFORE starting
+                    self._update_component_status("trinity", "running", "Starting Trinity components...")
+                    if prime_status.get("configured"):
+                        self._update_component_status(
+                            "jarvis_prime", "running",
+                            f"Starting J-Prime from {prime_status.get('repo_path', 'unknown')[:30]}..."
+                        )
+                    else:
+                        self._update_component_status("jarvis_prime", "skipped", "J-Prime not configured")
+
+                    if reactor_status.get("configured"):
+                        self._update_component_status(
+                            "reactor_core", "running",
+                            f"Starting Reactor-Core from {reactor_status.get('repo_path', 'unknown')[:30]}..."
+                        )
+                    else:
+                        self._update_component_status("reactor_core", "skipped", "Reactor-Core not configured")
+
+                    await self._broadcast_component_update(
+                        stage="trinity",
+                        message="Starting Trinity cross-repo components..."
                     )
-                else:
-                    self._update_component_status("reactor_core", "skipped", "Reactor-Core not configured")
 
-                await self._broadcast_component_update(
-                    stage="trinity",
-                    message="Starting Trinity cross-repo components..."
-                )
+                    # v198.2: Use unified timeout computed at phase start
+                    trinity_timeout = getattr(self, '_effective_trinity_timeout', DEFAULT_TRINITY_TIMEOUT)
+                    self.logger.info(f"[Trinity] Component startup timeout: {trinity_timeout:.0f}s (unified)")
 
-                # v198.2: Use unified timeout computed at phase start (stored in self._effective_trinity_timeout)
-                # This ensures DMS timeout and component startup timeout are consistent
-                trinity_timeout = getattr(self, '_effective_trinity_timeout', DEFAULT_TRINITY_TIMEOUT)
-                self.logger.info(f"[Trinity] Component startup timeout: {trinity_timeout:.0f}s (unified)")
+                    # v201.0: Check if Invincible Node is ready - if so, skip local Prime
+                    invincible_ready = getattr(self, '_invincible_node_ready', False)
+                    if invincible_ready:
+                        self.logger.info("[Trinity] ☁️ Invincible Node ready - using Hollow Client for Prime")
 
-                # v201.0: Check if Invincible Node is ready - if so, skip local Prime
-                invincible_ready = getattr(self, '_invincible_node_ready', False)
-                if invincible_ready:
-                    self.logger.info("[Trinity] ☁️ Invincible Node ready - using Hollow Client for Prime")
-
-                try:
-                    results = await asyncio.wait_for(
-                        self._trinity.start_components(
-                            invincible_node_ready=invincible_ready,
-                        ),
-                        timeout=trinity_timeout
-                    )
-                except asyncio.TimeoutError:
-                    self.logger.warning(f"[Trinity] Component start timed out after {trinity_timeout}s")
-                    self.logger.warning("[Trinity] Consider increasing JARVIS_TRINITY_TIMEOUT if GCP/models need more time")
-                    results = {}
+                    try:
+                        results = await asyncio.wait_for(
+                            self._trinity.start_components(
+                                invincible_node_ready=invincible_ready,
+                            ),
+                            timeout=trinity_timeout
+                        )
+                    except asyncio.TimeoutError:
+                        self.logger.warning(f"[Trinity] Component start timed out after {trinity_timeout}s")
+                        self.logger.warning("[Trinity] Consider increasing JARVIS_TRINITY_TIMEOUT if GCP/models need more time")
+                        results = {}
 
                 # Log start results
                 started_count = sum(1 for v in results.values() if v)

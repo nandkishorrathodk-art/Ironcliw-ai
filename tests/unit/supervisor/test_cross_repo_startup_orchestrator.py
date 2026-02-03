@@ -187,3 +187,171 @@ class TestSpawnProcessesFlag:
 
                         # After context, flag should still be False (persists)
                         assert orchestrator._spawn_processes is False
+
+
+class TestUnifiedSupervisorIntegration:
+    """
+    Tests for unified_supervisor.py integration with ProcessOrchestrator.
+
+    These tests verify the pattern used in unified_supervisor.py where:
+    1. ProcessOrchestrator is created
+    2. startup_lock_context(spawn_processes=False) is used
+    3. TrinityIntegrator is the sole spawner of processes
+    """
+
+    @pytest.mark.asyncio
+    async def test_unified_supervisor_pattern_with_trinity(self):
+        """
+        Test the pattern used in unified_supervisor.py:
+
+        orchestrator = ProcessOrchestrator()
+        async with orchestrator.startup_lock_context(spawn_processes=False) as ctx:
+            integrator = None
+            try:
+                integrator = TrinityIntegrator(...)
+                await integrator.initialize()
+                await integrator.start_components()
+            except TimeoutError:
+                ...
+            finally:
+                if integrator is not None:
+                    await integrator.stop()
+        """
+        from backend.supervisor.cross_repo_startup_orchestrator import ProcessOrchestrator
+
+        orchestrator = ProcessOrchestrator()
+
+        # Mock the TrinityIntegrator
+        mock_trinity = AsyncMock()
+        mock_trinity.initialize = AsyncMock()
+        mock_trinity.start_components = AsyncMock(return_value={"jarvis-prime": True})
+        mock_trinity.stop = AsyncMock()
+
+        with patch.object(orchestrator, '_acquire_startup_lock', new_callable=AsyncMock, return_value=True):
+            with patch.object(orchestrator, '_release_startup_lock', new_callable=AsyncMock) as mock_release:
+                with patch.object(orchestrator, '_enforce_hardware_environment', new_callable=AsyncMock):
+                    with patch.object(orchestrator, '_initialize_cross_repo_state', new_callable=AsyncMock) as mock_init:
+                        async with orchestrator.startup_lock_context(spawn_processes=False) as ctx:
+                            # Verify spawn_processes is False
+                            assert orchestrator._spawn_processes is False
+
+                            integrator = None
+                            try:
+                                integrator = mock_trinity
+                                await integrator.initialize()
+                                results = await integrator.start_components()
+                                assert results == {"jarvis-prime": True}
+                            finally:
+                                if integrator is not None:
+                                    await integrator.stop()
+
+                        # Verify _initialize_cross_repo_state was called with spawn_processes=False
+                        mock_init.assert_called_once_with(spawn_processes=False)
+
+                # Lock should be released after context exits
+                mock_release.assert_called_once()
+
+        # TrinityIntegrator should have been properly stopped
+        mock_trinity.stop.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_unified_supervisor_pattern_handles_timeout(self):
+        """Test that TimeoutError is handled gracefully and lock is still released."""
+        import asyncio
+        from backend.supervisor.cross_repo_startup_orchestrator import ProcessOrchestrator
+
+        orchestrator = ProcessOrchestrator()
+
+        # Mock TrinityIntegrator that times out
+        mock_trinity = AsyncMock()
+        mock_trinity.initialize = AsyncMock()
+        mock_trinity.start_components = AsyncMock(side_effect=asyncio.TimeoutError())
+        mock_trinity.stop = AsyncMock()
+
+        timeout_caught = False
+
+        with patch.object(orchestrator, '_acquire_startup_lock', new_callable=AsyncMock, return_value=True):
+            with patch.object(orchestrator, '_release_startup_lock', new_callable=AsyncMock) as mock_release:
+                with patch.object(orchestrator, '_enforce_hardware_environment', new_callable=AsyncMock):
+                    with patch.object(orchestrator, '_initialize_cross_repo_state', new_callable=AsyncMock):
+                        async with orchestrator.startup_lock_context(spawn_processes=False) as ctx:
+                            integrator = None
+                            try:
+                                integrator = mock_trinity
+                                await integrator.initialize()
+                                await integrator.start_components()
+                            except asyncio.TimeoutError:
+                                timeout_caught = True
+                            finally:
+                                if integrator is not None:
+                                    await integrator.stop()
+
+                # Lock should be released even after timeout
+                mock_release.assert_called_once()
+
+        assert timeout_caught, "TimeoutError should have been caught"
+        mock_trinity.stop.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_unified_supervisor_pattern_stops_integrator_on_error(self):
+        """Test that integrator.stop() is called even when an error occurs."""
+        from backend.supervisor.cross_repo_startup_orchestrator import ProcessOrchestrator
+
+        orchestrator = ProcessOrchestrator()
+
+        # Mock TrinityIntegrator that raises error during start_components
+        mock_trinity = AsyncMock()
+        mock_trinity.initialize = AsyncMock()
+        mock_trinity.start_components = AsyncMock(side_effect=RuntimeError("Simulated error"))
+        mock_trinity.stop = AsyncMock()
+
+        with patch.object(orchestrator, '_acquire_startup_lock', new_callable=AsyncMock, return_value=True):
+            with patch.object(orchestrator, '_release_startup_lock', new_callable=AsyncMock) as mock_release:
+                with patch.object(orchestrator, '_enforce_hardware_environment', new_callable=AsyncMock):
+                    with patch.object(orchestrator, '_initialize_cross_repo_state', new_callable=AsyncMock):
+                        with pytest.raises(RuntimeError, match="Simulated error"):
+                            async with orchestrator.startup_lock_context(spawn_processes=False) as ctx:
+                                integrator = None
+                                try:
+                                    integrator = mock_trinity
+                                    await integrator.initialize()
+                                    await integrator.start_components()
+                                finally:
+                                    if integrator is not None:
+                                        await integrator.stop()
+
+                # Lock should be released even on error
+                mock_release.assert_called_once()
+
+        # integrator.stop() should have been called
+        mock_trinity.stop.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_unified_supervisor_pattern_integrator_none_before_init(self):
+        """Test that if integrator is never assigned, stop() is not called."""
+        from backend.supervisor.cross_repo_startup_orchestrator import ProcessOrchestrator
+
+        orchestrator = ProcessOrchestrator()
+
+        stop_called = False
+
+        def mock_stop():
+            nonlocal stop_called
+            stop_called = True
+
+        with patch.object(orchestrator, '_acquire_startup_lock', new_callable=AsyncMock, return_value=True):
+            with patch.object(orchestrator, '_release_startup_lock', new_callable=AsyncMock):
+                with patch.object(orchestrator, '_enforce_hardware_environment', new_callable=AsyncMock):
+                    with patch.object(orchestrator, '_initialize_cross_repo_state', new_callable=AsyncMock):
+                        async with orchestrator.startup_lock_context(spawn_processes=False) as ctx:
+                            integrator = None
+                            try:
+                                # Simulate error before integrator is assigned
+                                raise ValueError("Early error")
+                            except ValueError:
+                                pass  # Handle the error
+                            finally:
+                                if integrator is not None:
+                                    mock_stop()
+
+        assert not stop_called, "stop() should not be called when integrator is None"
