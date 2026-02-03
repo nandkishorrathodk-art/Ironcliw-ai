@@ -57723,6 +57723,7 @@ class JarvisSystemKernel:
 
                             # v200.0: Initialize TrinityIntegrator INSIDE lock context
                             # Use try/except TimeoutError/finally pattern for cleanup
+                            _trinity_startup_error = False  # Track if error occurred for cleanup
                             try:
                                 async with asyncio.timeout(trinity_budget):
                                     # Initialize TrinityIntegrator with v186.0 progress callback
@@ -57807,16 +57808,22 @@ class JarvisSystemKernel:
                                     )
 
                             except TimeoutError:
+                                _trinity_startup_error = True
                                 self.logger.error(f"[Trinity] Trinity phase timeout after {trinity_budget}s")
                                 self.logger.warning("[Trinity] Consider increasing JARVIS_TRINITY_BUDGET if startup needs more time")
                             except asyncio.TimeoutError:
+                                _trinity_startup_error = True
                                 self.logger.warning(f"[Trinity] Component start timed out after {trinity_timeout}s")
                                 self.logger.warning("[Trinity] Consider increasing JARVIS_TRINITY_TIMEOUT if GCP/models need more time")
                             finally:
-                                # v200.0: Cleanup - stop integrator if it was initialized
-                                # Note: We do NOT stop here because Trinity should keep running
-                                # The stop() will be called during shutdown via self._trinity
-                                pass
+                                # v200.0: Cleanup - stop integrator ONLY on error/timeout
+                                # On success, Trinity keeps running; stop() is called during shutdown
+                                if trinity_integrator is not None and _trinity_startup_error:
+                                    self.logger.info("[Trinity] Cleaning up after startup error...")
+                                    try:
+                                        await trinity_integrator.stop()
+                                    except Exception as e:
+                                        self.logger.warning(f"[Trinity] Cleanup error (non-fatal): {e}")
 
                         self.logger.info("[Trinity] Cross-repo startup lock released")
 
