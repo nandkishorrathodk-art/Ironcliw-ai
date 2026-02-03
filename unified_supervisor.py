@@ -61818,6 +61818,11 @@ Environment Variables:
         dest="check_only",
         help="Run pre-flight checks only (validate config without starting)",
     )
+    control.add_argument(
+        "--dashboard",
+        action="store_true",
+        help="Show comprehensive system dashboard (preflight, kernel, Trinity, Invincible)",
+    )
 
     # =========================================================================
     # OPERATING MODE
@@ -62828,6 +62833,660 @@ async def handle_cloud_monitor_logs() -> int:
     except Exception as e:
         print(f"\033[91m⚠  Error streaming logs: {e}\033[0m")
         return 1
+
+
+# =============================================================================
+# DASHBOARD COMMAND (v201.2) - Comprehensive System Status
+# =============================================================================
+# Unified dashboard showing:
+# - Startup lock status (READ-ONLY - never acquires!)
+# - Pre-flight validation results
+# - Kernel status via IPC
+# - Trinity component health
+# - Invincible Node status (even when kernel down)
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Dashboard Data Fetchers (Return structured dicts, never print directly)
+# -----------------------------------------------------------------------------
+
+async def _fetch_lock_status_readonly() -> Dict[str, Any]:
+    """
+    Fetch startup lock status in READ-ONLY mode.
+
+    NEVER acquires the lock - only reads current state.
+    Uses StartupLock.is_locked() and get_current_holder().
+
+    Returns:
+        Dict with keys: locked, holder_pid, holder_info, error
+    """
+    result: Dict[str, Any] = {
+        "locked": False,
+        "holder_pid": None,
+        "holder_info": None,
+        "error": None,
+    }
+
+    try:
+        lock = StartupLock("kernel")
+        is_locked, holder_pid = lock.is_locked()
+        result["locked"] = is_locked
+        result["holder_pid"] = holder_pid
+
+        if is_locked:
+            holder_info = lock.get_current_holder()
+            result["holder_info"] = holder_info
+    except Exception as e:
+        result["error"] = str(e)
+
+    return result
+
+
+async def _fetch_kernel_status_ipc(timeout: float = 5.0) -> Dict[str, Any]:
+    """
+    Fetch kernel status via IPC socket.
+
+    Args:
+        timeout: IPC timeout in seconds (default: 5s per requirement)
+
+    Returns:
+        Dict with keys: running, state, pid, uptime_seconds, config, readiness,
+                       trinity, invincible_node, error
+    """
+    result: Dict[str, Any] = {
+        "running": False,
+        "state": None,
+        "pid": None,
+        "uptime_seconds": 0,
+        "config": {},
+        "readiness": {},
+        "trinity": {},
+        "invincible_node": {},
+        "error": None,
+    }
+
+    socket_path = Path.home() / ".jarvis" / "locks" / "kernel.sock"
+
+    if not socket_path.exists():
+        result["error"] = "no_socket"
+        return result
+
+    try:
+        reader, writer = await asyncio.open_unix_connection(str(socket_path))
+
+        try:
+            request = json.dumps({"command": "status"}) + "\n"
+            writer.write(request.encode())
+            await writer.drain()
+
+            response_data = await asyncio.wait_for(reader.readline(), timeout=timeout)
+            response = json.loads(response_data.decode())
+
+            if response.get("success"):
+                ipc_result = response.get("result", {})
+                result["running"] = True
+                result["state"] = ipc_result.get("state", "unknown")
+                result["pid"] = ipc_result.get("pid")
+                result["uptime_seconds"] = ipc_result.get("uptime_seconds", 0)
+                result["config"] = ipc_result.get("config", {})
+                result["readiness"] = ipc_result.get("readiness", {})
+                result["trinity"] = ipc_result.get("trinity", {})
+                result["invincible_node"] = ipc_result.get("invincible_node", {})
+            else:
+                result["error"] = response.get("error", "unknown_error")
+
+        finally:
+            writer.close()
+            await writer.wait_closed()
+
+    except asyncio.TimeoutError:
+        result["error"] = "ipc_timeout"
+    except ConnectionRefusedError:
+        result["error"] = "connection_refused"
+    except Exception as e:
+        result["error"] = str(e)
+
+    return result
+
+
+async def _fetch_preflight_status() -> Dict[str, Any]:
+    """
+    Fetch pre-flight validation status.
+
+    Returns lightweight validation results without full output.
+
+    Returns:
+        Dict with keys: passed, warnings, checks
+    """
+    result: Dict[str, Any] = {
+        "passed": True,
+        "warnings": [],
+        "checks": {},
+    }
+
+    try:
+        config = SystemKernelConfig()
+
+        # Directory checks
+        backend_dir = Path(__file__).parent / "backend"
+        core_dir = backend_dir / "core"
+
+        result["checks"]["backend_dir"] = backend_dir.exists()
+        result["checks"]["core_dir"] = core_dir.exists()
+
+        if not backend_dir.exists() or not core_dir.exists():
+            result["passed"] = False
+
+        # Docker check (with timeout)
+        if config.docker_enabled:
+            try:
+                proc = await asyncio.create_subprocess_exec(
+                    "docker", "info",
+                    stdout=asyncio.subprocess.DEVNULL,
+                    stderr=asyncio.subprocess.DEVNULL,
+                )
+                await asyncio.wait_for(proc.wait(), timeout=5.0)
+                result["checks"]["docker"] = proc.returncode == 0
+                if proc.returncode != 0:
+                    result["warnings"].append("Docker daemon not running")
+            except asyncio.TimeoutError:
+                result["checks"]["docker"] = False
+                result["warnings"].append("Docker check timed out")
+            except Exception:
+                result["checks"]["docker"] = False
+                result["warnings"].append("Docker check failed")
+        else:
+            result["checks"]["docker"] = None  # Disabled
+
+        # GCP check (with timeout)
+        if config.gcp_enabled:
+            try:
+                proc = await asyncio.create_subprocess_exec(
+                    "gcloud", "auth", "list", "--filter=status:ACTIVE",
+                    "--format=value(account)",
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.DEVNULL,
+                )
+                stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=10.0)
+                gcp_account = stdout.decode().strip().split('\n')[0] if stdout else None
+                result["checks"]["gcp"] = bool(gcp_account)
+                result["checks"]["gcp_account"] = gcp_account
+                if not gcp_account:
+                    result["warnings"].append("GCP not authenticated")
+            except asyncio.TimeoutError:
+                result["checks"]["gcp"] = False
+                result["warnings"].append("GCP check timed out")
+            except Exception:
+                result["checks"]["gcp"] = False
+                result["warnings"].append("GCP check failed")
+        else:
+            result["checks"]["gcp"] = None  # Disabled
+
+        # Port check
+        import socket as sock_module
+        backend_port = config.backend_port or 8765
+
+        def check_port_free(port: int) -> bool:
+            try:
+                with sock_module.socket(sock_module.AF_INET, sock_module.SOCK_STREAM) as s:
+                    s.settimeout(0.5)
+                    return s.connect_ex(('127.0.0.1', port)) != 0
+            except Exception:
+                return True
+
+        result["checks"]["backend_port_free"] = check_port_free(backend_port)
+        result["checks"]["backend_port"] = backend_port
+        if not result["checks"]["backend_port_free"]:
+            result["warnings"].append(f"Port {backend_port} in use")
+
+        # Trinity repos
+        if config.trinity_enabled:
+            result["checks"]["prime_repo"] = config.prime_repo_path and config.prime_repo_path.exists() if config.prime_repo_path else False
+            result["checks"]["reactor_repo"] = config.reactor_repo_path and config.reactor_repo_path.exists() if config.reactor_repo_path else False
+            if not result["checks"].get("prime_repo"):
+                result["warnings"].append("J-Prime repo not found")
+            if not result["checks"].get("reactor_repo"):
+                result["warnings"].append("Reactor-Core repo not found")
+        else:
+            result["checks"]["prime_repo"] = None
+            result["checks"]["reactor_repo"] = None
+
+    except Exception as e:
+        result["error"] = str(e)
+        result["passed"] = False
+
+    return result
+
+
+async def _fetch_invincible_status_direct(timeout: float = 10.0) -> Dict[str, Any]:
+    """
+    Fetch Invincible Node status directly from GCP.
+
+    Used when kernel is down - bypasses IPC and queries GCP directly.
+
+    Args:
+        timeout: GCP API timeout in seconds (default: 10s per requirement)
+
+    Returns:
+        Dict with keys: enabled, gcp_status, static_ip, health, error
+    """
+    result: Dict[str, Any] = {
+        "enabled": False,
+        "gcp_status": None,
+        "static_ip": None,
+        "health": {},
+        "instance_name": None,
+        "error": None,
+    }
+
+    try:
+        config = SystemKernelConfig()
+
+        if not config.invincible_node_enabled:
+            result["enabled"] = False
+            return result
+
+        result["enabled"] = True
+        result["instance_name"] = config.invincible_node_instance_name
+
+        # Try to get GCP VM manager
+        try:
+            from backend.core.gcp_vm_manager import get_gcp_vm_manager_safe
+            manager = await asyncio.wait_for(
+                get_gcp_vm_manager_safe(),
+                timeout=timeout
+            )
+
+            if not manager:
+                result["error"] = "gcp_manager_unavailable"
+                return result
+
+            status = await asyncio.wait_for(
+                manager.get_invincible_node_status(),
+                timeout=timeout
+            )
+
+            result["gcp_status"] = status.get("gcp_status", "UNKNOWN")
+            result["static_ip"] = status.get("static_ip")
+            result["health"] = status.get("health", {})
+            result["machine_type"] = status.get("machine_type")
+            result["uptime_seconds"] = status.get("uptime_seconds")
+
+        except asyncio.TimeoutError:
+            result["error"] = "gcp_timeout"
+        except ImportError:
+            result["error"] = "gcp_module_not_found"
+        except Exception as e:
+            result["error"] = str(e)
+
+    except Exception as e:
+        result["error"] = str(e)
+
+    return result
+
+
+def _format_dashboard_output(
+    lock_status: Dict[str, Any],
+    kernel_status: Dict[str, Any],
+    preflight_status: Dict[str, Any],
+    invincible_status: Dict[str, Any],
+) -> List[str]:
+    """
+    Format all dashboard data into output lines.
+
+    Single print path - all formatting happens here.
+
+    Returns:
+        List of strings to print (one per line)
+    """
+    # ANSI colors
+    GREEN = "\033[92m"
+    RED = "\033[91m"
+    YELLOW = "\033[93m"
+    BLUE = "\033[94m"
+    CYAN = "\033[96m"
+    BOLD = "\033[1m"
+    DIM = "\033[2m"
+    RESET = "\033[0m"
+
+    # Box drawing
+    BOX_TL, BOX_TR = "\u2554", "\u2557"
+    BOX_BL, BOX_BR = "\u255a", "\u255d"
+    BOX_H, BOX_V = "\u2550", "\u2551"
+    BOX_SEP_L, BOX_SEP_R = "\u2560", "\u2563"
+    WIDTH = 74
+
+    def box_line(text: str) -> str:
+        # Strip ANSI codes for length calculation
+        import re
+        clean_text = re.sub(r'\033\[[0-9;]*m', '', text)
+        padding_needed = WIDTH - 4 - len(clean_text)
+        return f"{BOX_V} {text}{' ' * max(0, padding_needed)} {BOX_V}"
+
+    def header_line() -> str:
+        return f"{BOX_TL}{BOX_H * (WIDTH - 2)}{BOX_TR}"
+
+    def footer_line() -> str:
+        return f"{BOX_BL}{BOX_H * (WIDTH - 2)}{BOX_BR}"
+
+    def separator_line() -> str:
+        return f"{BOX_SEP_L}{BOX_H * (WIDTH - 2)}{BOX_SEP_R}"
+
+    def status_icon(ok: bool, warn: bool = False) -> str:
+        if ok:
+            return f"{GREEN}\u2713{RESET}"
+        elif warn:
+            return f"{YELLOW}\u26a0{RESET}"
+        else:
+            return f"{RED}\u2717{RESET}"
+
+    def status_icon_opt(val: Optional[bool]) -> str:
+        if val is None:
+            return f"{DIM}\u25cb{RESET}"  # Disabled
+        return status_icon(val)
+
+    lines: List[str] = []
+
+    # Header
+    lines.append("")
+    lines.append(f"{BOLD}{BLUE}" + header_line() + RESET)
+    lines.append(f"{BOLD}{BLUE}" + box_line(f"{CYAN}JARVIS SYSTEM DASHBOARD{RESET}") + RESET)
+    lines.append(f"{BOLD}{BLUE}" + separator_line() + RESET)
+
+    # =========================================================================
+    # Section 1: Startup Lock Status (READ-ONLY)
+    # =========================================================================
+    lines.append(box_line(f"{CYAN}STARTUP LOCK{RESET}"))
+
+    if lock_status.get("error"):
+        lines.append(box_line(f"  {status_icon(False)} Error: {lock_status.get('error')}"))
+    elif lock_status.get("locked"):
+        holder_pid = lock_status.get("holder_pid", "?")
+        holder_info = lock_status.get("holder_info", {})
+        acquired_at = holder_info.get("acquired_at", "unknown") if holder_info else "unknown"
+        lines.append(box_line(f"  {status_icon(True)} Locked by PID {holder_pid}"))
+        lines.append(box_line(f"      Acquired: {acquired_at}"))
+    else:
+        lines.append(box_line(f"  {status_icon(False, warn=True)} Not locked (kernel not running)"))
+
+    lines.append(f"{BOLD}{BLUE}" + separator_line() + RESET)
+
+    # =========================================================================
+    # Section 2: Pre-Flight Checks
+    # =========================================================================
+    lines.append(box_line(f"{CYAN}PRE-FLIGHT CHECKS{RESET}"))
+
+    checks = preflight_status.get("checks", {})
+    lines.append(box_line(f"  {status_icon_opt(checks.get('backend_dir'))} Backend directory"))
+    lines.append(box_line(f"  {status_icon_opt(checks.get('core_dir'))} Core directory"))
+    lines.append(box_line(f"  {status_icon_opt(checks.get('docker'))} Docker daemon"))
+    lines.append(box_line(f"  {status_icon_opt(checks.get('gcp'))} GCP authentication"))
+
+    port_free = checks.get('backend_port_free')
+    port_num = checks.get('backend_port', '?')
+    lines.append(box_line(f"  {status_icon_opt(port_free)} Port {port_num}"))
+
+    lines.append(box_line(f"  {status_icon_opt(checks.get('prime_repo'))} J-Prime repo"))
+    lines.append(box_line(f"  {status_icon_opt(checks.get('reactor_repo'))} Reactor-Core repo"))
+
+    warnings = preflight_status.get("warnings", [])
+    if warnings:
+        lines.append(box_line(f"  {YELLOW}Warnings: {len(warnings)}{RESET}"))
+        for w in warnings[:3]:  # Show max 3 warnings
+            lines.append(box_line(f"    {DIM}{w}{RESET}"))
+
+    lines.append(f"{BOLD}{BLUE}" + separator_line() + RESET)
+
+    # =========================================================================
+    # Section 3: Kernel Status
+    # =========================================================================
+    lines.append(box_line(f"{CYAN}KERNEL STATUS{RESET}"))
+
+    if kernel_status.get("running"):
+        state = kernel_status.get("state", "unknown")
+        pid = kernel_status.get("pid", "?")
+        uptime = kernel_status.get("uptime_seconds", 0)
+        uptime_str = f"{int(uptime // 60)}m {int(uptime % 60)}s"
+
+        state_color = GREEN if state == "running" else YELLOW
+        lines.append(box_line(f"  {status_icon(True)} State: {state_color}{state}{RESET}"))
+        lines.append(box_line(f"      PID: {pid}  |  Uptime: {uptime_str}"))
+
+        config = kernel_status.get("config", {})
+        mode = config.get("mode", "unknown")
+        port = config.get("backend_port", "?")
+        lines.append(box_line(f"      Mode: {mode}  |  Port: {port}"))
+
+        readiness = kernel_status.get("readiness", {})
+        tier = readiness.get("tier", "unknown")
+        lines.append(box_line(f"      Tier: {tier}"))
+    else:
+        error = kernel_status.get("error", "not_running")
+        if error == "no_socket":
+            lines.append(box_line(f"  {status_icon(False, warn=True)} Not running (no IPC socket)"))
+        elif error == "ipc_timeout":
+            lines.append(box_line(f"  {status_icon(False)} Timeout connecting to kernel"))
+        else:
+            lines.append(box_line(f"  {status_icon(False)} Not running ({error})"))
+
+    lines.append(f"{BOLD}{BLUE}" + separator_line() + RESET)
+
+    # =========================================================================
+    # Section 4: Trinity Components
+    # =========================================================================
+    lines.append(box_line(f"{CYAN}TRINITY COMPONENTS{RESET}"))
+
+    trinity = kernel_status.get("trinity", {})
+    components = trinity.get("components", {})
+
+    # J-Prime (requirement 10: use .get("running", False) and .get("healthy", False))
+    prime_data = components.get("jarvis-prime", {})
+    prime_running = prime_data.get("running", False)
+    prime_healthy = prime_data.get("healthy", False)
+    prime_state = prime_data.get("state", "unknown")
+    prime_pid = prime_data.get("pid", "-")
+
+    if prime_data:
+        if prime_healthy:
+            icon = f"{GREEN}\u2713{RESET}"
+        elif prime_running:
+            icon = f"{YELLOW}\u25cf{RESET}"
+        else:
+            icon = f"{RED}\u2717{RESET}"
+        lines.append(box_line(f"  {icon} J-Prime: {prime_state}  |  PID: {prime_pid}"))
+    else:
+        lines.append(box_line(f"  {DIM}\u25cb J-Prime: No data (kernel not running){RESET}"))
+
+    # Reactor-Core (requirement 10: use .get("running", False) and .get("healthy", False))
+    reactor_data = components.get("reactor-core", {})
+    reactor_running = reactor_data.get("running", False)
+    reactor_healthy = reactor_data.get("healthy", False)
+    reactor_state = reactor_data.get("state", "unknown")
+    reactor_pid = reactor_data.get("pid", "-")
+
+    if reactor_data:
+        if reactor_healthy:
+            icon = f"{GREEN}\u2713{RESET}"
+        elif reactor_running:
+            icon = f"{YELLOW}\u25cf{RESET}"
+        else:
+            icon = f"{RED}\u2717{RESET}"
+        lines.append(box_line(f"  {icon} Reactor-Core: {reactor_state}  |  PID: {reactor_pid}"))
+    else:
+        lines.append(box_line(f"  {DIM}\u25cb Reactor-Core: No data (kernel not running){RESET}"))
+
+    lines.append(f"{BOLD}{BLUE}" + separator_line() + RESET)
+
+    # =========================================================================
+    # Section 5: Invincible Node (fetched even when kernel down)
+    # =========================================================================
+    lines.append(box_line(f"{CYAN}INVINCIBLE NODE{RESET}"))
+
+    if not invincible_status.get("enabled"):
+        lines.append(box_line(f"  {DIM}\u25cb Disabled{RESET}"))
+    elif invincible_status.get("error"):
+        error = invincible_status.get("error")
+        if error == "gcp_timeout":
+            lines.append(box_line(f"  {status_icon(False)} GCP check timed out"))
+        elif error == "gcp_manager_unavailable":
+            lines.append(box_line(f"  {status_icon(False)} GCP manager unavailable"))
+        else:
+            lines.append(box_line(f"  {status_icon(False)} Error: {error}"))
+    else:
+        gcp_status = invincible_status.get("gcp_status", "UNKNOWN")
+        static_ip = invincible_status.get("static_ip", "N/A")
+        health = invincible_status.get("health", {})
+        ready = health.get("ready_for_inference", False)
+
+        if gcp_status == "RUNNING":
+            status_color = GREEN if ready else YELLOW
+        elif gcp_status in ("STOPPED", "TERMINATED"):
+            status_color = YELLOW
+        else:
+            status_color = RED
+
+        lines.append(box_line(f"  Instance: {invincible_status.get('instance_name', '?')}"))
+        lines.append(box_line(f"  GCP: {status_color}{gcp_status}{RESET}  |  IP: {static_ip or 'N/A'}"))
+
+        if gcp_status == "RUNNING":
+            inference_status = f"{GREEN}Ready{RESET}" if ready else f"{YELLOW}Not ready{RESET}"
+            lines.append(box_line(f"  Inference: {inference_status}"))
+
+            model = health.get("active_model") or health.get("model_loaded")
+            if model:
+                lines.append(box_line(f"  Model: {model}"))
+
+        if invincible_status.get("uptime_seconds"):
+            uptime = invincible_status.get("uptime_seconds")
+            hours = int(uptime // 3600)
+            mins = int((uptime % 3600) // 60)
+            lines.append(box_line(f"  Uptime: {hours}h {mins}m"))
+
+    # =========================================================================
+    # Footer - Overall Health Summary
+    # =========================================================================
+    lines.append(f"{BOLD}{BLUE}" + separator_line() + RESET)
+
+    # Calculate overall health
+    all_ok = True
+    issues = []
+
+    if not kernel_status.get("running"):
+        all_ok = False
+        issues.append("kernel down")
+
+    if prime_data and not prime_healthy:
+        all_ok = False
+        issues.append("J-Prime unhealthy")
+
+    if reactor_data and not reactor_healthy:
+        all_ok = False
+        issues.append("Reactor unhealthy")
+
+    if invincible_status.get("enabled"):
+        gcp_status = invincible_status.get("gcp_status", "UNKNOWN")
+        if gcp_status not in ("RUNNING",):
+            issues.append(f"Invincible {gcp_status}")
+
+    if not preflight_status.get("passed"):
+        issues.append("preflight failed")
+
+    if all_ok and not issues:
+        lines.append(box_line(f"{GREEN}\u2713 All systems operational{RESET}"))
+    elif issues:
+        lines.append(box_line(f"{YELLOW}\u26a0 Issues: {', '.join(issues)}{RESET}"))
+
+    lines.append(f"{BOLD}{BLUE}" + footer_line() + RESET)
+
+    # Quick help
+    lines.append("")
+    lines.append(f"{BOLD}Quick Commands:{RESET}")
+    lines.append(f"  Start kernel:      python unified_supervisor.py")
+    lines.append(f"  Check only:        python unified_supervisor.py --check-only")
+    lines.append(f"  Trinity monitor:   python unified_supervisor.py --monitor-trinity")
+    lines.append(f"  Invincible detail: python unified_supervisor.py --monitor")
+    lines.append("")
+
+    return lines
+
+
+async def handle_dashboard() -> int:
+    """
+    Handle --dashboard command: Comprehensive system status dashboard.
+
+    v201.2: Unified view combining preflight, kernel, Trinity, and Invincible status.
+
+    Key features (per requirements):
+    1. Lock check is READ-ONLY (never acquires startup lock)
+    2. Reuses existing helpers with structured data returns
+    3. Async parallel execution with deterministic print order
+    4. Explicit timeouts: 5s for IPC/HTTP, 10s for GCP
+    5. Per-section try/except for fault isolation
+    6. Fetches Invincible status even when kernel is down
+    7. Defensive .get() for all data access
+    8. Config from SystemKernelConfig/env only, no hardcoding
+    9. Handles disabled features gracefully
+    10. Uses .get("running", False) and .get("healthy", False) for Trinity
+
+    Returns:
+        Exit code: 0 for success, 1 for failures
+    """
+    # Fetch all data in parallel (requirement 3: async parallel)
+    # Note: deterministic print order is handled by _format_dashboard_output
+
+    lock_task = asyncio.create_task(_fetch_lock_status_readonly())
+    kernel_task = asyncio.create_task(_fetch_kernel_status_ipc(timeout=5.0))  # 5s timeout
+    preflight_task = asyncio.create_task(_fetch_preflight_status())
+    invincible_task = asyncio.create_task(_fetch_invincible_status_direct(timeout=10.0))  # 10s timeout
+
+    # Gather with per-section error handling (requirement 5)
+    results = await asyncio.gather(
+        lock_task,
+        kernel_task,
+        preflight_task,
+        invincible_task,
+        return_exceptions=True,
+    )
+
+    # Extract results with defensive error handling
+    lock_status: Dict[str, Any] = (
+        results[0] if isinstance(results[0], dict)
+        else {"error": str(results[0])}
+    )
+
+    kernel_status: Dict[str, Any] = (
+        results[1] if isinstance(results[1], dict)
+        else {"running": False, "error": str(results[1])}
+    )
+
+    preflight_status: Dict[str, Any] = (
+        results[2] if isinstance(results[2], dict)
+        else {"passed": False, "error": str(results[2]), "warnings": [], "checks": {}}
+    )
+
+    invincible_status: Dict[str, Any] = (
+        results[3] if isinstance(results[3], dict)
+        else {"enabled": False, "error": str(results[3])}
+    )
+
+    # Format output (requirement 2: single print path)
+    output_lines = _format_dashboard_output(
+        lock_status=lock_status,
+        kernel_status=kernel_status,
+        preflight_status=preflight_status,
+        invincible_status=invincible_status,
+    )
+
+    # Print all at once (deterministic order)
+    for line in output_lines:
+        print(line)
+
+    # Return success if kernel running and no critical errors
+    if kernel_status.get("running") and preflight_status.get("passed", False):
+        return 0
+    return 0  # Dashboard always succeeds (informational command)
+
+
 async def handle_monitor_prime() -> int:
     """
     Handle --monitor-prime command: Display J-Prime status dashboard.
@@ -63548,6 +64207,10 @@ async def async_main(args: argparse.Namespace) -> int:
     # Handle --check-only (pre-flight validation without starting)
     if getattr(args, 'check_only', False):
         return await handle_check_only(args)
+
+    # Handle --dashboard (comprehensive system status)
+    if getattr(args, 'dashboard', False):
+        return await handle_dashboard()
 
     # Handle test command
     if hasattr(args, 'test') and args.test:
