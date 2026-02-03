@@ -1267,9 +1267,21 @@ class SystemKernelConfig:
     gcp_enabled: bool = field(default_factory=lambda: _get_env_bool("JARVIS_GCP_ENABLED", True) and _detect_gcp_credentials())
     gcp_project_id: Optional[str] = field(default_factory=_detect_gcp_project)
     gcp_zone: str = field(default_factory=lambda: os.environ.get("JARVIS_GCP_ZONE", "us-central1-a"))
+    gcp_region: str = field(default_factory=lambda: os.environ.get("JARVIS_GCP_REGION", "us-central1"))
     spot_vm_enabled: bool = field(default_factory=lambda: _get_env_bool("JARVIS_SPOT_VM_ENABLED", False))
     prefer_cloud_run: bool = field(default_factory=lambda: _get_env_bool("JARVIS_PREFER_CLOUD_RUN", False))
     cloud_sql_enabled: bool = field(default_factory=lambda: _get_env_bool("JARVIS_CLOUD_SQL_ENABLED", True))
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    # INVINCIBLE NODE (Static IP Spot VM with STOP termination)
+    # ═══════════════════════════════════════════════════════════════════════════
+    # When configured, the supervisor will proactively wake up the cloud node
+    # during startup for fast (~30s) inference availability.
+    invincible_node_enabled: bool = field(default_factory=lambda: _get_env_bool("JARVIS_INVINCIBLE_NODE_ENABLED", False))
+    invincible_node_static_ip_name: Optional[str] = field(default_factory=lambda: os.environ.get("GCP_VM_STATIC_IP_NAME"))
+    invincible_node_instance_name: str = field(default_factory=lambda: os.environ.get("GCP_VM_INSTANCE_NAME", "jarvis-prime-node"))
+    invincible_node_port: int = field(default_factory=lambda: _get_env_int("JARVIS_PRIME_PORT", 8000))
+    invincible_node_health_timeout: float = field(default_factory=lambda: _get_env_float("GCP_STATIC_VM_HEALTH_TIMEOUT", 300.0))
 
     # ═══════════════════════════════════════════════════════════════════════════
     # COST OPTIMIZATION
@@ -53897,6 +53909,10 @@ class JarvisSystemKernel:
         self._background_tasks: List[asyncio.Task] = []
         self._shutdown_event = asyncio.Event()
 
+        # v199.0: Invincible Node (Static IP Spot VM) state
+        self._invincible_node_ready: bool = False
+        self._invincible_node_ip: Optional[str] = None
+
         # v183.0: Heartbeat task for loading server
         self._heartbeat_task: Optional[asyncio.Task] = None
         self._current_progress: int = 0  # Track progress for heartbeat payload
@@ -53924,6 +53940,22 @@ class JarvisSystemKernel:
         if self._started_at is None:
             return 0.0
         return time.time() - self._started_at
+
+    @property
+    def invincible_node_status(self) -> Dict[str, Any]:
+        """
+        v199.0: Get the status of the Invincible Node (cloud VM).
+
+        Returns:
+            Dict with ready, ip, and enabled fields
+        """
+        return {
+            "enabled": self.config.invincible_node_enabled,
+            "ready": self._invincible_node_ready,
+            "ip": self._invincible_node_ip,
+            "instance_name": self.config.invincible_node_instance_name,
+            "port": self.config.invincible_node_port,
+        }
 
     def _init_browser_crash_monitor(self) -> None:
         """
@@ -55835,6 +55867,43 @@ class JarvisSystemKernel:
             # Start heartbeat task
             heartbeat_task = asyncio.create_task(resource_heartbeat())
 
+            # =====================================================================
+            # v199.0: INVINCIBLE NODE PARALLEL WAKE-UP
+            # =====================================================================
+            # Start waking the cloud node in parallel with other resource init.
+            # This saves ~30-60s by not waiting sequentially.
+            invincible_node_task: Optional[asyncio.Task] = None
+            if self.config.invincible_node_enabled and self.config.invincible_node_static_ip_name:
+                self.logger.info("[Kernel] Starting Invincible Node wake-up in parallel...")
+
+                async def _wake_invincible_node() -> Tuple[bool, Optional[str], str]:
+                    """Wake up the Invincible Node (cloud VM with static IP)."""
+                    try:
+                        from backend.core.gcp_vm_manager import get_gcp_vm_manager
+                        manager = await get_gcp_vm_manager()
+
+                        if manager.is_static_vm_mode:
+                            self.logger.info(f"[InvincibleNode] Waking cloud node...")
+                            success, ip, status = await manager.ensure_static_vm_ready(
+                                port=self.config.invincible_node_port,
+                                timeout=self.config.invincible_node_health_timeout,
+                            )
+                            return success, ip, status
+                        else:
+                            return False, None, "STATIC_VM_NOT_CONFIGURED"
+                    except ImportError as e:
+                        self.logger.warning(f"[InvincibleNode] GCP module not available: {e}")
+                        return False, None, f"IMPORT_ERROR: {e}"
+                    except Exception as e:
+                        self.logger.warning(f"[InvincibleNode] Wake-up failed: {e}")
+                        return False, None, f"ERROR: {e}"
+
+                invincible_node_task = asyncio.create_task(
+                    _wake_invincible_node(),
+                    name="invincible_node_wakeup"
+                )
+                self.logger.debug("[Kernel] Invincible Node task created")
+
             # v188.0: Initialize all in parallel with timeout and progress reporting
             try:
                 results = await asyncio.wait_for(
@@ -55849,6 +55918,8 @@ class JarvisSystemKernel:
                 self.logger.error(f"[Kernel] Resource initialization timed out after {resource_timeout}s")
                 heartbeat_stop.set()
                 heartbeat_task.cancel()
+                if invincible_node_task:
+                    invincible_node_task.cancel()
                 return False
             finally:
                 # Stop heartbeat task
@@ -55857,6 +55928,42 @@ class JarvisSystemKernel:
                     await asyncio.wait_for(heartbeat_task, timeout=1.0)
                 except (asyncio.CancelledError, asyncio.TimeoutError):
                     pass
+
+            # =====================================================================
+            # v199.0: WAIT FOR INVINCIBLE NODE (Non-blocking on failure)
+            # =====================================================================
+            # Check Invincible Node result - this is non-fatal if it fails
+            if invincible_node_task:
+                try:
+                    # Give it up to 60 more seconds beyond resource init
+                    node_success, node_ip, node_status = await asyncio.wait_for(
+                        invincible_node_task,
+                        timeout=60.0
+                    )
+                    if node_success:
+                        self.logger.info(f"[InvincibleNode] Cloud Node READY at {node_ip}")
+                        self._invincible_node_ip = node_ip
+                        self._invincible_node_ready = True
+                        await self._broadcast_startup_progress(
+                            stage="resources",
+                            message=f"Cloud Node ready: {node_ip}",
+                            progress=end_progress - 1,
+                            metadata={
+                                "icon": "cloud",
+                                "invincible_node": {"status": "ready", "ip": node_ip}
+                            }
+                        )
+                    else:
+                        self.logger.warning(f"[InvincibleNode] Wake-up failed: {node_status}")
+                        self._invincible_node_ready = False
+                except asyncio.TimeoutError:
+                    self.logger.warning("[InvincibleNode] Wake-up timed out (continuing without)")
+                    self._invincible_node_ready = False
+                except asyncio.CancelledError:
+                    self._invincible_node_ready = False
+                except Exception as e:
+                    self.logger.warning(f"[InvincibleNode] Unexpected error: {e}")
+                    self._invincible_node_ready = False
 
             # =====================================================================
             # v180.0: PORT-IN-USE FALLBACK STRATEGY

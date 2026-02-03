@@ -394,6 +394,30 @@ class VMManagerConfig:
         )
     )
 
+    # ═══════════════════════════════════════════════════════════════════════════
+    # INVINCIBLE NODE (Static IP + STOP termination) Configuration
+    # ═══════════════════════════════════════════════════════════════════════════
+    # When these are set, the manager uses persistent VM strategy instead of
+    # ephemeral VMs. The VM survives preemption in STOPPED state and can be
+    # quickly restarted (~30s) instead of recreated (~3-5 min).
+    static_ip_name: Optional[str] = field(
+        default_factory=lambda: os.getenv("GCP_VM_STATIC_IP_NAME")
+    )
+    static_instance_name: Optional[str] = field(
+        default_factory=lambda: os.getenv("GCP_VM_INSTANCE_NAME", "jarvis-prime-node")
+    )
+    # When True, uses STOP instead of DELETE on termination (Invincible Node mode)
+    use_stop_termination: bool = field(
+        default_factory=lambda: os.getenv("GCP_VM_TERMINATION_ACTION", "DELETE").upper() == "STOP"
+    )
+    # Health check endpoint settings for static VM
+    static_vm_health_poll_interval: float = field(
+        default_factory=lambda: float(os.getenv("GCP_STATIC_VM_HEALTH_POLL_INTERVAL", "5.0"))
+    )
+    static_vm_health_timeout: float = field(
+        default_factory=lambda: float(os.getenv("GCP_STATIC_VM_HEALTH_TIMEOUT", "300.0"))
+    )
+
     # Health Check Configuration
     health_check_interval: int = field(
         default_factory=lambda: int(os.getenv("GCP_HEALTH_CHECK_INTERVAL", "30"))
@@ -2979,6 +3003,367 @@ class GCPVMManager:
             logger.info(f"🔌 Circuit breaker '{name}' manually reset")
             return True
         return False
+
+    # =========================================================================
+    # INVINCIBLE NODE: Static IP + STOP Termination Support
+    # =========================================================================
+    # These methods implement the "Invincible Node" strategy where:
+    # - A persistent Spot VM with static IP survives preemption in STOPPED state
+    # - Fast restart (~30s) instead of full recreation (~3-5 min)
+    # - State machine: Ping -> Describe -> Start/Create -> Poll
+    # =========================================================================
+
+    async def ensure_static_vm_ready(
+        self,
+        port: Optional[int] = None,
+        timeout: Optional[float] = None,
+    ) -> Tuple[bool, Optional[str], str]:
+        """
+        Ensure the static/persistent VM (Invincible Node) is ready for requests.
+
+        This implements the Invincible Node state machine:
+        1. PING: Try health endpoint at static IP
+        2. If unreachable, DESCRIBE instance via GCP API
+        3. Branch:
+           - If STOPPED/TERMINATED -> START the VM
+           - If NOT_FOUND -> CREATE new VM (Hybrid Fallback)
+           - If RUNNING but unhealthy -> POLL until ready
+        4. POLL /health until ready
+
+        Args:
+            port: Port for health endpoint (default: JARVIS_PRIME_PORT or 8000)
+            timeout: Max time to wait for VM to be ready (default: 300s)
+
+        Returns:
+            Tuple of (success: bool, ip_address: Optional[str], status_message: str)
+        """
+        # Get configuration
+        static_ip_name = self.config.static_ip_name
+        instance_name = self.config.static_instance_name or "jarvis-prime-node"
+        target_port = port or int(os.environ.get("JARVIS_PRIME_PORT", "8000"))
+        max_timeout = timeout or self.config.static_vm_health_timeout
+        poll_interval = self.config.static_vm_health_poll_interval
+
+        # Check if static IP mode is configured
+        if not static_ip_name:
+            return False, None, "STATIC_IP_NOT_CONFIGURED: Set GCP_VM_STATIC_IP_NAME"
+
+        # Ensure manager is initialized
+        if not self.initialized:
+            try:
+                await self.initialize()
+            except Exception as e:
+                return False, None, f"INIT_FAILED: {e}"
+
+        # Validate configuration
+        is_valid, validation_error = self.config.is_valid_for_vm_operations()
+        if not is_valid:
+            return False, None, f"CONFIG_INVALID: {validation_error}"
+
+        # Use lock to prevent concurrent start/create operations
+        async with self._vm_lock:
+            # Step 1: Get static IP address
+            static_ip = await self._get_static_ip_address(static_ip_name)
+            if not static_ip:
+                return False, None, f"STATIC_IP_NOT_FOUND: {static_ip_name} not reserved"
+
+            logger.info(f"☁️ [InvincibleNode] Ensuring VM ready at {static_ip}:{target_port}")
+
+            # Step 2: Ping health endpoint
+            is_healthy, health_status = await self._ping_health_endpoint(
+                static_ip, target_port, timeout=10.0
+            )
+
+            if is_healthy and health_status.get("ready_for_inference", False):
+                logger.info(f"✅ [InvincibleNode] VM already ready: {static_ip}")
+                return True, static_ip, "ALREADY_READY"
+
+            # Step 3: Describe instance to get current state
+            instance_status, gcp_error = await self._describe_instance(instance_name)
+            logger.info(f"☁️ [InvincibleNode] Instance status: {instance_status}")
+
+            # Step 4: Branch based on state
+            if instance_status == "NOT_FOUND":
+                # Hybrid Fallback: Create new VM
+                logger.info(f"☁️ [InvincibleNode] Instance not found - creating new VM (Hybrid Fallback)")
+                create_success, create_error = await self._create_static_vm(
+                    instance_name, static_ip_name, target_port
+                )
+                if not create_success:
+                    return False, static_ip, f"CREATE_FAILED: {create_error}"
+
+            elif instance_status in ("TERMINATED", "STOPPED", "SUSPENDED"):
+                # Start the stopped VM (fast path: ~30s)
+                logger.info(f"☁️ [InvincibleNode] Starting stopped VM: {instance_name}")
+                start_success, start_error = await self._start_instance(instance_name)
+                if not start_success:
+                    return False, static_ip, f"START_FAILED: {start_error}"
+
+            elif instance_status in ("STAGING", "PROVISIONING"):
+                # VM is starting up, proceed to poll
+                logger.info(f"☁️ [InvincibleNode] VM is starting: {instance_status}")
+
+            elif instance_status == "RUNNING":
+                # VM is running but health check failed
+                logger.info(f"☁️ [InvincibleNode] VM running but not healthy yet")
+
+            elif instance_status == "ERROR":
+                return False, static_ip, f"GCP_API_ERROR: {gcp_error}"
+
+            else:
+                logger.warning(f"☁️ [InvincibleNode] Unknown status: {instance_status}")
+
+        # Step 5: Poll health endpoint until ready (outside lock to avoid blocking)
+        logger.info(f"☁️ [InvincibleNode] Polling health endpoint (timeout: {max_timeout}s)...")
+        poll_success, final_status = await self._poll_health_until_ready(
+            static_ip, target_port, max_timeout, poll_interval
+        )
+
+        if poll_success:
+            logger.info(f"✅ [InvincibleNode] VM ready: {static_ip}")
+            return True, static_ip, "READY"
+        else:
+            return False, static_ip, f"HEALTH_TIMEOUT: {final_status}"
+
+    async def _get_static_ip_address(self, ip_name: str) -> Optional[str]:
+        """Get the IP address for a reserved static IP by name."""
+        try:
+            # Use gcloud via subprocess for simplicity (addresses API is separate)
+            import subprocess
+            result = await asyncio.to_thread(
+                subprocess.run,
+                [
+                    "gcloud", "compute", "addresses", "describe", ip_name,
+                    "--project", self.config.project_id,
+                    "--region", self.config.region,
+                    "--format", "value(address)"
+                ],
+                capture_output=True,
+                text=True,
+                timeout=30
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                return result.stdout.strip()
+            return None
+        except Exception as e:
+            logger.warning(f"[InvincibleNode] Failed to get static IP: {e}")
+            return None
+
+    async def _ping_health_endpoint(
+        self, ip: str, port: int, timeout: float = 10.0
+    ) -> Tuple[bool, Dict[str, Any]]:
+        """
+        Ping the health endpoint to check if VM is ready.
+
+        Returns:
+            Tuple of (is_healthy: bool, health_response: dict)
+        """
+        import aiohttp
+        url = f"http://{ip}:{port}/health"
+
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, timeout=aiohttp.ClientTimeout(total=timeout)) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        is_ready = data.get("ready_for_inference", False)
+                        return is_ready, data
+                    return False, {"status": resp.status}
+        except asyncio.TimeoutError:
+            return False, {"error": "timeout"}
+        except Exception as e:
+            return False, {"error": str(e)}
+
+    async def _describe_instance(self, instance_name: str) -> Tuple[str, Optional[str]]:
+        """
+        Get the current status of an instance from GCP.
+
+        Returns:
+            Tuple of (status: str, error: Optional[str])
+            Status can be: RUNNING, STOPPED, TERMINATED, STAGING, PROVISIONING,
+                          SUSPENDED, STOPPING, NOT_FOUND, ERROR
+        """
+        try:
+            instance = await asyncio.to_thread(
+                self.instances_client.get,
+                project=self.config.project_id,
+                zone=self.config.zone,
+                instance=instance_name,
+            )
+            return instance.status, None
+        except Exception as e:
+            error_str = str(e).lower()
+            if "404" in error_str or "not found" in error_str or "notfound" in error_str:
+                return "NOT_FOUND", None
+            return "ERROR", str(e)
+
+    async def _start_instance(self, instance_name: str) -> Tuple[bool, Optional[str]]:
+        """
+        Start a stopped/terminated instance.
+
+        Returns:
+            Tuple of (success: bool, error: Optional[str])
+        """
+        try:
+            logger.info(f"☁️ [InvincibleNode] Sending start command: {instance_name}")
+
+            operation = await asyncio.to_thread(
+                self.instances_client.start,
+                project=self.config.project_id,
+                zone=self.config.zone,
+                instance=instance_name,
+            )
+
+            # Wait for operation to complete
+            await self._wait_for_operation(operation, timeout=120)
+
+            logger.info(f"✅ [InvincibleNode] VM start command completed: {instance_name}")
+            return True, None
+
+        except Exception as e:
+            logger.error(f"❌ [InvincibleNode] Failed to start VM: {e}")
+            return False, str(e)
+
+    async def _create_static_vm(
+        self, instance_name: str, static_ip_name: str, port: int
+    ) -> Tuple[bool, Optional[str]]:
+        """
+        Create a new VM with static IP (Hybrid Fallback).
+
+        This is called when the VM doesn't exist (NOT_FOUND) and we need
+        to create a new one bound to the reserved static IP.
+
+        Returns:
+            Tuple of (success: bool, error: Optional[str])
+        """
+        try:
+            logger.info(f"☁️ [InvincibleNode] Creating VM with static IP: {instance_name}")
+
+            # Get static IP address for binding
+            static_ip = await self._get_static_ip_address(static_ip_name)
+            if not static_ip:
+                return False, f"Static IP '{static_ip_name}' not found"
+
+            # Build instance configuration with static IP
+            machine_type_url = f"zones/{self.config.zone}/machineTypes/{self.config.machine_type}"
+
+            # Boot disk
+            boot_disk = compute_v1.AttachedDisk(
+                auto_delete=True,
+                boot=True,
+                initialize_params=compute_v1.AttachedDiskInitializeParams(
+                    disk_size_gb=self.config.boot_disk_size_gb,
+                    disk_type=f"zones/{self.config.zone}/diskTypes/{self.config.boot_disk_type}",
+                    source_image=f"projects/{self.config.image_project}/global/images/family/{self.config.image_family}",
+                ),
+            )
+
+            # Network interface with STATIC IP
+            network_interface = compute_v1.NetworkInterface(
+                network=f"global/networks/{self.config.network}",
+                access_configs=[
+                    compute_v1.AccessConfig(
+                        name="External NAT",
+                        type="ONE_TO_ONE_NAT",
+                        nat_i_p=static_ip,  # Bind to reserved static IP
+                    )
+                ],
+            )
+
+            # Service account
+            service_account = compute_v1.ServiceAccount(
+                email="default",
+                scopes=["https://www.googleapis.com/auth/cloud-platform"]
+            )
+
+            # Metadata
+            metadata_items = [
+                compute_v1.Items(key="jarvis-port", value=str(port)),
+                compute_v1.Items(key="jarvis-components", value="inference"),
+                compute_v1.Items(key="jarvis-trigger", value="invincible_node_hybrid_fallback"),
+                compute_v1.Items(key="jarvis-created-at", value=datetime.now().isoformat()),
+            ]
+
+            # Add startup script
+            if self.config.startup_script_path and os.path.exists(self.config.startup_script_path):
+                with open(self.config.startup_script_path, "r") as f:
+                    startup_script = f.read()
+                metadata_items.append(compute_v1.Items(key="startup-script", value=startup_script))
+
+            # Build instance with STOP termination (Invincible Node)
+            instance = compute_v1.Instance(
+                name=instance_name,
+                machine_type=machine_type_url,
+                disks=[boot_disk],
+                network_interfaces=[network_interface],
+                service_accounts=[service_account],
+                metadata=compute_v1.Metadata(items=metadata_items),
+                tags=compute_v1.Tags(items=["jarvis-node", "http-server", "https-server"]),
+                labels={"created-by": "jarvis", "type": "prime-node", "vm-class": "invincible"},
+                scheduling=compute_v1.Scheduling(
+                    preemptible=True,
+                    on_host_maintenance="TERMINATE",
+                    automatic_restart=False,
+                    provisioning_model="SPOT",
+                    instance_termination_action="STOP",  # INVINCIBLE: Survive preemption
+                ),
+            )
+
+            # Create the VM
+            operation = await asyncio.to_thread(
+                self.instances_client.insert,
+                project=self.config.project_id,
+                zone=self.config.zone,
+                instance_resource=instance,
+            )
+
+            # Wait for creation
+            await self._wait_for_operation(operation, timeout=300)
+
+            logger.info(f"✅ [InvincibleNode] VM created: {instance_name}")
+            return True, None
+
+        except Exception as e:
+            logger.error(f"❌ [InvincibleNode] Failed to create VM: {e}")
+            return False, str(e)
+
+    async def _poll_health_until_ready(
+        self, ip: str, port: int, timeout: float, poll_interval: float
+    ) -> Tuple[bool, str]:
+        """
+        Poll the health endpoint until the VM reports ready_for_inference=true.
+
+        Returns:
+            Tuple of (success: bool, final_status: str)
+        """
+        start_time = time.time()
+        last_status = "starting"
+
+        while (time.time() - start_time) < timeout:
+            is_ready, health_data = await self._ping_health_endpoint(ip, port, timeout=10.0)
+
+            if is_ready:
+                return True, "ready_for_inference"
+
+            # Extract progress info for logging
+            if "apars" in health_data:
+                apars = health_data["apars"]
+                progress = apars.get("total_progress", 0)
+                phase = apars.get("phase_name", "unknown")
+                eta = apars.get("eta_seconds", 0)
+                last_status = f"phase={phase}, progress={progress}%, eta={eta}s"
+                logger.debug(f"☁️ [InvincibleNode] Health poll: {last_status}")
+            elif "error" in health_data:
+                last_status = f"error={health_data['error']}"
+
+            await asyncio.sleep(poll_interval)
+
+        return False, f"timeout after {timeout}s (last: {last_status})"
+
+    @property
+    def is_static_vm_mode(self) -> bool:
+        """Check if static VM (Invincible Node) mode is configured."""
+        return bool(self.config.static_ip_name)
 
 
 # ============================================================================
