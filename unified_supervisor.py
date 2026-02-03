@@ -737,14 +737,17 @@ except ImportError:
     prevent_multiple_jarvis_instances = None
 
 # v181.0: Graceful Shutdown - orphaned semaphore cleanup
+# v201.4: CLI-only mode support to suppress verbose shutdown diagnostics
 try:
     from backend.core.resilience.graceful_shutdown import (
         cleanup_orphaned_semaphores,
+        set_cli_only_mode,
     )
     GRACEFUL_SHUTDOWN_AVAILABLE = True
 except ImportError:
     GRACEFUL_SHUTDOWN_AVAILABLE = False
     cleanup_orphaned_semaphores = None
+    set_cli_only_mode = lambda *args: None  # No-op fallback
 
 # v181.0: Cross-Repo Startup Orchestrator - GCP/Hollow Client/Trinity Protocol
 try:
@@ -1198,6 +1201,172 @@ def _get_env_float(key: str, default: float) -> float:
         return float(os.environ.get(key, default))
     except (ValueError, TypeError):
         return default
+
+
+# =============================================================================
+# CLI BOX DRAWING UTILITY (v201.4)
+# =============================================================================
+# Centralized, ANSI-aware box drawing for all CLI dashboards.
+# Properly handles ANSI color codes when calculating text width.
+# =============================================================================
+
+class CLIBoxDrawing:
+    """
+    Centralized box drawing utility for CLI dashboards.
+
+    Features:
+    - ANSI-aware width calculation (strips color codes for padding)
+    - Consistent box characters across all dashboards
+    - Color constants for uniform styling
+    - Single source of truth - no more duplicate definitions
+
+    Usage:
+        box = CLIBoxDrawing(width=70)
+        print(box.header())
+        print(box.line("Title"))
+        print(box.separator())
+        print(box.line(f"{box.GREEN}Success{box.RESET}"))
+        print(box.footer())
+    """
+
+    # Box drawing characters (Unicode)
+    TL = "\u2554"  # ╔ Top-left corner
+    TR = "\u2557"  # ╗ Top-right corner
+    BL = "\u255a"  # ╚ Bottom-left corner
+    BR = "\u255d"  # ╝ Bottom-right corner
+    H = "\u2550"   # ═ Horizontal line
+    V = "\u2551"   # ║ Vertical line
+    SEP_L = "\u2560"  # ╠ Left separator
+    SEP_R = "\u2563"  # ╣ Right separator
+
+    # ANSI color codes
+    GREEN = "\033[92m"
+    RED = "\033[91m"
+    YELLOW = "\033[93m"
+    BLUE = "\033[94m"
+    CYAN = "\033[96m"
+    MAGENTA = "\033[95m"
+    BOLD = "\033[1m"
+    DIM = "\033[2m"
+    RESET = "\033[0m"
+
+    # ANSI stripping pattern (compiled once for performance)
+    _ANSI_PATTERN = re.compile(r'\033\[[0-9;]*m')
+
+    def __init__(self, width: int = 70):
+        """Initialize with box width."""
+        self.width = width
+
+    @classmethod
+    def strip_ansi(cls, text: str) -> str:
+        """Remove ANSI escape codes from text for accurate length calculation."""
+        return cls._ANSI_PATTERN.sub('', text)
+
+    @classmethod
+    def visible_len(cls, text: str) -> int:
+        """Get visible length of text (excluding ANSI codes)."""
+        return len(cls.strip_ansi(text))
+
+    def header(self) -> str:
+        """Create top border line: ╔════════════════╗"""
+        return f"{self.TL}{self.H * (self.width - 2)}{self.TR}"
+
+    def footer(self) -> str:
+        """Create bottom border line: ╚════════════════╝"""
+        return f"{self.BL}{self.H * (self.width - 2)}{self.BR}"
+
+    def separator(self) -> str:
+        """Create separator line: ╠════════════════╣"""
+        return f"{self.SEP_L}{self.H * (self.width - 2)}{self.SEP_R}"
+
+    def line(self, text: str = "") -> str:
+        """
+        Create content line with proper padding: ║ text           ║
+
+        Handles ANSI codes correctly by calculating visible length.
+        """
+        # Calculate visible length (without ANSI codes)
+        visible_length = self.visible_len(text)
+
+        # Available space inside box (width - 2 for borders - 2 for padding spaces)
+        content_width = self.width - 4
+
+        # Calculate padding needed
+        padding_needed = content_width - visible_length
+
+        if padding_needed < 0:
+            # Text too long - truncate (keeping ANSI codes is tricky, just truncate)
+            clean_text = self.strip_ansi(text)
+            truncated = clean_text[:content_width - 3] + "..."
+            return f"{self.V} {truncated} {self.V}"
+
+        # Pad with spaces
+        return f"{self.V} {text}{' ' * padding_needed} {self.V}"
+
+    def title(self, text: str, color: str = None) -> str:
+        """Create a title line (optionally colored)."""
+        if color:
+            return self.line(f"{color}{text}{self.RESET}")
+        return self.line(text)
+
+    def status_line(self, label: str, value: str, ok: bool = True, width: int = 14) -> str:
+        """
+        Create a status line with label and value.
+
+        Args:
+            label: Left-side label (e.g., "Status:")
+            value: Right-side value (e.g., "Running")
+            ok: If True, value is green; if False, red
+            width: Label column width for alignment
+        """
+        color = self.GREEN if ok else self.RED
+        padded_label = label.ljust(width)
+        return self.line(f"{padded_label}{color}{value}{self.RESET}")
+
+    def status_icon(self, ok: bool, warn: bool = False) -> str:
+        """Get status icon with color."""
+        if ok:
+            return f"{self.GREEN}\u2713{self.RESET}"
+        elif warn:
+            return f"{self.YELLOW}\u26a0{self.RESET}"
+        return f"{self.RED}\u2717{self.RESET}"
+
+    def status_opt(self, val) -> str:
+        """Get status icon for optional (can be None for disabled)."""
+        if val is None:
+            return f"{self.DIM}\u25cb{self.RESET}"
+        return self.status_icon(val)
+
+    # Convenience methods for colored text
+    def green(self, text: str) -> str:
+        return f"{self.GREEN}{text}{self.RESET}"
+
+    def red(self, text: str) -> str:
+        return f"{self.RED}{text}{self.RESET}"
+
+    def yellow(self, text: str) -> str:
+        return f"{self.YELLOW}{text}{self.RESET}"
+
+    def cyan(self, text: str) -> str:
+        return f"{self.CYAN}{text}{self.RESET}"
+
+    def dim(self, text: str) -> str:
+        return f"{self.DIM}{text}{self.RESET}"
+
+    def bold(self, text: str) -> str:
+        return f"{self.BOLD}{text}{self.RESET}"
+
+
+# Global instance with default width
+_cli_box = CLIBoxDrawing(width=70)
+
+
+def get_cli_box(width: int = 70) -> CLIBoxDrawing:
+    """Get a CLIBoxDrawing instance (cached for default width)."""
+    global _cli_box
+    if width == 70:
+        return _cli_box
+    return CLIBoxDrawing(width=width)
 
 
 # =============================================================================
@@ -62244,6 +62413,9 @@ async def _direct_health_check(host: str, port: int, timeout: float = 5.0) -> Di
 
 async def handle_status() -> int:
     """Handle --status command."""
+    # v201.4: Suppress shutdown diagnostics for CLI-only commands
+    set_cli_only_mode(True)
+
     logger = UnifiedLogger()
     logger.info("Checking kernel status...")
 
@@ -62303,6 +62475,9 @@ async def handle_status() -> int:
 
 async def handle_shutdown() -> int:
     """Handle --shutdown command."""
+    # v201.4: Suppress shutdown diagnostics for CLI-only commands
+    set_cli_only_mode(True)
+
     logger = UnifiedLogger()
     logger.info("Sending shutdown command...")
 
@@ -62343,6 +62518,9 @@ async def handle_shutdown() -> int:
 
 async def handle_cleanup() -> int:
     """Handle --cleanup command."""
+    # v201.4: Suppress shutdown diagnostics for CLI-only commands
+    set_cli_only_mode(True)
+
     print("\n" + "="*60)
     print("🧹 JARVIS Comprehensive Zombie Cleanup")
     print("="*60 + "\n")
@@ -62384,6 +62562,8 @@ async def handle_check_only(args: argparse.Namespace) -> int:
     Returns:
         0 if all checks pass, 1 if any checks fail
     """
+    # v201.4: Suppress shutdown diagnostics for CLI-only commands
+    set_cli_only_mode(True)
     # ANSI colors
     GREEN = "\033[92m"
     RED = "\033[91m"
@@ -62635,6 +62815,9 @@ async def handle_cloud_monitor() -> int:
     - Model loading status
     - APARS progress (if starting)
     """
+    # v201.4: Suppress shutdown diagnostics for CLI-only commands
+    set_cli_only_mode(True)
+
     # Load configuration
     config = SystemKernelConfig()
 
@@ -62834,6 +63017,9 @@ async def handle_cloud_monitor_logs() -> int:
 
     Uses SSH to tail the startup/runtime logs from the cloud VM.
     """
+    # v201.4: Suppress shutdown diagnostics for CLI-only commands
+    set_cli_only_mode(True)
+
     config = SystemKernelConfig()
 
     print()
@@ -63485,6 +63671,9 @@ async def handle_dashboard() -> int:
     Returns:
         Exit code: 0 for success, 1 for failures
     """
+    # v201.4: Suppress shutdown diagnostics for CLI-only commands
+    set_cli_only_mode(True)
+
     # Fetch all data in parallel (requirement 3: async parallel)
     # Note: deterministic print order is handled by _format_dashboard_output
 
@@ -63645,47 +63834,20 @@ async def handle_monitor_prime() -> int:
     """
     Handle --monitor-prime command: Display J-Prime status dashboard.
 
-    v201.1: Shows J-Prime status whether kernel is running or not.
+    v201.4: Uses centralized CLIBoxDrawing with proper ANSI-aware padding.
+    Shows J-Prime status whether kernel is running or not.
     When kernel is running, uses IPC. When down, does direct HTTP check.
     """
-    # Box drawing characters for clean output
-    BOX_TL = "\u2554"  # Top-left corner
-    BOX_TR = "\u2557"  # Top-right corner
-    BOX_BL = "\u255a"  # Bottom-left corner
-    BOX_BR = "\u255d"  # Bottom-right corner
-    BOX_H = "\u2550"   # Horizontal line
-    BOX_V = "\u2551"   # Vertical line
-    BOX_SEP_L = "\u2560"  # Left separator
-    BOX_SEP_R = "\u2563"  # Right separator
+    # v201.4: Suppress shutdown diagnostics for CLI-only commands
+    set_cli_only_mode(True)
 
-    # ANSI colors
-    GREEN = "\033[92m"
-    RED = "\033[91m"
-    YELLOW = "\033[93m"
-    BLUE = "\033[94m"
-    CYAN = "\033[96m"
-    BOLD = "\033[1m"
-    DIM = "\033[2m"
-    RESET = "\033[0m"
-
-    # Box drawing helpers
-    def box_line(text: str, width: int = 70) -> str:
-        padded = f" {text}".ljust(width - 2)
-        return f"{BOX_V}{padded}{BOX_V}"
-
-    def header(width: int = 70) -> str:
-        return f"{BOX_TL}{BOX_H * (width - 2)}{BOX_TR}"
-
-    def footer(width: int = 70) -> str:
-        return f"{BOX_BL}{BOX_H * (width - 2)}{BOX_BR}"
-
-    def separator(width: int = 70) -> str:
-        return f"{BOX_SEP_L}{BOX_H * (width - 2)}{BOX_SEP_R}"
+    # Use centralized box drawing (ANSI-aware)
+    box = get_cli_box(width=70)
 
     print()
-    print(f"{BOLD}{BLUE}" + header() + RESET)
-    print(f"{BOLD}{BLUE}" + box_line("J-PRIME STATUS MONITOR") + RESET)
-    print(f"{BOLD}{BLUE}" + separator() + RESET)
+    print(box.bold(box.BLUE) + box.header() + box.RESET)
+    print(box.bold(box.BLUE) + box.line("J-PRIME STATUS MONITOR") + box.RESET)
+    print(box.bold(box.BLUE) + box.separator() + box.RESET)
 
     # Get port from environment (same source as TrinityIntegrator)
     prime_port = int(os.getenv("TRINITY_JPRIME_PORT", "8000"))
@@ -63721,15 +63883,15 @@ async def handle_monitor_prime() -> int:
 
     # Display kernel status
     if kernel_running:
-        print(box_line(f"Kernel:       {GREEN}Running{RESET}"))
+        print(box.line(f"Kernel:       {box.green('Running')}"))
     else:
-        print(box_line(f"Kernel:       {YELLOW}Not running{RESET} (direct health check)"))
+        print(box.line(f"Kernel:       {box.yellow('Not running')} (direct health check)"))
 
-    print(separator())
+    print(box.separator())
 
     # Display Prime configuration
-    print(box_line(f"Host:         {prime_host}"))
-    print(box_line(f"Port:         {prime_port}"))
+    print(box.line(f"Host:         {prime_host}"))
+    print(box.line(f"Port:         {prime_port}"))
 
     if prime_data:
         # Use IPC data
@@ -63741,21 +63903,21 @@ async def handle_monitor_prime() -> int:
         repo_path = prime_data.get("repo_path")
         restart_count = prime_data.get("restart_count", 0)
 
-        print(box_line(f"Configured:   {GREEN}Yes{RESET}" if configured else f"Configured:   {RED}No{RESET}"))
-        print(box_line(f"State:        {state}"))
-        print(box_line(f"Running:      {GREEN}Yes{RESET}" if running else f"Running:      {RED}No{RESET}"))
-        print(box_line(f"Healthy:      {GREEN}Yes{RESET}" if healthy else f"Healthy:      {RED}No{RESET}"))
+        print(box.line(f"Configured:   {box.green('Yes') if configured else box.red('No')}"))
+        print(box.line(f"State:        {state}"))
+        print(box.line(f"Running:      {box.green('Yes') if running else box.red('No')}"))
+        print(box.line(f"Healthy:      {box.green('Yes') if healthy else box.red('No')}"))
         if pid:
-            print(box_line(f"PID:          {pid}"))
+            print(box.line(f"PID:          {pid}"))
         if repo_path:
-            print(box_line(f"Repo:         {DIM}{repo_path}{RESET}"))
+            print(box.line(f"Repo:         {box.dim(str(repo_path))}"))
         if restart_count > 0:
-            print(box_line(f"Restarts:     {YELLOW}{restart_count}{RESET}"))
+            print(box.line(f"Restarts:     {box.yellow(str(restart_count))}"))
 
     else:
         # Direct HTTP health check
-        print(separator())
-        print(box_line(f"{CYAN}Direct Health Check{RESET}"))
+        print(box.separator())
+        print(box.line(box.cyan("Direct Health Check")))
 
         try:
             import aiohttp
@@ -63764,26 +63926,26 @@ async def handle_monitor_prime() -> int:
                 async with session.get(url, timeout=aiohttp.ClientTimeout(total=5)) as resp:
                     if resp.status == 200:
                         health = await resp.json()
-                        print(box_line(f"Reachable:    {GREEN}Yes{RESET}"))
+                        print(box.line(f"Reachable:    {box.green('Yes')}"))
                         status = health.get("status", "unknown")
                         if status == "healthy":
-                            print(box_line(f"Status:       {GREEN}{status}{RESET}"))
+                            print(box.line(f"Status:       {box.green(status)}"))
                         else:
-                            print(box_line(f"Status:       {YELLOW}{status}{RESET}"))
+                            print(box.line(f"Status:       {box.yellow(status)}"))
                         if health.get("model_loaded"):
-                            print(box_line(f"Model:        {GREEN}Loaded{RESET}"))
+                            print(box.line(f"Model:        {box.green('Loaded')}"))
                         if health.get("active_model"):
-                            print(box_line(f"Model:        {health['active_model']}"))
+                            print(box.line(f"Model:        {health['active_model']}"))
                     else:
-                        print(box_line(f"Reachable:    {YELLOW}Yes (HTTP {resp.status}){RESET}"))
+                        print(box.line(f"Reachable:    {box.yellow(f'Yes (HTTP {resp.status})')}"))
         except Exception:
-            print(box_line(f"Reachable:    {RED}No (connection failed){RESET}"))
+            print(box.line(f"Reachable:    {box.red('No (connection failed)')}"))
 
-    print(footer())
+    print(box.footer())
 
     # Quick actions
     print()
-    print(f"{BOLD}Quick Actions:{RESET}")
+    print(f"{box.BOLD}Quick Actions:{box.RESET}")
     print(f"  - Full status:  python unified_supervisor.py --status")
     print(f"  - Start kernel: python unified_supervisor.py")
     print(f"  - Health check: curl http://{prime_host}:{prime_port}/health")
@@ -63798,6 +63960,9 @@ async def handle_monitor_reactor() -> int:
 
     v201.1: Shows Reactor status whether kernel is running or not.
     """
+    # v201.4: Suppress shutdown diagnostics for CLI-only commands
+    set_cli_only_mode(True)
+
     # ANSI colors
     GREEN = "\033[92m"
     RED = "\033[91m"
@@ -63934,6 +64099,9 @@ async def handle_monitor_trinity() -> int:
 
     v201.1: Shows Prime, Reactor, and Invincible Node status in one view.
     """
+    # v201.4: Suppress shutdown diagnostics for CLI-only commands
+    set_cli_only_mode(True)
+
     GREEN = "\033[92m"
     RED = "\033[91m"
     YELLOW = "\033[93m"
@@ -64104,6 +64272,9 @@ async def handle_single_task(
     Returns:
         Exit code: 0 for success, 1 for failure
     """
+    # v201.4: Suppress shutdown diagnostics for CLI-only commands
+    set_cli_only_mode(True)
+
     print("\n" + "="*60)
     print("🤖 JARVIS Single Task Execution")
     print("="*60)
@@ -64297,6 +64468,9 @@ def apply_cli_to_config(args: argparse.Namespace, config: SystemKernelConfig) ->
 
 async def handle_test(test_suite: str) -> int:
     """Handle --test command to run self-tests."""
+    # v201.4: Suppress shutdown diagnostics for CLI-only commands
+    set_cli_only_mode(True)
+
     print("\n" + "="*70)
     print(f"RUNNING SELF-TESTS: {test_suite.upper()}")
     print("="*70 + "\n")

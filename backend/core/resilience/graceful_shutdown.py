@@ -81,6 +81,44 @@ except ImportError:
 
 
 # =============================================================================
+# v201.4: CLI-Only Mode - Suppress Verbose Shutdown for Simple Commands
+# =============================================================================
+# When running CLI-only commands (--status, --monitor-prime, --dashboard),
+# we don't want full shutdown diagnostics cluttering the output. These
+# commands are simple queries that don't start the kernel and don't need
+# coordinated shutdown.
+#
+# Usage:
+#     from backend.core.resilience.graceful_shutdown import set_cli_only_mode
+#     set_cli_only_mode(True)  # Call at start of CLI command handler
+# =============================================================================
+
+_CLI_ONLY_MODE = False
+_cli_mode_lock = threading.Lock()
+
+
+def set_cli_only_mode(enabled: bool = True) -> None:
+    """
+    Enable CLI-only mode to suppress verbose shutdown diagnostics.
+
+    Call this at the start of CLI command handlers that don't start
+    the kernel (like --status, --monitor-prime, --dashboard).
+
+    Args:
+        enabled: True to suppress shutdown diagnostics, False to restore normal behavior
+    """
+    global _CLI_ONLY_MODE
+    with _cli_mode_lock:
+        _CLI_ONLY_MODE = enabled
+
+
+def is_cli_only_mode() -> bool:
+    """Check if CLI-only mode is enabled."""
+    with _cli_mode_lock:
+        return _CLI_ONLY_MODE
+
+
+# =============================================================================
 # v128.0: Suppress Resource Tracker Semaphore Warnings
 # =============================================================================
 # On macOS with multiprocessing 'spawn' mode, the resource_tracker process
@@ -1726,29 +1764,32 @@ class GlobalShutdownSignal:
         """
         # ═══════════════════════════════════════════════════════════════════════════
         # v151.0: DIAGNOSTIC LOGGING - Capture full context of shutdown trigger
+        # v201.4: Suppress verbose diagnostics in CLI-only mode
         # ═══════════════════════════════════════════════════════════════════════════
-        import traceback
 
-        stack_trace = "".join(traceback.format_stack())
+        # Skip verbose diagnostics for CLI-only commands (--status, --monitor-prime, etc.)
+        if not is_cli_only_mode():
+            import traceback
+            stack_trace = "".join(traceback.format_stack())
 
-        if _SHUTDOWN_DIAGNOSTICS_AVAILABLE:
-            log_shutdown_trigger(
-                "GlobalShutdownSignal.initiate",
-                f"Global shutdown signal - reason={reason}, initiator={initiator}",
-                {
-                    "reason": reason,
-                    "initiator": initiator,
-                    "stack_trace": stack_trace,
-                    "system_state": capture_system_state(),
-                }
+            if _SHUTDOWN_DIAGNOSTICS_AVAILABLE:
+                log_shutdown_trigger(
+                    "GlobalShutdownSignal.initiate",
+                    f"Global shutdown signal - reason={reason}, initiator={initiator}",
+                    {
+                        "reason": reason,
+                        "initiator": initiator,
+                        "stack_trace": stack_trace,
+                        "system_state": capture_system_state(),
+                    }
+                )
+
+            logger.warning(
+                f"[v151.0] 🔬 GLOBAL SHUTDOWN TRIGGER:\n"
+                f"    Reason: {reason}\n"
+                f"    Initiator: {initiator}\n"
+                f"    Stack trace:\n{stack_trace}"
             )
-
-        logger.warning(
-            f"[v151.0] 🔬 GLOBAL SHUTDOWN TRIGGER:\n"
-            f"    Reason: {reason}\n"
-            f"    Initiator: {initiator}\n"
-            f"    Stack trace:\n{stack_trace}"
-        )
         # ═══════════════════════════════════════════════════════════════════════════
 
         with self._state_lock:
@@ -1761,21 +1802,24 @@ class GlobalShutdownSignal:
             self._reason = reason
             self._initiator = initiator or f"pid-{os.getpid()}"
 
-            if _SHUTDOWN_DIAGNOSTICS_AVAILABLE:
-                log_state_change(
-                    "GlobalShutdownSignal",
-                    "idle",
-                    "initiated",
-                    f"reason={reason}"
+            # v201.4: Only log in non-CLI mode
+            if not is_cli_only_mode():
+                if _SHUTDOWN_DIAGNOSTICS_AVAILABLE:
+                    log_state_change(
+                        "GlobalShutdownSignal",
+                        "idle",
+                        "initiated",
+                        f"reason={reason}"
+                    )
+
+                logger.info(
+                    f"[v95.13] 🛑 Global shutdown initiated: "
+                    f"reason={reason}, initiator={self._initiator}"
                 )
 
-            logger.info(
-                f"[v95.13] 🛑 Global shutdown initiated: "
-                f"reason={reason}, initiator={self._initiator}"
-            )
-
-            # Write to file for cross-process coordination
-            self._write_signal_file()
+            # Write to file for cross-process coordination (skip in CLI mode)
+            if not is_cli_only_mode():
+                self._write_signal_file()
 
             # Set async event if it exists
             if self._async_event is not None:
@@ -2510,26 +2554,30 @@ def _register_semaphore_cleanup_atexit():
 
     def _final_semaphore_cleanup():
         try:
-            # Mark global shutdown to enable warning suppression
-            try:
-                initiate_global_shutdown("atexit_semaphore_cleanup")
-            except Exception:
-                pass
+            # v201.4: Skip full shutdown initiation in CLI-only mode
+            # CLI commands don't need coordinated shutdown - they're just queries
+            if not is_cli_only_mode():
+                # Mark global shutdown to enable warning suppression
+                try:
+                    initiate_global_shutdown("atexit_semaphore_cleanup")
+                except Exception:
+                    pass
 
             result = cleanup_all_semaphores_sync()
 
-            # Log only if we actually cleaned something
-            cleaned = (
-                result.get("executors_cleaned", 0) +
-                result.get("workers_terminated", 0) +
-                result.get("mp_children_terminated", 0)
-            )
-            if cleaned > 0:
-                logger.debug(
-                    f"[v128.0] Final cleanup: {result.get('executors_cleaned', 0)} executors, "
-                    f"{result.get('workers_terminated', 0)} workers, "
-                    f"{result.get('mp_children_terminated', 0)} children"
+            # Log only if we actually cleaned something AND not in CLI mode
+            if not is_cli_only_mode():
+                cleaned = (
+                    result.get("executors_cleaned", 0) +
+                    result.get("workers_terminated", 0) +
+                    result.get("mp_children_terminated", 0)
                 )
+                if cleaned > 0:
+                    logger.debug(
+                        f"[v128.0] Final cleanup: {result.get('executors_cleaned', 0)} executors, "
+                        f"{result.get('workers_terminated', 0)} workers, "
+                        f"{result.get('mp_children_terminated', 0)} children"
+                    )
         except Exception:
             pass  # Best effort at exit
 
@@ -2569,6 +2617,10 @@ def _register_thread_cleanup_atexit():
 
     def _final_thread_cleanup():
         """Emergency thread cleanup at exit."""
+        # v201.4: Skip in CLI-only mode (simple queries don't need thread cleanup)
+        if is_cli_only_mode():
+            return
+
         try:
             # Try to import and use thread_manager
             from backend.core.thread_manager import (
@@ -2663,4 +2715,7 @@ __all__ = [
     "cleanup_all_semaphores_sync",
     # v117.0: Thread cleanup
     "_register_thread_cleanup_atexit",
+    # v201.4: CLI-only mode (suppress shutdown diagnostics for simple commands)
+    "set_cli_only_mode",
+    "is_cli_only_mode",
 ]
