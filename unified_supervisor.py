@@ -760,10 +760,15 @@ except ImportError:
 # v208.0: Unified Readiness Configuration - Status display and dashboard mappings
 # CRITICAL: "skipped" must display as "SKIP" (not "STOP") and map to "skipped" (not "stopped")
 try:
-    from backend.core.readiness_config import DASHBOARD_STATUS_MAP, STATUS_DISPLAY_MAP
+    from backend.core.readiness_config import (
+        DASHBOARD_STATUS_MAP,
+        STATUS_DISPLAY_MAP,
+        get_readiness_config,
+    )
     READINESS_CONFIG_AVAILABLE = True
 except ImportError:
     READINESS_CONFIG_AVAILABLE = False
+    get_readiness_config = None  # type: ignore
     # Fallback mappings if readiness_config is unavailable
     STATUS_DISPLAY_MAP = {
         "pending": "PEND", "starting": "STAR", "healthy": "HEAL",
@@ -775,6 +780,15 @@ except ImportError:
         "degraded": "degraded", "error": "error", "stopped": "stopped",
         "skipped": "skipped", "unavailable": "unavailable",
     }
+
+# v209.0: Unified Readiness Predicate - Move FULLY_READY after service verification
+try:
+    from backend.core.readiness_predicate import ReadinessPredicate, ReadinessResult
+    READINESS_PREDICATE_AVAILABLE = True
+except ImportError:
+    READINESS_PREDICATE_AVAILABLE = False
+    ReadinessPredicate = None  # type: ignore
+    ReadinessResult = None  # type: ignore
 
 # v181.0: Cross-Repo Startup Orchestrator - GCP/Hollow Client/Trinity Protocol
 # v200.0: Added ProcessOrchestrator and StartupLockError for Pillar 1 lock-guarded startup
@@ -56144,31 +56158,81 @@ class JarvisSystemKernel:
             )
             self._background_tasks.append(prewarm_task)
 
-            # Mark as running
+            # =====================================================================
+            # v209.0: READINESS INTEGRITY FIX
+            # Final service verification BEFORE marking FULLY_READY.
+            # This ensures FULLY_READY is only marked when components are healthy.
+            # =====================================================================
+            issue_collector.set_current_phase("Service Verification")
+            verification = await self._verify_all_services(
+                timeout=self._get_verification_timeout()
+            )
+
+            # Collect unhealthy services for reporting
+            unhealthy_services: List[str] = []
+            if not verification["all_healthy"]:
+                unhealthy_services = [
+                    k for k, v in verification["services"].items()
+                    if isinstance(v, dict) and not v.get("healthy") and not v.get("note")
+                ]
+                if unhealthy_services:
+                    for svc in unhealthy_services:
+                        issue_collector.add_warning(
+                            f"Service unhealthy: {svc}",
+                            IssueCategory.GENERAL,
+                        )
+
+            # =====================================================================
+            # v209.0: UNIFIED READINESS PREDICATE EVALUATION
+            # Evaluate readiness using the unified predicate. FULLY_READY is only
+            # marked if all critical components are healthy.
+            # =====================================================================
+            readiness_is_fully_ready = True  # Default to True for fallback
+            readiness_message = "System ready (predicate evaluation unavailable)"
+            blocking_components: List[str] = []
+            degraded_components: List[str] = []
+
+            if READINESS_PREDICATE_AVAILABLE and ReadinessPredicate is not None:
+                try:
+                    predicate = ReadinessPredicate()
+                    component_states = self._get_component_states_for_readiness()
+                    readiness_result = predicate.evaluate(component_states)
+                    readiness_is_fully_ready = readiness_result.is_fully_ready
+                    readiness_message = readiness_result.message
+                    blocking_components = readiness_result.blocking_components
+                    degraded_components = readiness_result.degraded_components
+                except Exception as e:
+                    self.logger.warning(
+                        f"[Readiness] Predicate evaluation failed: {e}"
+                    )
+                    # Fall through to default (True) - don't block startup due to predicate errors
+
+            # Mark as running with appropriate readiness tier
             self._state = KernelState.RUNNING
-            if self._readiness_manager:
-                self._readiness_manager.mark_tier(ReadinessTier.FULLY_READY)
+
+            if readiness_is_fully_ready:
+                # All critical components healthy - mark FULLY_READY
+                if self._readiness_manager:
+                    self._readiness_manager.mark_tier(ReadinessTier.FULLY_READY)
+                self.logger.success(f"[Readiness] {readiness_message}")
+            else:
+                # Critical components unhealthy - mark as INTERACTIVE (degraded)
+                if self._readiness_manager:
+                    self._readiness_manager.mark_tier(ReadinessTier.INTERACTIVE)
+                self.logger.warning(f"[Readiness] {readiness_message}")
+                for component in blocking_components:
+                    self.logger.warning(f"  - Critical component not ready: {component}")
+
+            # Log degraded (optional) components if any
+            if degraded_components:
+                for component in degraded_components:
+                    self.logger.info(f"  - Optional component degraded: {component}")
 
             # =====================================================================
             # v180.0: READINESS TIER ANNOUNCEMENT
             # Announce when FULLY_READY tier is reached (visible to users).
             # =====================================================================
             # v186.0: Moved banner to after health report for better flow
-
-            # Final service verification
-            issue_collector.set_current_phase("Service Verification")
-            verification = await self._verify_all_services(timeout=10.0)
-            if not verification["all_healthy"]:
-                unhealthy = [
-                    k for k, v in verification["services"].items()
-                    if isinstance(v, dict) and not v.get("healthy") and not v.get("note")
-                ]
-                if unhealthy:
-                    for svc in unhealthy:
-                        issue_collector.add_warning(
-                            f"Service unhealthy: {svc}",
-                            IssueCategory.GENERAL,
-                        )
 
             # Print startup health report
             self.logger.info("")
@@ -59919,6 +59983,45 @@ class JarvisSystemKernel:
                 return False
 
         return True
+
+    # =========================================================================
+    # v209.0: READINESS PREDICATE HELPERS
+    # =========================================================================
+    # Helper methods for the unified readiness predicate system.
+    # =========================================================================
+
+    def _get_component_states_for_readiness(self) -> Dict[str, str]:
+        """
+        Get current component states for readiness evaluation.
+
+        v209.0: Collects all component statuses into a flat dictionary
+        suitable for evaluation by the ReadinessPredicate.
+
+        Returns:
+            Dictionary mapping component names to their current status strings.
+        """
+        states: Dict[str, str] = {}
+        for name, info in self._component_status.items():
+            # Extract status, defaulting to "pending" if not set
+            status = info.get("status", "pending") if isinstance(info, dict) else "pending"
+            states[name] = status
+        return states
+
+    def _get_verification_timeout(self) -> float:
+        """
+        Get verification timeout from config or environment.
+
+        v209.0: Unified timeout retrieval with fallback to sensible default.
+
+        Returns:
+            Timeout in seconds for service verification.
+        """
+        try:
+            if READINESS_CONFIG_AVAILABLE and get_readiness_config is not None:
+                return get_readiness_config().verification_timeout
+        except Exception:
+            pass  # Fall through to default
+        return 30.0  # Default fallback
 
     def _get_trinity_summary(self) -> Dict[str, Any]:
         """
