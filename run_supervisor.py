@@ -862,6 +862,65 @@ except ImportError:
     def instrument_signal_handlers() -> None:  # noqa: E731
         pass
 
+# =============================================================================
+# v152.0: ASYNC STARTUP UTILITIES - Non-blocking process operations
+# =============================================================================
+# These utilities ensure the event loop stays responsive during startup by
+# running blocking operations (process waits, subprocess calls) in a dedicated
+# bounded ThreadPoolExecutor. This prevents heartbeat timeouts.
+# =============================================================================
+try:
+    from backend.utils.async_startup import async_psutil_wait, async_process_wait
+    _ASYNC_STARTUP_AVAILABLE = True
+except ImportError:
+    _ASYNC_STARTUP_AVAILABLE = False
+    # Fallback: run in executor manually if module not available
+    async def async_psutil_wait(proc, timeout: float = 10.0) -> bool:  # noqa: E731
+        """Fallback async_psutil_wait using default executor."""
+        import asyncio
+        loop = asyncio.get_running_loop()
+        def _wait():
+            try:
+                proc.wait(timeout=timeout)
+                return True
+            except Exception:
+                return False
+        return await loop.run_in_executor(None, _wait)
+
+    async def async_process_wait(pid: int, timeout: float = 10.0) -> bool:  # noqa: E731
+        """Fallback async_process_wait using default executor."""
+        import asyncio
+        import os
+        import time
+        loop = asyncio.get_running_loop()
+        def _wait():
+            deadline = time.monotonic() + timeout
+            while time.monotonic() < deadline:
+                try:
+                    os.kill(pid, 0)
+                    time.sleep(0.05)
+                except ProcessLookupError:
+                    return True
+                except OSError:
+                    return True
+            return False
+        return await loop.run_in_executor(None, _wait)
+
+# v152.0: CENTRALIZED TIMEOUT CONFIGURATION
+try:
+    from backend.config.startup_timeouts import get_timeouts, StartupTimeouts
+    _TIMEOUTS_AVAILABLE = True
+except ImportError:
+    _TIMEOUTS_AVAILABLE = False
+    # Fallback: use simple defaults
+    class StartupTimeouts:  # type: ignore
+        cleanup_timeout_sigint = 10.0
+        cleanup_timeout_sigterm = 5.0
+        cleanup_timeout_sigkill = 2.0
+        process_wait_timeout = 10.0
+    def get_timeouts() -> StartupTimeouts:  # noqa: E731
+        return StartupTimeouts()
+
 # v12.0: Intelligent Docker Daemon Manager with Self-Healing
 try:
     from backend.infrastructure.docker_daemon_manager import (
@@ -3637,32 +3696,41 @@ class ParallelProcessCleaner:
                         return True  # Process already gone
                     return True  # Consider success if process doesn't exist
 
+            # v152.0: Use centralized timeouts and async process waiting
+            # to keep the event loop responsive during termination
+            timeouts = get_timeouts()
+
             # Phase 1: SIGINT (graceful)
             if _safe_kill(pid, signal.SIGINT):
                 try:
                     proc = psutil.Process(pid)
                     await asyncio.sleep(0.1)  # Brief pause
-                    proc.wait(timeout=self.config.cleanup_timeout_sigint)
-                    return True
-                except (psutil.NoSuchProcess, psutil.TimeoutExpired):
-                    pass
+                    # v152.0: Non-blocking wait using async_psutil_wait
+                    exited = await async_psutil_wait(proc, timeouts.cleanup_timeout_sigint)
+                    if exited:
+                        return True
+                except psutil.NoSuchProcess:
+                    return True  # Process already gone
 
             # Phase 2: SIGTERM
             if _safe_kill(pid, signal.SIGTERM):
                 try:
                     proc = psutil.Process(pid)
-                    proc.wait(timeout=self.config.cleanup_timeout_sigterm)
-                    return True
-                except (psutil.NoSuchProcess, psutil.TimeoutExpired):
-                    pass
+                    # v152.0: Non-blocking wait using async_psutil_wait
+                    exited = await async_psutil_wait(proc, timeouts.cleanup_timeout_sigterm)
+                    if exited:
+                        return True
+                except psutil.NoSuchProcess:
+                    return True  # Process already gone
 
             # Phase 3: SIGKILL (force)
             if _safe_kill(pid, signal.SIGKILL):
                 try:
                     proc = psutil.Process(pid)
-                    proc.wait(timeout=self.config.cleanup_timeout_sigkill)
-                except (psutil.NoSuchProcess, psutil.TimeoutExpired):
-                    pass
+                    # v152.0: Non-blocking wait using async_psutil_wait
+                    await async_psutil_wait(proc, timeouts.cleanup_timeout_sigkill)
+                except psutil.NoSuchProcess:
+                    pass  # Process already gone
             return True
 
         except (psutil.NoSuchProcess, ProcessLookupError):
@@ -11907,11 +11975,15 @@ class SupervisorBootstrapper:
                         if proc.is_running():
                             self.logger.debug(f"[v100.4] Terminating J-Prime via heartbeat PID: {pid}")
                             proc.terminate()
-                            proc.wait(timeout=5.0)
+                            # v152.0: Non-blocking wait using async_psutil_wait
+                            timeouts = get_timeouts()
+                            exited = await async_psutil_wait(proc, timeouts.process_wait_timeout)
+                            if not exited:
+                                # Timeout expired, force kill
+                                proc.kill()
+                                await async_psutil_wait(proc, timeouts.cleanup_timeout_sigkill)
                     except psutil.NoSuchProcess:
                         pass
-                    except psutil.TimeoutExpired:
-                        proc.kill()
             except Exception as e:
                 self.logger.debug(f"[v100.4] Heartbeat-based stop failed: {e}")
 
@@ -11966,11 +12038,15 @@ class SupervisorBootstrapper:
                         if proc.is_running():
                             self.logger.debug(f"[v100.4] Terminating Reactor-Core via heartbeat PID: {pid}")
                             proc.terminate()
-                            proc.wait(timeout=5.0)
+                            # v152.0: Non-blocking wait using async_psutil_wait
+                            timeouts = get_timeouts()
+                            exited = await async_psutil_wait(proc, timeouts.process_wait_timeout)
+                            if not exited:
+                                # Timeout expired, force kill
+                                proc.kill()
+                                await async_psutil_wait(proc, timeouts.cleanup_timeout_sigkill)
                     except psutil.NoSuchProcess:
                         pass
-                    except psutil.TimeoutExpired:
-                        proc.kill()
             except Exception as e:
                 self.logger.debug(f"[v100.4] Heartbeat-based stop failed: {e}")
 
@@ -17252,10 +17328,21 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
             try:
                 self.logger.info("   Stopping Reactor-Core API...")
                 self._reactor_core_process.terminate()
+                # v152.0: Non-blocking wait for subprocess termination
+                timeouts = get_timeouts()
                 try:
-                    self._reactor_core_process.wait(timeout=5)
-                except subprocess.TimeoutExpired:
+                    await asyncio.wait_for(
+                        asyncio.get_event_loop().run_in_executor(
+                            None, self._reactor_core_process.wait
+                        ),
+                        timeout=timeouts.process_wait_timeout
+                    )
+                except asyncio.TimeoutError:
                     self._reactor_core_process.kill()
+                    # Wait for kill to complete
+                    await asyncio.get_event_loop().run_in_executor(
+                        None, self._reactor_core_process.wait
+                    )
                 self._reactor_core_process = None
                 self.logger.info("   ✅ Reactor-Core API stopped")
             except Exception as e:
@@ -22532,17 +22619,20 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
                                     # Graceful termination first
                                     proc.terminate()
 
-                                    # Wait for graceful shutdown
-                                    try:
-                                        proc.wait(timeout=config.zombie_kill_timeout_sec)
-                                    except psutil.TimeoutExpired:
+                                    # v152.0: Non-blocking wait for graceful shutdown
+                                    # Uses async_psutil_wait to keep event loop responsive
+                                    timeouts = get_timeouts()
+                                    exited = await async_psutil_wait(
+                                        proc, config.zombie_kill_timeout_sec
+                                    )
+                                    if not exited:
                                         # Force kill if still running
                                         self.logger.warning(f"   Force killing stubborn zombie PID {pid}")
                                         proc.kill()
-                                        try:
-                                            proc.wait(timeout=2.0)
-                                        except psutil.TimeoutExpired:
-                                            pass
+                                        # Wait for SIGKILL with centralized timeout
+                                        await async_psutil_wait(
+                                            proc, timeouts.cleanup_timeout_sigkill
+                                        )
 
                                     reaped_count += 1
                                 break  # One match per port is enough
