@@ -52,6 +52,8 @@ from typing import (
     NamedTuple, Optional, Protocol, Set, Tuple, Type, TypeVar, Union
 )
 
+from backend.utils.env_config import get_env_int, get_env_bool
+
 logger = logging.getLogger(__name__)
 
 
@@ -59,42 +61,24 @@ logger = logging.getLogger(__name__)
 # CONFIGURATION - Environment Driven (Zero Hardcoding)
 # =============================================================================
 
-def _get_env(key: str, default: str = "") -> str:
-    """Get environment variable with default."""
-    return os.environ.get(key, default)
-
-
-def _get_env_int(key: str, default: int) -> int:
-    """Get environment variable as integer."""
-    try:
-        return int(_get_env(key, str(default)))
-    except ValueError:
-        return default
-
-
-def _get_env_bool(key: str, default: bool = False) -> bool:
-    """Get environment variable as boolean."""
-    val = _get_env(key, str(default)).lower()
-    return val in ("true", "1", "yes", "on")
-
 
 class TransformerConfig:
     """Configuration for AST transformations."""
 
     # Formatting
-    INDENT_SIZE: int = _get_env_int("REFACTORING_INDENT_SIZE", 4)
-    MAX_LINE_LENGTH: int = _get_env_int("REFACTORING_MAX_LINE_LENGTH", 88)
-    USE_TABS: bool = _get_env_bool("REFACTORING_USE_TABS", False)
+    INDENT_SIZE: int = get_env_int("REFACTORING_INDENT_SIZE", 4)
+    MAX_LINE_LENGTH: int = get_env_int("REFACTORING_MAX_LINE_LENGTH", 88)
+    USE_TABS: bool = get_env_bool("REFACTORING_USE_TABS", False)
 
     # Safety
-    VALIDATE_SYNTAX: bool = _get_env_bool("REFACTORING_VALIDATE_SYNTAX", True)
-    PRESERVE_COMMENTS: bool = _get_env_bool("REFACTORING_PRESERVE_COMMENTS", True)
-    PRESERVE_DOCSTRINGS: bool = _get_env_bool("REFACTORING_PRESERVE_DOCSTRINGS", True)
+    VALIDATE_SYNTAX: bool = get_env_bool("REFACTORING_VALIDATE_SYNTAX", True)
+    PRESERVE_COMMENTS: bool = get_env_bool("REFACTORING_PRESERVE_COMMENTS", True)
+    PRESERVE_DOCSTRINGS: bool = get_env_bool("REFACTORING_PRESERVE_DOCSTRINGS", True)
 
     # Behavior
-    ADD_TYPE_HINTS: bool = _get_env_bool("REFACTORING_ADD_TYPE_HINTS", True)
-    INFER_RETURN_TYPE: bool = _get_env_bool("REFACTORING_INFER_RETURN_TYPE", True)
-    AUTO_IMPORT: bool = _get_env_bool("REFACTORING_AUTO_IMPORT", True)
+    ADD_TYPE_HINTS: bool = get_env_bool("REFACTORING_ADD_TYPE_HINTS", True)
+    INFER_RETURN_TYPE: bool = get_env_bool("REFACTORING_INFER_RETURN_TYPE", True)
+    AUTO_IMPORT: bool = get_env_bool("REFACTORING_AUTO_IMPORT", True)
 
 
 # =============================================================================

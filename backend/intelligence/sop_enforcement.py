@@ -38,6 +38,8 @@ from uuid import uuid4
 
 from pydantic import BaseModel, Field, ValidationError, create_model, model_validator
 
+from backend.utils.env_config import get_env_str, get_env_int, get_env_bool
+
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
@@ -47,56 +49,42 @@ T = TypeVar("T")
 # Configuration (Environment-Driven, No Hardcoding)
 # ============================================================================
 
-def _get_env(key: str, default: str = "") -> str:
-    return os.environ.get(key, default)
-
-
-def _get_env_int(key: str, default: int) -> int:
-    try:
-        return int(_get_env(key, str(default)))
-    except ValueError:
-        return default
-
-
-def _get_env_bool(key: str, default: bool = False) -> bool:
-    return _get_env(key, str(default)).lower() in ("true", "1", "yes")
-
 
 @dataclass
 class SOPConfig:
     """Configuration for SOP enforcement."""
     # Execution mode
     default_execution_mode: str = field(
-        default_factory=lambda: _get_env("JARVIS_SOP_EXEC_MODE", "by_order")
+        default_factory=lambda: get_env_str("JARVIS_SOP_EXEC_MODE", "by_order")
     )
 
     # Validation settings
     strict_validation: bool = field(
-        default_factory=lambda: _get_env_bool("JARVIS_SOP_STRICT_VALIDATION", True)
+        default_factory=lambda: get_env_bool("JARVIS_SOP_STRICT_VALIDATION", True)
     )
     allow_partial_output: bool = field(
-        default_factory=lambda: _get_env_bool("JARVIS_SOP_ALLOW_PARTIAL", False)
+        default_factory=lambda: get_env_bool("JARVIS_SOP_ALLOW_PARTIAL", False)
     )
 
     # Review settings
     auto_review: bool = field(
-        default_factory=lambda: _get_env_bool("JARVIS_SOP_AUTO_REVIEW", True)
+        default_factory=lambda: get_env_bool("JARVIS_SOP_AUTO_REVIEW", True)
     )
     max_review_iterations: int = field(
-        default_factory=lambda: _get_env_int("JARVIS_SOP_MAX_REVIEWS", 3)
+        default_factory=lambda: get_env_int("JARVIS_SOP_MAX_REVIEWS", 3)
     )
 
     # Retry settings
     max_retries: int = field(
-        default_factory=lambda: _get_env_int("JARVIS_SOP_MAX_RETRIES", 3)
+        default_factory=lambda: get_env_int("JARVIS_SOP_MAX_RETRIES", 3)
     )
     retry_delay_seconds: float = field(
-        default_factory=lambda: float(_get_env("JARVIS_SOP_RETRY_DELAY", "1.0"))
+        default_factory=lambda: float(get_env_str("JARVIS_SOP_RETRY_DELAY", "1.0"))
     )
 
     # Human-in-the-loop
     require_human_approval: bool = field(
-        default_factory=lambda: _get_env_bool("JARVIS_SOP_HUMAN_APPROVAL", False)
+        default_factory=lambda: get_env_bool("JARVIS_SOP_HUMAN_APPROVAL", False)
     )
 
 

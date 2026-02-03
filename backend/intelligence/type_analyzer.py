@@ -64,6 +64,8 @@ from typing import (
     Set, Tuple, Type, TypeVar, Union, cast, get_args, get_origin
 )
 
+from backend.utils.env_config import get_env_str, get_env_int, get_env_bool, get_env_list
+
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
@@ -75,52 +77,30 @@ V = TypeVar("V")
 # CONFIGURATION - Environment Driven (Zero Hardcoding)
 # =============================================================================
 
-def _get_env(key: str, default: str = "") -> str:
-    return os.environ.get(key, default)
-
-
-def _get_env_int(key: str, default: int) -> int:
-    try:
-        return int(_get_env(key, str(default)))
-    except ValueError:
-        return default
-
-
-def _get_env_bool(key: str, default: bool = False) -> bool:
-    val = _get_env(key, str(default)).lower()
-    return val in ("true", "1", "yes", "on")
-
-
-def _get_env_list(key: str, default: List[str] = None) -> List[str]:
-    val = _get_env(key, "")
-    if not val:
-        return default or []
-    return [x.strip() for x in val.split(",") if x.strip()]
-
 
 class TypeAnalyzerConfig:
     """Configuration for type analysis."""
 
     # Analysis settings
-    STRICT_MODE: bool = _get_env_bool("TYPE_STRICT_MODE", True)
-    INFER_RETURN_TYPES: bool = _get_env_bool("TYPE_INFER_RETURNS", True)
-    CHECK_GENERICS: bool = _get_env_bool("TYPE_CHECK_GENERICS", True)
-    CHECK_PROTOCOLS: bool = _get_env_bool("TYPE_CHECK_PROTOCOLS", True)
+    STRICT_MODE: bool = get_env_bool("TYPE_STRICT_MODE", True)
+    INFER_RETURN_TYPES: bool = get_env_bool("TYPE_INFER_RETURNS", True)
+    CHECK_GENERICS: bool = get_env_bool("TYPE_CHECK_GENERICS", True)
+    CHECK_PROTOCOLS: bool = get_env_bool("TYPE_CHECK_PROTOCOLS", True)
 
     # Depth limits
-    MAX_INFERENCE_DEPTH: int = _get_env_int("TYPE_MAX_DEPTH", 10)
-    MAX_UNION_MEMBERS: int = _get_env_int("TYPE_MAX_UNION", 10)
+    MAX_INFERENCE_DEPTH: int = get_env_int("TYPE_MAX_DEPTH", 10)
+    MAX_UNION_MEMBERS: int = get_env_int("TYPE_MAX_UNION", 10)
 
     # Error reporting
-    REPORT_LEVEL: str = _get_env("TYPE_REPORT_LEVEL", "warning")  # error, warning, info
+    REPORT_LEVEL: str = get_env_str("TYPE_REPORT_LEVEL", "warning")  # error, warning, info
 
     # Cross-file
-    CROSS_FILE_INFERENCE: bool = _get_env_bool("TYPE_CROSS_FILE", True)
+    CROSS_FILE_INFERENCE: bool = get_env_bool("TYPE_CROSS_FILE", True)
 
     # Repository paths
-    JARVIS_REPO: Path = Path(_get_env("JARVIS_REPO", str(Path.home() / "Documents/repos/JARVIS-AI-Agent")))
-    PRIME_REPO: Path = Path(_get_env("PRIME_REPO", str(Path.home() / "Documents/repos/jarvis-prime")))
-    REACTOR_REPO: Path = Path(_get_env("REACTOR_REPO", str(Path.home() / "Documents/repos/reactor-core")))
+    JARVIS_REPO: Path = Path(get_env_str("JARVIS_REPO", str(Path.home() / "Documents/repos/JARVIS-AI-Agent")))
+    PRIME_REPO: Path = Path(get_env_str("PRIME_REPO", str(Path.home() / "Documents/repos/jarvis-prime")))
+    REACTOR_REPO: Path = Path(get_env_str("REACTOR_REPO", str(Path.home() / "Documents/repos/reactor-core")))
 
 
 # =============================================================================

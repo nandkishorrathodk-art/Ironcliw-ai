@@ -60,6 +60,8 @@ from datetime import datetime, timedelta
 from enum import Enum, auto
 from typing import Any, Callable, Dict, List, Optional, Set, Union, TypeVar
 
+from backend.utils.env_config import get_env_int, get_env_float, get_env_bool
+
 try:
     import asyncpg
     ASYNCPG_AVAILABLE = True
@@ -3638,27 +3640,6 @@ def is_connection_error(e: Exception) -> bool:
 # Dynamic Configuration
 # =============================================================================
 
-def _get_env_int(key: str, default: int) -> int:
-    """Get integer from environment variable."""
-    try:
-        return int(os.environ.get(key, default))
-    except (ValueError, TypeError):
-        return default
-
-
-def _get_env_float(key: str, default: float) -> float:
-    """Get float from environment variable."""
-    try:
-        return float(os.environ.get(key, default))
-    except (ValueError, TypeError):
-        return default
-
-
-def _get_env_bool(key: str, default: bool) -> bool:
-    """Get boolean from environment variable."""
-    val = os.environ.get(key, str(default)).lower()
-    return val in ('true', '1', 'yes', 'on')
-
 
 @dataclass
 class ConnectionConfig:
@@ -3691,34 +3672,34 @@ class ConnectionConfig:
     def _load_from_env(self):
         """Load configuration from environment variables."""
         # Pool sizing (conservative for db-f1-micro)
-        self.min_connections = _get_env_int('JARVIS_DB_MIN_CONNECTIONS', self.min_connections)
-        self.max_connections = _get_env_int('JARVIS_DB_MAX_CONNECTIONS', self.max_connections)
+        self.min_connections = get_env_int('JARVIS_DB_MIN_CONNECTIONS', self.min_connections)
+        self.max_connections = get_env_int('JARVIS_DB_MAX_CONNECTIONS', self.max_connections)
 
         # Timeouts
-        self.connection_timeout = _get_env_float('JARVIS_DB_CONNECTION_TIMEOUT', self.connection_timeout)
-        self.query_timeout = _get_env_float('JARVIS_DB_QUERY_TIMEOUT', self.query_timeout)
-        self.pool_creation_timeout = _get_env_float('JARVIS_DB_POOL_CREATION_TIMEOUT', self.pool_creation_timeout)
+        self.connection_timeout = get_env_float('JARVIS_DB_CONNECTION_TIMEOUT', self.connection_timeout)
+        self.query_timeout = get_env_float('JARVIS_DB_QUERY_TIMEOUT', self.query_timeout)
+        self.pool_creation_timeout = get_env_float('JARVIS_DB_POOL_CREATION_TIMEOUT', self.pool_creation_timeout)
 
         # Connection lifecycle
-        self.max_queries_per_connection = _get_env_int('JARVIS_DB_MAX_QUERIES_PER_CONN', self.max_queries_per_connection)
-        self.max_idle_time_seconds = _get_env_float('JARVIS_DB_MAX_IDLE_TIME', self.max_idle_time_seconds)
+        self.max_queries_per_connection = get_env_int('JARVIS_DB_MAX_QUERIES_PER_CONN', self.max_queries_per_connection)
+        self.max_idle_time_seconds = get_env_float('JARVIS_DB_MAX_IDLE_TIME', self.max_idle_time_seconds)
 
         # Leak detection
-        self.checkout_warning_seconds = _get_env_float('JARVIS_DB_CHECKOUT_WARNING', self.checkout_warning_seconds)
-        self.checkout_timeout_seconds = _get_env_float('JARVIS_DB_CHECKOUT_TIMEOUT', self.checkout_timeout_seconds)
-        self.leak_check_interval_seconds = _get_env_float('JARVIS_DB_LEAK_CHECK_INTERVAL', self.leak_check_interval_seconds)
-        self.leaked_idle_threshold_minutes = _get_env_int('JARVIS_DB_LEAKED_IDLE_MINUTES', self.leaked_idle_threshold_minutes)
+        self.checkout_warning_seconds = get_env_float('JARVIS_DB_CHECKOUT_WARNING', self.checkout_warning_seconds)
+        self.checkout_timeout_seconds = get_env_float('JARVIS_DB_CHECKOUT_TIMEOUT', self.checkout_timeout_seconds)
+        self.leak_check_interval_seconds = get_env_float('JARVIS_DB_LEAK_CHECK_INTERVAL', self.leak_check_interval_seconds)
+        self.leaked_idle_threshold_minutes = get_env_int('JARVIS_DB_LEAKED_IDLE_MINUTES', self.leaked_idle_threshold_minutes)
 
         # Circuit breaker
-        self.failure_threshold = _get_env_int('JARVIS_DB_FAILURE_THRESHOLD', self.failure_threshold)
-        self.recovery_timeout_seconds = _get_env_float('JARVIS_DB_RECOVERY_TIMEOUT', self.recovery_timeout_seconds)
+        self.failure_threshold = get_env_int('JARVIS_DB_FAILURE_THRESHOLD', self.failure_threshold)
+        self.recovery_timeout_seconds = get_env_float('JARVIS_DB_RECOVERY_TIMEOUT', self.recovery_timeout_seconds)
 
         # Background tasks
-        self.enable_background_cleanup = _get_env_bool('JARVIS_DB_ENABLE_CLEANUP', self.enable_background_cleanup)
-        self.cleanup_interval_seconds = _get_env_float('JARVIS_DB_CLEANUP_INTERVAL', self.cleanup_interval_seconds)
+        self.enable_background_cleanup = get_env_bool('JARVIS_DB_ENABLE_CLEANUP', self.enable_background_cleanup)
+        self.cleanup_interval_seconds = get_env_float('JARVIS_DB_CLEANUP_INTERVAL', self.cleanup_interval_seconds)
 
         # Aggressive cleanup mode
-        self.aggressive_cleanup_on_leak = _get_env_bool('JARVIS_DB_AGGRESSIVE_CLEANUP', self.aggressive_cleanup_on_leak)
+        self.aggressive_cleanup_on_leak = get_env_bool('JARVIS_DB_AGGRESSIVE_CLEANUP', self.aggressive_cleanup_on_leak)
 
     # Pool sizing (conservative for db-f1-micro)
     min_connections: int = 1

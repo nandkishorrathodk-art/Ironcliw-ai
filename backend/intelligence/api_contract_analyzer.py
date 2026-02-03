@@ -65,6 +65,8 @@ from typing import (
     Set, Tuple, Type, TypeVar, Union
 )
 
+from backend.utils.env_config import get_env_str, get_env_int, get_env_bool, get_env_list
+
 logger = logging.getLogger(__name__)
 
 
@@ -72,47 +74,25 @@ logger = logging.getLogger(__name__)
 # CONFIGURATION - Environment Driven (Zero Hardcoding)
 # =============================================================================
 
-def _get_env(key: str, default: str = "") -> str:
-    return os.environ.get(key, default)
-
-
-def _get_env_int(key: str, default: int) -> int:
-    try:
-        return int(_get_env(key, str(default)))
-    except ValueError:
-        return default
-
-
-def _get_env_bool(key: str, default: bool = False) -> bool:
-    val = _get_env(key, str(default)).lower()
-    return val in ("true", "1", "yes", "on")
-
-
-def _get_env_list(key: str, default: List[str] = None) -> List[str]:
-    val = _get_env(key, "")
-    if not val:
-        return default or []
-    return [x.strip() for x in val.split(",") if x.strip()]
-
 
 class APIContractConfig:
     """Configuration for API contract analysis."""
 
     # Analysis settings
-    STRICT_MODE: bool = _get_env_bool("API_STRICT_MODE", True)
-    VALIDATE_SCHEMAS: bool = _get_env_bool("API_VALIDATE_SCHEMAS", True)
-    TRACK_VERSIONS: bool = _get_env_bool("API_TRACK_VERSIONS", True)
+    STRICT_MODE: bool = get_env_bool("API_STRICT_MODE", True)
+    VALIDATE_SCHEMAS: bool = get_env_bool("API_VALIDATE_SCHEMAS", True)
+    TRACK_VERSIONS: bool = get_env_bool("API_TRACK_VERSIONS", True)
 
     # Frameworks to detect
-    FRAMEWORKS: List[str] = _get_env_list("API_FRAMEWORKS", ["flask", "fastapi", "django", "aiohttp"])
+    FRAMEWORKS: List[str] = get_env_list("API_FRAMEWORKS", ["flask", "fastapi", "django", "aiohttp"])
 
     # OpenAPI spec paths
-    OPENAPI_PATHS: List[str] = _get_env_list("API_OPENAPI_PATHS", ["openapi.yaml", "openapi.json", "swagger.yaml", "swagger.json"])
+    OPENAPI_PATHS: List[str] = get_env_list("API_OPENAPI_PATHS", ["openapi.yaml", "openapi.json", "swagger.yaml", "swagger.json"])
 
     # Repository paths
-    JARVIS_REPO: Path = Path(_get_env("JARVIS_REPO", str(Path.home() / "Documents/repos/JARVIS-AI-Agent")))
-    PRIME_REPO: Path = Path(_get_env("PRIME_REPO", str(Path.home() / "Documents/repos/jarvis-prime")))
-    REACTOR_REPO: Path = Path(_get_env("REACTOR_REPO", str(Path.home() / "Documents/repos/reactor-core")))
+    JARVIS_REPO: Path = Path(get_env_str("JARVIS_REPO", str(Path.home() / "Documents/repos/JARVIS-AI-Agent")))
+    PRIME_REPO: Path = Path(get_env_str("PRIME_REPO", str(Path.home() / "Documents/repos/jarvis-prime")))
+    REACTOR_REPO: Path = Path(get_env_str("REACTOR_REPO", str(Path.home() / "Documents/repos/reactor-core")))
 
 
 # =============================================================================

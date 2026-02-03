@@ -63,6 +63,8 @@ from typing import (
     Set, Tuple, Type, TypeVar, Union
 )
 
+from backend.utils.env_config import get_env_str, get_env_int, get_env_bool, get_env_float
+
 logger = logging.getLogger(__name__)
 
 
@@ -70,45 +72,23 @@ logger = logging.getLogger(__name__)
 # CONFIGURATION - Environment Driven (Zero Hardcoding)
 # =============================================================================
 
-def _get_env(key: str, default: str = "") -> str:
-    return os.environ.get(key, default)
-
-
-def _get_env_int(key: str, default: int) -> int:
-    try:
-        return int(_get_env(key, str(default)))
-    except ValueError:
-        return default
-
-
-def _get_env_bool(key: str, default: bool = False) -> bool:
-    val = _get_env(key, str(default)).lower()
-    return val in ("true", "1", "yes", "on")
-
-
-def _get_env_float(key: str, default: float) -> float:
-    try:
-        return float(_get_env(key, str(default)))
-    except ValueError:
-        return default
-
 
 class PatternDetectorConfig:
     """Configuration for pattern detection."""
 
     # Detection settings
-    MIN_CONFIDENCE: float = _get_env_float("PATTERN_MIN_CONFIDENCE", 0.7)
-    DETECT_MODERN_PATTERNS: bool = _get_env_bool("PATTERN_DETECT_MODERN", True)
-    CROSS_FILE_DETECTION: bool = _get_env_bool("PATTERN_CROSS_FILE", True)
+    MIN_CONFIDENCE: float = get_env_float("PATTERN_MIN_CONFIDENCE", 0.7)
+    DETECT_MODERN_PATTERNS: bool = get_env_bool("PATTERN_DETECT_MODERN", True)
+    CROSS_FILE_DETECTION: bool = get_env_bool("PATTERN_CROSS_FILE", True)
 
     # Verification
-    VERIFY_INTEGRITY: bool = _get_env_bool("PATTERN_VERIFY_INTEGRITY", True)
-    WARN_ON_VIOLATION: bool = _get_env_bool("PATTERN_WARN_VIOLATION", True)
+    VERIFY_INTEGRITY: bool = get_env_bool("PATTERN_VERIFY_INTEGRITY", True)
+    WARN_ON_VIOLATION: bool = get_env_bool("PATTERN_WARN_VIOLATION", True)
 
     # Repository paths
-    JARVIS_REPO: Path = Path(_get_env("JARVIS_REPO", str(Path.home() / "Documents/repos/JARVIS-AI-Agent")))
-    PRIME_REPO: Path = Path(_get_env("PRIME_REPO", str(Path.home() / "Documents/repos/jarvis-prime")))
-    REACTOR_REPO: Path = Path(_get_env("REACTOR_REPO", str(Path.home() / "Documents/repos/reactor-core")))
+    JARVIS_REPO: Path = Path(get_env_str("JARVIS_REPO", str(Path.home() / "Documents/repos/JARVIS-AI-Agent")))
+    PRIME_REPO: Path = Path(get_env_str("PRIME_REPO", str(Path.home() / "Documents/repos/jarvis-prime")))
+    REACTOR_REPO: Path = Path(get_env_str("REACTOR_REPO", str(Path.home() / "Documents/repos/reactor-core")))
 
 
 # =============================================================================

@@ -46,6 +46,8 @@ from .cross_repo_reference_finder import (
     get_cross_repo_reference_finder,
 )
 
+from backend.utils.env_config import get_env_str, get_env_int, get_env_bool
+
 logger = logging.getLogger(__name__)
 
 
@@ -53,31 +55,15 @@ logger = logging.getLogger(__name__)
 # CONFIGURATION
 # =============================================================================
 
-def _get_env(key: str, default: str = "") -> str:
-    return os.environ.get(key, default)
-
-
 def _get_env_path(key: str, default: str = "") -> Path:
-    return Path(os.path.expanduser(_get_env(key, default)))
-
-
-def _get_env_bool(key: str, default: bool = False) -> bool:
-    val = _get_env(key, str(default)).lower()
-    return val in ("true", "1", "yes", "on")
-
-
-def _get_env_int(key: str, default: int) -> int:
-    try:
-        return int(_get_env(key, str(default)))
-    except ValueError:
-        return default
+    return Path(os.path.expanduser(get_env_str(key, default)))
 
 
 class CrossRepoConfig:
     """Configuration for cross-repo refactoring."""
 
-    ENABLED: bool = _get_env_bool("REFACTORING_CROSS_REPO_ENABLED", True)
-    PARALLEL_REPOS: bool = _get_env_bool("REFACTORING_PARALLEL_REPOS", True)
+    ENABLED: bool = get_env_bool("REFACTORING_CROSS_REPO_ENABLED", True)
+    PARALLEL_REPOS: bool = get_env_bool("REFACTORING_PARALLEL_REPOS", True)
 
     # Repository paths
     JARVIS_REPO: Path = _get_env_path("JARVIS_REPO_PATH", "~/Documents/repos/JARVIS-AI-Agent")
@@ -85,11 +71,11 @@ class CrossRepoConfig:
     REACTOR_REPO: Path = _get_env_path("REACTOR_CORE_REPO_PATH", "~/Documents/repos/reactor-core")
 
     # Event bus
-    EVENT_BUS_ENABLED: bool = _get_env_bool("REFACTORING_EVENT_BUS_ENABLED", True)
+    EVENT_BUS_ENABLED: bool = get_env_bool("REFACTORING_EVENT_BUS_ENABLED", True)
     EVENT_BUS_DIR: Path = _get_env_path("OUROBOROS_EVENT_BUS", "~/.jarvis/ouroboros/events")
 
     # Timeouts
-    COORDINATION_TIMEOUT_MS: int = _get_env_int("REFACTORING_COORDINATION_TIMEOUT_MS", 120000)
+    COORDINATION_TIMEOUT_MS: int = get_env_int("REFACTORING_COORDINATION_TIMEOUT_MS", 120000)
 
 
 # =============================================================================

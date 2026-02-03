@@ -39,6 +39,8 @@ from typing import (
 )
 from uuid import uuid4
 
+from backend.utils.env_config import get_env_str, get_env_int, get_env_float, get_env_bool
+
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
@@ -48,30 +50,8 @@ T = TypeVar("T")
 # Configuration (Environment-Driven, No Hardcoding)
 # ============================================================================
 
-def _get_env(key: str, default: str = "") -> str:
-    return os.environ.get(key, default)
-
-
-def _get_env_int(key: str, default: int) -> int:
-    try:
-        return int(_get_env(key, str(default)))
-    except ValueError:
-        return default
-
-
-def _get_env_float(key: str, default: float) -> float:
-    try:
-        return float(_get_env(key, str(default)))
-    except ValueError:
-        return default
-
-
-def _get_env_bool(key: str, default: bool = False) -> bool:
-    return _get_env(key, str(default)).lower() in ("true", "1", "yes")
-
-
 def _get_env_path(key: str, default: str) -> Path:
-    return Path(os.path.expanduser(_get_env(key, default)))
+    return Path(os.path.expanduser(get_env_str(key, default)))
 
 
 @dataclass
@@ -99,32 +79,32 @@ class CrossRepoHubConfig:
 
     # System toggles
     enable_repository_intelligence: bool = field(
-        default_factory=lambda: _get_env_bool("JARVIS_ENABLE_REPO_INTEL", True)
+        default_factory=lambda: get_env_bool("JARVIS_ENABLE_REPO_INTEL", True)
     )
     enable_computer_use: bool = field(
-        default_factory=lambda: _get_env_bool("JARVIS_ENABLE_COMPUTER_USE", True)
+        default_factory=lambda: get_env_bool("JARVIS_ENABLE_COMPUTER_USE", True)
     )
     enable_sop_enforcement: bool = field(
-        default_factory=lambda: _get_env_bool("JARVIS_ENABLE_SOP", True)
+        default_factory=lambda: get_env_bool("JARVIS_ENABLE_SOP", True)
     )
     enable_memory_system: bool = field(
-        default_factory=lambda: _get_env_bool("JARVIS_ENABLE_MEMORY", True)
+        default_factory=lambda: get_env_bool("JARVIS_ENABLE_MEMORY", True)
     )
     enable_wisdom_patterns: bool = field(
-        default_factory=lambda: _get_env_bool("JARVIS_ENABLE_WISDOM", True)
+        default_factory=lambda: get_env_bool("JARVIS_ENABLE_WISDOM", True)
     )
 
     # Processing settings
     parallel_processing: bool = field(
-        default_factory=lambda: _get_env_bool("JARVIS_PARALLEL_PROCESSING", True)
+        default_factory=lambda: get_env_bool("JARVIS_PARALLEL_PROCESSING", True)
     )
     max_concurrent_tasks: int = field(
-        default_factory=lambda: _get_env_int("JARVIS_MAX_CONCURRENT", 5)
+        default_factory=lambda: get_env_int("JARVIS_MAX_CONCURRENT", 5)
     )
 
     # State persistence
     persist_state: bool = field(
-        default_factory=lambda: _get_env_bool("JARVIS_PERSIST_STATE", True)
+        default_factory=lambda: get_env_bool("JARVIS_PERSIST_STATE", True)
     )
     state_dir: Path = field(
         default_factory=lambda: _get_env_path("JARVIS_STATE_DIR", "~/.jarvis/hub_state")

@@ -40,6 +40,8 @@ from typing import (
 )
 from uuid import uuid4
 
+from backend.utils.env_config import get_env_str, get_env_int, get_env_float, get_env_bool
+
 logger = logging.getLogger(__name__)
 
 
@@ -47,100 +49,79 @@ logger = logging.getLogger(__name__)
 # Configuration (Environment-Driven, No Hardcoding)
 # ============================================================================
 
-def _get_env(key: str, default: str = "") -> str:
-    return os.environ.get(key, default)
-
-
-def _get_env_int(key: str, default: int) -> int:
-    try:
-        return int(_get_env(key, str(default)))
-    except ValueError:
-        return default
-
-
-def _get_env_float(key: str, default: float) -> float:
-    try:
-        return float(_get_env(key, str(default)))
-    except ValueError:
-        return default
-
-
-def _get_env_bool(key: str, default: bool = False) -> bool:
-    return _get_env(key, str(default)).lower() in ("true", "1", "yes")
-
 
 @dataclass
 class ComputerUseConfig:
     """Configuration for computer use refinements."""
     # Safety settings
     max_execution_time_ms: int = field(
-        default_factory=lambda: _get_env_int("JARVIS_CU_MAX_EXEC_TIME_MS", 30000)
+        default_factory=lambda: get_env_int("JARVIS_CU_MAX_EXEC_TIME_MS", 30000)
     )
     exit_on_corner: bool = field(
-        default_factory=lambda: _get_env_bool("JARVIS_CU_EXIT_ON_CORNER", True)
+        default_factory=lambda: get_env_bool("JARVIS_CU_EXIT_ON_CORNER", True)
     )
     corner_threshold_px: int = field(
-        default_factory=lambda: _get_env_int("JARVIS_CU_CORNER_THRESHOLD", 10)
+        default_factory=lambda: get_env_int("JARVIS_CU_CORNER_THRESHOLD", 10)
     )
 
     # Context management
     max_recent_images: int = field(
-        default_factory=lambda: _get_env_int("JARVIS_CU_MAX_RECENT_IMAGES", 5)
+        default_factory=lambda: get_env_int("JARVIS_CU_MAX_RECENT_IMAGES", 5)
     )
     image_removal_chunk_size: int = field(
-        default_factory=lambda: _get_env_int("JARVIS_CU_IMAGE_CHUNK_SIZE", 5)
+        default_factory=lambda: get_env_int("JARVIS_CU_IMAGE_CHUNK_SIZE", 5)
     )
 
     # Execution settings
     default_timeout_ms: int = field(
-        default_factory=lambda: _get_env_int("JARVIS_CU_DEFAULT_TIMEOUT", 120000)
+        default_factory=lambda: get_env_int("JARVIS_CU_DEFAULT_TIMEOUT", 120000)
     )
     retry_attempts: int = field(
-        default_factory=lambda: _get_env_int("JARVIS_CU_RETRY_ATTEMPTS", 3)
+        default_factory=lambda: get_env_int("JARVIS_CU_RETRY_ATTEMPTS", 3)
     )
     retry_delay_ms: int = field(
-        default_factory=lambda: _get_env_int("JARVIS_CU_RETRY_DELAY_MS", 1000)
+        default_factory=lambda: get_env_int("JARVIS_CU_RETRY_DELAY_MS", 1000)
     )
 
     # Streaming settings
     stream_chunk_delay_ms: int = field(
-        default_factory=lambda: _get_env_int("JARVIS_CU_STREAM_DELAY_MS", 0)
+        default_factory=lambda: get_env_int("JARVIS_CU_STREAM_DELAY_MS", 0)
     )
 
     # Safe code execution settings (Open Interpreter pattern)
     sandbox_enabled: bool = field(
-        default_factory=lambda: _get_env_bool("JARVIS_CU_SANDBOX_ENABLED", True)
+        default_factory=lambda: get_env_bool("JARVIS_CU_SANDBOX_ENABLED", True)
     )
     sandbox_max_memory_mb: int = field(
-        default_factory=lambda: _get_env_int("JARVIS_CU_SANDBOX_MAX_MEMORY_MB", 512)
+        default_factory=lambda: get_env_int("JARVIS_CU_SANDBOX_MAX_MEMORY_MB", 512)
     )
     sandbox_max_cpu_time_sec: int = field(
-        default_factory=lambda: _get_env_int("JARVIS_CU_SANDBOX_MAX_CPU_SEC", 30)
+        default_factory=lambda: get_env_int("JARVIS_CU_SANDBOX_MAX_CPU_SEC", 30)
     )
 
     # Coordinate extraction settings (Open Interpreter pattern)
     grid_size: int = field(
-        default_factory=lambda: _get_env_int("JARVIS_CU_GRID_SIZE", 10)
+        default_factory=lambda: get_env_int("JARVIS_CU_GRID_SIZE", 10)
     )
     retina_scale_factor: float = field(
-        default_factory=lambda: _get_env_float("JARVIS_CU_RETINA_SCALE", 2.0)
+        default_factory=lambda: get_env_float("JARVIS_CU_RETINA_SCALE", 2.0)
     )
     coordinate_adjustment_px: int = field(
-        default_factory=lambda: _get_env_int("JARVIS_CU_COORD_ADJUST_PX", 10)
+        default_factory=lambda: get_env_int("JARVIS_CU_COORD_ADJUST_PX", 10)
     )
 
     # Mouse movement settings (Open Interpreter pattern)
     mouse_move_duration_sec: float = field(
-        default_factory=lambda: _get_env_float("JARVIS_CU_MOUSE_MOVE_DURATION", 0.2)
+        default_factory=lambda: get_env_float("JARVIS_CU_MOUSE_MOVE_DURATION", 0.2)
     )
     hover_delay_sec: float = field(
-        default_factory=lambda: _get_env_float("JARVIS_CU_HOVER_DELAY", 0.1)
+        default_factory=lambda: get_env_float("JARVIS_CU_HOVER_DELAY", 0.1)
     )
     post_click_delay_sec: float = field(
-        default_factory=lambda: _get_env_float("JARVIS_CU_POST_CLICK_DELAY", 0.5)
+        default_factory=lambda: get_env_float("JARVIS_CU_POST_CLICK_DELAY", 0.5)
     )
     typing_interval_sec: float = field(
-        default_factory=lambda: _get_env_float("JARVIS_CU_TYPING_INTERVAL", 0.05)
+        default_factory=lambda: get_env_float("JARVIS_CU_TYPING_INTERVAL", 0.05)
     )
 
 

@@ -86,6 +86,8 @@ except ImportError:
     BaseModel = None  # Will use dataclass fallback
     PydanticField = None
 
+from backend.utils.env_config import get_env_str, get_env_int, get_env_float, get_env_bool
+
 logger = logging.getLogger(__name__)
 
 
@@ -93,36 +95,9 @@ logger = logging.getLogger(__name__)
 # Configuration - Environment Driven (No Hardcoding)
 # ============================================================================
 
-def _get_env(key: str, default: str = "") -> str:
-    """Get environment variable with default."""
-    return os.environ.get(key, default)
-
-
 def _get_env_path(key: str, default: str = "") -> Path:
     """Get environment variable as Path."""
-    return Path(os.path.expanduser(_get_env(key, default)))
-
-
-def _get_env_int(key: str, default: int) -> int:
-    """Get environment variable as integer."""
-    try:
-        return int(_get_env(key, str(default)))
-    except ValueError:
-        return default
-
-
-def _get_env_float(key: str, default: float) -> float:
-    """Get environment variable as float."""
-    try:
-        return float(_get_env(key, str(default)))
-    except ValueError:
-        return default
-
-
-def _get_env_bool(key: str, default: bool = False) -> bool:
-    """Get environment variable as boolean."""
-    val = _get_env(key, str(default)).lower()
-    return val in ("true", "1", "yes", "on")
+    return Path(os.path.expanduser(get_env_str(key, default)))
 
 
 @dataclass
@@ -145,9 +120,9 @@ class RepositoryConfig:
         return cls(
             name=name,
             path=_get_env_path(path_env_key, default_path),
-            enabled=_get_env_bool(f"REPO_INTEL_{name.upper()}_ENABLED", True),
-            max_file_size_kb=_get_env_int(f"REPO_INTEL_{name.upper()}_MAX_SIZE_KB", 500),
-            priority=_get_env_int(f"REPO_INTEL_{name.upper()}_PRIORITY", 1),
+            enabled=get_env_bool(f"REPO_INTEL_{name.upper()}_ENABLED", True),
+            max_file_size_kb=get_env_int(f"REPO_INTEL_{name.upper()}_MAX_SIZE_KB", 500),
+            priority=get_env_int(f"REPO_INTEL_{name.upper()}_PRIORITY", 1),
         )
 
 
@@ -158,20 +133,20 @@ class RepositoryIntelligenceConfig:
     cache_dir: Path = field(default_factory=lambda: _get_env_path(
         "REPO_INTEL_CACHE_DIR", "~/.jarvis/repo_intelligence_cache"
     ))
-    cache_ttl_hours: int = field(default_factory=lambda: _get_env_int(
+    cache_ttl_hours: int = field(default_factory=lambda: get_env_int(
         "REPO_INTEL_CACHE_TTL_HOURS", 24
     ))
 
     # Map settings
-    max_map_tokens: int = field(default_factory=lambda: _get_env_int(
+    max_map_tokens: int = field(default_factory=lambda: get_env_int(
         "REPO_INTEL_MAX_MAP_TOKENS", 4096
     ))
-    max_files_per_repo: int = field(default_factory=lambda: _get_env_int(
+    max_files_per_repo: int = field(default_factory=lambda: get_env_int(
         "REPO_INTEL_MAX_FILES", 1000
     ))
 
     # Graph settings
-    pagerank_damping: float = field(default_factory=lambda: _get_env_float(
+    pagerank_damping: float = field(default_factory=lambda: get_env_float(
         "REPO_INTEL_PAGERANK_DAMPING", 0.85
     ))
 
@@ -181,7 +156,7 @@ class RepositoryIntelligenceConfig:
     ))
 
     # Parallel settings
-    max_concurrent_parses: int = field(default_factory=lambda: _get_env_int(
+    max_concurrent_parses: int = field(default_factory=lambda: get_env_int(
         "REPO_INTEL_MAX_CONCURRENT", 10
     ))
 

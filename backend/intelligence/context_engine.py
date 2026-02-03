@@ -70,6 +70,8 @@ from typing import (
     Set, Tuple, Type, TypeVar, Union, cast, overload
 )
 
+from backend.utils.env_config import get_env_str, get_env_int, get_env_float, get_env_bool, get_env_list
+
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
@@ -81,68 +83,39 @@ V = TypeVar("V")
 # CONFIGURATION - Environment Driven (Zero Hardcoding)
 # =============================================================================
 
-def _get_env(key: str, default: str = "") -> str:
-    return os.environ.get(key, default)
-
-
-def _get_env_int(key: str, default: int) -> int:
-    try:
-        return int(_get_env(key, str(default)))
-    except ValueError:
-        return default
-
-
-def _get_env_float(key: str, default: float) -> float:
-    try:
-        return float(_get_env(key, str(default)))
-    except ValueError:
-        return default
-
-
-def _get_env_bool(key: str, default: bool = False) -> bool:
-    val = _get_env(key, str(default)).lower()
-    return val in ("true", "1", "yes", "on")
-
-
-def _get_env_list(key: str, default: List[str] = None) -> List[str]:
-    val = _get_env(key, "")
-    if not val:
-        return default or []
-    return [x.strip() for x in val.split(",") if x.strip()]
-
 
 class ContextEngineConfig:
     """Configuration for context engine."""
 
     # Token limits
-    MAX_CONTEXT_TOKENS: int = _get_env_int("CONTEXT_MAX_TOKENS", 200000)
-    CHUNK_SIZE_TOKENS: int = _get_env_int("CONTEXT_CHUNK_SIZE", 2000)
-    CHUNK_OVERLAP_TOKENS: int = _get_env_int("CONTEXT_CHUNK_OVERLAP", 200)
+    MAX_CONTEXT_TOKENS: int = get_env_int("CONTEXT_MAX_TOKENS", 200000)
+    CHUNK_SIZE_TOKENS: int = get_env_int("CONTEXT_CHUNK_SIZE", 2000)
+    CHUNK_OVERLAP_TOKENS: int = get_env_int("CONTEXT_CHUNK_OVERLAP", 200)
 
     # Caching
-    CACHE_SIZE: int = _get_env_int("CONTEXT_CACHE_SIZE", 1000)
-    CACHE_TTL_SECONDS: int = _get_env_int("CONTEXT_CACHE_TTL", 3600)
-    INDEX_PERSIST_DIR: Path = Path(_get_env("CONTEXT_INDEX_DIR", str(Path.home() / ".jarvis/context_index")))
+    CACHE_SIZE: int = get_env_int("CONTEXT_CACHE_SIZE", 1000)
+    CACHE_TTL_SECONDS: int = get_env_int("CONTEXT_CACHE_TTL", 3600)
+    INDEX_PERSIST_DIR: Path = Path(get_env_str("CONTEXT_INDEX_DIR", str(Path.home() / ".jarvis/context_index")))
 
     # Processing
-    MAX_FILES_PARALLEL: int = _get_env_int("CONTEXT_MAX_PARALLEL_FILES", 50)
-    MAX_FILE_SIZE_MB: float = _get_env_float("CONTEXT_MAX_FILE_SIZE_MB", 10.0)
-    SUMMARIZATION_THRESHOLD: int = _get_env_int("CONTEXT_SUMMARIZATION_THRESHOLD", 5000)
+    MAX_FILES_PARALLEL: int = get_env_int("CONTEXT_MAX_PARALLEL_FILES", 50)
+    MAX_FILE_SIZE_MB: float = get_env_float("CONTEXT_MAX_FILE_SIZE_MB", 10.0)
+    SUMMARIZATION_THRESHOLD: int = get_env_int("CONTEXT_SUMMARIZATION_THRESHOLD", 5000)
 
     # Relevance scoring
-    RELEVANCE_DECAY_FACTOR: float = _get_env_float("CONTEXT_RELEVANCE_DECAY", 0.95)
-    RECENCY_WEIGHT: float = _get_env_float("CONTEXT_RECENCY_WEIGHT", 0.3)
-    SIMILARITY_WEIGHT: float = _get_env_float("CONTEXT_SIMILARITY_WEIGHT", 0.5)
-    DEPENDENCY_WEIGHT: float = _get_env_float("CONTEXT_DEPENDENCY_WEIGHT", 0.2)
+    RELEVANCE_DECAY_FACTOR: float = get_env_float("CONTEXT_RELEVANCE_DECAY", 0.95)
+    RECENCY_WEIGHT: float = get_env_float("CONTEXT_RECENCY_WEIGHT", 0.3)
+    SIMILARITY_WEIGHT: float = get_env_float("CONTEXT_SIMILARITY_WEIGHT", 0.5)
+    DEPENDENCY_WEIGHT: float = get_env_float("CONTEXT_DEPENDENCY_WEIGHT", 0.2)
 
     # Repository paths
-    JARVIS_REPO: Path = Path(_get_env("JARVIS_REPO", str(Path.home() / "Documents/repos/JARVIS-AI-Agent")))
-    PRIME_REPO: Path = Path(_get_env("PRIME_REPO", str(Path.home() / "Documents/repos/jarvis-prime")))
-    REACTOR_REPO: Path = Path(_get_env("REACTOR_REPO", str(Path.home() / "Documents/repos/reactor-core")))
+    JARVIS_REPO: Path = Path(get_env_str("JARVIS_REPO", str(Path.home() / "Documents/repos/JARVIS-AI-Agent")))
+    PRIME_REPO: Path = Path(get_env_str("PRIME_REPO", str(Path.home() / "Documents/repos/jarvis-prime")))
+    REACTOR_REPO: Path = Path(get_env_str("REACTOR_REPO", str(Path.home() / "Documents/repos/reactor-core")))
 
     # File patterns
-    INCLUDE_PATTERNS: List[str] = _get_env_list("CONTEXT_INCLUDE_PATTERNS", ["*.py", "*.js", "*.ts", "*.tsx", "*.java", "*.go", "*.rs"])
-    EXCLUDE_PATTERNS: List[str] = _get_env_list("CONTEXT_EXCLUDE_PATTERNS", ["**/node_modules/**", "**/__pycache__/**", "**/venv/**", "**/.git/**"])
+    INCLUDE_PATTERNS: List[str] = get_env_list("CONTEXT_INCLUDE_PATTERNS", ["*.py", "*.js", "*.ts", "*.tsx", "*.java", "*.go", "*.rs"])
+    EXCLUDE_PATTERNS: List[str] = get_env_list("CONTEXT_EXCLUDE_PATTERNS", ["**/node_modules/**", "**/__pycache__/**", "**/venv/**", "**/.git/**"])
 
 
 # =============================================================================

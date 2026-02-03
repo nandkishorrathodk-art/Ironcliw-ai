@@ -35,6 +35,8 @@ from typing import (
 )
 from uuid import uuid4
 
+from backend.utils.env_config import get_env_str, get_env_bool
+
 logger = logging.getLogger(__name__)
 
 
@@ -42,16 +44,8 @@ logger = logging.getLogger(__name__)
 # Configuration (Environment-Driven, No Hardcoding)
 # ============================================================================
 
-def _get_env(key: str, default: str = "") -> str:
-    return os.environ.get(key, default)
-
-
 def _get_env_path(key: str, default: str) -> Path:
-    return Path(os.path.expanduser(_get_env(key, default)))
-
-
-def _get_env_bool(key: str, default: bool = False) -> bool:
-    return _get_env(key, str(default)).lower() in ("true", "1", "yes")
+    return Path(os.path.expanduser(get_env_str(key, default)))
 
 
 @dataclass
@@ -73,15 +67,15 @@ class WisdomPatternsConfig:
 
     # Cache settings
     cache_patterns: bool = field(
-        default_factory=lambda: _get_env_bool("JARVIS_CACHE_PATTERNS", True)
+        default_factory=lambda: get_env_bool("JARVIS_CACHE_PATTERNS", True)
     )
 
     # Pattern behavior
     auto_select_pattern: bool = field(
-        default_factory=lambda: _get_env_bool("JARVIS_AUTO_SELECT_PATTERN", True)
+        default_factory=lambda: get_env_bool("JARVIS_AUTO_SELECT_PATTERN", True)
     )
     fallback_to_default: bool = field(
-        default_factory=lambda: _get_env_bool("JARVIS_PATTERN_FALLBACK", True)
+        default_factory=lambda: get_env_bool("JARVIS_PATTERN_FALLBACK", True)
     )
 
 

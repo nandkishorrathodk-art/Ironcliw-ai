@@ -78,6 +78,8 @@ except ImportError:
     get_language = None
     get_parser = None
 
+from backend.utils.env_config import get_env_str, get_env_int, get_env_bool, get_env_list
+
 logger = logging.getLogger(__name__)
 
 
@@ -85,36 +87,9 @@ logger = logging.getLogger(__name__)
 # CONFIGURATION - Environment Driven (Zero Hardcoding)
 # =============================================================================
 
-def _get_env(key: str, default: str = "") -> str:
-    """Get environment variable with default."""
-    return os.environ.get(key, default)
-
-
 def _get_env_path(key: str, default: str = "") -> Path:
     """Get environment variable as Path."""
-    return Path(os.path.expanduser(_get_env(key, default)))
-
-
-def _get_env_int(key: str, default: int) -> int:
-    """Get environment variable as integer."""
-    try:
-        return int(_get_env(key, str(default)))
-    except ValueError:
-        return default
-
-
-def _get_env_bool(key: str, default: bool = False) -> bool:
-    """Get environment variable as boolean."""
-    val = _get_env(key, str(default)).lower()
-    return val in ("true", "1", "yes", "on")
-
-
-def _get_env_list(key: str, default: str = "", sep: str = ",") -> List[str]:
-    """Get environment variable as list."""
-    val = _get_env(key, default)
-    if not val:
-        return []
-    return [v.strip() for v in val.split(sep) if v.strip()]
+    return Path(os.path.expanduser(get_env_str(key, default)))
 
 
 class ReferenceFinderConfig:
@@ -126,25 +101,25 @@ class ReferenceFinderConfig:
     REACTOR_REPO: Path = _get_env_path("REACTOR_CORE_REPO_PATH", "~/Documents/repos/reactor-core")
 
     # Search settings
-    MAX_FILES: int = _get_env_int("REFERENCE_FINDER_MAX_FILES", 10000)
-    TIMEOUT_MS: int = _get_env_int("REFERENCE_FINDER_TIMEOUT_MS", 30000)
-    PARALLEL_REPOS: bool = _get_env_bool("REFERENCE_FINDER_PARALLEL_REPOS", True)
-    MAX_CONCURRENT: int = _get_env_int("REFERENCE_FINDER_MAX_CONCURRENT", 50)
+    MAX_FILES: int = get_env_int("REFERENCE_FINDER_MAX_FILES", 10000)
+    TIMEOUT_MS: int = get_env_int("REFERENCE_FINDER_TIMEOUT_MS", 30000)
+    PARALLEL_REPOS: bool = get_env_bool("REFERENCE_FINDER_PARALLEL_REPOS", True)
+    MAX_CONCURRENT: int = get_env_int("REFERENCE_FINDER_MAX_CONCURRENT", 50)
 
     # File patterns
-    INCLUDE_PATTERNS: List[str] = _get_env_list(
+    INCLUDE_PATTERNS: List[str] = get_env_list(
         "REFERENCE_FINDER_INCLUDE",
         "**/*.py,**/*.ts,**/*.js,**/*.tsx,**/*.jsx"
     ) or ["**/*.py", "**/*.ts", "**/*.js", "**/*.tsx", "**/*.jsx"]
 
-    EXCLUDE_PATTERNS: List[str] = _get_env_list(
+    EXCLUDE_PATTERNS: List[str] = get_env_list(
         "REFERENCE_FINDER_EXCLUDE",
         "**/node_modules/**,**/__pycache__/**,**/venv/**,**/.git/**,**/dist/**,**/build/**"
     ) or ["**/node_modules/**", "**/__pycache__/**", "**/venv/**", "**/.git/**", "**/dist/**", "**/build/**"]
 
     # Cache settings
-    CACHE_ENABLED: bool = _get_env_bool("REFERENCE_FINDER_CACHE_ENABLED", True)
-    CACHE_TTL_MINUTES: int = _get_env_int("REFERENCE_FINDER_CACHE_TTL_MINUTES", 30)
+    CACHE_ENABLED: bool = get_env_bool("REFERENCE_FINDER_CACHE_ENABLED", True)
+    CACHE_TTL_MINUTES: int = get_env_int("REFERENCE_FINDER_CACHE_TTL_MINUTES", 30)
 
 
 # =============================================================================

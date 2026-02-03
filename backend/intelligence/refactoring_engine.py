@@ -89,6 +89,8 @@ from .cross_repo_reference_finder import (
     get_cross_repo_reference_finder,
 )
 
+from backend.utils.env_config import get_env_str, get_env_int, get_env_bool
+
 logger = logging.getLogger(__name__)
 
 
@@ -96,53 +98,34 @@ logger = logging.getLogger(__name__)
 # CONFIGURATION - Environment Driven (Zero Hardcoding)
 # =============================================================================
 
-def _get_env(key: str, default: str = "") -> str:
-    """Get environment variable with default."""
-    return os.environ.get(key, default)
-
-
 def _get_env_path(key: str, default: str = "") -> Path:
     """Get environment variable as Path."""
-    return Path(os.path.expanduser(_get_env(key, default)))
-
-
-def _get_env_int(key: str, default: int) -> int:
-    """Get environment variable as integer."""
-    try:
-        return int(_get_env(key, str(default)))
-    except ValueError:
-        return default
-
-
-def _get_env_bool(key: str, default: bool = False) -> bool:
-    """Get environment variable as boolean."""
-    val = _get_env(key, str(default)).lower()
-    return val in ("true", "1", "yes", "on")
+    return Path(os.path.expanduser(get_env_str(key, default)))
 
 
 class RefactoringConfig:
     """Configuration for refactoring operations."""
 
     # Core settings
-    ENABLED: bool = _get_env_bool("REFACTORING_ENGINE_ENABLED", True)
-    CROSS_REPO_ENABLED: bool = _get_env_bool("REFACTORING_CROSS_REPO_ENABLED", True)
+    ENABLED: bool = get_env_bool("REFACTORING_ENGINE_ENABLED", True)
+    CROSS_REPO_ENABLED: bool = get_env_bool("REFACTORING_CROSS_REPO_ENABLED", True)
 
     # Safety settings
-    AUTO_ROLLBACK: bool = _get_env_bool("REFACTORING_AUTO_ROLLBACK", True)
-    VALIDATE_SYNTAX: bool = _get_env_bool("REFACTORING_VALIDATE_SYNTAX", True)
-    REQUIRE_CONFIRMATION: bool = _get_env_bool("REFACTORING_REQUIRE_CONFIRMATION", False)
+    AUTO_ROLLBACK: bool = get_env_bool("REFACTORING_AUTO_ROLLBACK", True)
+    VALIDATE_SYNTAX: bool = get_env_bool("REFACTORING_VALIDATE_SYNTAX", True)
+    REQUIRE_CONFIRMATION: bool = get_env_bool("REFACTORING_REQUIRE_CONFIRMATION", False)
 
     # Backup settings
-    BACKUP_ENABLED: bool = _get_env_bool("REFACTORING_BACKUP_ENABLED", True)
+    BACKUP_ENABLED: bool = get_env_bool("REFACTORING_BACKUP_ENABLED", True)
     BACKUP_DIR: Path = _get_env_path("REFACTORING_BACKUP_DIR", "~/.jarvis/refactoring_backups")
 
     # Timeout settings
-    OPERATION_TIMEOUT_MS: int = _get_env_int("REFACTORING_TIMEOUT_MS", 60000)
-    FILE_WRITE_TIMEOUT_MS: int = _get_env_int("REFACTORING_FILE_WRITE_TIMEOUT_MS", 5000)
+    OPERATION_TIMEOUT_MS: int = get_env_int("REFACTORING_TIMEOUT_MS", 60000)
+    FILE_WRITE_TIMEOUT_MS: int = get_env_int("REFACTORING_FILE_WRITE_TIMEOUT_MS", 5000)
 
     # Limits
-    MAX_FILES_PER_OPERATION: int = _get_env_int("REFACTORING_MAX_FILES", 1000)
-    MAX_CALL_SITES: int = _get_env_int("REFACTORING_MAX_CALL_SITES", 10000)
+    MAX_FILES_PER_OPERATION: int = get_env_int("REFACTORING_MAX_FILES", 1000)
+    MAX_CALL_SITES: int = get_env_int("REFACTORING_MAX_CALL_SITES", 10000)
 
 
 # =============================================================================

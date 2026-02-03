@@ -75,6 +75,8 @@ except ImportError:
     HAS_NETWORKX = False
     nx = None
 
+from backend.utils.env_config import get_env_str, get_env_int, get_env_float, get_env_bool, get_env_list
+
 logger = logging.getLogger(__name__)
 
 
@@ -82,63 +84,34 @@ logger = logging.getLogger(__name__)
 # CONFIGURATION - Environment Driven (Zero Hardcoding)
 # =============================================================================
 
-def _get_env(key: str, default: str = "") -> str:
-    return os.environ.get(key, default)
-
-
-def _get_env_int(key: str, default: int) -> int:
-    try:
-        return int(_get_env(key, str(default)))
-    except ValueError:
-        return default
-
-
-def _get_env_float(key: str, default: float) -> float:
-    try:
-        return float(_get_env(key, str(default)))
-    except ValueError:
-        return default
-
-
-def _get_env_bool(key: str, default: bool = False) -> bool:
-    val = _get_env(key, str(default)).lower()
-    return val in ("true", "1", "yes", "on")
-
-
-def _get_env_list(key: str, default: List[str] = None) -> List[str]:
-    val = _get_env(key, "")
-    if not val:
-        return default or []
-    return [x.strip() for x in val.split(",") if x.strip()]
-
 
 class DependencyConfig:
     """Configuration for dependency analysis."""
 
     # Analysis depth
-    MAX_TRANSITIVE_DEPTH: int = _get_env_int("DEPENDENCY_MAX_DEPTH", 10)
-    MAX_FILES_ANALYZE: int = _get_env_int("DEPENDENCY_MAX_FILES", 10000)
+    MAX_TRANSITIVE_DEPTH: int = get_env_int("DEPENDENCY_MAX_DEPTH", 10)
+    MAX_FILES_ANALYZE: int = get_env_int("DEPENDENCY_MAX_FILES", 10000)
 
     # Graph persistence
-    GRAPH_CACHE_DIR: Path = Path(_get_env("DEPENDENCY_GRAPH_DIR", str(Path.home() / ".jarvis/dependency_graphs")))
-    GRAPH_CACHE_TTL: int = _get_env_int("DEPENDENCY_GRAPH_TTL", 3600)
+    GRAPH_CACHE_DIR: Path = Path(get_env_str("DEPENDENCY_GRAPH_DIR", str(Path.home() / ".jarvis/dependency_graphs")))
+    GRAPH_CACHE_TTL: int = get_env_int("DEPENDENCY_GRAPH_TTL", 3600)
 
     # Analysis settings
-    TRACK_CALL_ARGUMENTS: bool = _get_env_bool("DEPENDENCY_TRACK_ARGS", True)
-    TRACK_ATTRIBUTE_ACCESS: bool = _get_env_bool("DEPENDENCY_TRACK_ATTRS", True)
-    DETECT_DEAD_CODE: bool = _get_env_bool("DEPENDENCY_DETECT_DEAD", True)
+    TRACK_CALL_ARGUMENTS: bool = get_env_bool("DEPENDENCY_TRACK_ARGS", True)
+    TRACK_ATTRIBUTE_ACCESS: bool = get_env_bool("DEPENDENCY_TRACK_ATTRS", True)
+    DETECT_DEAD_CODE: bool = get_env_bool("DEPENDENCY_DETECT_DEAD", True)
 
     # Cross-repo
-    CROSS_REPO_ENABLED: bool = _get_env_bool("DEPENDENCY_CROSS_REPO", True)
+    CROSS_REPO_ENABLED: bool = get_env_bool("DEPENDENCY_CROSS_REPO", True)
 
     # Repository paths
-    JARVIS_REPO: Path = Path(_get_env("JARVIS_REPO", str(Path.home() / "Documents/repos/JARVIS-AI-Agent")))
-    PRIME_REPO: Path = Path(_get_env("PRIME_REPO", str(Path.home() / "Documents/repos/jarvis-prime")))
-    REACTOR_REPO: Path = Path(_get_env("REACTOR_REPO", str(Path.home() / "Documents/repos/reactor-core")))
+    JARVIS_REPO: Path = Path(get_env_str("JARVIS_REPO", str(Path.home() / "Documents/repos/JARVIS-AI-Agent")))
+    PRIME_REPO: Path = Path(get_env_str("PRIME_REPO", str(Path.home() / "Documents/repos/jarvis-prime")))
+    REACTOR_REPO: Path = Path(get_env_str("REACTOR_REPO", str(Path.home() / "Documents/repos/reactor-core")))
 
     # File patterns
-    INCLUDE_PATTERNS: List[str] = _get_env_list("DEPENDENCY_INCLUDE_PATTERNS", ["*.py"])
-    EXCLUDE_PATTERNS: List[str] = _get_env_list("DEPENDENCY_EXCLUDE_PATTERNS", ["**/test_*.py", "**/*_test.py", "**/tests/**"])
+    INCLUDE_PATTERNS: List[str] = get_env_list("DEPENDENCY_INCLUDE_PATTERNS", ["*.py"])
+    EXCLUDE_PATTERNS: List[str] = get_env_list("DEPENDENCY_EXCLUDE_PATTERNS", ["**/test_*.py", "**/*_test.py", "**/tests/**"])
 
 
 # =============================================================================

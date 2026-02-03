@@ -42,6 +42,8 @@ from uuid import uuid4
 
 from pydantic import BaseModel, Field
 
+from backend.utils.env_config import get_env_str, get_env_int, get_env_float, get_env_bool
+
 logger = logging.getLogger(__name__)
 
 
@@ -49,30 +51,8 @@ logger = logging.getLogger(__name__)
 # Configuration (Environment-Driven, No Hardcoding)
 # ============================================================================
 
-def _get_env(key: str, default: str = "") -> str:
-    return os.environ.get(key, default)
-
-
-def _get_env_int(key: str, default: int) -> int:
-    try:
-        return int(_get_env(key, str(default)))
-    except ValueError:
-        return default
-
-
-def _get_env_float(key: str, default: float) -> float:
-    try:
-        return float(_get_env(key, str(default)))
-    except ValueError:
-        return default
-
-
-def _get_env_bool(key: str, default: bool = False) -> bool:
-    return _get_env(key, str(default)).lower() in ("true", "1", "yes")
-
-
 def _get_env_path(key: str, default: str) -> Path:
-    return Path(os.path.expanduser(_get_env(key, default)))
+    return Path(os.path.expanduser(get_env_str(key, default)))
 
 
 @dataclass
@@ -80,23 +60,23 @@ class MemorySystemConfig:
     """Configuration for the Unified Memory System."""
     # Core memory limits
     core_memory_char_limit: int = field(
-        default_factory=lambda: _get_env_int("JARVIS_CORE_MEMORY_LIMIT", 4000)
+        default_factory=lambda: get_env_int("JARVIS_CORE_MEMORY_LIMIT", 4000)
     )
     core_memory_blocks: List[str] = field(
-        default_factory=lambda: _get_env("JARVIS_CORE_MEMORY_BLOCKS", "persona,human,context").split(",")
+        default_factory=lambda: get_env_str("JARVIS_CORE_MEMORY_BLOCKS", "persona,human,context").split(",")
     )
 
     # Working memory limits (context window management)
     working_memory_max_messages: int = field(
-        default_factory=lambda: _get_env_int("JARVIS_WORKING_MEMORY_MESSAGES", 50)
+        default_factory=lambda: get_env_int("JARVIS_WORKING_MEMORY_MESSAGES", 50)
     )
     working_memory_max_tokens: int = field(
-        default_factory=lambda: _get_env_int("JARVIS_WORKING_MEMORY_TOKENS", 16000)
+        default_factory=lambda: get_env_int("JARVIS_WORKING_MEMORY_TOKENS", 16000)
     )
 
     # Archival memory settings
     archival_memory_enabled: bool = field(
-        default_factory=lambda: _get_env_bool("JARVIS_ARCHIVAL_MEMORY_ENABLED", True)
+        default_factory=lambda: get_env_bool("JARVIS_ARCHIVAL_MEMORY_ENABLED", True)
     )
     archival_memory_dir: Path = field(
         default_factory=lambda: _get_env_path("JARVIS_ARCHIVAL_MEMORY_DIR", "~/.jarvis/archival_memory")
@@ -104,18 +84,18 @@ class MemorySystemConfig:
 
     # Paging settings
     page_out_threshold: float = field(
-        default_factory=lambda: _get_env_float("JARVIS_MEMORY_PAGE_THRESHOLD", 0.85)
+        default_factory=lambda: get_env_float("JARVIS_MEMORY_PAGE_THRESHOLD", 0.85)
     )
     summarize_on_page_out: bool = field(
-        default_factory=lambda: _get_env_bool("JARVIS_SUMMARIZE_ON_PAGE", True)
+        default_factory=lambda: get_env_bool("JARVIS_SUMMARIZE_ON_PAGE", True)
     )
 
     # ChromaDB integration
     chromadb_enabled: bool = field(
-        default_factory=lambda: _get_env_bool("JARVIS_CHROMADB_ENABLED", True)
+        default_factory=lambda: get_env_bool("JARVIS_CHROMADB_ENABLED", True)
     )
     chromadb_collection: str = field(
-        default_factory=lambda: _get_env("JARVIS_CHROMADB_COLLECTION", "jarvis_archival_memory")
+        default_factory=lambda: get_env_str("JARVIS_CHROMADB_COLLECTION", "jarvis_archival_memory")
     )
 
 

@@ -69,6 +69,8 @@ from typing import (
     TypeVar, Union
 )
 
+from backend.utils.env_config import get_env_str, get_env_int, get_env_float, get_env_bool
+
 logger = logging.getLogger(__name__)
 
 
@@ -76,52 +78,30 @@ logger = logging.getLogger(__name__)
 # CONFIGURATION - Environment Driven (Zero Hardcoding)
 # =============================================================================
 
-def _get_env(key: str, default: str = "") -> str:
-    return os.environ.get(key, default)
-
-
-def _get_env_int(key: str, default: int) -> int:
-    try:
-        return int(_get_env(key, str(default)))
-    except ValueError:
-        return default
-
-
-def _get_env_float(key: str, default: float) -> float:
-    try:
-        return float(_get_env(key, str(default)))
-    except ValueError:
-        return default
-
-
-def _get_env_bool(key: str, default: bool = False) -> bool:
-    val = _get_env(key, str(default)).lower()
-    return val in ("true", "1", "yes", "on")
-
 
 class GitIntelligenceConfig:
     """Configuration for git intelligence."""
 
     # History analysis
-    MAX_COMMITS_ANALYZE: int = _get_env_int("GIT_MAX_COMMITS", 1000)
-    RECENT_COMMITS_WINDOW: int = _get_env_int("GIT_RECENT_WINDOW", 100)
-    HOTSPOT_THRESHOLD: int = _get_env_int("GIT_HOTSPOT_THRESHOLD", 10)
+    MAX_COMMITS_ANALYZE: int = get_env_int("GIT_MAX_COMMITS", 1000)
+    RECENT_COMMITS_WINDOW: int = get_env_int("GIT_RECENT_WINDOW", 100)
+    HOTSPOT_THRESHOLD: int = get_env_int("GIT_HOTSPOT_THRESHOLD", 10)
 
     # Pattern detection
-    PATTERN_MIN_OCCURRENCES: int = _get_env_int("GIT_PATTERN_MIN_OCCUR", 3)
-    OWNERSHIP_THRESHOLD: float = _get_env_float("GIT_OWNERSHIP_THRESHOLD", 0.3)
+    PATTERN_MIN_OCCURRENCES: int = get_env_int("GIT_PATTERN_MIN_OCCUR", 3)
+    OWNERSHIP_THRESHOLD: float = get_env_float("GIT_OWNERSHIP_THRESHOLD", 0.3)
 
     # Caching
-    CACHE_DIR: Path = Path(_get_env("GIT_CACHE_DIR", str(Path.home() / ".jarvis/git_cache")))
-    CACHE_TTL_SECONDS: int = _get_env_int("GIT_CACHE_TTL", 3600)
+    CACHE_DIR: Path = Path(get_env_str("GIT_CACHE_DIR", str(Path.home() / ".jarvis/git_cache")))
+    CACHE_TTL_SECONDS: int = get_env_int("GIT_CACHE_TTL", 3600)
 
     # Cross-repo
-    CROSS_REPO_ENABLED: bool = _get_env_bool("GIT_CROSS_REPO", True)
+    CROSS_REPO_ENABLED: bool = get_env_bool("GIT_CROSS_REPO", True)
 
     # Repository paths
-    JARVIS_REPO: Path = Path(_get_env("JARVIS_REPO", str(Path.home() / "Documents/repos/JARVIS-AI-Agent")))
-    PRIME_REPO: Path = Path(_get_env("PRIME_REPO", str(Path.home() / "Documents/repos/jarvis-prime")))
-    REACTOR_REPO: Path = Path(_get_env("REACTOR_REPO", str(Path.home() / "Documents/repos/reactor-core")))
+    JARVIS_REPO: Path = Path(get_env_str("JARVIS_REPO", str(Path.home() / "Documents/repos/JARVIS-AI-Agent")))
+    PRIME_REPO: Path = Path(get_env_str("PRIME_REPO", str(Path.home() / "Documents/repos/jarvis-prime")))
+    REACTOR_REPO: Path = Path(get_env_str("REACTOR_REPO", str(Path.home() / "Documents/repos/reactor-core")))
 
 
 # =============================================================================

@@ -28,6 +28,8 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 
+from backend.utils.env_config import get_env_bool
+
 logger = logging.getLogger(__name__)
 
 
@@ -35,19 +37,15 @@ logger = logging.getLogger(__name__)
 # CONFIGURATION
 # =============================================================================
 
-def _get_env_bool(key: str, default: bool = False) -> bool:
-    val = os.environ.get(key, str(default)).lower()
-    return val in ("true", "1", "yes", "on")
-
 
 class ValidatorConfig:
     """Configuration for refactoring validation."""
 
-    SYNTAX_CHECK: bool = _get_env_bool("REFACTORING_VALIDATE_SYNTAX", True)
-    SEMANTIC_CHECK: bool = _get_env_bool("REFACTORING_VALIDATE_SEMANTIC", True)
-    CIRCULAR_DEPENDENCY_CHECK: bool = _get_env_bool("REFACTORING_CHECK_CIRCULAR_DEPS", True)
-    IMPORT_CHECK: bool = _get_env_bool("REFACTORING_CHECK_IMPORTS", True)
-    BREAKING_CHANGE_CHECK: bool = _get_env_bool("REFACTORING_CHECK_BREAKING", True)
+    SYNTAX_CHECK: bool = get_env_bool("REFACTORING_VALIDATE_SYNTAX", True)
+    SEMANTIC_CHECK: bool = get_env_bool("REFACTORING_VALIDATE_SEMANTIC", True)
+    CIRCULAR_DEPENDENCY_CHECK: bool = get_env_bool("REFACTORING_CHECK_CIRCULAR_DEPS", True)
+    IMPORT_CHECK: bool = get_env_bool("REFACTORING_CHECK_IMPORTS", True)
+    BREAKING_CHANGE_CHECK: bool = get_env_bool("REFACTORING_CHECK_BREAKING", True)
 
 
 # =============================================================================

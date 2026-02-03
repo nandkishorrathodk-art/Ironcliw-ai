@@ -42,16 +42,14 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional, Tuple, Union
 
+from backend.utils.env_config import get_env_str
+
 logger = logging.getLogger(__name__)
 
 
 # =============================================================================
 # CONFIGURATION
 # =============================================================================
-
-def _get_env(key: str, default: str) -> str:
-    """Get environment variable with default."""
-    return os.environ.get(key, default)
 
 
 def _get_default_db_path() -> str:
@@ -63,7 +61,7 @@ def _get_default_db_path() -> str:
     
     # Standard location
     jarvis_dir = os.path.expanduser(
-        _get_env("JARVIS_DATA_DIR", "~/.jarvis")
+        get_env_str("JARVIS_DATA_DIR", "~/.jarvis")
     )
     return os.path.join(jarvis_dir, "learning", "jarvis_learning.db")
 
