@@ -757,6 +757,25 @@ except ImportError:
     STARTUP_RESILIENCE_AVAILABLE = False
     StartupResilience = None  # type: ignore
 
+# v208.0: Unified Readiness Configuration - Status display and dashboard mappings
+# CRITICAL: "skipped" must display as "SKIP" (not "STOP") and map to "skipped" (not "stopped")
+try:
+    from backend.core.readiness_config import DASHBOARD_STATUS_MAP, STATUS_DISPLAY_MAP
+    READINESS_CONFIG_AVAILABLE = True
+except ImportError:
+    READINESS_CONFIG_AVAILABLE = False
+    # Fallback mappings if readiness_config is unavailable
+    STATUS_DISPLAY_MAP = {
+        "pending": "PEND", "starting": "STAR", "healthy": "HEAL",
+        "degraded": "DEGR", "error": "EROR", "stopped": "STOP",
+        "skipped": "SKIP", "unavailable": "UNAV",
+    }
+    DASHBOARD_STATUS_MAP = {
+        "pending": "pending", "starting": "starting", "healthy": "healthy",
+        "degraded": "degraded", "error": "error", "stopped": "stopped",
+        "skipped": "skipped", "unavailable": "unavailable",
+    }
+
 # v181.0: Cross-Repo Startup Orchestrator - GCP/Hollow Client/Trinity Protocol
 # v200.0: Added ProcessOrchestrator and StartupLockError for Pillar 1 lock-guarded startup
 try:
@@ -3840,7 +3859,10 @@ class LiveProgressDashboard:
             status = comp.get("status", "pending")
             color = self.STATUS_COLORS.get(status, self.STATUS_COLORS["pending"])
             short_name = name.replace("jarvis-", "").replace("-", "")[:8]
-            comp_parts.append(f"{short_name}:{color}{status[:4].upper()}{self.RESET}")
+            # v208.0: Use STATUS_DISPLAY_MAP for consistent 4-char codes
+            # CRITICAL: "skipped" -> "SKIP" (NOT "STOP")
+            status_code = STATUS_DISPLAY_MAP.get(status, status[:4].upper())
+            comp_parts.append(f"{short_name}:{color}{status_code}{self.RESET}")
         lines.append(f"  {' | '.join(comp_parts)}")
         
         # GCP Progress
@@ -59819,18 +59841,16 @@ class JarvisSystemKernel:
             self._trinity_ready["reactor_core"] = True
 
         # v197.1: Update LiveProgressDashboard with component status
+        # v208.0: Use DASHBOARD_STATUS_MAP from readiness_config for consistent mapping
+        # CRITICAL FIX: "skipped" -> "skipped" (NOT "stopped")
         try:
             dashboard = get_live_dashboard()
             if dashboard.enabled:
-                # Map internal status to dashboard status
-                dashboard_status_map = {
-                    "pending": "pending",
-                    "running": "starting",
-                    "complete": "healthy",
-                    "error": "error",
-                    "skipped": "stopped",
-                }
-                dash_status = dashboard_status_map.get(status, status)
+                # Handle internal state aliases, then use unified mapping
+                # Internal states: "running" -> "starting", "complete" -> "healthy"
+                status_alias = {"running": "starting", "complete": "healthy"}
+                normalized_status = status_alias.get(status, status)
+                dash_status = DASHBOARD_STATUS_MAP.get(normalized_status, normalized_status)
                 dashboard.update_component(component, dash_status, message[:60] if message else "")
         except Exception:
             pass  # Dashboard updates are non-critical
