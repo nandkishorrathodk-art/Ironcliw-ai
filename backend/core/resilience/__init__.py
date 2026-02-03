@@ -296,6 +296,22 @@ from backend.core.resilience.capability import (
     CapabilityUpgrade,
 )
 
+# v3.0: Startup resilience utilities
+from backend.core.resilience.startup import (
+    StartupResilienceConfig,
+    StartupResilience,
+    create_docker_health_check,
+    create_ollama_health_check,
+    create_invincible_node_health_check,
+    create_docker_health_probe,
+    create_ollama_health_probe,
+    create_invincible_node_health_probe,
+    create_docker_recovery,
+    create_ollama_recovery,
+    create_invincible_node_recovery,
+    create_local_llm_capability_upgrade,
+)
+
 __all__ = [
     # Distributed Lock
     "DistributedLock",
@@ -531,4 +547,24 @@ __all__ = [
     # =========================================================================
     # Hot-swapping between degraded and full modes
     "CapabilityUpgrade",
+    # =========================================================================
+    # v3.0: STARTUP RESILIENCE UTILITIES
+    # =========================================================================
+    # Pre-configured resilience for JARVIS startup
+    "StartupResilienceConfig",
+    "StartupResilience",
+    # Factory functions for health checks
+    "create_docker_health_check",
+    "create_ollama_health_check",
+    "create_invincible_node_health_check",
+    # Factory functions for health probes
+    "create_docker_health_probe",
+    "create_ollama_health_probe",
+    "create_invincible_node_health_probe",
+    # Factory functions for background recovery
+    "create_docker_recovery",
+    "create_ollama_recovery",
+    "create_invincible_node_recovery",
+    # Factory function for capability upgrade
+    "create_local_llm_capability_upgrade",
 ]
