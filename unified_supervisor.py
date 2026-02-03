@@ -57098,23 +57098,46 @@ class JarvisSystemKernel:
         Can run:
         - In-process: Using uvicorn.Server (shared memory, faster)
         - Subprocess: Using asyncio.subprocess (isolated, more robust)
+
+        v211.0: Fixed critical bug where "backend" component status was never
+        updated from "pending" to "complete", causing readiness to always fail.
+        The readiness predicate checks _component_status["backend"], so we MUST
+        update it here after health check passes.
         """
         self._state = KernelState.STARTING_BACKEND
 
         with self.logger.section_start(LogSection.BACKEND, "Zone 6.1 | Phase 3: Backend"):
+            # v211.0: Mark backend as "running" while starting
+            self._update_component_status("backend", "running", "Starting backend server")
+
             if self.config.in_process_backend:
                 success = await self._start_backend_in_process()
             else:
                 success = await self._start_backend_subprocess()
 
-            if success and self._readiness_manager:
-                self._readiness_manager.mark_tier(ReadinessTier.HTTP_HEALTHY)
-                self._readiness_manager.mark_component_ready("backend", True)
+            if success:
+                # v211.0: CRITICAL FIX - Update "backend" component status to "complete"
+                # This was the root cause of "System not ready: blocking (backend)"
+                # The readiness predicate evaluates _component_status["backend"], not jarvis_body
+                self._update_component_status(
+                    "backend", "complete",
+                    f"Backend healthy on port {self.config.backend_port}"
+                )
 
-                # v210.0: Single point for jarvis_body completion
-                # jarvis_body is marked complete ONLY here, after backend health check passes
+                if self._readiness_manager:
+                    self._readiness_manager.mark_tier(ReadinessTier.HTTP_HEALTHY)
+                    self._readiness_manager.mark_component_ready("backend", True)
+
+                # v210.0: Also update jarvis_body for Trinity coordination
+                # jarvis_body is the Trinity component name, backend is the service name
                 self._update_component_status("jarvis_body", "complete", "Backend healthy")
-                self._readiness_manager.mark_component_ready("jarvis_body", True)
+                if self._readiness_manager:
+                    self._readiness_manager.mark_component_ready("jarvis_body", True)
+            else:
+                # v211.0: Mark backend as "error" on failure
+                self._update_component_status("backend", "error", "Backend failed to start")
+                if self._readiness_manager:
+                    self._readiness_manager.mark_component_ready("backend", False)
 
             return success
 
