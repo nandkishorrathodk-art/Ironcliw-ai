@@ -5499,7 +5499,7 @@ class HotReloadWatcher:
             if process is not None:
                 try:
                     process.kill()
-                    await asyncio.wait_for(process.wait(), timeout=5.0)
+                    await asyncio.wait_for(process.wait(), timeout=get_timeouts().cleanup_timeout_sigkill)
                 except Exception:
                     pass  # Best effort cleanup
             return False
@@ -5509,7 +5509,7 @@ class HotReloadWatcher:
             if process is not None:
                 try:
                     process.kill()
-                    await asyncio.wait_for(process.wait(), timeout=5.0)
+                    await asyncio.wait_for(process.wait(), timeout=get_timeouts().cleanup_timeout_sigkill)
                 except Exception:
                     pass  # Best effort cleanup
             return False
@@ -6792,13 +6792,22 @@ class SupervisorBootstrapper:
                     self.logger.info("Shutdown requested...")
                     process.terminate()
                     try:
-                        process.wait(timeout=5)
-                    except subprocess.TimeoutExpired:
+                        # Use asyncio.to_thread for sync subprocess.wait in async context
+                        timeouts = get_timeouts()
+                        loop = asyncio.get_event_loop()
+                        await asyncio.wait_for(
+                            loop.run_in_executor(None, lambda: process.wait(timeout=timeouts.cleanup_timeout_sigterm)),
+                            timeout=timeouts.cleanup_timeout_sigterm + 1.0
+                        )
+                    except (subprocess.TimeoutExpired, asyncio.TimeoutError):
                         self.logger.warning("Process didn't terminate gracefully, forcing kill...")
                         process.kill()
                         try:
-                            process.wait(timeout=3)
-                        except subprocess.TimeoutExpired:
+                            await asyncio.wait_for(
+                                loop.run_in_executor(None, lambda: process.wait(timeout=timeouts.cleanup_timeout_sigkill)),
+                                timeout=timeouts.cleanup_timeout_sigkill + 1.0
+                            )
+                        except (subprocess.TimeoutExpired, asyncio.TimeoutError):
                             self.logger.error("Process couldn't be killed - may be zombie")
 
                 return process.returncode or 0
@@ -8302,7 +8311,7 @@ class SupervisorBootstrapper:
             self.logger.info("[v113.0] Stopping loading server...")
             try:
                 self._loading_server_process.terminate()
-                await asyncio.wait_for(self._loading_server_process.wait(), timeout=5.0)
+                await asyncio.wait_for(self._loading_server_process.wait(), timeout=get_timeouts().process_wait_timeout)
             except asyncio.TimeoutError:
                 self._loading_server_process.kill()
             self._loading_server_process = None
@@ -8313,7 +8322,7 @@ class SupervisorBootstrapper:
             self.logger.info("[v113.0] Stopping frontend...")
             try:
                 self._frontend_process.terminate()
-                await asyncio.wait_for(self._frontend_process.wait(), timeout=5.0)
+                await asyncio.wait_for(self._frontend_process.wait(), timeout=get_timeouts().process_wait_timeout)
             except asyncio.TimeoutError:
                 self._frontend_process.kill()
             self._frontend_process = None
@@ -10290,9 +10299,10 @@ class SupervisorBootstrapper:
                 await asyncio.sleep(2.0)
 
             # Try SIGINT first for graceful shutdown
+            timeouts = get_timeouts()
             self._loading_server_process.send_signal(signal.SIGINT)
             try:
-                await asyncio.wait_for(self._loading_server_process.wait(), timeout=3.0)
+                await asyncio.wait_for(self._loading_server_process.wait(), timeout=timeouts.cleanup_timeout_sigterm)
                 self.logger.info("Loading server terminated (SIGINT)")
                 return
             except asyncio.TimeoutError:
@@ -10301,7 +10311,7 @@ class SupervisorBootstrapper:
             # Try SIGTERM
             self._loading_server_process.terminate()
             try:
-                await asyncio.wait_for(self._loading_server_process.wait(), timeout=2.0)
+                await asyncio.wait_for(self._loading_server_process.wait(), timeout=timeouts.cleanup_timeout_sigkill)
                 self.logger.info("Loading server terminated (SIGTERM)")
                 return
             except asyncio.TimeoutError:
@@ -11944,14 +11954,18 @@ class SupervisorBootstrapper:
                 self.logger.debug(f"[v100.4] Terminating J-Prime via process handle (PID: {pid})")
                 self._jprime_orchestrator_process.terminate()
                 try:
+                    timeouts = get_timeouts()
                     await asyncio.wait_for(
                         self._jprime_orchestrator_process.wait(),
-                        timeout=5.0
+                        timeout=timeouts.process_wait_timeout
                     )
                 except asyncio.TimeoutError:
                     self.logger.warning("[v100.4] J-Prime didn't terminate gracefully, killing...")
                     self._jprime_orchestrator_process.kill()
-                    await self._jprime_orchestrator_process.wait()
+                    await asyncio.wait_for(
+                        self._jprime_orchestrator_process.wait(),
+                        timeout=timeouts.cleanup_timeout_sigkill
+                    )
             except Exception as e:
                 self.logger.warning(f"[v100.4] Error stopping J-Prime process: {e}")
             finally:
@@ -12007,14 +12021,18 @@ class SupervisorBootstrapper:
                 self.logger.debug(f"[v100.4] Terminating Reactor-Core via process handle (PID: {pid})")
                 self._reactor_core_orchestrator_process.terminate()
                 try:
+                    timeouts = get_timeouts()
                     await asyncio.wait_for(
                         self._reactor_core_orchestrator_process.wait(),
-                        timeout=5.0
+                        timeout=timeouts.process_wait_timeout
                     )
                 except asyncio.TimeoutError:
                     self.logger.warning("[v100.4] Reactor-Core didn't terminate gracefully, killing...")
                     self._reactor_core_orchestrator_process.kill()
-                    await self._reactor_core_orchestrator_process.wait()
+                    await asyncio.wait_for(
+                        self._reactor_core_orchestrator_process.wait(),
+                        timeout=timeouts.cleanup_timeout_sigkill
+                    )
             except Exception as e:
                 self.logger.warning(f"[v100.4] Error stopping Reactor-Core process: {e}")
             finally:
@@ -14141,14 +14159,14 @@ class SupervisorBootstrapper:
                 stdout=asyncio.subprocess.DEVNULL,
                 stderr=asyncio.subprocess.DEVNULL,
             )
-            await asyncio.wait_for(stop_proc.wait(), timeout=10.0)
+            await asyncio.wait_for(stop_proc.wait(), timeout=get_timeouts().docker_check_timeout)
 
             rm_proc = await asyncio.create_subprocess_exec(
                 "docker", "rm", container_name,
                 stdout=asyncio.subprocess.DEVNULL,
                 stderr=asyncio.subprocess.DEVNULL,
             )
-            await rm_proc.wait()
+            await asyncio.wait_for(rm_proc.wait(), timeout=get_timeouts().docker_check_timeout)
         except Exception:
             pass  # Container might not exist
 
@@ -22463,7 +22481,10 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
             if self._jprime_orchestrator_process is not None:
                 try:
                     self._jprime_orchestrator_process.kill()
-                    await self._jprime_orchestrator_process.wait()
+                    await asyncio.wait_for(
+                        self._jprime_orchestrator_process.wait(),
+                        timeout=get_timeouts().cleanup_timeout_sigkill
+                    )
                 except Exception:
                     pass
                 self._jprime_orchestrator_process = None
@@ -22519,7 +22540,10 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
         if self._reactor_core_orchestrator_process is not None:
             try:
                 self._reactor_core_orchestrator_process.kill()
-                await self._reactor_core_orchestrator_process.wait()
+                await asyncio.wait_for(
+                    self._reactor_core_orchestrator_process.wait(),
+                    timeout=get_timeouts().cleanup_timeout_sigkill
+                )
             except Exception:
                 pass
             self._reactor_core_orchestrator_process = None
@@ -23464,7 +23488,7 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
             # Use SafeProcess for process group shutdown (kills all children too)
             try:
                 self.logger.info("   [v90] Stopping J-Prime orchestrator via SafeProcess...")
-                exit_code = await self._jprime_safe_process.stop(timeout=5.0)
+                exit_code = await self._jprime_safe_process.stop(timeout=get_timeouts().process_wait_timeout)
                 self.logger.info(f"   ✅ [v90] J-Prime stopped (PGID kill, exit={exit_code})")
             except Exception as e:
                 self.logger.debug(f"   J-Prime SafeProcess shutdown error: {e}")
@@ -23476,16 +23500,20 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
             try:
                 self.logger.info("   Stopping J-Prime orchestrator...")
                 self._jprime_orchestrator_process.terminate()
+                timeouts = get_timeouts()
                 try:
                     await asyncio.wait_for(
                         self._jprime_orchestrator_process.wait(),
-                        timeout=5.0
+                        timeout=timeouts.process_wait_timeout
                     )
                     self.logger.info("   ✅ J-Prime orchestrator stopped gracefully")
                 except asyncio.TimeoutError:
                     self.logger.warning("   ⚠️ J-Prime didn't stop gracefully, killing...")
                     self._jprime_orchestrator_process.kill()
-                    await self._jprime_orchestrator_process.wait()
+                    await asyncio.wait_for(
+                        self._jprime_orchestrator_process.wait(),
+                        timeout=timeouts.cleanup_timeout_sigkill
+                    )
             except ProcessLookupError:
                 self.logger.debug("   J-Prime process already terminated")
             except Exception as e:
@@ -23498,7 +23526,7 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
             # Use SafeProcess for process group shutdown
             try:
                 self.logger.info("   [v90] Stopping Reactor-Core orchestrator via SafeProcess...")
-                exit_code = await self._reactor_safe_process.stop(timeout=5.0)
+                exit_code = await self._reactor_safe_process.stop(timeout=get_timeouts().process_wait_timeout)
                 self.logger.info(f"   ✅ [v90] Reactor-Core stopped (PGID kill, exit={exit_code})")
             except Exception as e:
                 self.logger.debug(f"   Reactor-Core SafeProcess shutdown error: {e}")
@@ -23510,16 +23538,20 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
             try:
                 self.logger.info("   Stopping Reactor-Core orchestrator...")
                 self._reactor_core_orchestrator_process.terminate()
+                timeouts = get_timeouts()
                 try:
                     await asyncio.wait_for(
                         self._reactor_core_orchestrator_process.wait(),
-                        timeout=5.0
+                        timeout=timeouts.process_wait_timeout
                     )
                     self.logger.info("   ✅ Reactor-Core orchestrator stopped gracefully")
                 except asyncio.TimeoutError:
                     self.logger.warning("   ⚠️ Reactor-Core didn't stop gracefully, killing...")
                     self._reactor_core_orchestrator_process.kill()
-                    await self._reactor_core_orchestrator_process.wait()
+                    await asyncio.wait_for(
+                        self._reactor_core_orchestrator_process.wait(),
+                        timeout=timeouts.cleanup_timeout_sigkill
+                    )
             except ProcessLookupError:
                 self.logger.debug("   Reactor-Core process already terminated")
             except Exception as e:
@@ -25786,11 +25818,12 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
 
     async def _stop_jarvis_prime(self) -> None:
         """Stop JARVIS-Prime subprocess or container."""
+        timeouts = get_timeouts()
         # Stop subprocess
         if self._jarvis_prime_process:
             try:
                 self._jarvis_prime_process.terminate()
-                await asyncio.wait_for(self._jarvis_prime_process.wait(), timeout=5.0)
+                await asyncio.wait_for(self._jarvis_prime_process.wait(), timeout=timeouts.process_wait_timeout)
             except Exception:
                 self._jarvis_prime_process.kill()
             self._jarvis_prime_process = None
@@ -25803,7 +25836,7 @@ uvicorn.run(app, host="0.0.0.0", port={self._reactor_core_port}, log_level="warn
                     stdout=asyncio.subprocess.DEVNULL,
                     stderr=asyncio.subprocess.DEVNULL,
                 )
-                await asyncio.wait_for(proc.wait(), timeout=10.0)
+                await asyncio.wait_for(proc.wait(), timeout=timeouts.docker_check_timeout)
             except Exception:
                 pass
 
