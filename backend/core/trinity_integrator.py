@@ -7597,9 +7597,9 @@ class TrinityAdvancedCoordinator:
         if is_partitioned:
             errors.append(f"Network partition: {partition_reason}")
 
-        # Memory check
-        memory = psutil.virtual_memory()
-        swap = psutil.swap_memory()
+        # Memory check (wrapped to avoid blocking the event loop)
+        memory = await asyncio.to_thread(psutil.virtual_memory)
+        swap = await asyncio.to_thread(psutil.swap_memory)
 
         if memory.percent >= self._config["memory_critical_percent"]:
             errors.append(f"Memory critical: {memory.percent:.1f}%")
