@@ -859,6 +859,14 @@ except ImportError:
     IntelligentStartupNarrator = None
     BackendStartupPhase = None
 
+# v200.1: Voice Orchestrator for cross-repo TTS coordination
+try:
+    from backend.core.voice_orchestrator import VoiceOrchestrator
+    VOICE_ORCHESTRATOR_AVAILABLE = True
+except ImportError:
+    VOICE_ORCHESTRATOR_AVAILABLE = False
+    VoiceOrchestrator = None
+
 # =============================================================================
 # CONSTANTS
 # =============================================================================
@@ -54169,6 +54177,9 @@ class JarvisSystemKernel:
         if self.config.voice_enabled:
             self._narrator = get_voice_narrator()
 
+        # v200.1: Voice Orchestrator for cross-repo TTS coordination
+        self._voice_orchestrator: Optional["VoiceOrchestrator"] = None
+
         # v186.0: Dead Man's Switch for startup phase monitoring
         self._startup_watchdog: Optional[StartupWatchdog] = None
 
@@ -55300,6 +55311,28 @@ class JarvisSystemKernel:
                     }
                 }
             )
+
+            # =====================================================================
+            # v200.1: VOICE ORCHESTRATOR INITIALIZATION
+            # =====================================================================
+            # Initialize cross-repo TTS coordination after backend:
+            # - Starts IPC server for Prime/Reactor voice announcements
+            # - Connects TTS callback to narrator for actual speech
+            # - Enables voice coalescing to prevent overlapping audio
+            # =====================================================================
+            if VOICE_ORCHESTRATOR_AVAILABLE:
+                try:
+                    self._voice_orchestrator = VoiceOrchestrator()
+                    await self._voice_orchestrator.start()
+
+                    # Connect TTS callback if narrator exists
+                    if self._narrator:
+                        self._voice_orchestrator.set_tts_callback(self._narrator.speak)
+
+                    self.logger.success("[Kernel] Voice Orchestrator started")
+                except Exception as vo_err:
+                    self.logger.warning(f"[Kernel] Voice Orchestrator failed to start: {vo_err}")
+                    self._voice_orchestrator = None
 
             # Phase 4: Intelligence (Zone 4)
             self._current_startup_phase = "intelligence"
@@ -59517,6 +59550,21 @@ class JarvisSystemKernel:
             if self._trinity:
                 await self._trinity.stop()
                 self.logger.info("[Kernel] Trinity stopped")
+
+            # =====================================================================
+            # v200.1: VOICE ORCHESTRATOR SHUTDOWN
+            # =====================================================================
+            # Stop cross-repo TTS coordination gracefully:
+            # - Closes IPC connections to Prime/Reactor
+            # - Completes any pending speech queue
+            # - Releases file locks
+            # =====================================================================
+            if self._voice_orchestrator:
+                try:
+                    await self._voice_orchestrator.stop()
+                    self.logger.info("[Kernel] Voice Orchestrator stopped")
+                except Exception as vo_err:
+                    self.logger.warning(f"[Kernel] Voice Orchestrator stop error: {vo_err}")
 
             # =====================================================================
             # v181.0: GCP VM CLEANUP (Normal Path)
