@@ -56603,6 +56603,10 @@ class JarvisSystemKernel:
                 except Exception:
                     pass
 
+            # v210.0: Single point for preflight completion
+            # preflight is marked complete ONLY here, at the end of the preflight phase
+            self._update_component_status("preflight", "complete", "Preflight complete")
+
             self._readiness_manager.mark_tier(ReadinessTier.PROCESS_STARTED)
             return True
 
@@ -57067,6 +57071,11 @@ class JarvisSystemKernel:
             if success and self._readiness_manager:
                 self._readiness_manager.mark_tier(ReadinessTier.HTTP_HEALTHY)
                 self._readiness_manager.mark_component_ready("backend", True)
+
+                # v210.0: Single point for jarvis_body completion
+                # jarvis_body is marked complete ONLY here, after backend health check passes
+                self._update_component_status("jarvis_body", "complete", "Backend healthy")
+                self._readiness_manager.mark_component_ready("jarvis_body", True)
 
             return success
 
