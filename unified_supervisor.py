@@ -61821,7 +61821,13 @@ Environment Variables:
     control.add_argument(
         "--dashboard",
         action="store_true",
-        help="Show comprehensive system dashboard (preflight, kernel, Trinity, Invincible)",
+        help="Show comprehensive system dashboard only (don't start kernel)",
+    )
+    control.add_argument(
+        "--no-dashboard",
+        action="store_true",
+        dest="no_dashboard",
+        help="Skip dashboard display during startup (for scripts/CI)",
     )
 
     # =========================================================================
@@ -63487,6 +63493,106 @@ async def handle_dashboard() -> int:
     return 0  # Dashboard always succeeds (informational command)
 
 
+async def _show_startup_dashboard() -> None:
+    """
+    Show condensed dashboard before kernel startup.
+
+    v201.3: Quick status overview shown automatically at startup.
+    Uses shorter timeouts to avoid blocking startup too long.
+
+    This is a condensed version - use --dashboard for full details.
+    """
+    # ANSI colors
+    GREEN = "\033[92m"
+    RED = "\033[91m"
+    YELLOW = "\033[93m"
+    CYAN = "\033[96m"
+    DIM = "\033[2m"
+    RESET = "\033[0m"
+
+    def status_icon(ok: bool, warn: bool = False) -> str:
+        if ok:
+            return f"{GREEN}\u2713{RESET}"
+        elif warn:
+            return f"{YELLOW}\u26a0{RESET}"
+        return f"{RED}\u2717{RESET}"
+
+    def status_opt(val) -> str:
+        if val is None:
+            return f"{DIM}\u25cb{RESET}"
+        return status_icon(val)
+
+    # Fetch data with shorter timeouts for startup (don't block too long)
+    lock_task = asyncio.create_task(_fetch_lock_status_readonly())
+    preflight_task = asyncio.create_task(_fetch_preflight_status())
+    invincible_task = asyncio.create_task(_fetch_invincible_status_direct(timeout=5.0))  # Shorter timeout
+
+    results = await asyncio.gather(
+        lock_task, preflight_task, invincible_task,
+        return_exceptions=True,
+    )
+
+    lock_status = results[0] if isinstance(results[0], dict) else {"error": str(results[0])}
+    preflight_status = results[1] if isinstance(results[1], dict) else {"passed": False, "checks": {}}
+    invincible_status = results[2] if isinstance(results[2], dict) else {"enabled": False}
+
+    # Lock status
+    if lock_status.get("locked"):
+        holder_pid = lock_status.get("holder_pid", "?")
+        print(f"  {status_icon(False)} Lock: Held by PID {holder_pid} (kernel already running?)")
+    else:
+        print(f"  {status_icon(True)} Lock: Available")
+
+    # Pre-flight summary
+    checks = preflight_status.get("checks", {})
+    warnings = preflight_status.get("warnings", [])
+    passed = preflight_status.get("passed", True)
+
+    critical_ok = checks.get("backend_dir", False) and checks.get("core_dir", False)
+    docker_ok = checks.get("docker")
+    gcp_ok = checks.get("gcp")
+    port_ok = checks.get("backend_port_free", True)
+
+    print(f"  {status_icon(critical_ok)} Directories: {'OK' if critical_ok else 'Missing'}")
+    print(f"  {status_opt(docker_ok)} Docker: {'Running' if docker_ok else ('Stopped' if docker_ok is False else 'Disabled')}")
+    print(f"  {status_opt(gcp_ok)} GCP: {'Authenticated' if gcp_ok else ('Not auth' if gcp_ok is False else 'Disabled')}")
+    print(f"  {status_icon(port_ok, warn=not port_ok)} Port {checks.get('backend_port', '?')}: {'Available' if port_ok else 'In use'}")
+
+    # Invincible Node (if enabled)
+    if invincible_status.get("enabled"):
+        gcp_status = invincible_status.get("gcp_status") or "UNKNOWN"
+        error = invincible_status.get("error")
+        health = invincible_status.get("health", {})
+        ready = health.get("ready_for_inference", False)
+
+        if error:
+            status_str = f"{YELLOW}Check failed{RESET}"
+        elif gcp_status == "RUNNING" and ready:
+            status_str = f"{GREEN}Ready{RESET}"
+        elif gcp_status == "RUNNING":
+            status_str = f"{YELLOW}Starting{RESET}"
+        elif gcp_status in ("STOPPED", "TERMINATED"):
+            status_str = f"{YELLOW}{gcp_status}{RESET}"
+        elif gcp_status == "UNKNOWN":
+            status_str = f"{YELLOW}Unknown{RESET}"
+        else:
+            status_str = f"{RED}{gcp_status}{RESET}"
+
+        print(f"  {status_opt(gcp_status == 'RUNNING' and not error)} Invincible Node: {status_str}")
+
+    # Warnings summary
+    if warnings:
+        print(f"  {YELLOW}\u26a0 {len(warnings)} warning(s){RESET}: {', '.join(warnings[:2])}")
+
+    # Overall readiness
+    if passed and not lock_status.get("locked"):
+        print(f"\n  {GREEN}Ready to start kernel{RESET}")
+    elif lock_status.get("locked"):
+        print(f"\n  {YELLOW}Kernel may already be running - use --status to check{RESET}")
+    else:
+        print(f"\n  {YELLOW}Some checks failed - proceeding anyway{RESET}")
+
+
 async def handle_monitor_prime() -> int:
     """
     Handle --monitor-prime command: Display J-Prime status dashboard.
@@ -64229,9 +64335,18 @@ async def async_main(args: argparse.Namespace) -> int:
         await handle_shutdown()
         await asyncio.sleep(2.0)  # Wait for shutdown
 
+    # v201.3: Show dashboard before startup (unless --no-dashboard)
+    # This gives visibility into system state before kernel starts or dry-run
+    if not getattr(args, 'no_dashboard', False):
+        print("\n" + "="*60)
+        print("  JARVIS System Status (Pre-Startup)")
+        print("="*60)
+        await _show_startup_dashboard()
+        print()
+
     # Dry run - just print what would happen
     if args.dry_run:
-        print("\n" + "="*60)
+        print("="*60)
         print("DRY RUN - Would start with:")
         print("="*60)
         config = SystemKernelConfig()
