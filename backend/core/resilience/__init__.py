@@ -265,6 +265,12 @@ from backend.core.resilience.types import (
     Recoverable,
 )
 
+# v3.0: RetryPolicy with exponential backoff and jitter
+from backend.core.resilience.retry import (
+    RetryPolicy,
+    RetryExhausted,
+)
+
 __all__ = [
     # Distributed Lock
     "DistributedLock",
@@ -472,4 +478,10 @@ __all__ = [
     # Protocols
     "HealthCheckable",
     "Recoverable",
+    # =========================================================================
+    # v3.0: RETRY POLICY
+    # =========================================================================
+    # Retry with exponential backoff and jitter
+    "RetryPolicy",
+    "RetryExhausted",
 ]
