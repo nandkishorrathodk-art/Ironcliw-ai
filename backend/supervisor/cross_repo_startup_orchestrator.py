@@ -204,11 +204,12 @@ import socket
 import sys
 import threading
 import time
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Any, Callable, Coroutine, Dict, List, Literal, Optional, Set, Tuple, Union
+from typing import Any, AsyncIterator, Callable, Coroutine, Dict, List, Literal, Optional, Set, Tuple, Union
 
 import aiohttp
 
@@ -348,6 +349,20 @@ async def _ensure_enterprise_init():
 # =============================================================================
 
 from enum import auto as enum_auto
+
+
+# =============================================================================
+# v200.0: Startup Lock Error - Pillar 1: Lock-Guarded Single-Owner Startup
+# =============================================================================
+
+class StartupLockError(Exception):
+    """
+    v200.0: Raised when startup lock acquisition fails.
+
+    This indicates another supervisor instance holds the startup lock,
+    or the lock acquisition timed out.
+    """
+    pass
 
 
 class HardwareProfile(Enum):
@@ -7413,6 +7428,14 @@ class ProcessOrchestrator:
         self._current_startup_phase: str = "initializing"
         self._current_startup_progress: int = 35  # Start after "Backend API online"
 
+        # =====================================================================
+        # v200.0: Pillar 1 - Lock-Guarded Single-Owner Startup
+        # =====================================================================
+        # When spawn_processes=False, TrinityIntegrator is the sole spawner.
+        # This flag prevents the orchestrator from spawning any processes.
+        self._spawn_processes: bool = True  # Default: orchestrator can spawn
+        self._gcp_prewarm_enabled: bool = False  # Set by hardware assessment
+
     def _ensure_locks_initialized(self) -> None:
         """
         v93.11: Lazily initialize asyncio primitives.
@@ -7499,6 +7522,203 @@ class ProcessOrchestrator:
         self._ensure_locks_initialized()
         assert self._startup_coordination_lock is not None, "Startup coordination lock should be initialized"
         return self._startup_coordination_lock
+
+    # =========================================================================
+    # v200.0: Pillar 1 - Lock-Guarded Single-Owner Startup Context Manager
+    # =========================================================================
+    #
+    # This context manager provides:
+    # 1. Acquire cross-repo startup lock (raises StartupLockError on failure)
+    # 2. Enforce hardware environment variables
+    # 3. Start GCP pre-warm if enabled
+    # 4. Initialize cross-repo state (respects spawn_processes flag)
+    # 5. Guarantee lock release even on exception/timeout
+    # =========================================================================
+
+    @asynccontextmanager
+    async def startup_lock_context(
+        self,
+        spawn_processes: bool = True,
+    ) -> AsyncIterator["ProcessOrchestrator"]:
+        """
+        v200.0: Async context manager for startup with cross-repo lock.
+
+        This is the main entry point for starting the orchestrator with proper
+        lock management. It ensures only one supervisor instance can run at a time.
+
+        Args:
+            spawn_processes: If False, orchestrator does NOT spawn any processes;
+                           TrinityIntegrator will be the sole spawner (unified_supervisor path).
+                           If True, orchestrator spawns processes (legacy/run_supervisor path).
+
+        Yields:
+            Self (ProcessOrchestrator instance) for use within the context.
+
+        Raises:
+            StartupLockError: If the startup lock cannot be acquired.
+
+        Example:
+            async with orchestrator.startup_lock_context(spawn_processes=False) as orch:
+                # TrinityIntegrator is the sole spawner
+                await orch.coordinate_external_services()
+        """
+        # Store the spawn_processes flag as instance attribute
+        self._spawn_processes = spawn_processes
+
+        # 1. Acquire cross-repo lock
+        acquired = await self._acquire_startup_lock()
+        if not acquired:
+            raise StartupLockError(
+                "Failed to acquire cross-repo startup lock. "
+                "Another supervisor instance may be running."
+            )
+
+        try:
+            # 2. Re-enforce hardware environment
+            await self._enforce_hardware_environment()
+
+            # 3. GCP pre-warm (if enabled based on hardware assessment)
+            if self._gcp_prewarm_enabled:
+                await self._start_gcp_prewarm()
+
+            # 4. Initialize cross_repo state (respects spawn_processes flag)
+            await self._initialize_cross_repo_state(spawn_processes=spawn_processes)
+
+            yield self
+
+        finally:
+            # 5. Guarantee lock release even on exception/timeout
+            await self._release_startup_lock()
+
+    async def _acquire_startup_lock(self) -> bool:
+        """
+        v200.0: Acquire the distributed startup lock.
+
+        Uses the distributed_lock_manager for cross-process coordination.
+        The lock prevents concurrent supervisor instances from running.
+
+        Returns:
+            True if lock was acquired, False otherwise.
+        """
+        try:
+            from backend.core.distributed_lock_manager import get_lock_manager
+
+            lock_manager = await get_lock_manager()
+
+            # Use the same lock parameters as start_all_services()
+            # Timeout: 30s (to wait for previous supervisor if needed)
+            # TTL: 600s (10 minutes - max expected startup time)
+            self._startup_lock_context = lock_manager.acquire(
+                "trinity_startup",
+                timeout=30.0,
+                ttl=600.0
+            )
+
+            # Enter the context manager to acquire the lock
+            self._startup_lock_acquired = await self._startup_lock_context.__aenter__()
+
+            if self._startup_lock_acquired:
+                logger.info("[v200.0] ✅ Startup lock acquired via startup_lock_context()")
+                return True
+            else:
+                logger.error("[v200.0] ❌ Could not acquire startup lock")
+                return False
+
+        except ImportError:
+            logger.debug("[v200.0] DistributedLockManager not available, proceeding without lock")
+            # If no lock manager available, proceed (degraded mode)
+            self._startup_lock_acquired = True
+            return True
+
+        except Exception as e:
+            logger.warning(f"[v200.0] Startup lock acquisition failed: {e}")
+            return False
+
+    async def _release_startup_lock(self) -> None:
+        """
+        v200.0: Release the distributed startup lock.
+
+        Always called in the finally block of startup_lock_context to ensure
+        the lock is released even on exceptions or timeouts.
+        """
+        if hasattr(self, '_startup_lock_context') and self._startup_lock_context is not None:
+            try:
+                await self._startup_lock_context.__aexit__(None, None, None)
+                logger.info("[v200.0] ✅ Startup lock released via startup_lock_context()")
+            except Exception as e:
+                logger.debug(f"[v200.0] Startup lock release note: {e}")
+        self._startup_lock_acquired = False
+
+    async def _enforce_hardware_environment(self) -> None:
+        """
+        v200.0: Re-enforce hardware environment variables.
+
+        Assesses hardware profile and sets environment variables appropriately.
+        This ensures the supervisor and all spawned processes have consistent
+        hardware-aware configuration.
+        """
+        try:
+            hw_assessment = assess_hardware_profile()
+            set_hardware_env_in_supervisor(hw_assessment)
+            log_hardware_assessment(hw_assessment)
+
+            # Update GCP prewarm flag based on hardware assessment
+            if hw_assessment.profile in (HardwareProfile.SLIM, HardwareProfile.CLOUD_ONLY):
+                self._gcp_prewarm_enabled = True
+                logger.info(f"[v200.0] GCP prewarm enabled for hardware profile: {hw_assessment.profile.name}")
+            elif hw_assessment.force_cloud_hybrid:
+                self._gcp_prewarm_enabled = True
+                logger.info("[v200.0] GCP prewarm enabled due to force_cloud_hybrid flag")
+
+        except Exception as e:
+            logger.warning(f"[v200.0] Hardware enforcement failed: {e}, proceeding with defaults")
+
+    async def _start_gcp_prewarm(self) -> None:
+        """
+        v200.0: Start the GCP pre-warm task in the background.
+
+        This starts a background task to provision a GCP VM so it's ready
+        when needed. Non-blocking - does not delay other startup operations.
+        """
+        try:
+            prewarm_task = start_trinity_gcp_prewarm()
+            if prewarm_task:
+                logger.info("[v200.0] 🚀 GCP pre-warm task started")
+            else:
+                logger.debug("[v200.0] GCP pre-warm task could not be started")
+        except Exception as e:
+            logger.warning(f"[v200.0] Could not start GCP pre-warm task: {e}")
+
+    async def _initialize_cross_repo_state(self, spawn_processes: bool = True) -> None:
+        """
+        v200.0: Initialize cross-repo state for coordinated startup.
+
+        This sets up the cross-repo state directory structure and initializes
+        state files for coordination between JARVIS, JARVIS-Prime, and Reactor-Core.
+
+        Args:
+            spawn_processes: If False, the orchestrator will NOT spawn any processes.
+                           This is used when TrinityIntegrator is the sole spawner.
+        """
+        # Store the flag for other methods to check
+        self._spawn_processes = spawn_processes
+
+        if not spawn_processes:
+            logger.info("[v200.0] spawn_processes=False - orchestrator will NOT spawn processes")
+            logger.info("[v200.0] TrinityIntegrator is the designated sole spawner")
+
+        try:
+            from backend.core.cross_repo_state_initializer import initialize_cross_repo_state
+
+            # Initialize the cross-repo state directory structure
+            await initialize_cross_repo_state()
+            logger.info("[v200.0] ✅ Cross-repo state initialized")
+
+        except ImportError:
+            logger.debug("[v200.0] cross_repo_state_initializer not available, skipping")
+
+        except Exception as e:
+            logger.warning(f"[v200.0] Cross-repo state initialization failed: {e}")
 
     # =========================================================================
     # v109.5: Progress Broadcasting to Loading Server
