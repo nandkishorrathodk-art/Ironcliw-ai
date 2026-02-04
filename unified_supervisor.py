@@ -65530,12 +65530,6 @@ Environment Variables:
         dest="no_dashboard",
         help="Skip dashboard display during startup (for scripts/CI)",
     )
-    # v220.3: Force flag for edge cases with stale locks
-    control.add_argument(
-        "--force",
-        action="store_true",
-        help="Force start: kill any existing kernel and take over the lock (use with caution)",
-    )
 
     # =========================================================================
     # OPERATING MODE
@@ -65821,10 +65815,11 @@ Environment Variables:
     # ADVANCED
     # =========================================================================
     advanced = parser.add_argument_group("Advanced")
+    # v220.3: Enhanced --force with automatic stale lock cleanup
     advanced.add_argument(
         "--force", "-f",
         action="store_true",
-        help="Force takeover from existing kernel",
+        help="Force start: kill existing kernel, clean stale locks, and take over (use with caution)",
     )
     advanced.add_argument(
         "--takeover",
