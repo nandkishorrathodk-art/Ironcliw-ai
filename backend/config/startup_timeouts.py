@@ -126,6 +126,11 @@ _DEFAULT_GCP_VM_STARTUP_TIMEOUT = 600.0  # 10 min base (APARS can extend this)
 _DEFAULT_GCP_VM_MODEL_LOAD_BUFFER = 300.0  # 5 min extra for model loading
 _DEFAULT_GCP_VM_APARS_HARD_CAP = 1500.0  # 25 min hard cap with APARS extensions
 
+# v219.0: Invincible Node Timeouts - for hollow client GCP Spot VM
+_DEFAULT_INVINCIBLE_NODE_QUICK_CHECK_TIMEOUT = 15.0  # Quick check during startup (non-blocking)
+_DEFAULT_INVINCIBLE_NODE_BACKGROUND_TIMEOUT = 600.0  # Max wait for background wake-up
+_DEFAULT_INVINCIBLE_NODE_HEALTH_POLL_INTERVAL = 5.0  # Health poll interval during wake-up
+
 # Lock timeouts
 _DEFAULT_STARTUP_LOCK_TIMEOUT = 30.0
 _DEFAULT_TAKEOVER_HANDOVER_TIMEOUT = 15.0
@@ -286,6 +291,25 @@ class StartupTimeouts:
         "GCP_VM_APARS_HARD_CAP", _DEFAULT_GCP_VM_APARS_HARD_CAP, min_val=300.0
     ))
     """Hard cap for APARS extended timeouts (prevents unbounded waits)."""
+
+    # -------------------------------------------------------------------------
+    # Invincible Node Timeouts (v219.0)
+    # -------------------------------------------------------------------------
+
+    invincible_node_quick_check_timeout: float = field(default_factory=lambda: get_env_float(
+        "JARVIS_INVINCIBLE_QUICK_CHECK_TIMEOUT", _DEFAULT_INVINCIBLE_NODE_QUICK_CHECK_TIMEOUT, min_val=1.0
+    ))
+    """Quick check timeout during startup - if node responds within this, startup proceeds immediately."""
+
+    invincible_node_background_timeout: float = field(default_factory=lambda: get_env_float(
+        "JARVIS_INVINCIBLE_BACKGROUND_TIMEOUT", _DEFAULT_INVINCIBLE_NODE_BACKGROUND_TIMEOUT, min_val=30.0
+    ))
+    """Max wait time for background Invincible Node wake-up after quick check times out."""
+
+    invincible_node_health_poll_interval: float = field(default_factory=lambda: get_env_float(
+        "JARVIS_INVINCIBLE_HEALTH_POLL_INTERVAL", _DEFAULT_INVINCIBLE_NODE_HEALTH_POLL_INTERVAL, min_val=1.0
+    ))
+    """Interval between health polls during Invincible Node wake-up."""
 
     # -------------------------------------------------------------------------
     # Lock Timeouts

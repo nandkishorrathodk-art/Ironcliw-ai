@@ -953,22 +953,63 @@ class StartupResilience:
         self.logger.warning("[Resilience] Ollama recovery paused after max attempts")
 
     async def _on_invincible_node_unhealthy(self) -> None:
-        """Called when Invincible Node becomes unhealthy."""
+        """
+        Called when Invincible Node becomes unhealthy.
+        v219.0: Clear hollow client env vars so clients fall back to local/alternate paths.
+        """
         self.logger.warning("[Resilience] Invincible Node (GCP VM) is unhealthy")
+        
+        # v219.0: Clear the hollow client flag so clients know to fall back
+        # This is the shared state between kernel and clients
+        os.environ.pop("JARVIS_HOLLOW_CLIENT_ACTIVE", None)
+        self.logger.info("[Resilience] v219.0 Cleared JARVIS_HOLLOW_CLIENT_ACTIVE (unhealthy)")
 
     async def _on_invincible_node_healthy(self) -> None:
-        """Called when Invincible Node recovers to healthy."""
+        """
+        Called when Invincible Node recovers to healthy.
+        v219.0: Re-propagate hollow client env vars if IP is known.
+        """
         self.logger.info("[Resilience] Invincible Node (GCP VM) is now healthy")
+        
+        # v219.0: Re-activate hollow client if we have the IP
+        invincible_ip = os.environ.get("JARVIS_INVINCIBLE_NODE_IP", "")
+        invincible_port = os.environ.get("JARVIS_INVINCIBLE_NODE_PORT", "8000")
+        if invincible_ip:
+            os.environ["JARVIS_HOLLOW_CLIENT_ACTIVE"] = "true"
+            prime_url = f"http://{invincible_ip}:{invincible_port}"
+            os.environ["JARVIS_PRIME_URL"] = prime_url
+            os.environ["GCP_PRIME_ENDPOINT"] = prime_url
+            self.logger.info(f"[Resilience] v219.0 Re-activated hollow client: {prime_url}")
 
     async def _on_invincible_node_recovered(self) -> None:
-        """Called when Invincible Node is recovered via background recovery."""
+        """
+        Called when Invincible Node is recovered via background recovery.
+        v219.0: Re-propagate hollow client env vars after recovery.
+        """
         self.logger.info("[Resilience] Invincible Node (GCP VM) recovered successfully")
         if self._invincible_node_probe:
             self._invincible_node_probe.reset()
+        
+        # v219.0: Re-activate hollow client after recovery
+        invincible_ip = os.environ.get("JARVIS_INVINCIBLE_NODE_IP", "")
+        invincible_port = os.environ.get("JARVIS_INVINCIBLE_NODE_PORT", "8000")
+        if invincible_ip:
+            os.environ["JARVIS_HOLLOW_CLIENT_ACTIVE"] = "true"
+            prime_url = f"http://{invincible_ip}:{invincible_port}"
+            os.environ["JARVIS_PRIME_URL"] = prime_url
+            os.environ["GCP_PRIME_ENDPOINT"] = prime_url
+            self.logger.info(f"[Resilience] v219.0 Hollow client re-activated after recovery: {prime_url}")
 
     async def _on_invincible_node_recovery_paused(self) -> None:
-        """Called when Invincible Node recovery is paused due to max attempts."""
+        """
+        Called when Invincible Node recovery is paused due to max attempts.
+        v219.0: Clear hollow client since node is not recoverable.
+        """
         self.logger.warning("[Resilience] Invincible Node recovery paused after max attempts")
+        
+        # v219.0: Clear hollow client flag since recovery failed
+        os.environ.pop("JARVIS_HOLLOW_CLIENT_ACTIVE", None)
+        self.logger.warning("[Resilience] v219.0 Cleared JARVIS_HOLLOW_CLIENT_ACTIVE (recovery failed)")
 
     async def _on_llm_upgraded(self) -> None:
         """Called when LLM mode is upgraded to cloud."""

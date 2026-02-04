@@ -394,10 +394,69 @@ class HybridBackendClient:
             backend.health.last_check = datetime.now()
             backend.circuit_breaker.record_failure()
 
+    def update_backend_url(self, backend_name: str, new_url: str) -> bool:
+        """
+        v219.0: Dynamically update a backend's base URL.
+        
+        This allows the Invincible Node URL to be propagated to the hybrid
+        routing system so that hollow client mode actually routes to the cloud VM.
+        
+        Args:
+            backend_name: Name of the backend to update (e.g., 'gcp')
+            new_url: New base URL for the backend
+            
+        Returns:
+            True if updated successfully, False if backend not found
+        """
+        if backend_name in self.backends:
+            old_url = self.backends[backend_name].base_url
+            self.backends[backend_name].base_url = new_url
+            # Reset health so next check uses new URL
+            self.backends[backend_name].health = BackendHealth()
+            logger.info(f"[HybridBackend] v219.0 Updated {backend_name} URL: {old_url} -> {new_url}")
+            return True
+        logger.warning(f"[HybridBackend] Backend not found: {backend_name}")
+        return False
+
+    def _check_hollow_client_url(self) -> Optional[str]:
+        """
+        v219.0: Check if hollow client mode is active and return the cloud URL.
+        
+        When Invincible Node is ready, the unified_supervisor sets
+        JARVIS_HOLLOW_CLIENT_ACTIVE=true and JARVIS_PRIME_URL to the cloud VM.
+        This method checks those env vars to support dynamic URL updates.
+        
+        Returns:
+            Cloud URL if hollow client is active, None otherwise
+        """
+        hollow_active = os.environ.get("JARVIS_HOLLOW_CLIENT_ACTIVE", "").lower() == "true"
+        if hollow_active:
+            invincible_ip = os.environ.get("JARVIS_INVINCIBLE_NODE_IP", "")
+            invincible_port = os.environ.get("JARVIS_INVINCIBLE_NODE_PORT", "8000")
+            if invincible_ip:
+                return f"http://{invincible_ip}:{invincible_port}"
+            # Fallback to JARVIS_PRIME_URL
+            return os.environ.get("JARVIS_PRIME_URL", "")
+        return None
+
     def _select_backend(self, capability: Optional[str] = None, **kwargs) -> Optional[Backend]:
         """
-        Intelligently select best backend for request
+        Intelligently select best backend for request.
+        v219.0: Enhanced with hollow client support - when Invincible Node is active,
+                prefer cloud backend and use dynamic URL.
         """
+        # v219.0: Check if hollow client mode is active with dynamic URL
+        hollow_url = self._check_hollow_client_url()
+        if hollow_url and 'gcp' in self.backends:
+            gcp_backend = self.backends['gcp']
+            # Update GCP backend URL if it differs (Invincible Node might have changed)
+            if gcp_backend.base_url != hollow_url:
+                self.update_backend_url('gcp', hollow_url)
+            # Mark as healthy for hollow client routing (we trust the supervisor's health check)
+            if not gcp_backend.health.healthy:
+                gcp_backend.health.healthy = True
+                logger.debug(f"[HybridBackend] v219.0 Hollow client active, trusting GCP backend: {hollow_url}")
+        
         available_backends = [
             b for b in self.backends.values()
             if b.is_available() and (not capability or b.can_handle(capability))
@@ -406,6 +465,12 @@ class HybridBackendClient:
         if not available_backends:
             logger.warning(f"No available backends for capability: {capability}")
             return None
+
+        # v219.0: In hollow client mode, prefer cloud backend for ML capabilities
+        if hollow_url and capability in ['ml_processing', 'nlp_analysis', 'chatbot_inference', 'llm_inference']:
+            cloud_backends = [b for b in available_backends if b.type == BackendType.CLOUD]
+            if cloud_backends:
+                return cloud_backends[0]
 
         # Sort by priority (lower = better) and health
         available_backends.sort(

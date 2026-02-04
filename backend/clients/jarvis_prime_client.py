@@ -859,18 +859,38 @@ class JARVISPrimeClient(TrinityBaseClient[Dict[str, Any]]):
     async def _get_base_url(self) -> str:
         """
         v84.0: Get base URL using intelligent discovery.
+        v219.0: Enhanced with hollow client support - dynamically reads URL when
+                Invincible Node is active so clients route to cloud VM.
 
         Priority:
-        1. Discovered service (if enabled and healthy)
-        2. Environment variable JARVIS_PRIME_URL
-        3. Config base_url
+        1. Hollow client mode (JARVIS_HOLLOW_CLIENT_ACTIVE=true) - always use current env URL
+        2. Discovered service (if enabled and healthy)
+        3. Environment variable JARVIS_PRIME_URL (re-read at request time)
+        4. Config base_url (fallback)
         """
+        # v219.0: ROOT CAUSE FIX - When hollow client is active, always read from env
+        # This ensures that when Invincible Node becomes ready, we use the cloud URL
+        hollow_client_active = os.environ.get("JARVIS_HOLLOW_CLIENT_ACTIVE", "").lower() == "true"
+        if hollow_client_active:
+            # In hollow client mode, ALWAYS use the current env URL (set by unified_supervisor)
+            hollow_url = os.environ.get("JARVIS_PRIME_URL", "")
+            if hollow_url:
+                logger.debug(f"[JARVISPrime] v219.0 Hollow client active, using: {hollow_url}")
+                return hollow_url
+        
+        # Standard discovery flow
         if self._prime_config.enable_discovery:
             service = await _service_discovery.discover()
             if service:
                 self._discovered_service = service
                 self._api_format = service.api_format
                 return service.url
+
+        # v219.0: Also check env at request time (not just at init) for dynamic URL updates
+        env_url = os.environ.get("JARVIS_PRIME_URL", "")
+        if env_url and env_url != self._prime_config.base_url:
+            logger.debug(f"[JARVISPrime] v219.0 Using updated env URL: {env_url}")
+            return env_url
 
         return self._prime_config.base_url
 

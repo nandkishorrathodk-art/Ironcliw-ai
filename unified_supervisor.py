@@ -55576,6 +55576,63 @@ class JarvisSystemKernel:
             "port": self.config.invincible_node_port,
         }
 
+    def _propagate_invincible_node_url(self, node_ip: str, source: str = "startup") -> None:
+        """
+        v219.0: ROOT CAUSE FIX - Propagate Invincible Node URL to environment.
+        
+        When hollow client mode is used, all Prime clients need to know where
+        the cloud VM is. This method sets the necessary environment variables
+        so that jarvis_prime_client, hybrid_backend_client, and other consumers
+        can route requests to the Invincible Node instead of localhost.
+        
+        Args:
+            node_ip: The IP address of the ready Invincible Node
+            source: Where this was called from (for logging)
+        """
+        port = self.config.invincible_node_port
+        prime_url = f"http://{node_ip}:{port}"
+        
+        # Set the primary Prime URL - this is the single source of truth
+        os.environ["JARVIS_PRIME_URL"] = prime_url
+        
+        # Also set cloud-specific URLs for components that use them
+        os.environ["GCP_PRIME_ENDPOINT"] = prime_url
+        os.environ["JARVIS_PRIME_CLOUD_RUN_URL"] = prime_url
+        
+        # Set a flag indicating hollow client is active (for dynamic behavior)
+        os.environ["JARVIS_HOLLOW_CLIENT_ACTIVE"] = "true"
+        os.environ["JARVIS_INVINCIBLE_NODE_IP"] = node_ip
+        os.environ["JARVIS_INVINCIBLE_NODE_PORT"] = str(port)
+        
+        self.logger.info(
+            f"[InvincibleNode] v219.0 URL propagation ({source}): "
+            f"JARVIS_PRIME_URL={prime_url}"
+        )
+
+    def _clear_invincible_node_url(self, reason: str = "unhealthy") -> None:
+        """
+        v219.0: Clear Invincible Node URL when the node becomes unhealthy.
+        
+        This allows the system to fall back to local Prime or re-discover
+        a new cloud endpoint.
+        
+        Args:
+            reason: Why the URL is being cleared (for logging)
+        """
+        # Clear the hollow client flag
+        os.environ.pop("JARVIS_HOLLOW_CLIENT_ACTIVE", None)
+        os.environ.pop("JARVIS_INVINCIBLE_NODE_IP", None)
+        os.environ.pop("JARVIS_INVINCIBLE_NODE_PORT", None)
+        
+        # Note: We don't clear JARVIS_PRIME_URL here because local Prime
+        # might still be running. The client should check JARVIS_HOLLOW_CLIENT_ACTIVE
+        # to determine routing behavior.
+        
+        self.logger.info(
+            f"[InvincibleNode] v219.0 URL cleared ({reason}): "
+            f"Hollow client deactivated"
+        )
+
     def _init_browser_crash_monitor(self) -> None:
         """
         v197.1: Initialize the browser crash monitor with recovery callbacks.
@@ -57844,9 +57901,16 @@ class JarvisSystemKernel:
             # Local backend starts immediately - cloud node is OPTIONAL enhancement.
             # =====================================================================
             if invincible_node_task:
-                # v211.0: Quick check (15s) - if node responds quickly, great!
-                # If not, let it continue in background and proceed with startup
-                quick_check_timeout = 15.0
+                # v219.0: Use config-driven timeouts instead of hardcoded values
+                # This allows tuning without code changes via env vars
+                if StartupTimeouts is not None:
+                    try:
+                        _timeouts = StartupTimeouts()
+                        quick_check_timeout = _timeouts.invincible_node_quick_check_timeout
+                    except Exception:
+                        quick_check_timeout = 15.0  # Fallback
+                else:
+                    quick_check_timeout = float(os.environ.get("JARVIS_INVINCIBLE_QUICK_CHECK_TIMEOUT", "15.0"))
                 
                 try:
                     self.logger.info(f"[InvincibleNode] Quick check (max {quick_check_timeout:.0f}s)...")
@@ -57858,13 +57922,19 @@ class JarvisSystemKernel:
                         self.logger.success(f"[InvincibleNode] Cloud Node READY at {node_ip}")
                         self._invincible_node_ip = node_ip
                         self._invincible_node_ready = True
+                        
+                        # v219.0: ROOT CAUSE FIX - Propagate URL so all Prime clients
+                        # know where to send requests (hollow client actually works now)
+                        self._propagate_invincible_node_url(node_ip, source="quick_check")
+                        
                         await self._broadcast_startup_progress(
                             stage="resources",
                             message=f"Cloud Node ready: {node_ip}",
                             progress=end_progress - 1,
                             metadata={
                                 "icon": "cloud",
-                                "invincible_node": {"status": "ready", "ip": node_ip}
+                                "invincible_node": {"status": "ready", "ip": node_ip},
+                                "prime_url": f"http://{node_ip}:{self.config.invincible_node_port}"
                             }
                         )
                     else:
@@ -57880,12 +57950,17 @@ class JarvisSystemKernel:
                     async def _background_node_monitor():
                         """Monitor Invincible Node in background, update status when ready."""
                         try:
-                            # Wait for the original task to complete (it's still running)
-                            # Use a longer timeout for background monitoring
-                            background_timeout = min(
-                                float(os.environ.get("GCP_VM_STARTUP_TIMEOUT", "300")),
-                                600.0  # Max 10 minutes
-                            )
+                            # v219.0: Use config-driven background timeout
+                            if StartupTimeouts is not None:
+                                try:
+                                    _bg_timeouts = StartupTimeouts()
+                                    background_timeout = _bg_timeouts.invincible_node_background_timeout
+                                except Exception:
+                                    background_timeout = 600.0  # Fallback
+                            else:
+                                background_timeout = float(os.environ.get(
+                                    "JARVIS_INVINCIBLE_BACKGROUND_TIMEOUT", "600.0"
+                                ))
                             node_success, node_ip, node_status = await asyncio.wait_for(
                                 invincible_node_task,
                                 timeout=background_timeout
@@ -57894,6 +57969,26 @@ class JarvisSystemKernel:
                                 self.logger.success(f"[InvincibleNode] Cloud Node READY (background): {node_ip}")
                                 self._invincible_node_ip = node_ip
                                 self._invincible_node_ready = True
+                                
+                                # v219.0: ROOT CAUSE FIX - Propagate URL when background monitor succeeds
+                                # This allows late-ready node to still be used by all Prime clients
+                                self._propagate_invincible_node_url(node_ip, source="background_monitor")
+                                
+                                # v219.0: Broadcast status update so DMS/health endpoints reflect new state
+                                try:
+                                    await self._broadcast_startup_progress(
+                                        stage="invincible_node",
+                                        message=f"Cloud Node ready (background): {node_ip}",
+                                        progress=99,
+                                        metadata={
+                                            "icon": "cloud",
+                                            "invincible_node": {"status": "ready", "ip": node_ip},
+                                            "prime_url": f"http://{node_ip}:{self.config.invincible_node_port}",
+                                            "hollow_client_active": True
+                                        }
+                                    )
+                                except Exception as broadcast_err:
+                                    self.logger.debug(f"[InvincibleNode] Background broadcast error (non-fatal): {broadcast_err}")
                             else:
                                 self.logger.info(f"[InvincibleNode] Background wake-up result: {node_status}")
                         except asyncio.TimeoutError:
@@ -59273,8 +59368,18 @@ class JarvisSystemKernel:
                                 trinity_timeout = getattr(self, '_effective_trinity_timeout', DEFAULT_TRINITY_TIMEOUT)
                                 self.logger.info(f"[Trinity] Component startup timeout: {trinity_timeout:.0f}s (unified)")
 
-                                # v201.0: Check if Invincible Node is ready - if so, skip local Prime
+                                # v219.0: Re-read Invincible Node readiness RIGHT BEFORE Trinity starts
+                                # This fixes race where node becomes ready after initial check but before Trinity
                                 invincible_ready = getattr(self, '_invincible_node_ready', False)
+                                invincible_ip = getattr(self, '_invincible_node_ip', None)
+                                
+                                # v219.0: If ready and URL not yet propagated, do it now
+                                if invincible_ready and invincible_ip:
+                                    hollow_active = os.environ.get("JARVIS_HOLLOW_CLIENT_ACTIVE", "") == "true"
+                                    if not hollow_active:
+                                        self._propagate_invincible_node_url(invincible_ip, source="trinity_prestart")
+                                        self.logger.info(f"[Trinity] v219.0 Late URL propagation before Trinity start: {invincible_ip}")
+                                
                                 if invincible_ready:
                                     self.logger.info("[Trinity] ☁️ Invincible Node ready - using Hollow Client for Prime")
 
@@ -59403,8 +59508,18 @@ class JarvisSystemKernel:
                     trinity_timeout = getattr(self, '_effective_trinity_timeout', DEFAULT_TRINITY_TIMEOUT)
                     self.logger.info(f"[Trinity] Component startup timeout: {trinity_timeout:.0f}s (unified)")
 
-                    # v201.0: Check if Invincible Node is ready - if so, skip local Prime
+                    # v219.0: Re-read Invincible Node readiness RIGHT BEFORE Trinity starts
+                    # This fixes race where node becomes ready after initial check but before Trinity
                     invincible_ready = getattr(self, '_invincible_node_ready', False)
+                    invincible_ip = getattr(self, '_invincible_node_ip', None)
+                    
+                    # v219.0: If ready and URL not yet propagated, do it now
+                    if invincible_ready and invincible_ip:
+                        hollow_active = os.environ.get("JARVIS_HOLLOW_CLIENT_ACTIVE", "") == "true"
+                        if not hollow_active:
+                            self._propagate_invincible_node_url(invincible_ip, source="trinity_prestart_legacy")
+                            self.logger.info(f"[Trinity] v219.0 Late URL propagation before Trinity start: {invincible_ip}")
+                    
                     if invincible_ready:
                         self.logger.info("[Trinity] ☁️ Invincible Node ready - using Hollow Client for Prime")
 
