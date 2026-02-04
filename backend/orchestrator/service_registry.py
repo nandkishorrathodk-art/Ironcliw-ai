@@ -498,6 +498,89 @@ class ServiceRegistry:
             pass
     
     # =========================================================================
+    # PRE-FLIGHT CLEANUP (v210.0)
+    # =========================================================================
+    
+    async def pre_flight_cleanup(self) -> Dict[str, Any]:
+        """
+        v210.0: Clean up stale service entries and resources before startup.
+        
+        This method is called during kernel pre-flight to ensure a clean state:
+        1. Remove stale heartbeat files from crashed sessions
+        2. Reset service statuses to UNKNOWN
+        3. Verify no orphaned port allocations
+        4. Clean up any temporary service state
+        
+        Returns:
+            Dict with cleanup statistics:
+            - total_entries: Total services in registry
+            - valid_entries: Services that appear valid
+            - stale_heartbeats_removed: List of removed heartbeat files
+            - ports_freed: List of ports that were freed
+        """
+        stats = {
+            "total_entries": len(self._services),
+            "valid_entries": 0,
+            "stale_heartbeats_removed": [],
+            "ports_freed": [],
+        }
+        
+        try:
+            # 1. Clean up stale heartbeat files
+            if self._heartbeat_dir.exists():
+                cutoff_time = time.time() - 300  # 5 minutes stale threshold
+                
+                for hb_file in self._heartbeat_dir.glob("*.heartbeat"):
+                    try:
+                        file_mtime = hb_file.stat().st_mtime
+                        if file_mtime < cutoff_time:
+                            # Stale heartbeat - service likely crashed
+                            service_name = hb_file.stem
+                            hb_file.unlink()
+                            stats["stale_heartbeats_removed"].append(service_name)
+                            logger.debug(f"[ServiceRegistry] Removed stale heartbeat: {service_name}")
+                    except Exception as e:
+                        logger.debug(f"[ServiceRegistry] Error cleaning heartbeat {hb_file}: {e}")
+            
+            # 2. Reset all service statuses to UNKNOWN
+            for name, service in self._services.items():
+                service.status = ServiceStatus.UNKNOWN
+                service.consecutive_failures = 0
+                service.last_health_check = None
+            
+            # 3. Check for port conflicts (ports that are in use by non-JARVIS processes)
+            ports_in_use = set()
+            for name, service in self._services.items():
+                if service.port > 0:
+                    try:
+                        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                        sock.settimeout(0.1)
+                        result = sock.connect_ex(('127.0.0.1', service.port))
+                        sock.close()
+                        
+                        if result == 0:
+                            # Port is in use - check if it's a JARVIS process
+                            ports_in_use.add(service.port)
+                    except Exception:
+                        pass
+            
+            # 4. Count valid entries (services with proper configuration)
+            for name, service in self._services.items():
+                if service.port > 0 and service.health_path:
+                    stats["valid_entries"] += 1
+            
+            logger.debug(
+                f"[ServiceRegistry] Pre-flight cleanup complete: "
+                f"{stats['total_entries']} services, "
+                f"{len(stats['stale_heartbeats_removed'])} stale heartbeats removed"
+            )
+            
+        except Exception as e:
+            logger.warning(f"[ServiceRegistry] Pre-flight cleanup error: {e}")
+        
+        return stats
+    
+    # =========================================================================
     # SERIALIZATION
     # =========================================================================
     

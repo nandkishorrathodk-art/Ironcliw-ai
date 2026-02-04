@@ -245,18 +245,21 @@ class IntelligentMemoryController:
             }
         
         # Hardware-aware defaults
+        # v210.0: ROOT CAUSE FIX - thresholds must account for actual baseline usage
+        # A 16GB Mac running JARVIS + Chrome typically sits at 75-85% normally
         if self._hardware_profile == "constrained":
-            # 8GB systems: expect to run at 80-90%
-            return {"moderate": 85.0, "high": 92.0, "critical": 96.0}
+            # 8GB systems: expect to run at 85-95% - very little headroom
+            return {"moderate": 88.0, "high": 93.0, "critical": 97.0}
         elif self._hardware_profile == "consumer":
-            # 16GB systems: expect to run at 70-85%
-            return {"moderate": 82.0, "high": 90.0, "critical": 95.0}
+            # 16GB systems: expect to run at 75-88% normally
+            # Only trigger relief when ACTUALLY constrained, not at normal usage
+            return {"moderate": 88.0, "high": 93.0, "critical": 96.0}
         elif self._hardware_profile == "prosumer":
-            # 32GB systems: some headroom expected
-            return {"moderate": 75.0, "high": 85.0, "critical": 93.0}
+            # 32GB systems: expect 50-70% baseline
+            return {"moderate": 78.0, "high": 88.0, "critical": 94.0}
         else:
-            # Server/workstation: lots of headroom expected
-            return {"moderate": 70.0, "high": 80.0, "critical": 90.0}
+            # Server/workstation (64GB+): expect lots of headroom
+            return {"moderate": 72.0, "high": 82.0, "critical": 92.0}
     
     def record_memory_sample(self, percent_used: float) -> None:
         """Record a memory sample for baseline calculation."""
