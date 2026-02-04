@@ -56682,6 +56682,51 @@ class JarvisSystemKernel:
                 except Exception as ws_err:
                     self.logger.warning(f"[Kernel] WebSocket pre-init failed (non-fatal): {ws_err}")
 
+            # =================================================================
+            # v211.0: PARALLEL FRONTEND WARMUP
+            # =================================================================
+            # ROOT CAUSE FIX: Previously, frontend (Phase 7) waited for ALL
+            # phases including Trinity, Enterprise, AGI OS - even though the
+            # frontend doesn't depend on them. This caused 5+ minute startup
+            # times when GCP/APARS takes a while.
+            #
+            # Now we start frontend compilation in PARALLEL with Trinity.
+            # The frontend will be ready (or nearly ready) by the time Phase 7
+            # arrives, drastically reducing perceived startup time.
+            # =================================================================
+            frontend_warmup_task: Optional[asyncio.Task] = None
+            frontend_dir = self.config.project_root / "frontend"
+            
+            if frontend_dir.exists():
+                self.logger.info("[Kernel] ───────────────────────────────────────────────────────")
+                self.logger.info("[Kernel] Starting frontend warmup (parallel with Trinity)...")
+                self.logger.info("[Kernel] ───────────────────────────────────────────────────────")
+                
+                async def _frontend_warmup() -> bool:
+                    """Start frontend compilation early, in parallel with Trinity."""
+                    try:
+                        # Only start if not already running
+                        if hasattr(self, '_frontend_process') and self._frontend_process:
+                            if self._frontend_process.returncode is None:
+                                self.logger.debug("[FrontendWarmup] Frontend already running")
+                                return True
+                        
+                        # Start the frontend (same logic as _start_frontend but async)
+                        return await self._start_frontend()
+                    except Exception as e:
+                        self.logger.warning(f"[FrontendWarmup] Error (non-fatal): {e}")
+                        return False
+                
+                frontend_warmup_task = create_safe_task(
+                    _frontend_warmup(),
+                    name="frontend_warmup"
+                )
+                self._frontend_warmup_task = frontend_warmup_task
+                self.logger.debug("[Kernel] Frontend warmup task started")
+            else:
+                self.logger.debug("[Kernel] No frontend directory - skipping warmup")
+                self._frontend_warmup_task = None
+
             # Phase 5: Trinity (Zone 5.7)
             self._current_startup_phase = "trinity"
             self._current_startup_progress = 68
@@ -59985,30 +60030,58 @@ class JarvisSystemKernel:
             True (non-blocking, always succeeds with graceful degradation)
         """
         self.logger.info("[Kernel] ───────────────────────────────────────────────────────")
-        self.logger.info("[Kernel] Phase 7: Frontend Transition (v118.0)")
+        self.logger.info("[Kernel] Phase 7: Frontend Transition (v211.0)")
         self.logger.info("[Kernel] ───────────────────────────────────────────────────────")
 
         frontend_started = False
         frontend_port = int(os.environ.get("JARVIS_FRONTEND_PORT", "3000"))
 
-        # Step 1: Start the React frontend
-        try:
-            self._update_component_status("frontend", "running", "Starting React frontend...")
+        # v211.0: Step 1: Check if frontend warmup task already started the frontend
+        # This happens when frontend started in parallel with Trinity
+        warmup_task = getattr(self, '_frontend_warmup_task', None)
+        
+        if warmup_task is not None:
+            self.logger.info("[Kernel] Checking frontend warmup task (started during Trinity)...")
+            self._update_component_status("frontend", "running", "Waiting for frontend warmup...")
             await self._broadcast_component_update(
                 stage="frontend",
-                message="Starting React frontend..."
+                message="Frontend warming up (started in parallel)..."
             )
+            
+            try:
+                # Wait for warmup task with timeout
+                warmup_timeout = 120.0  # Max 2 minutes to wait for warmup
+                frontend_started = await asyncio.wait_for(warmup_task, timeout=warmup_timeout)
+                
+                if frontend_started:
+                    self.logger.success(f"[Kernel] Frontend ready from warmup (port {frontend_port})")
+                    self._update_component_status("frontend", "complete", f"Frontend ready on port {frontend_port}")
+                else:
+                    self.logger.info("[Kernel] Frontend warmup didn't complete - will retry")
+            except asyncio.TimeoutError:
+                self.logger.warning(f"[Kernel] Frontend warmup timed out after {warmup_timeout}s")
+            except Exception as e:
+                self.logger.warning(f"[Kernel] Frontend warmup error: {e}")
+        
+        # Step 2: If warmup didn't start frontend, start it now
+        if not frontend_started:
+            try:
+                self._update_component_status("frontend", "running", "Starting React frontend...")
+                await self._broadcast_component_update(
+                    stage="frontend",
+                    message="Starting React frontend..."
+                )
 
-            frontend_started = await self._start_frontend()
-            if frontend_started:
-                self.logger.success(f"[Kernel] React frontend ready on port {frontend_port}")
-                self._update_component_status("frontend", "complete", f"React frontend ready on port {frontend_port}")
-            else:
-                self.logger.info("[Kernel] Frontend not started (directory not found or failed)")
-                self._update_component_status("frontend", "skipped", "Frontend not started")
-        except Exception as e:
-            self.logger.debug(f"[Kernel] Frontend startup error (non-fatal): {e}")
-            self._update_component_status("frontend", "error", str(e)[:50])
+                frontend_started = await self._start_frontend()
+                if frontend_started:
+                    self.logger.success(f"[Kernel] React frontend ready on port {frontend_port}")
+                    self._update_component_status("frontend", "complete", f"React frontend ready on port {frontend_port}")
+                else:
+                    self.logger.info("[Kernel] Frontend not started (directory not found or failed)")
+                    self._update_component_status("frontend", "skipped", "Frontend not started")
+            except Exception as e:
+                self.logger.debug(f"[Kernel] Frontend startup error (non-fatal): {e}")
+                self._update_component_status("frontend", "error", str(e)[:50])
 
         # v182.0: Step 2: Wait for Trinity components to be ready BEFORE redirecting
         # This ensures the loading page doesn't transition until ALL systems are operational
