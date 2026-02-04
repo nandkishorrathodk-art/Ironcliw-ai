@@ -957,6 +957,9 @@ class DistributedLockManager:
     async def _release_lock(self, lock_file: Path, token: str) -> None:
         """
         Release lock if we own it.
+        
+        v2.1.0: Improved logging - only warns for actual race conditions,
+        not for natural lock expiration (which is expected behavior).
 
         Args:
             lock_file: Path to lock file
@@ -966,12 +969,26 @@ class DistributedLockManager:
             # Read current lock
             current_lock = await self._read_lock_metadata(lock_file)
 
-            if current_lock and current_lock.token == token:
+            if current_lock is None:
+                # v2.1.0: Lock file doesn't exist - this is normal if:
+                # - Lock expired and was cleaned up by background task
+                # - Lock was already released
+                # This is NOT a warning condition - it's expected behavior
+                logger.debug(
+                    f"Lock already released or expired: {lock_file.name} "
+                    f"(token: {token[:8]}... - no action needed)"
+                )
+            elif current_lock.token == token:
                 # We own this lock, remove it
                 await self._remove_lock_file(lock_file)
             else:
+                # v2.1.0: Someone else owns the lock - this IS concerning
+                # It indicates a potential race condition or TTL issue
+                # where our lock expired and someone else acquired it
                 logger.warning(
-                    f"Cannot release lock - not owner or lock expired: {lock_file.name}"
+                    f"Cannot release lock - owned by different token: {lock_file.name} "
+                    f"(our token: {token[:8]}..., current owner: {current_lock.token[:8]}..., "
+                    f"time remaining: {current_lock.time_remaining():.1f}s)"
                 )
         except Exception as e:
             logger.error(f"Error releasing lock {lock_file.name}: {e}")

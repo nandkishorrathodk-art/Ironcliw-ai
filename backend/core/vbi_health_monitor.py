@@ -1311,10 +1311,20 @@ class VBIHealthMonitor:
     async def _health_broadcast_loop(self) -> None:
         """Periodically broadcast health status.
         
+        v2.0.0: Added startup grace period to suppress spurious "unhealthy" warnings
+        during system initialization when components haven't finished starting.
+        
         Only logs health changes to avoid spam. Tracks last logged state
         to detect state transitions.
         """
         last_logged_health: Optional[str] = None
+        
+        # v2.0.0: Startup grace period - suppress health warnings during initial startup
+        # Components need time to initialize, so early "unhealthy" states are expected
+        STARTUP_GRACE_PERIOD = 60.0  # 60 seconds grace for startup
+        startup_time = time.time()
+        in_grace_period = True
+        grace_period_warning_logged = False
         
         while self._running:
             try:
@@ -1322,19 +1332,40 @@ class VBIHealthMonitor:
 
                 health = await self.get_system_health()
 
-                # Emit health event (silently)
+                # Emit health event (silently) - always emit events for listeners
                 await self._emit_event("health_update", health)
+
+                # v2.0.0: Check if we're still in startup grace period
+                elapsed = time.time() - startup_time
+                if in_grace_period and elapsed > STARTUP_GRACE_PERIOD:
+                    in_grace_period = False
+                    logger.debug(f"[VBIHealthMonitor] Startup grace period ended after {elapsed:.0f}s")
 
                 # Only log if health state CHANGED (not every check)
                 overall = health.get("overall_health", HealthLevel.UNKNOWN.value)
                 if overall != last_logged_health:
-                    # Health state changed - log it
-                    if overall in (HealthLevel.DEGRADED.value, HealthLevel.UNHEALTHY.value, HealthLevel.CRITICAL.value):
-                        logger.warning(f"[VBIHealthMonitor] System health changed: {last_logged_health or 'initial'} → {overall}")
-                    elif overall in (HealthLevel.OPTIMAL.value, HealthLevel.HEALTHY.value):
-                        if last_logged_health in (HealthLevel.DEGRADED.value, HealthLevel.UNHEALTHY.value, HealthLevel.CRITICAL.value):
-                            logger.info(f"[VBIHealthMonitor] System health recovered: {last_logged_health} → {overall}")
-                    last_logged_health = overall
+                    # Health state changed
+                    
+                    # v2.0.0: During grace period, only log if transitioning FROM a bad state
+                    # (recovery is always good to log), but suppress initial "unknown → unhealthy"
+                    if in_grace_period:
+                        if overall in (HealthLevel.OPTIMAL.value, HealthLevel.HEALTHY.value):
+                            # Recovery during startup is noteworthy
+                            if last_logged_health in (HealthLevel.DEGRADED.value, HealthLevel.UNHEALTHY.value, HealthLevel.CRITICAL.value):
+                                logger.info(f"[VBIHealthMonitor] System health recovered during startup: {last_logged_health} → {overall}")
+                        elif not grace_period_warning_logged and overall in (HealthLevel.UNHEALTHY.value, HealthLevel.CRITICAL.value):
+                            # Just note once that we're still initializing
+                            logger.debug(f"[VBIHealthMonitor] Health state during startup grace period: {overall} (components still initializing)")
+                            grace_period_warning_logged = True
+                        # Don't update last_logged_health during grace - we'll do a fresh check after
+                    else:
+                        # Normal operation - log health state changes
+                        if overall in (HealthLevel.DEGRADED.value, HealthLevel.UNHEALTHY.value, HealthLevel.CRITICAL.value):
+                            logger.warning(f"[VBIHealthMonitor] System health changed: {last_logged_health or 'stable'} → {overall}")
+                        elif overall in (HealthLevel.OPTIMAL.value, HealthLevel.HEALTHY.value):
+                            if last_logged_health in (HealthLevel.DEGRADED.value, HealthLevel.UNHEALTHY.value, HealthLevel.CRITICAL.value):
+                                logger.info(f"[VBIHealthMonitor] System health recovered: {last_logged_health} → {overall}")
+                        last_logged_health = overall
 
             except asyncio.CancelledError:
                 break
