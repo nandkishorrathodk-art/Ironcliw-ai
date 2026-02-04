@@ -307,8 +307,19 @@ except ImportError as e:
     def _update_component_health(component, status, message=""):
         pass
 
+    # v214.0: Fallback error class that mimics the real ErrorClass enum
+    class _FallbackErrorClass:
+        """Fallback error class that has a .value attribute like the real enum."""
+        def __init__(self, value: str):
+            self.value = value
+        def __str__(self):
+            return self.value
+        def __repr__(self):
+            return f"ErrorClass.{self.value.upper()}"
+    
     def _classify_gcp_error(error, context=None):
-        return ("gcp_unknown", "transient")
+        # v214.0: Return a fake ErrorClass with .value attribute
+        return ("gcp_unknown", _FallbackErrorClass("transient"))
 
 
 async def _ensure_enterprise_init():
@@ -2064,9 +2075,17 @@ async def ensure_gcp_vm_ready_for_prime(
                         gcp_attempts=1,
                     )
                     recovery_strategy = await _handle_gcp_failure(timeout_error, ctx)
-                    logger.info(f"[v149.0] Recovery strategy: {recovery_strategy}")
+                    # v214.0: Safely get strategy value (handles both enum and fallback)
+                    strategy_value = getattr(recovery_strategy, 'value', str(recovery_strategy))
+                    logger.info(f"[v149.0] Recovery strategy: {strategy_value}")
             except Exception as hook_err:
-                logger.warning(f"[v149.0] Enterprise hooks error: {hook_err}")
+                # v214.0: More detailed error logging for debugging
+                import traceback
+                logger.warning(
+                    f"[v149.0] Enterprise hooks error: {hook_err} "
+                    f"(type={type(hook_err).__name__})"
+                )
+                logger.debug(f"[v149.0] Enterprise hooks traceback: {traceback.format_exc()}")
 
         # v149.1: Trigger Claude API fallback on startup timeout
         # This ensures jarvis-prime doesn't get stuck waiting for GCP
