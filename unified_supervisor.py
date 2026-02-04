@@ -64576,11 +64576,11 @@ async def handle_check_only(args: argparse.Namespace) -> int:
                     print(f"{BOLD}{BLUE}║{RESET}    {DIM}Instance: {instance_name}{RESET}")
                     print(f"{BOLD}{BLUE}║{RESET}    {DIM}→ VM will be started during resource init{RESET}")
                 else:
-                    # Static IP doesn't exist yet - this is recoverable
-                    print(f"{BOLD}{BLUE}║{RESET}    {warn_mark()} Static IP '{static_ip_name}' not found")
-                    print(f"{BOLD}{BLUE}║{RESET}    {DIM}→ Will be created during startup (or create manually){RESET}")
-                    print(f"{BOLD}{BLUE}║{RESET}    {DIM}→ gcloud compute addresses create {static_ip_name} --region={region}{RESET}")
-                    warnings.append(f"Invincible Node IP will be created")
+                    # v210.0: Static IP doesn't exist - will be auto-created (not a warning)
+                    print(f"{BOLD}{BLUE}║{RESET}    {CYAN}○{RESET} Static IP '{static_ip_name}' not found")
+                    print(f"{BOLD}{BLUE}║{RESET}    {DIM}→ Will be auto-created during startup{RESET}")
+                    print(f"{BOLD}{BLUE}║{RESET}    {DIM}Instance: {instance_name}{RESET}")
+                    # Not adding to warnings - auto-creation is expected behavior
                     
             except asyncio.TimeoutError:
                 print(f"{BOLD}{BLUE}║{RESET}    {warn_mark()} GCP check timed out")
@@ -65692,27 +65692,37 @@ async def _show_startup_dashboard() -> None:
         gcp_status = invincible_status.get("gcp_status") or "UNKNOWN"
         error = invincible_status.get("error")
         health = invincible_status.get("health", {})
-        ready = health.get("ready_for_inference", False)
+        ready = health.get("ready_for_inference", False) if health else False
 
-        if error:
-            # Provide more context on what failed
-            error_str = str(error)[:30] if error else "unknown"
-            status_str = f"{YELLOW}Pending ({error_str}){RESET}"
-        elif gcp_status == "RUNNING" and ready:
+        # v210.0: Better state classification
+        if gcp_status == "RUNNING" and ready:
             status_str = f"{GREEN}Ready{RESET}"
+            is_ok = True
         elif gcp_status == "RUNNING":
-            status_str = f"{YELLOW}Starting...{RESET}"
+            status_str = f"{CYAN}Starting...{RESET}"
+            is_ok = None  # Warning state
         elif gcp_status in ("STOPPED", "TERMINATED"):
-            status_str = f"{YELLOW}Will start{RESET}"
+            status_str = f"{CYAN}Will start{RESET}"
+            is_ok = None  # Warning state - will auto-start
         elif gcp_status == "NOT_FOUND":
-            status_str = f"{YELLOW}Will create{RESET}"
+            # v210.0: NOT_FOUND is no longer an error - we auto-create
+            status_str = f"{CYAN}Will auto-create{RESET}"
+            is_ok = None  # Warning state - will auto-create
         elif gcp_status == "UNKNOWN":
             status_str = f"{YELLOW}Checking...{RESET}"
+            is_ok = None
+        elif error:
+            # Only show error if it's a real error (not just missing resources)
+            error_str = str(error)[:30] if error else "unknown"
+            if "not configured" in error_str.lower() or "not set" in error_str.lower():
+                status_str = f"{YELLOW}Not configured{RESET}"
+            else:
+                status_str = f"{YELLOW}Pending ({error_str}){RESET}"
+            is_ok = None
         else:
             status_str = f"{YELLOW}{gcp_status}{RESET}"
+            is_ok = None
 
-        # Show warning icon only if there's an actual error, not just pending state
-        is_ok = gcp_status == "RUNNING" and ready and not error
         print(f"  {status_opt(is_ok)} Invincible Node: {status_str}")
 
     # Warnings summary

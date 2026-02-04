@@ -3559,10 +3559,16 @@ class GCPVMManager:
             result["error"] = "Invincible Node not configured (GCP_VM_STATIC_IP_NAME not set)"
             return result
 
-        # Get static IP address
+        # Get static IP address (read-only check, don't auto-create during status)
         try:
-            static_ip = await self._get_static_ip_address(self.config.static_ip_name)
-            result["static_ip"] = static_ip
+            # v210.0: Use auto_create=False for status checks to avoid side effects
+            static_ip = await self._get_static_ip_address(self.config.static_ip_name, auto_create=False)
+            if static_ip:
+                result["static_ip"] = static_ip
+            else:
+                # IP doesn't exist yet - will be auto-created during ensure_static_vm_ready
+                result["gcp_status"] = "NOT_FOUND"
+                result["error"] = None  # Not an error, just needs to be created
         except Exception as e:
             result["error"] = f"Failed to get static IP: {e}"
 
