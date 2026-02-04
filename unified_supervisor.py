@@ -53056,46 +53056,88 @@ class TrinityIntegrator:
 
     def _calculate_intelligent_timeout(self, component: TrinityComponent) -> float:
         """
-        v192.0: Calculate intelligent startup timeout based on component type and deployment mode.
+        v218.0: Calculate intelligent startup timeout using UNIFIED CONFIGURATION.
 
-        Timeout strategy:
-        - PRIME normal mode: 90s (local model loading)
-        - PRIME hollow client mode: 180s (GCP VM startup takes 2-3 minutes)
-        - REACTOR: 60s (training initialization)
-        - GENERIC: 30s (basic startup)
+        ROOT CAUSE FIX: Previous implementation used hardcoded 90s/60s timeouts that
+        were inadequate for ML model loading (which can take 10+ minutes). The 270s
+        timeout (90s * 3 for hollow client mode) was still causing premature failures.
 
-        Hollow client mode is detected from environment variables set by Prime
-        or from the HOLLOW_CLIENT_TIMEOUT_MULTIPLIER configuration.
+        Now uses TrinityOrchestrationConfig as SINGLE SOURCE OF TRUTH:
+        - jarvis-prime: 600s (10 minutes) - allows for heavy model loading
+        - reactor-core: 120s (2 minutes) - training initialization
+        - Generic components: 60s
+
+        Hollow client mode detection is preserved but now adds to the unified base,
+        not a separate hardcoded value.
         """
-        # Base timeouts by component type
-        base_timeouts = {
-            "jarvis-prime": 90.0,   # Model loading can take time
-            "reactor-core": 60.0,   # Training initialization
-        }
-        base_timeout = base_timeouts.get(component.name, 30.0)
+        # v218.0: Use unified configuration as SINGLE SOURCE OF TRUTH
+        try:
+            from backend.core.trinity_orchestration_config import (
+                TrinityOrchestrationConfig,
+                ComponentType,
+            )
+            config = TrinityOrchestrationConfig()
+            
+            # Map component name to ComponentType
+            component_type_map = {
+                "jarvis-prime": ComponentType.JARVIS_PRIME,
+                "jarvis_prime": ComponentType.JARVIS_PRIME,
+                "reactor-core": ComponentType.REACTOR_CORE,
+                "reactor_core": ComponentType.REACTOR_CORE,
+                "jarvis-body": ComponentType.JARVIS_BODY,
+                "jarvis_body": ComponentType.JARVIS_BODY,
+            }
+            
+            comp_type = component_type_map.get(component.name.lower().replace("-", "_"))
+            if comp_type:
+                profile = config.get_profile(comp_type)
+                base_timeout = profile.startup_timeout
+                self.logger.info(
+                    f"[Trinity] {component.name}: Using unified config timeout: {base_timeout:.0f}s "
+                    f"(from TrinityOrchestrationConfig.{comp_type.value})"
+                )
+            else:
+                base_timeout = 60.0  # Default for unknown components
+                self.logger.debug(f"[Trinity] {component.name}: Using default timeout: {base_timeout:.0f}s")
+                
+        except ImportError:
+            # Fallback if config not available - use sensible defaults
+            # v218.0: These are BACKUP values only, config should always be available
+            base_timeouts = {
+                "jarvis-prime": 600.0,   # 10 minutes for ML model loading
+                "jarvis_prime": 600.0,
+                "reactor-core": 120.0,   # 2 minutes for training init
+                "reactor_core": 120.0,
+            }
+            base_timeout = base_timeouts.get(component.name.lower().replace("-", "_"), 60.0)
+            self.logger.warning(
+                f"[Trinity] {component.name}: Config import failed, using fallback timeout: {base_timeout:.0f}s"
+            )
 
-        # Check for hollow client mode indicators
-        # Prime sets these env vars when running in hollow client mode
+        # v218.0: Hollow client mode extension (ADDITIVE, not replacement)
+        # When running in hollow client mode (GCP inference), add extra time for:
+        # - GCP VM cold start (60-120s typical)
+        # - Network latency
+        # - Model loading on GCP
         hollow_client_indicators = [
             os.getenv("HOLLOW_CLIENT_MODE", "").lower() in ("true", "1", "yes"),
             os.getenv("GCP_PRIME_ENDPOINT", "") != "",
             os.getenv("USE_GCP_INFERENCE", "").lower() in ("true", "1", "yes"),
-            # Also check if machine has limited RAM (hollow client mode auto-activates < 32GB)
             self._detect_limited_ram(),
         ]
 
         is_hollow_client = any(hollow_client_indicators)
-
-        if component.name == "jarvis-prime" and is_hollow_client:
-            # GCP VM startup takes 96+ seconds, use 3x multiplier
-            timeout = base_timeout * SemanticReadinessChecker.HOLLOW_CLIENT_TIMEOUT_MULTIPLIER
+        
+        if component.name in ("jarvis-prime", "jarvis_prime") and is_hollow_client:
+            # Add GCP VM startup buffer (120s) to the already-generous base timeout
+            gcp_buffer = float(os.getenv("HOLLOW_CLIENT_GCP_BUFFER", "120.0"))
+            timeout = base_timeout + gcp_buffer
             self.logger.info(
                 f"[Trinity] {component.name}: Hollow client mode detected, "
-                f"using extended timeout: {timeout:.0f}s (GCP VM startup)"
+                f"extended timeout: {timeout:.0f}s (base {base_timeout:.0f}s + GCP buffer {gcp_buffer:.0f}s)"
             )
         else:
             timeout = base_timeout
-            self.logger.debug(f"[Trinity] {component.name}: Using standard timeout: {timeout:.0f}s")
 
         return timeout
 
