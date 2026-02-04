@@ -1025,16 +1025,94 @@ except ImportError:
     async_with_retry = None
     async_with_backpressure = None
     async_safe_operation = None
-    # v210.0: Fallback for create_safe_task - just use asyncio.create_task
-    def create_safe_task(coro, name=None, **kwargs):
-        """Fallback for create_safe_task when async_safety is not available."""
+    # v210.0: Fallback for create_safe_task with proper exception handling
+    # Global set to hold references to fire-and-forget tasks (prevent GC)
+    _fallback_fire_and_forget_tasks: set = set()
+    # Store reference to original asyncio.create_task to avoid infinite recursion
+    # when we globally replace asyncio.create_task with create_safe_task
+    _raw_asyncio_create_task = asyncio.create_task
+    
+    def _fallback_task_done_callback(task, name: str = "unnamed") -> None:
+        """
+        Callback for fire-and-forget tasks that properly handles exceptions.
+        
+        This prevents "Future exception was never retrieved" errors by:
+        1. Retrieving and logging any exceptions
+        2. Removing the task from the tracking set
+        """
+        _fallback_fire_and_forget_tasks.discard(task)
+        
+        if task.cancelled():
+            logging.debug(f"[SafeTask] Task '{name}' was cancelled")
+            return
+        
         try:
-            return asyncio.create_task(coro, name=name)
+            exc = task.exception()
+            if exc is not None:
+                # Log the exception instead of letting it go unretrieved
+                logging.warning(
+                    f"[SafeTask] Task '{name}' raised {type(exc).__name__}: {exc}"
+                )
+        except asyncio.CancelledError:
+            pass  # Task was cancelled, already handled above
+        except asyncio.InvalidStateError:
+            pass  # Task hasn't finished yet, shouldn't happen in done callback
+    
+    def create_safe_task(coro, name=None, log_exceptions=True, **kwargs):
+        """
+        Fallback for create_safe_task when async_safety is not available.
+        
+        Creates an asyncio task with proper exception handling to prevent
+        "Future exception was never retrieved" errors.
+        
+        Args:
+            coro: The coroutine to run as a task
+            name: Optional name for the task (for logging)
+            log_exceptions: Whether to log exceptions (default: True)
+        
+        Returns:
+            The created task
+        """
+        task_name = name or (coro.__qualname__ if hasattr(coro, '__qualname__') else "anonymous")
+        
+        try:
+            # Python 3.8+ supports the name parameter
+            # Use _raw_asyncio_create_task to avoid infinite recursion after global replace
+            task = _raw_asyncio_create_task(coro, name=task_name)
         except TypeError:
-            return asyncio.create_task(coro)
+            # Python 3.7 fallback
+            task = _raw_asyncio_create_task(coro)
+        
+        # Keep reference to prevent garbage collection before completion
+        _fallback_fire_and_forget_tasks.add(task)
+        
+        # Add callback to handle exceptions and cleanup
+        if log_exceptions:
+            task.add_done_callback(lambda t: _fallback_task_done_callback(t, task_name))
+        else:
+            task.add_done_callback(lambda t: _fallback_fire_and_forget_tasks.discard(t))
+        
+        return task
+    
     async def wait_for_fire_and_forget_tasks(timeout=5.0):
-        """Fallback - no-op when async_safety is not available."""
-        return 0
+        """Wait for all fire-and-forget tasks to complete."""
+        if not _fallback_fire_and_forget_tasks:
+            return 0
+        
+        tasks = list(_fallback_fire_and_forget_tasks)
+        logging.debug(f"[SafeTask] Waiting for {len(tasks)} pending tasks...")
+        
+        try:
+            done, pending = await asyncio.wait(tasks, timeout=timeout)
+            
+            # Cancel any remaining tasks
+            for task in pending:
+                task.cancel()
+            
+            return len(pending)
+        except Exception as e:
+            logging.debug(f"[SafeTask] Wait error: {e}")
+            return len(tasks)
 
 # =============================================================================
 # v210.0: MODULAR INTEGRATION HELPERS
@@ -3533,7 +3611,7 @@ class LiveSpinner:
         """Start the spinner animation."""
         self._running = True
         self._start_time = time.time()
-        self._task = asyncio.create_task(self._spin())
+        self._task = create_safe_task(self._spin())
 
     async def stop(self, success: bool = True) -> None:
         """Stop the spinner and show final status."""
@@ -3745,7 +3823,7 @@ class StartupProgressDisplay:
         """Start the spinner animation."""
         self._spinner_running = True
         self._spinner_message = phase_name
-        self._spinner_task = asyncio.create_task(self._spin_loop())
+        self._spinner_task = create_safe_task(self._spin_loop())
 
     def _stop_spinner(self) -> None:
         """Stop the spinner animation."""
@@ -3960,7 +4038,7 @@ class LiveProgressDashboard:
             return
         self._running = True
         self._start_time = time.time()
-        self._task = asyncio.create_task(self._render_loop())
+        self._task = create_safe_task(self._render_loop())
         
     def stop(self) -> None:
         """Stop the live dashboard."""
@@ -6509,7 +6587,7 @@ class ScaleToZeroCostOptimizer(ResourceManagerBase):
             return
 
         self._shutdown_callback = shutdown_callback
-        self._monitoring_task = asyncio.create_task(self._monitoring_loop())
+        self._monitoring_task = create_safe_task(self._monitoring_loop())
         self._logger.info("Scale-to-Zero monitoring started")
 
     async def stop_monitoring(self) -> None:
@@ -7725,7 +7803,7 @@ class ResourceManagerRegistry:
             pending_tasks: Dict[asyncio.Task, str] = {}
             
             for name, manager in self._managers.items():
-                task = asyncio.create_task(manager.safe_initialize())
+                task = create_safe_task(manager.safe_initialize())
                 pending_tasks[task] = name
             
             while pending_tasks:
@@ -7950,7 +8028,7 @@ class SpotInstanceResilienceHandler(ResourceManagerBase):
         self._fallback_callback = fallback_callback
 
         if self.enabled and not self._polling_active:
-            self._polling_task = asyncio.create_task(self._poll_preemption_notice())
+            self._polling_task = create_safe_task(self._poll_preemption_notice())
             self._polling_active = True
             self._logger.info("Preemption handler active")
 
@@ -9827,7 +9905,7 @@ class AsyncVoiceNarrator:
     async def start_queue_processor(self) -> None:
         """Start background queue processor for non-blocking speech."""
         if self._queue_processor_task is None:
-            self._queue_processor_task = asyncio.create_task(
+            self._queue_processor_task = create_safe_task(
                 self._process_queue(),
                 name="voice-queue-processor"
             )
@@ -9907,7 +9985,7 @@ class AsyncVoiceNarrator:
                 await asyncio.wait_for(self._process.communicate(), timeout=30.0)
             else:
                 # Fire and forget for non-blocking
-                asyncio.create_task(self._wait_and_cleanup())
+                create_safe_task(self._wait_and_cleanup())
 
             self._messages_spoken += 1
 
@@ -10521,10 +10599,10 @@ class IntelligentResourceOrchestrator:
         makes decisions about startup mode and cloud activation.
         """
         # Phase 1: Parallel resource checks
-        memory_task = asyncio.create_task(self._check_memory_detailed())
-        disk_task = asyncio.create_task(self._check_disk())
-        ports_task = asyncio.create_task(self._check_ports_intelligent())
-        cpu_task = asyncio.create_task(self._check_cpu())
+        memory_task = create_safe_task(self._check_memory_detailed())
+        disk_task = create_safe_task(self._check_disk())
+        ports_task = create_safe_task(self._check_ports_intelligent())
+        cpu_task = create_safe_task(self._check_cpu())
 
         memory_result, disk_result, ports_result, cpu_result = await asyncio.gather(
             memory_task, disk_task, ports_task, cpu_task
@@ -12335,10 +12413,10 @@ class StabilizedChromeLauncher:
                 self._started_at = time.time()
 
                 # v197.6: Start async stream monitors (prevents buffer blocking)
-                self._stdout_monitor_task = asyncio.create_task(
+                self._stdout_monitor_task = create_safe_task(
                     self._monitor_stdout_stream(self._chrome_process)
                 )
-                self._stderr_monitor_task = asyncio.create_task(
+                self._stderr_monitor_task = create_safe_task(
                     self._monitor_stderr_stream(self._chrome_process)
                 )
 
@@ -14778,7 +14856,7 @@ class ParallelProcessCleaner:
                 return await self._terminate_process(pid, info)
 
         tasks = [
-            asyncio.create_task(terminate_one(pid, info))
+            create_safe_task(terminate_one(pid, info))
             for pid, info in processes.items()
         ]
 
@@ -16078,7 +16156,7 @@ class SpotInstanceResilienceHandler:
         if self.enabled:
             # Start metadata server polling for preemption notice
             self._running = True
-            self._polling_task = asyncio.create_task(self._poll_preemption_notice())
+            self._polling_task = create_safe_task(self._poll_preemption_notice())
             self._logger.info("🛡️ Preemption handler active")
 
     async def stop(self) -> None:
@@ -18348,7 +18426,7 @@ class HybridIntelligenceCoordinator(IntelligenceManagerBase):
             return
 
         self._running = True
-        self._monitoring_task = asyncio.create_task(self._monitoring_loop())
+        self._monitoring_task = create_safe_task(self._monitoring_loop())
         self._logger.info(f"Hybrid intelligence monitoring started (interval: {self._monitoring_interval}s)")
 
     async def stop_monitoring(self) -> None:
@@ -19476,7 +19554,7 @@ class NeuralMeshCoordinator:
     async def start(self) -> None:
         """Start the Neural Mesh coordinator."""
         self._running = True
-        self._sync_task = asyncio.create_task(self._sync_loop())
+        self._sync_task = create_safe_task(self._sync_loop())
         self._logger.info("Neural Mesh coordinator started")
 
     async def stop(self) -> None:
@@ -19970,7 +20048,7 @@ class MultiAgentSystem:
     async def start(self) -> None:
         """Start the MAS coordinator."""
         self._running = True
-        self._coordinator_task = asyncio.create_task(self._coordinate())
+        self._coordinator_task = create_safe_task(self._coordinate())
         self._logger.info("MAS coordinator started")
 
     async def stop(self) -> None:
@@ -20362,7 +20440,7 @@ class DataFlywheelManager:
             return True
 
         self._running = True
-        self._flush_task = asyncio.create_task(self._flush_loop())
+        self._flush_task = create_safe_task(self._flush_loop())
         return True
 
     async def stop(self) -> None:
@@ -20763,7 +20841,7 @@ class TrinityHealthMonitor:
             return True
 
         self._running = True
-        self._monitor_task = asyncio.create_task(self._monitor_loop())
+        self._monitor_task = create_safe_task(self._monitor_loop())
         return True
 
     async def stop(self) -> None:
@@ -20951,7 +21029,7 @@ class GracefulDegradationManager:
             return True
 
         self._running = True
-        self._monitor_task = asyncio.create_task(self._monitor_loop())
+        self._monitor_task = create_safe_task(self._monitor_loop())
         return True
 
     async def stop(self) -> None:
@@ -21790,7 +21868,7 @@ class TrinityIPCHub:
             return True
 
         self._running = True
-        self._cleanup_task = asyncio.create_task(self._cleanup_loop())
+        self._cleanup_task = create_safe_task(self._cleanup_loop())
 
         # Load persisted messages
         if self._enable_persistence:
@@ -22388,7 +22466,7 @@ class ResourceQuotaManager:
             return True
 
         self._running = True
-        self._monitor_task = asyncio.create_task(self._monitor_loop())
+        self._monitor_task = create_safe_task(self._monitor_loop())
         return True
 
     async def stop(self) -> None:
@@ -22608,7 +22686,7 @@ class CrossRepoExperienceForwarder:
             return True
 
         self._running = True
-        self._flush_task = asyncio.create_task(self._flush_loop())
+        self._flush_task = create_safe_task(self._flush_loop())
 
         # Check initial reactor availability
         await self._check_reactor_health()
@@ -23171,7 +23249,7 @@ class DistributedStateCoordinator:
             return True
 
         self._running = True
-        self._sync_task = asyncio.create_task(self._sync_loop())
+        self._sync_task = create_safe_task(self._sync_loop())
 
         # Load initial state
         await self._load_state()
@@ -23494,7 +23572,7 @@ class TrinityOrchestrationEngine:
         await self._load_state()
 
         # Start election timer
-        self._election_task = asyncio.create_task(self._election_loop())
+        self._election_task = create_safe_task(self._election_loop())
 
         return True
 
@@ -23571,7 +23649,7 @@ class TrinityOrchestrationEngine:
             # Start heartbeat task
             if self._heartbeat_task:
                 self._heartbeat_task.cancel()
-            self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
+            self._heartbeat_task = create_safe_task(self._heartbeat_loop())
         else:
             self._state = self.NodeState.FOLLOWER
 
@@ -23872,7 +23950,7 @@ class IntelligentWorkloadBalancer:
             return True
 
         self._running = True
-        self._health_task = asyncio.create_task(self._health_check_loop())
+        self._health_task = create_safe_task(self._health_check_loop())
         return True
 
     async def stop(self) -> None:
@@ -25081,7 +25159,7 @@ class DynamicConfigurationManager:
         await self._load_config()
 
         self._running = True
-        self._reload_task = asyncio.create_task(self._reload_loop())
+        self._reload_task = create_safe_task(self._reload_loop())
         return True
 
     async def stop(self) -> None:
@@ -25290,7 +25368,7 @@ class DistributedLockManager:
         self._storage_path.mkdir(parents=True, exist_ok=True)
 
         # Start heartbeat task
-        self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
+        self._heartbeat_task = create_safe_task(self._heartbeat_loop())
 
     async def stop(self) -> None:
         """Stop the lock manager and release all held locks."""
@@ -25779,7 +25857,7 @@ class ServiceMeshRouter:
             return
 
         self._running = True
-        self._health_check_task = asyncio.create_task(self._health_check_loop())
+        self._health_check_task = create_safe_task(self._health_check_loop())
 
     async def stop(self) -> None:
         """Stop the service mesh router."""
@@ -26035,7 +26113,7 @@ class ServiceMeshRouter:
         """Execute request with hedging - send backup request after delay."""
         self._stats["hedged_requests"] += 1
 
-        primary_task = asyncio.create_task(request_func(primary_endpoint))
+        primary_task = create_safe_task(request_func(primary_endpoint))
 
         # Wait for either primary to complete or hedge delay
         try:
@@ -26058,7 +26136,7 @@ class ServiceMeshRouter:
             # No hedge endpoint, wait for primary
             return await primary_task
 
-        hedge_task = asyncio.create_task(request_func(hedge_endpoint))
+        hedge_task = create_safe_task(request_func(hedge_endpoint))
 
         # Wait for first to complete
         done, pending = await asyncio.wait(
@@ -26344,7 +26422,7 @@ class ObservabilityPipeline:
         self._running = True
         self._storage_path.mkdir(parents=True, exist_ok=True)
 
-        self._flush_task = asyncio.create_task(self._flush_loop())
+        self._flush_task = create_safe_task(self._flush_loop())
 
     async def stop(self) -> None:
         """Stop the pipeline and flush remaining data."""
@@ -27015,7 +27093,7 @@ class FeatureGateManager:
         self._storage_path.mkdir(parents=True, exist_ok=True)
 
         await self._load_gates()
-        self._sync_task = asyncio.create_task(self._sync_loop())
+        self._sync_task = create_safe_task(self._sync_loop())
 
     async def stop(self) -> None:
         """Stop the feature gate manager."""
@@ -27731,7 +27809,7 @@ class SecretVaultManager:
             return
 
         self._running = True
-        self._rotation_task = asyncio.create_task(self._rotation_loop())
+        self._rotation_task = create_safe_task(self._rotation_loop())
 
         # Load from environment variables
         self._load_from_env()
@@ -28078,8 +28156,8 @@ class AuditTrailRecorder:
         self._running = True
         self._storage_path.mkdir(parents=True, exist_ok=True)
 
-        self._flush_task = asyncio.create_task(self._flush_loop())
-        self._cleanup_task = asyncio.create_task(self._cleanup_loop())
+        self._flush_task = create_safe_task(self._flush_loop())
+        self._cleanup_task = create_safe_task(self._cleanup_loop())
 
     async def stop(self) -> None:
         """Stop the recorder and flush remaining events."""
@@ -29043,7 +29121,7 @@ class TaskQueueManager:
 
         # Start worker pool
         for i in range(self._max_workers):
-            worker = asyncio.create_task(self._worker_loop(f"worker-{i}"))
+            worker = create_safe_task(self._worker_loop(f"worker-{i}"))
             self._workers.append(worker)
 
     async def stop(self) -> None:
@@ -30672,7 +30750,7 @@ class ConnectionPool:
         await self._warm_pool()
 
         # Start maintenance task
-        self._maintenance_task = asyncio.create_task(self._maintenance_loop())
+        self._maintenance_task = create_safe_task(self._maintenance_loop())
 
     async def stop(self) -> None:
         """Stop the pool and close all connections."""
@@ -31072,7 +31150,7 @@ class HealthCheckOrchestrator:
             return
 
         self._running = True
-        self._check_task = asyncio.create_task(self._check_loop())
+        self._check_task = create_safe_task(self._check_loop())
 
     async def stop(self) -> None:
         """Stop the orchestrator."""
@@ -31911,7 +31989,7 @@ class CanaryReleaseManager:
         # Start monitoring if auto-promote
         if auto_promote:
             steps = steps or self._default_steps
-            task = asyncio.create_task(self._auto_promote_loop(application_name, steps))
+            task = create_safe_task(self._auto_promote_loop(application_name, steps))
             self._monitor_tasks[application_name] = task
 
         # Initial canary deployment
@@ -32437,7 +32515,7 @@ class InfrastructureProvisionerManager:
         self._stats["stacks_created"] += 1
 
         # Provision in background
-        asyncio.create_task(self._provision_stack(stack))
+        create_safe_task(self._provision_stack(stack))
 
         return stack_id
 
@@ -32722,7 +32800,7 @@ class DataPipelineManager:
         self._runs[run.run_id] = run
 
         # Execute in background
-        asyncio.create_task(self._execute_run(run, data))
+        create_safe_task(self._execute_run(run, data))
 
         return run.run_id
 
@@ -33367,7 +33445,7 @@ class CronScheduler:
         for job in self._jobs.values():
             job.next_run_at = self._calculate_next_run(job.cron_expression)
 
-        self._scheduler_task = asyncio.create_task(self._scheduler_loop())
+        self._scheduler_task = create_safe_task(self._scheduler_loop())
 
     async def stop(self) -> None:
         """Stop the scheduler."""
@@ -33481,7 +33559,7 @@ class CronScheduler:
                         continue
 
                     # Time to run
-                    asyncio.create_task(self._execute_job(job))
+                    create_safe_task(self._execute_job(job))
                     job.next_run_at = self._calculate_next_run(job.cron_expression)
 
                 await asyncio.sleep(1)
@@ -33528,7 +33606,7 @@ class CronScheduler:
         """Trigger immediate execution of a job."""
         job = self._jobs.get(job_id)
         if job:
-            asyncio.create_task(self._execute_job(job))
+            create_safe_task(self._execute_job(job))
             return True
         return False
 
@@ -33662,7 +33740,7 @@ class WebhookDispatcher:
             if event_type not in webhook.events and "*" not in webhook.events:
                 continue
 
-            asyncio.create_task(self._deliver(webhook, event_type, payload))
+            create_safe_task(self._deliver(webhook, event_type, payload))
             dispatched.append(webhook.webhook_id)
 
         return dispatched
@@ -37057,7 +37135,7 @@ class ServiceRegistryManager:
         try:
             async with self._lock:
                 # Start health check loop
-                self._health_check_task = asyncio.create_task(
+                self._health_check_task = create_safe_task(
                     self._health_check_loop()
                 )
                 self._initialized = True
@@ -40060,7 +40138,7 @@ class RequestCoalescer:
                     raise e
 
             # Start new request
-            task = asyncio.create_task(self._execute_and_distribute(key, executor))
+            task = create_safe_task(self._execute_and_distribute(key, executor))
             self._in_flight[key] = task
 
         try:
@@ -40169,7 +40247,7 @@ class BackgroundJobManager:
         try:
             # Start worker tasks
             for i in range(self._num_workers):
-                worker = asyncio.create_task(self._worker_loop(i))
+                worker = create_safe_task(self._worker_loop(i))
                 self._workers.append(worker)
 
             self._initialized = True
@@ -40602,7 +40680,7 @@ class ResourcePoolManager:
                 await self._create_resource()
 
             # Start maintenance task
-            self._maintenance_task = asyncio.create_task(self._maintenance_loop())
+            self._maintenance_task = create_safe_task(self._maintenance_loop())
 
             self._initialized = True
             self._logger.info(f"Resource pool initialized with {len(self._pool)} resources")
@@ -45610,7 +45688,7 @@ class WorkflowOrchestrator:
     async def initialize(self) -> bool:
         """Initialize the workflow orchestrator."""
         self._running = True
-        self._executor_task = asyncio.create_task(self._executor_loop())
+        self._executor_task = create_safe_task(self._executor_loop())
         return True
 
     async def cleanup(self) -> None:
@@ -46532,7 +46610,7 @@ class NotificationHub:
     async def initialize(self) -> bool:
         """Initialize the notification hub."""
         self._running = True
-        self._delivery_task = asyncio.create_task(self._delivery_loop())
+        self._delivery_task = create_safe_task(self._delivery_loop())
         return True
 
     async def cleanup(self) -> None:
@@ -46904,7 +46982,7 @@ class SessionManager:
     async def initialize(self) -> bool:
         """Initialize the session manager."""
         self._running = True
-        self._cleanup_task = asyncio.create_task(self._cleanup_loop())
+        self._cleanup_task = create_safe_task(self._cleanup_loop())
         return True
 
     async def cleanup(self) -> None:
@@ -47252,7 +47330,7 @@ class DataLakeManager:
     async def initialize(self) -> bool:
         """Initialize the data lake manager."""
         self._running = True
-        self._retention_task = asyncio.create_task(self._retention_loop())
+        self._retention_task = create_safe_task(self._retention_loop())
         return True
 
     async def cleanup(self) -> None:
@@ -47684,7 +47762,7 @@ class StreamingAnalyticsEngine:
     async def initialize(self) -> bool:
         """Initialize the streaming engine."""
         self._running = True
-        self._process_task = asyncio.create_task(self._processing_loop())
+        self._process_task = create_safe_task(self._processing_loop())
         return True
 
     async def cleanup(self) -> None:
@@ -48764,7 +48842,7 @@ class HealthAggregator:
     async def initialize(self) -> bool:
         """Initialize the health aggregator."""
         self._running = True
-        self._check_task = asyncio.create_task(self._check_loop())
+        self._check_task = create_safe_task(self._check_loop())
         return True
 
     async def cleanup(self) -> None:
@@ -49048,7 +49126,7 @@ class SystemTelemetryCollector:
     async def initialize(self) -> bool:
         """Initialize the telemetry collector."""
         self._running = True
-        self._collect_task = asyncio.create_task(self._collection_loop())
+        self._collect_task = create_safe_task(self._collection_loop())
         return True
 
     async def cleanup(self) -> None:
@@ -50564,7 +50642,7 @@ class ComprehensiveZombieCleanup:
                 return await self._terminate_zombie(pid, info)
 
         tasks = [
-            asyncio.create_task(terminate_one(pid, info))
+            create_safe_task(terminate_one(pid, info))
             for pid, info in zombies.items()
         ]
 
@@ -50831,7 +50909,7 @@ class ProcessStateManager:
                 return name, await self.stop_process(name, timeout=timeout / 2)
 
         tasks = [
-            asyncio.create_task(stop_one(name))
+            create_safe_task(stop_one(name))
             for name, proc in processes.items()
             if proc.state == ProcessState.RUNNING
         ]
@@ -51420,7 +51498,7 @@ class HotReloadWatcher:
         self.logger.info(f"   Grace period: {self.grace_period}s, Check interval: {self.check_interval}s")
 
         # Start monitor task
-        self._monitor_task = asyncio.create_task(self._monitor_loop())
+        self._monitor_task = create_safe_task(self._monitor_loop())
 
     async def stop(self) -> None:
         """Stop the hot reload watcher."""
@@ -51515,7 +51593,7 @@ class HotReloadWatcher:
                             self._pending_changes.extend(backend_changes)
                             if self._debounce_task:
                                 self._debounce_task.cancel()
-                            self._debounce_task = asyncio.create_task(self._debounced_restart())
+                            self._debounce_task = create_safe_task(self._debounced_restart())
 
                     # Handle frontend changes
                     if frontend_changes:
@@ -51527,7 +51605,7 @@ class HotReloadWatcher:
                             self._pending_frontend_changes.extend(frontend_changes)
                             if self._frontend_debounce_task:
                                 self._frontend_debounce_task.cancel()
-                            self._frontend_debounce_task = asyncio.create_task(self._debounced_frontend_rebuild())
+                            self._frontend_debounce_task = create_safe_task(self._debounced_frontend_rebuild())
 
                     # Log if only docs changed
                     if not backend_changes and not frontend_changes:
@@ -51608,7 +51686,7 @@ class ProgressiveReadinessManager:
         if self._heartbeat_task is not None:
             return  # Already running
 
-        self._heartbeat_task = asyncio.create_task(
+        self._heartbeat_task = create_safe_task(
             self._heartbeat_loop(),
             name="kernel-heartbeat"
         )
@@ -51947,7 +52025,7 @@ class StartupWatchdog:
             return
         
         self._running = True
-        self._watchdog_task = asyncio.create_task(
+        self._watchdog_task = create_safe_task(
             self._watchdog_loop(),
             name="startup-watchdog"
         )
@@ -52952,7 +53030,7 @@ class TrinityIntegrator:
         
         # Create parallel tasks
         tasks = [
-            asyncio.create_task(_start_with_name(name, comp))
+            create_safe_task(_start_with_name(name, comp))
             for name, comp in components_to_start
         ]
         
@@ -53901,7 +53979,7 @@ class TrinityIntegrator:
         if self._health_monitor_task:
             return
 
-        self._health_monitor_task = asyncio.create_task(
+        self._health_monitor_task = create_safe_task(
             self._health_monitor_loop(),
             name="trinity-health-monitor"
         )
@@ -56334,7 +56412,7 @@ class JarvisSystemKernel:
             self._heartbeat_last_sent_progress = 0  # Track last sent progress for monotonic enforcement
 
             # Start heartbeat in background using instance method
-            heartbeat_task = asyncio.create_task(
+            heartbeat_task = create_safe_task(
                 self._progress_heartbeat_task(),
                 name="startup-progress-heartbeat"
             )
@@ -56828,7 +56906,7 @@ class JarvisSystemKernel:
 
             # Start background pre-warming task (non-blocking)
             issue_collector.set_current_phase("Background Tasks")
-            prewarm_task = asyncio.create_task(
+            prewarm_task = create_safe_task(
                 self._prewarm_python_modules(),
                 name="module-prewarm"
             )
@@ -57515,7 +57593,7 @@ class JarvisSystemKernel:
                     self.logger.debug(f"[Kernel] Resource heartbeat #{tick_count} ({heartbeat_progress[0]}%)")
             
             # Start heartbeat task
-            heartbeat_task = asyncio.create_task(resource_heartbeat())
+            heartbeat_task = create_safe_task(resource_heartbeat())
 
             # =====================================================================
             # v199.0: INVINCIBLE NODE PARALLEL WAKE-UP
@@ -57548,7 +57626,7 @@ class JarvisSystemKernel:
                         self.logger.warning(f"[InvincibleNode] Wake-up failed: {e}")
                         return False, None, f"ERROR: {e}"
 
-                invincible_node_task = asyncio.create_task(
+                invincible_node_task = create_safe_task(
                     _wake_invincible_node(),
                     name="invincible_node_wakeup"
                 )
@@ -57838,7 +57916,7 @@ class JarvisSystemKernel:
             self._backend_server = uvicorn.Server(uvicorn_config)
 
             # Run server in background task
-            task = asyncio.create_task(self._backend_server.serve())
+            task = create_safe_task(self._backend_server.serve())
             self._background_tasks.append(task)
 
             # Wait for server to be ready
@@ -58592,7 +58670,7 @@ class JarvisSystemKernel:
                 dashboard.update_component("reactor-core", status="starting")
                 
                 # v188.0: Start heartbeat task for long-running operations
-                heartbeat_task = asyncio.create_task(
+                heartbeat_task = create_safe_task(
                     _trinity_heartbeat_loop(),
                     name="trinity-dms-heartbeat"
                 )
@@ -58924,7 +59002,7 @@ class JarvisSystemKernel:
                     # =====================================================================
                     auto_restart = os.environ.get("JARVIS_TRINITY_AUTO_RESTART", "true").lower() == "true"
                     if auto_restart and started_count > 0:
-                        watchdog_task = asyncio.create_task(
+                        watchdog_task = create_safe_task(
                             self._trinity_watchdog_loop(),
                             name="trinity-watchdog"
                         )
@@ -60108,7 +60186,7 @@ class JarvisSystemKernel:
                     )
                     # v184.0: Start heartbeat even when slow - ensures frontend gets liveness
                     if self._heartbeat_task is None or self._heartbeat_task.done():
-                        self._heartbeat_task = asyncio.create_task(
+                        self._heartbeat_task = create_safe_task(
                             self._supervisor_heartbeat_loop()
                         )
                         self.logger.debug("[LoadingServer] Heartbeat loop started (slow path)")
@@ -60122,7 +60200,7 @@ class JarvisSystemKernel:
 
             # v183.0: Start heartbeat background task
             if self._heartbeat_task is None or self._heartbeat_task.done():
-                self._heartbeat_task = asyncio.create_task(
+                self._heartbeat_task = create_safe_task(
                     self._supervisor_heartbeat_loop()
                 )
                 self.logger.debug("[LoadingServer] Heartbeat loop started")
@@ -61398,12 +61476,12 @@ class JarvisSystemKernel:
 
         # Start background tasks
         self._background_tasks.extend([
-            asyncio.create_task(self._health_monitor_loop(), name="health-monitor"),
+            create_safe_task(self._health_monitor_loop(), name="health-monitor"),
         ])
 
         # v210.0: Start readiness monitoring loop for post-startup health tracking
         # This monitors component health and revokes/restores FULLY_READY as needed
-        self._readiness_monitor_task = asyncio.create_task(
+        self._readiness_monitor_task = create_safe_task(
             self._readiness_monitoring_loop(),
             name="readiness-monitor"
         )
@@ -61413,7 +61491,7 @@ class JarvisSystemKernel:
         # Add cost optimizer if scale-to-zero is enabled
         if self.config.scale_to_zero_enabled:
             self._background_tasks.append(
-                asyncio.create_task(self._cost_optimizer_loop(), name="cost-optimizer")
+                create_safe_task(self._cost_optimizer_loop(), name="cost-optimizer")
             )
 
         try:
@@ -65611,10 +65689,10 @@ async def handle_dashboard() -> int:
     # Fetch all data in parallel (requirement 3: async parallel)
     # Note: deterministic print order is handled by _format_dashboard_output
 
-    lock_task = asyncio.create_task(_fetch_lock_status_readonly())
-    kernel_task = asyncio.create_task(_fetch_kernel_status_ipc(timeout=5.0))  # 5s timeout
-    preflight_task = asyncio.create_task(_fetch_preflight_status())
-    invincible_task = asyncio.create_task(_fetch_invincible_status_direct(timeout=10.0))  # 10s timeout
+    lock_task = create_safe_task(_fetch_lock_status_readonly())
+    kernel_task = create_safe_task(_fetch_kernel_status_ipc(timeout=5.0))  # 5s timeout
+    preflight_task = create_safe_task(_fetch_preflight_status())
+    invincible_task = create_safe_task(_fetch_invincible_status_direct(timeout=10.0))  # 10s timeout
 
     # Gather with per-section error handling (requirement 5)
     results = await asyncio.gather(
@@ -65694,9 +65772,9 @@ async def _show_startup_dashboard() -> None:
         return status_icon(val)
 
     # Fetch data with shorter timeouts for startup (don't block too long)
-    lock_task = asyncio.create_task(_fetch_lock_status_readonly())
-    preflight_task = asyncio.create_task(_fetch_preflight_status())
-    invincible_task = asyncio.create_task(_fetch_invincible_status_direct(timeout=5.0))  # Shorter timeout
+    lock_task = create_safe_task(_fetch_lock_status_readonly())
+    preflight_task = create_safe_task(_fetch_preflight_status())
+    invincible_task = create_safe_task(_fetch_invincible_status_direct(timeout=5.0))  # Shorter timeout
 
     results = await asyncio.gather(
         lock_task, preflight_task, invincible_task,
@@ -66516,6 +66594,28 @@ async def async_main(args: argparse.Namespace) -> int:
         subprocess_mode=args.subprocess if hasattr(args, 'subprocess') else None,
     )
 
+    # v210.1: Set up global asyncio exception handler as a safety net
+    # This catches any remaining unhandled task exceptions that slip through
+    def _global_exception_handler(loop, context):
+        """Global asyncio exception handler for unhandled task exceptions."""
+        exception = context.get('exception')
+        message = context.get('message', 'Unknown error')
+        task = context.get('task')
+        task_name = task.get_name() if task and hasattr(task, 'get_name') else 'unknown'
+        
+        if exception:
+            kernel.logger.warning(
+                f"[GlobalExceptionHandler] Unhandled task exception in '{task_name}': "
+                f"{type(exception).__name__}: {exception}"
+            )
+        else:
+            kernel.logger.warning(
+                f"[GlobalExceptionHandler] Async error in '{task_name}': {message}"
+            )
+    
+    loop = asyncio.get_running_loop()
+    loop.set_exception_handler(_global_exception_handler)
+    
     # v119.0: Enterprise-grade try/finally with guaranteed lock release
     # This ensures resources are always cleaned up, even on unexpected exits
     exit_code = 1  # Default to failure

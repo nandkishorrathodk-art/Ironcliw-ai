@@ -30,6 +30,38 @@ from enum import Enum, IntEnum
 from pathlib import Path
 from typing import Any, Callable, Optional
 
+# v210.0: Import safe task wrapper to prevent "Future exception was never retrieved"
+try:
+    from backend.core.async_safety import create_safe_task
+except ImportError:
+    # Fallback if async_safety is not available
+    _raw_create_task = asyncio.create_task
+    _fallback_tasks: set = set()
+    
+    def create_safe_task(coro, name=None, **kwargs):
+        """Fallback for create_safe_task with proper exception handling."""
+        task_name = name or "unnamed"
+        try:
+            task = _raw_create_task(coro, name=task_name)
+        except TypeError:
+            task = _raw_create_task(coro)
+        
+        _fallback_tasks.add(task)
+        
+        def _handle_done(t):
+            _fallback_tasks.discard(t)
+            if t.cancelled():
+                return
+            try:
+                exc = t.exception()
+                if exc is not None:
+                    logging.warning(f"[SafeTask] {task_name} error: {type(exc).__name__}: {exc}")
+            except (asyncio.CancelledError, asyncio.InvalidStateError):
+                pass
+        
+        task.add_done_callback(_handle_done)
+        return task
+
 from .supervisor_config import (
     SupervisorConfig,
     SupervisorMode,
@@ -476,14 +508,14 @@ class JARVISSupervisor:
 
                             # Report to progress hub
                             if progress >= 1.0:
-                                asyncio.create_task(
+                                create_safe_task(
                                     self._progress_hub.component_complete(
                                         f"intelligence_{component_name}",
                                         f"{display_name} ready"
                                     )
                                 )
                             else:
-                                asyncio.create_task(
+                                create_safe_task(
                                     self._progress_hub.component_start(
                                         f"intelligence_{component_name}",
                                         display_name
@@ -594,7 +626,7 @@ class JARVISSupervisor:
                     # Report to progress hub if available
                     if self._progress_hub:
                         try:
-                            asyncio.create_task(
+                            create_safe_task(
                                 self._progress_hub.component_complete(
                                     "cross_repo_hub",
                                     f"Cross-Repo Hub ({len(active_systems)} systems)"
@@ -903,7 +935,7 @@ class JARVISSupervisor:
                 logger.warning(f"Voice system initialization failed: {e}")
 
         # Start voice initialization as background task (non-blocking)
-        voice_init_task = asyncio.create_task(_init_voice_systems())
+        voice_init_task = create_safe_task(_init_voice_systems())
         logger.info("🔊 Voice system initialization started (background)")
 
         # Build command - supports fast mode (direct main.py) and normal mode (start_system.py)
@@ -998,7 +1030,7 @@ class JARVISSupervisor:
             dms_task = None
             if self._is_post_update and self._dead_man_switch and self.config.dead_man_switch.enabled:
                 logger.info("🎯 Starting Dead Man's Switch probation (post-update boot)")
-                dms_task = asyncio.create_task(self._run_dead_man_switch())
+                dms_task = create_safe_task(self._run_dead_man_switch())
 
             # Mark spawning AND supervisor as complete in the hub
             # Supervisor's job is done once the process is spawned
@@ -1015,16 +1047,16 @@ class JARVISSupervisor:
             
             # Start health monitoring with loading page progress
             if self._health_monitor:
-                asyncio.create_task(self._monitor_health())
+                create_safe_task(self._monitor_health())
 
             # Start loading progress monitor - this handles ALL startup narration
             # and will announce "JARVIS online" when truly ready
             if self._progress_reporter:
-                asyncio.create_task(self._monitor_startup_progress())
+                create_safe_task(self._monitor_startup_progress())
             else:
                 # No loading page - announce ready after a brief startup period
                 # This fallback ensures we still narrate when running without loading page
-                asyncio.create_task(self._announce_ready_fallback())
+                create_safe_task(self._announce_ready_fallback())
 
             # ═══════════════════════════════════════════════════════════════════════════
             # v102.0: ZOMBIE PROCESS WATCHDOG
@@ -1129,13 +1161,13 @@ class JARVISSupervisor:
                         await asyncio.sleep(health_check_interval)
 
             # Start watchdog as background task
-            watchdog_task = asyncio.create_task(_zombie_watchdog())
+            watchdog_task = create_safe_task(_zombie_watchdog())
 
             # Wait for EITHER process to exit OR watchdog to detect zombie
             try:
                 done, pending = await asyncio.wait(
                     [
-                        asyncio.create_task(self._process.wait()),
+                        create_safe_task(self._process.wait()),
                         watchdog_task
                     ],
                     return_when=asyncio.FIRST_COMPLETED
@@ -1493,11 +1525,11 @@ class JARVISSupervisor:
 
             try:
                 # Check JARVIS Prime (local LLM brain)
-                prime_task = asyncio.create_task(
+                prime_task = create_safe_task(
                     check_endpoint_smart(f"{jarvis_prime_url}/health", jarvis_prime_state, timeout=2.0)
                 )
                 # Check Reactor Core (training/learning pipeline)
-                reactor_task = asyncio.create_task(
+                reactor_task = create_safe_task(
                     check_endpoint_smart(f"{reactor_core_url}/health", reactor_core_state, timeout=2.0)
                 )
 
@@ -1522,13 +1554,13 @@ class JARVISSupervisor:
             - Reactor Core (optional - training pipeline)
             """
             # Create all health check tasks
-            backend_task = asyncio.create_task(
+            backend_task = create_safe_task(
                 check_endpoint_smart(f"{backend_url}/health", backend_state)
             )
-            frontend_task = asyncio.create_task(
+            frontend_task = create_safe_task(
                 check_endpoint_smart(frontend_url, frontend_state)
             )
-            integrated_task = asyncio.create_task(
+            integrated_task = create_safe_task(
                 check_integrated_services()
             )
 
@@ -2149,10 +2181,10 @@ class JARVISSupervisor:
                 
                 # Parallel health check
                 try:
-                    backend_task = asyncio.create_task(
+                    backend_task = create_safe_task(
                         session.get(f"{backend_url}/health")
                     )
-                    frontend_task = asyncio.create_task(
+                    frontend_task = create_safe_task(
                         session.get(frontend_url)
                     )
                     
@@ -2664,7 +2696,7 @@ class JARVISSupervisor:
         try:
             loop = asyncio.get_event_loop()
             if loop.is_running():
-                asyncio.create_task(self._narrate_dms_status_async(status))
+                create_safe_task(self._narrate_dms_status_async(status))
         except Exception as e:
             logger.debug(f"DMS status narration scheduling failed: {e}")
     
@@ -2975,7 +3007,7 @@ class JARVISSupervisor:
                             # Give it a moment to exit gracefully
                             try:
                                 await asyncio.wait_for(
-                                    asyncio.shield(asyncio.create_task(self._wait_for_process_exit())),
+                                    asyncio.shield(create_safe_task(self._wait_for_process_exit())),
                                     timeout=10.0
                                 )
                             except asyncio.TimeoutError:
@@ -3067,12 +3099,12 @@ class JARVISSupervisor:
         # Start background tasks
         tasks = []
         if self.config.update.check.enabled and self._update_detector:
-            tasks.append(asyncio.create_task(self._run_update_detector()))
+            tasks.append(create_safe_task(self._run_update_detector()))
         if self.config.idle.enabled and self._idle_detector:
-            tasks.append(asyncio.create_task(self._run_idle_detector()))
+            tasks.append(create_safe_task(self._run_idle_detector()))
 
         # Start restart monitor (always enabled - handles async restart signals)
-        restart_monitor_task = asyncio.create_task(self._run_restart_monitor())
+        restart_monitor_task = create_safe_task(self._run_restart_monitor())
         tasks.append(restart_monitor_task)
         
         # Dead Man's Switch task (created dynamically after updates)
@@ -3121,7 +3153,7 @@ class JARVISSupervisor:
                     await self._narrator.narrate(NarratorEvent.RESTART_STARTING)
                     # Restart the restart monitor for next cycle
                     if restart_monitor_task.done():
-                        restart_monitor_task = asyncio.create_task(self._run_restart_monitor())
+                        restart_monitor_task = create_safe_task(self._run_restart_monitor())
                         tasks.append(restart_monitor_task)
                     continue
 

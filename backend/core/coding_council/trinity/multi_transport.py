@@ -36,6 +36,40 @@ from typing import Any, Callable, Coroutine, Dict, List, Optional, Set
 
 logger = logging.getLogger(__name__)
 
+# v210.0: Import safe task wrapper to prevent "Future exception was never retrieved"
+try:
+    from backend.core.async_safety import create_safe_task
+except ImportError:
+    # Fallback if async_safety is not available
+    # Store raw create_task reference to avoid potential issues
+    _raw_create_task = asyncio.create_task
+    _fallback_tasks: set = set()
+    
+    def create_safe_task(coro, name=None, **kwargs):
+        """Fallback for create_safe_task with proper exception handling."""
+        task_name = name or "unnamed"
+        try:
+            task = _raw_create_task(coro, name=task_name)
+        except TypeError:
+            task = _raw_create_task(coro)
+        
+        # Keep reference to prevent GC before completion
+        _fallback_tasks.add(task)
+        
+        def _handle_done(t):
+            _fallback_tasks.discard(t)
+            if t.cancelled():
+                return
+            try:
+                exc = t.exception()
+                if exc is not None:
+                    logger.debug(f"[Task] {task_name} error: {type(exc).__name__}: {exc}")
+            except (asyncio.CancelledError, asyncio.InvalidStateError):
+                pass  # Task was cancelled or not finished, ignore
+        
+        task.add_done_callback(_handle_done)
+        return task
+
 
 class TransportType(Enum):
     """Transport types in priority order."""
@@ -243,7 +277,8 @@ class RedisTransport(BaseTransport):
 
             # Start listener if not running
             if not self._listener_task or self._listener_task.done():
-                self._listener_task = asyncio.create_task(self._listen_loop())
+                # v210.0: Use safe task to prevent "Future exception was never retrieved"
+                self._listener_task = create_safe_task(self._listen_loop(), name="redis_listener")
 
             return True
         except Exception as e:
@@ -296,7 +331,8 @@ class WebSocketTransport(BaseTransport):
             logger.info("[WebSocketTransport] Connected")
 
             # Start listener
-            self._listener_task = asyncio.create_task(self._listen_loop())
+            # v210.0: Use safe task to prevent "Future exception was never retrieved"
+            self._listener_task = create_safe_task(self._listen_loop(), name="websocket_listener")
 
             return True
         except Exception as e:
@@ -482,7 +518,8 @@ class FileTransport(BaseTransport):
 
         # Start listener if not running
         if not self._listener_task or self._listener_task.done():
-            self._listener_task = asyncio.create_task(self._listen_loop())
+            # v210.0: Use safe task to prevent "Future exception was never retrieved"
+            self._listener_task = create_safe_task(self._listen_loop(), name="file_listener")
 
         return True
 
@@ -595,14 +632,17 @@ class MultiTransport:
 
         if connected:
             self._connected = True
-            self._health_check_task = asyncio.create_task(self._health_check_loop())
+            # v210.0: Use safe task to prevent "Future exception was never retrieved"
+            self._health_check_task = create_safe_task(self._health_check_loop(), name="multi_transport_health_check")
 
             # v193.1: Start fast-reconnect task for initially failed transports
             # This is especially important for WebSocket which may not be ready
             # at startup but will be ready shortly after
             if failed_transports:
-                self._fast_reconnect_task = asyncio.create_task(
-                    self._fast_reconnect_loop(failed_transports)
+                # v210.0: Use safe task to prevent "Future exception was never retrieved"
+                self._fast_reconnect_task = create_safe_task(
+                    self._fast_reconnect_loop(failed_transports),
+                    name="multi_transport_fast_reconnect"
                 )
 
         return connected

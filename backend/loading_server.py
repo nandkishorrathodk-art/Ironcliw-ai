@@ -132,18 +132,33 @@ try:
     from backend.core.async_safety import create_safe_task
 except ImportError:
     # Fallback if async_safety is not available
+    # Store raw create_task reference to avoid potential issues
+    _raw_create_task = asyncio.create_task
+    _fallback_tasks: set = set()
+    
     def create_safe_task(coro, name=None, **kwargs):
-        """Fallback for create_safe_task."""
+        """Fallback for create_safe_task with proper exception handling."""
+        task_name = name or "unnamed"
         try:
-            task = asyncio.create_task(coro, name=name)
+            task = _raw_create_task(coro, name=task_name)
         except TypeError:
-            task = asyncio.create_task(coro)
+            task = _raw_create_task(coro)
         
-        def _handle_exception(t):
-            if not t.cancelled() and t.exception():
-                logger.warning(f"[Task] {name or 'unnamed'} error: {t.exception()}")
+        # Keep reference to prevent GC before completion
+        _fallback_tasks.add(task)
         
-        task.add_done_callback(_handle_exception)
+        def _handle_done(t):
+            _fallback_tasks.discard(t)
+            if t.cancelled():
+                return
+            try:
+                exc = t.exception()
+                if exc is not None:
+                    logger.warning(f"[Task] {task_name} error: {type(exc).__name__}: {exc}")
+            except (asyncio.CancelledError, asyncio.InvalidStateError):
+                pass  # Task was cancelled or not finished, ignore
+        
+        task.add_done_callback(_handle_done)
         return task
 
 T = TypeVar('T')
@@ -2386,7 +2401,8 @@ async def run_server():
     loop = asyncio.get_event_loop()
 
     def signal_handler():
-        asyncio.create_task(server.stop())
+        # v210.0: Use safe task to prevent "Future exception was never retrieved"
+        create_safe_task(server.stop(), name="signal_handler_stop")
 
     for sig in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(sig, signal_handler)
