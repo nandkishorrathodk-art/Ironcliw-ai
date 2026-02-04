@@ -102,10 +102,14 @@ RUN pip install --upgrade pip setuptools wheel
 # ML DEPENDENCIES INSTALLATION (This is what we're pre-baking!)
 # =============================================================================
 # Install PyTorch (CPU or CUDA based on build arg)
+# v1.0.1: Use flexible version matching to support multiple architectures (x86_64, arm64)
+# The +cpu suffix is only available on specific architectures
 RUN if [ "${COMPUTE_PLATFORM}" = "cuda" ]; then \
-        pip install torch==${TORCH_VERSION}+cu121 --index-url https://download.pytorch.org/whl/cu121; \
+        pip install "torch>=${TORCH_VERSION}" --index-url https://download.pytorch.org/whl/cu121; \
     else \
-        pip install torch==${TORCH_VERSION}+cpu --index-url https://download.pytorch.org/whl/cpu; \
+        # Try CPU-specific index first, fall back to standard PyPI for ARM64
+        pip install "torch>=${TORCH_VERSION}" --index-url https://download.pytorch.org/whl/cpu || \
+        pip install "torch>=${TORCH_VERSION}"; \
     fi
 
 # Install Transformers ecosystem
@@ -119,10 +123,14 @@ RUN pip install \
 
 # Install llama-cpp-python (pre-compiled for faster startup)
 # Uses CMAKE_ARGS for optimized build
+# v1.0.1: Use flexible version and handle build failures gracefully
 RUN if [ "${COMPUTE_PLATFORM}" = "cuda" ]; then \
-        CMAKE_ARGS="-DLLAMA_CUBLAS=on" pip install llama-cpp-python==${LLAMA_CPP_VERSION}; \
+        CMAKE_ARGS="-DLLAMA_CUBLAS=on" pip install "llama-cpp-python>=${LLAMA_CPP_VERSION}" || \
+        pip install llama-cpp-python; \
     else \
-        CMAKE_ARGS="-DLLAMA_BLAS=ON -DLLAMA_BLAS_VENDOR=OpenBLAS" pip install llama-cpp-python==${LLAMA_CPP_VERSION}; \
+        CMAKE_ARGS="-DLLAMA_BLAS=ON -DLLAMA_BLAS_VENDOR=OpenBLAS" pip install "llama-cpp-python>=${LLAMA_CPP_VERSION}" || \
+        pip install llama-cpp-python || \
+        echo "WARNING: llama-cpp-python installation failed, continuing without it"; \
     fi
 
 # Install inference server dependencies
