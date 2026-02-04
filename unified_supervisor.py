@@ -58308,6 +58308,9 @@ class JarvisSystemKernel:
                 # =====================================================================
                 # STEP 4: Initialize Tiered Command Router
                 # =====================================================================
+                # v1.0.0: Enhanced with better error handling, fallback to existing
+                # router instance, and detailed diagnostic logging.
+                # =====================================================================
                 await self._broadcast_progress(59, "two_tier_router", "Initializing Tiered Command Router...")
 
                 try:
@@ -58318,55 +58321,81 @@ class JarvisSystemKernel:
                         get_tiered_router,
                     )
 
-                    # Create TTS callback for router voice announcements
-                    async def router_tts(text: str) -> None:
-                        """TTS callback for router announcements."""
-                        if self._narrator and self.config.voice_enabled:
-                            try:
-                                await self._narrator.speak(text, wait=False)
-                            except Exception as e:
-                                self.logger.debug(f"[TwoTier/Router] TTS error: {e}")
+                    # v1.0.0: Check if router already exists (e.g., from previous init)
+                    existing_router = get_tiered_router()
+                    if existing_router is not None:
+                        self._tiered_router = existing_router
+                        self._two_tier_status["router"] = {
+                            "status": "active",
+                            "initialized": True,
+                            "source": "existing_singleton",
+                        }
+                        self.logger.info("[TwoTier] Using existing TieredCommandRouter instance")
+                    else:
+                        # Create TTS callback for router voice announcements
+                        async def router_tts(text: str) -> None:
+                            """TTS callback for router announcements."""
+                            if self._narrator and self.config.voice_enabled:
+                                try:
+                                    await self._narrator.speak(text, wait=False)
+                                except Exception as e:
+                                    self.logger.debug(f"[TwoTier/Router] TTS error: {e}")
 
-                    # Create router config
-                    router_config = TieredRouterConfig(
-                        tier1_vbia_threshold=self.config.vbia_tier1_threshold,
-                        tier2_vbia_threshold=self.config.vbia_tier2_threshold,
-                        tier2_require_liveness=self.config.tier2_require_liveness,
-                    )
+                        # Create router config
+                        router_config = TieredRouterConfig(
+                            tier1_vbia_threshold=self.config.vbia_tier1_threshold,
+                            tier2_vbia_threshold=self.config.vbia_tier2_threshold,
+                            tier2_require_liveness=self.config.tier2_require_liveness,
+                        )
 
-                    # Create router with VBIA callbacks
-                    vbia_callback = None
-                    liveness_callback = None
-                    if self._vbia_adapter:
-                        vbia_callback = self._vbia_adapter.verify_speaker
-                        liveness_callback = self._vbia_adapter.verify_liveness
+                        # Create router with VBIA callbacks
+                        vbia_callback = None
+                        liveness_callback = None
+                        if self._vbia_adapter:
+                            vbia_callback = self._vbia_adapter.verify_speaker
+                            liveness_callback = self._vbia_adapter.verify_liveness
 
-                    self._tiered_router = TieredCommandRouter(
-                        config=router_config,
-                        vbia_callback=vbia_callback,
-                        liveness_callback=liveness_callback,
-                        tts_callback=router_tts if self.config.voice_enabled else None,
-                    )
+                        self._tiered_router = TieredCommandRouter(
+                            config=router_config,
+                            vbia_callback=vbia_callback,
+                            liveness_callback=liveness_callback,
+                            tts_callback=router_tts if self.config.voice_enabled else None,
+                        )
 
-                    # Register as global singleton
-                    set_tiered_router(self._tiered_router)
+                        # Register as global singleton
+                        set_tiered_router(self._tiered_router)
 
-                    self._two_tier_status["router"] = {
-                        "status": "active",
-                        "initialized": True,
-                        "vbia_connected": vbia_callback is not None,
-                    }
-                    self.logger.success("[TwoTier] ✓ Tiered Command Router ready")
+                        self._two_tier_status["router"] = {
+                            "status": "active",
+                            "initialized": True,
+                            "vbia_connected": vbia_callback is not None,
+                            "source": "new_instance",
+                        }
+                        self.logger.success("[TwoTier] ✓ Tiered Command Router ready")
 
                 except ImportError as e:
                     self.logger.warning(f"[TwoTier] Router module not available: {e}")
-                    self._two_tier_status["router"]["status"] = "unavailable"
+                    self._two_tier_status["router"] = {
+                        "status": "unavailable",
+                        "error": str(e),
+                        "error_type": "ImportError",
+                    }
                 except Exception as e:
                     self.logger.warning(f"[TwoTier] Router init failed: {e}")
-                    self._two_tier_status["router"]["status"] = "error"
+                    import traceback
+                    self.logger.debug(f"[TwoTier] Router traceback: {traceback.format_exc()}")
+                    self._two_tier_status["router"] = {
+                        "status": "error",
+                        "error": str(e),
+                        "error_type": type(e).__name__,
+                    }
 
                 # =====================================================================
                 # STEP 5: Wire execute_tier2 to AgenticTaskRunner
+                # =====================================================================
+                # v1.0.0: Use get_or_create_agentic_runner() instead of get_agentic_runner()
+                # to ensure the runner is initialized before wiring. This fixes the
+                # "router or runner unavailable" warning.
                 # =====================================================================
                 await self._broadcast_progress(60, "two_tier_wiring", "Wiring Tier 2 → AgenticTaskRunner...")
 
@@ -58374,21 +58403,54 @@ class JarvisSystemKernel:
                     from core.agentic_task_runner import (
                         RunnerMode,
                         get_agentic_runner,
+                        get_or_create_agentic_runner,
+                        set_agentic_runner,
                         AgenticTaskRunner,
+                        AgenticRunnerConfig,
                     )
 
-                    # Get the agentic runner instance
+                    # v1.0.0: Get or create the agentic runner instance
+                    # This ensures the runner is initialized even if it wasn't created earlier
                     self._agentic_runner = get_agentic_runner()
+                    
+                    if self._agentic_runner is None:
+                        self.logger.info("[TwoTier] AgenticTaskRunner not found, auto-creating...")
+                        
+                        # Create TTS callback for runner
+                        async def runner_tts(text: str) -> None:
+                            """TTS callback for agentic runner announcements."""
+                            if self._narrator and self.config.voice_enabled:
+                                try:
+                                    await self._narrator.speak(text, wait=False)
+                                except Exception as e:
+                                    self.logger.debug(f"[TwoTier/Runner] TTS error: {e}")
+                        
+                        # Get or create with auto-initialization
+                        self._agentic_runner = await get_or_create_agentic_runner(
+                            config=None,  # Use defaults
+                            tts_callback=runner_tts if self.config.voice_enabled else None,
+                            watchdog=self._agentic_watchdog,
+                            timeout=30.0,
+                        )
+                        
+                        if self._agentic_runner:
+                            self.logger.success("[TwoTier] ✓ AgenticTaskRunner auto-created")
+                        else:
+                            self.logger.warning("[TwoTier] ⚠ AgenticTaskRunner creation failed")
 
+                    # Now attempt to wire
                     if self._tiered_router and self._agentic_runner:
                         # Create execute_tier2 wrapper that routes to AgenticTaskRunner
+                        # v1.0.0: Capture runner in closure to avoid race conditions
+                        runner_ref = self._agentic_runner
+                        
                         async def execute_tier2_via_runner(
                             command: str,
                             context: Optional[Dict[str, Any]] = None,
                         ) -> Dict[str, Any]:
                             """Execute Tier 2 (agentic) commands via AgenticTaskRunner."""
                             try:
-                                result = await self._agentic_runner.run(
+                                result = await runner_ref.run(
                                     goal=command,
                                     mode=RunnerMode.AUTONOMOUS,
                                     context=context,
@@ -58410,12 +58472,24 @@ class JarvisSystemKernel:
                         self._two_tier_status["runner_wired"] = True
                         self.logger.success("[TwoTier] ✓ execute_tier2 → AgenticTaskRunner wired")
                     else:
-                        self.logger.warning("[TwoTier] ⚠ Cannot wire execute_tier2 (router or runner unavailable)")
+                        # v1.0.0: More detailed diagnostic logging
+                        missing = []
+                        if not self._tiered_router:
+                            missing.append("TieredCommandRouter")
+                        if not self._agentic_runner:
+                            missing.append("AgenticTaskRunner")
+                        self.logger.warning(
+                            f"[TwoTier] ⚠ Cannot wire execute_tier2 (missing: {', '.join(missing)})"
+                        )
+                        self._two_tier_status["runner_wired"] = False
+                        self._two_tier_status["wiring_missing"] = missing
 
                 except ImportError as e:
                     self.logger.warning(f"[TwoTier] AgenticTaskRunner not available: {e}")
+                    self._two_tier_status["runner_wired"] = False
                 except Exception as e:
                     self.logger.warning(f"[TwoTier] Wiring failed: {e}")
+                    self._two_tier_status["runner_wired"] = False
 
                 # =====================================================================
                 # STEP 6: Voice announcement
