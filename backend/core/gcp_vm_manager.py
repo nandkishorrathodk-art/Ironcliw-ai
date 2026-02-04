@@ -400,8 +400,9 @@ class VMManagerConfig:
     # When these are set, the manager uses persistent VM strategy instead of
     # ephemeral VMs. The VM survives preemption in STOPPED state and can be
     # quickly restarted (~30s) instead of recreated (~3-5 min).
+    # v210.0: Added default name for auto-creation if not specified
     static_ip_name: Optional[str] = field(
-        default_factory=lambda: os.getenv("GCP_VM_STATIC_IP_NAME")
+        default_factory=lambda: os.getenv("GCP_VM_STATIC_IP_NAME", "jarvis-prime-ip")
     )
     static_instance_name: Optional[str] = field(
         default_factory=lambda: os.getenv("GCP_VM_INSTANCE_NAME", "jarvis-prime-node")
@@ -3123,10 +3124,10 @@ class GCPVMManager:
 
         # Use lock to prevent concurrent start/create operations
         async with self._vm_lock:
-            # Step 1: Get static IP address
-            static_ip = await self._get_static_ip_address(static_ip_name)
+            # Step 1: Get static IP address (v210.0: auto-create if missing)
+            static_ip = await self._get_static_ip_address(static_ip_name, auto_create=True)
             if not static_ip:
-                return False, None, f"STATIC_IP_NOT_FOUND: {static_ip_name} not reserved"
+                return False, None, f"STATIC_IP_FAILED: Could not get or create '{static_ip_name}'"
 
             logger.info(f"☁️ [InvincibleNode] Ensuring VM ready at {static_ip}:{target_port}")
 
@@ -3186,8 +3187,20 @@ class GCPVMManager:
         else:
             return False, static_ip, f"HEALTH_TIMEOUT: {final_status}"
 
-    async def _get_static_ip_address(self, ip_name: str) -> Optional[str]:
-        """Get the IP address for a reserved static IP by name."""
+    async def _get_static_ip_address(self, ip_name: str, auto_create: bool = True) -> Optional[str]:
+        """
+        Get the IP address for a reserved static IP by name.
+        
+        v210.0: Added auto_create option to automatically create the static IP
+        if it doesn't exist. This enables fully automatic Invincible Node setup.
+        
+        Args:
+            ip_name: Name of the static IP address resource
+            auto_create: If True, create the static IP if it doesn't exist
+            
+        Returns:
+            The IP address string, or None if not found and auto_create=False
+        """
         try:
             # Use gcloud via subprocess for simplicity (addresses API is separate)
             import subprocess
@@ -3205,9 +3218,87 @@ class GCPVMManager:
             )
             if result.returncode == 0 and result.stdout.strip():
                 return result.stdout.strip()
+            
+            # v210.0: Auto-create static IP if it doesn't exist
+            if auto_create:
+                logger.info(f"☁️ [InvincibleNode] Static IP '{ip_name}' not found - creating...")
+                created_ip = await self._create_static_ip(ip_name)
+                if created_ip:
+                    logger.info(f"✅ [InvincibleNode] Created static IP: {created_ip}")
+                    return created_ip
+                else:
+                    logger.warning(f"[InvincibleNode] Failed to create static IP '{ip_name}'")
+            
             return None
         except Exception as e:
             logger.warning(f"[InvincibleNode] Failed to get static IP: {e}")
+            return None
+    
+    async def _create_static_ip(self, ip_name: str) -> Optional[str]:
+        """
+        v210.0: Create a new static IP address in GCP.
+        
+        This enables fully automatic Invincible Node setup without manual
+        gcloud commands.
+        
+        Args:
+            ip_name: Name for the new static IP address resource
+            
+        Returns:
+            The allocated IP address string, or None on failure
+        """
+        try:
+            import subprocess
+            
+            # Create the static IP address
+            logger.info(f"☁️ [InvincibleNode] Creating static IP '{ip_name}' in {self.config.region}...")
+            
+            create_result = await asyncio.to_thread(
+                subprocess.run,
+                [
+                    "gcloud", "compute", "addresses", "create", ip_name,
+                    "--project", self.config.project_id,
+                    "--region", self.config.region,
+                    "--description", "JARVIS Invincible Node static IP (auto-created)"
+                ],
+                capture_output=True,
+                text=True,
+                timeout=60
+            )
+            
+            if create_result.returncode != 0:
+                error_msg = create_result.stderr.strip() if create_result.stderr else "Unknown error"
+                # Check if it already exists (race condition protection)
+                if "already exists" in error_msg.lower():
+                    logger.info(f"[InvincibleNode] Static IP already exists (concurrent creation)")
+                else:
+                    logger.warning(f"[InvincibleNode] Failed to create static IP: {error_msg}")
+                    return None
+            
+            # Wait a moment for GCP to provision the IP
+            await asyncio.sleep(2)
+            
+            # Retrieve the allocated IP address
+            describe_result = await asyncio.to_thread(
+                subprocess.run,
+                [
+                    "gcloud", "compute", "addresses", "describe", ip_name,
+                    "--project", self.config.project_id,
+                    "--region", self.config.region,
+                    "--format", "value(address)"
+                ],
+                capture_output=True,
+                text=True,
+                timeout=30
+            )
+            
+            if describe_result.returncode == 0 and describe_result.stdout.strip():
+                return describe_result.stdout.strip()
+            
+            return None
+            
+        except Exception as e:
+            logger.warning(f"[InvincibleNode] Error creating static IP: {e}")
             return None
 
     async def _ping_health_endpoint(

@@ -1818,7 +1818,8 @@ class SystemKernelConfig:
     # When configured, the supervisor will proactively wake up the cloud node
     # during startup for fast (~30s) inference availability.
     invincible_node_enabled: bool = field(default_factory=lambda: _get_env_bool("JARVIS_INVINCIBLE_NODE_ENABLED", False))
-    invincible_node_static_ip_name: Optional[str] = field(default_factory=lambda: os.environ.get("GCP_VM_STATIC_IP_NAME"))
+    # v210.0: Added default names for auto-creation - no manual setup required
+    invincible_node_static_ip_name: str = field(default_factory=lambda: os.environ.get("GCP_VM_STATIC_IP_NAME", "jarvis-prime-ip"))
     invincible_node_instance_name: str = field(default_factory=lambda: os.environ.get("GCP_VM_INSTANCE_NAME", "jarvis-prime-node"))
     invincible_node_port: int = field(default_factory=lambda: _get_env_int("JARVIS_PRIME_PORT", 8000))
     invincible_node_health_timeout: float = field(default_factory=lambda: _get_env_float("GCP_STATIC_VM_HEALTH_TIMEOUT", 300.0))
