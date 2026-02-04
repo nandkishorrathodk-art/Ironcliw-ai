@@ -57063,6 +57063,8 @@ class JarvisSystemKernel:
                 """
                 Start Prime subprocess early to begin LLM loading immediately.
                 This runs in parallel with all startup phases.
+                
+                v220.2.1: Enhanced startup script detection for JARVIS-Prime repo structure.
                 """
                 try:
                     # Import TrinityIntegrator to start Prime
@@ -57084,14 +57086,30 @@ class JarvisSystemKernel:
                         reason="Starting LLM pre-load in parallel with other startup phases"
                     )
                     
-                    # Build startup command
-                    startup_script = os.path.join(prime_repo, "startup.py")
-                    if not os.path.exists(startup_script):
-                        startup_script = os.path.join(prime_repo, "main.py")
+                    # v220.2.1: Search for startup script in order of preference
+                    # JARVIS-Prime uses run_server.py as the main entry point
+                    startup_candidates = [
+                        os.path.join(prime_repo, "run_server.py"),         # Primary entry
+                        os.path.join(prime_repo, "run_supervisor.py"),     # Alternative
+                        os.path.join(prime_repo, "jarvis_prime", "server.py"),  # Module entry
+                        os.path.join(prime_repo, "startup.py"),            # Generic
+                        os.path.join(prime_repo, "main.py"),               # Generic
+                        os.path.join(prime_repo, "app.py"),                # Generic
+                        os.path.join(prime_repo, "server.py"),             # Generic
+                    ]
                     
-                    if not os.path.exists(startup_script):
-                        self.logger.warning("[EarlyPrime] No startup script found in Prime repo")
+                    startup_script = None
+                    for candidate in startup_candidates:
+                        if os.path.exists(candidate):
+                            startup_script = candidate
+                            break
+                    
+                    if not startup_script:
+                        self.logger.warning(f"[EarlyPrime] No startup script found in Prime repo (checked: {[os.path.basename(c) for c in startup_candidates]})")
+                        update_dashboard_model_loading(active=False)  # Clear dashboard
                         return
+                    
+                    self.logger.info(f"[EarlyPrime] Found startup script: {os.path.basename(startup_script)}")
                     
                     # Prepare environment with startup grace period
                     env = os.environ.copy()
@@ -57099,7 +57117,7 @@ class JarvisSystemKernel:
                     env["JARVIS_PORT"] = str(prime_port)
                     env["JARVIS_STARTUP_GRACE_PERIOD"] = "720"  # 12 minutes
                     
-                    self.logger.info(f"[EarlyPrime] Starting Prime at port {prime_port}...")
+                    self.logger.info(f"[EarlyPrime] Starting Prime at port {prime_port} using {os.path.basename(startup_script)}...")
                     
                     # Start Prime subprocess
                     process = await asyncio.create_subprocess_exec(
