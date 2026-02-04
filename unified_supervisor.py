@@ -57658,29 +57658,28 @@ class JarvisSystemKernel:
                     pass
 
             # =====================================================================
-            # v199.0/v210.0: WAIT FOR INVINCIBLE NODE (Non-blocking on failure)
-            # v210.0: Use configurable timeout instead of hardcoded 60s.
-            #         GCP Spot VMs can take 2-5 minutes to provision and start.
+            # v211.0: TRULY NON-BLOCKING INVINCIBLE NODE WAKE-UP
             # =====================================================================
-            # Check Invincible Node result - this is non-fatal if it fails
+            # CRITICAL FIX: Previously this code awaited the node with a 300s timeout,
+            # which blocked the ENTIRE startup even though it was started "in parallel".
+            # 
+            # Now we use a SHORT timeout (15s) for quick startup detection, then let
+            # the task continue in the background. The node will be used when ready.
+            # Local backend starts immediately - cloud node is OPTIONAL enhancement.
+            # =====================================================================
             if invincible_node_task:
+                # v211.0: Quick check (15s) - if node responds quickly, great!
+                # If not, let it continue in background and proceed with startup
+                quick_check_timeout = 15.0
+                
                 try:
-                    # v210.0: Use configurable timeout - GCP VMs need more time
-                    # Default: invincible_node_health_timeout (300s) or GCP_VM_STARTUP_TIMEOUT
-                    node_wait_timeout = float(os.environ.get(
-                        "GCP_VM_STARTUP_TIMEOUT",
-                        str(self.config.invincible_node_health_timeout)
-                    ))
-                    # Cap at reasonable maximum to prevent infinite waits
-                    node_wait_timeout = min(node_wait_timeout, 600.0)  # Max 10 minutes
-                    
-                    self.logger.info(f"[InvincibleNode] Waiting for cloud node (timeout: {node_wait_timeout:.0f}s)...")
+                    self.logger.info(f"[InvincibleNode] Quick check (max {quick_check_timeout:.0f}s)...")
                     node_success, node_ip, node_status = await asyncio.wait_for(
                         invincible_node_task,
-                        timeout=node_wait_timeout
+                        timeout=quick_check_timeout
                     )
                     if node_success:
-                        self.logger.info(f"[InvincibleNode] Cloud Node READY at {node_ip}")
+                        self.logger.success(f"[InvincibleNode] Cloud Node READY at {node_ip}")
                         self._invincible_node_ip = node_ip
                         self._invincible_node_ready = True
                         await self._broadcast_startup_progress(
@@ -57693,17 +57692,51 @@ class JarvisSystemKernel:
                             }
                         )
                     else:
-                        # v210.0: Log at INFO level since this is graceful degradation
-                        self.logger.info(f"[InvincibleNode] Wake-up deferred: {node_status} (background recovery active)")
+                        self.logger.info(f"[InvincibleNode] Not ready yet: {node_status}")
                         self._invincible_node_ready = False
                 except asyncio.TimeoutError:
-                    # v210.0: Log at INFO level since this is graceful degradation
-                    self.logger.info(f"[InvincibleNode] Wake-up deferred after {node_wait_timeout:.0f}s (background recovery active)")
+                    # v211.0: Node didn't respond in 15s - that's OK, let it continue in background
+                    # We create a NEW background task to monitor it without blocking startup
+                    self.logger.info(f"[InvincibleNode] Still starting (continuing in background)...")
                     self._invincible_node_ready = False
+                    
+                    # v211.0: Create background monitor task that doesn't block startup
+                    async def _background_node_monitor():
+                        """Monitor Invincible Node in background, update status when ready."""
+                        try:
+                            # Wait for the original task to complete (it's still running)
+                            # Use a longer timeout for background monitoring
+                            background_timeout = min(
+                                float(os.environ.get("GCP_VM_STARTUP_TIMEOUT", "300")),
+                                600.0  # Max 10 minutes
+                            )
+                            node_success, node_ip, node_status = await asyncio.wait_for(
+                                invincible_node_task,
+                                timeout=background_timeout
+                            )
+                            if node_success and node_ip:
+                                self.logger.success(f"[InvincibleNode] Cloud Node READY (background): {node_ip}")
+                                self._invincible_node_ip = node_ip
+                                self._invincible_node_ready = True
+                            else:
+                                self.logger.info(f"[InvincibleNode] Background wake-up result: {node_status}")
+                        except asyncio.TimeoutError:
+                            self.logger.warning(f"[InvincibleNode] Background timeout - node may need manual intervention")
+                        except asyncio.CancelledError:
+                            pass  # Shutdown, ignore
+                        except Exception as e:
+                            self.logger.debug(f"[InvincibleNode] Background monitor error: {e}")
+                    
+                    # Fire and forget the background monitor
+                    create_safe_task(
+                        _background_node_monitor(),
+                        name="invincible_node_background_monitor"
+                    )
+                    
                 except asyncio.CancelledError:
                     self._invincible_node_ready = False
                 except Exception as e:
-                    self.logger.info(f"[InvincibleNode] Wake-up deferred: {e} (background recovery active)")
+                    self.logger.debug(f"[InvincibleNode] Quick check error: {e}")
                     self._invincible_node_ready = False
 
             # =====================================================================
