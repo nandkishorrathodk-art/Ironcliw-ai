@@ -53601,7 +53601,37 @@ class TrinityIntegrator:
                 return True
             else:
                 component.state = "failed"
-                self.logger.error(f"[Trinity] ✗ {component.name} failed to become healthy (timeout 60s)")
+                
+                # v215.0: Check if component is optional (jprime/reactor are optional by default)
+                # This fixes misleading ERROR logs for optional components that fail to start
+                is_optional = (
+                    (component.name == "jarvis-prime" and 
+                     os.getenv("TRINITY_JPRIME_OPTIONAL", "true").lower() == "true") or
+                    (component.name == "reactor-core" and 
+                     os.getenv("TRINITY_REACTOR_OPTIONAL", "true").lower() == "true")
+                )
+                
+                # Calculate actual timeout used for accurate messaging
+                actual_timeout = self._calculate_intelligent_timeout(component)
+                
+                if is_optional:
+                    # v215.0: WARNING for optional components - system continues without them
+                    self.logger.warning(
+                        f"[Trinity] ⚠ {component.name} failed to become healthy (timeout {actual_timeout:.0f}s) - "
+                        f"OPTIONAL component, system continues"
+                    )
+                    self.logger.info(
+                        f"[Trinity]   💡 {component.name} is optional. Core JARVIS functionality remains available."
+                    )
+                    if component.name == "jarvis-prime":
+                        self.logger.info(
+                            "[Trinity]   💡 Tip: Set JARVIS_PRIME_PATH env var or check ~/Documents/repos/jarvis-prime"
+                        )
+                else:
+                    # ERROR for required components (if any are configured as required)
+                    self.logger.error(
+                        f"[Trinity] ✗ {component.name} failed to become healthy (timeout {actual_timeout:.0f}s)"
+                    )
                 
                 # v197.1: Update live dashboard
                 try:
@@ -53612,7 +53642,7 @@ class TrinityIntegrator:
                 
                 # Try to capture stderr for debugging
                 if process.returncode is not None:
-                    self.logger.error(f"[Trinity]   Process exited with code: {process.returncode}")
+                    self.logger.warning(f"[Trinity]   Process exited with code: {process.returncode}")
                 return False
 
         except Exception as e:
@@ -53942,37 +53972,60 @@ class TrinityIntegrator:
         result: SemanticReadinessResult,
         timeout: float,
     ) -> None:
-        """Log detailed diagnostics when a component times out."""
-        self.logger.warning(f"[Trinity] ─── Timeout Diagnostics for {component_name} ───")
-        self.logger.warning(f"[Trinity]   State: {result.state.value}")
-        self.logger.warning(f"[Trinity]   Phase: {result.phase}")
-        self.logger.warning(f"[Trinity]   Component Type: {result.component_type.value}")
+        """
+        Log detailed diagnostics when a component times out.
+        
+        v215.0: Enhanced to indicate whether the component is optional and
+        provide clearer guidance on system behavior.
+        """
+        # v215.0: Check if component is optional
+        is_optional = (
+            (component_name == "jarvis-prime" and 
+             os.getenv("TRINITY_JPRIME_OPTIONAL", "true").lower() == "true") or
+            (component_name == "reactor-core" and 
+             os.getenv("TRINITY_REACTOR_OPTIONAL", "true").lower() == "true")
+        )
+        
+        # Use appropriate log level based on optional status
+        log_fn = self.logger.info if is_optional else self.logger.warning
+        header_prefix = "⚠ (OPTIONAL)" if is_optional else "⚠"
+        
+        log_fn(f"[Trinity] ─── {header_prefix} Timeout Diagnostics for {component_name} ───")
+        log_fn(f"[Trinity]   State: {result.state.value}")
+        log_fn(f"[Trinity]   Phase: {result.phase}")
+        log_fn(f"[Trinity]   Component Type: {result.component_type.value}")
 
         if result.component_type == ComponentType.PRIME:
-            self.logger.warning(f"[Trinity]   model_loaded: {result.model_loaded}")
-            self.logger.warning(f"[Trinity]   ready_for_inference: {result.ready_for_inference}")
+            log_fn(f"[Trinity]   model_loaded: {result.model_loaded}")
+            log_fn(f"[Trinity]   ready_for_inference: {result.ready_for_inference}")
             if not result.model_loaded:
-                self.logger.warning(
+                log_fn(
                     "[Trinity]   → Model may still be loading or failed to load"
                 )
             elif not result.ready_for_inference:
-                self.logger.warning(
+                log_fn(
                     "[Trinity]   → Model loaded but inference pipeline not ready"
                 )
 
         elif result.component_type == ComponentType.REACTOR:
-            self.logger.warning(f"[Trinity]   training_ready: {result.training_ready}")
-            self.logger.warning(f"[Trinity]   trinity_connected: {result.trinity_connected}")
+            log_fn(f"[Trinity]   training_ready: {result.training_ready}")
+            log_fn(f"[Trinity]   trinity_connected: {result.trinity_connected}")
             if not result.training_ready:
-                self.logger.warning(
+                log_fn(
                     "[Trinity]   → Training subsystem not initialized"
                 )
 
         if result.error_message:
-            self.logger.warning(f"[Trinity]   Error: {result.error_message}")
+            log_fn(f"[Trinity]   Error: {result.error_message}")
 
-        self.logger.warning(f"[Trinity]   Recommendation: {result.recommended_action}")
-        self.logger.warning(f"[Trinity] ─────────────────────────────────────────────")
+        log_fn(f"[Trinity]   Recommendation: {result.recommended_action}")
+        
+        # v215.0: Add clear guidance for optional components
+        if is_optional:
+            log_fn(f"[Trinity]   ✓ {component_name} is OPTIONAL - JARVIS continues without it")
+            log_fn(f"[Trinity]   💡 Core voice commands, vision, and automation still work")
+        
+        log_fn(f"[Trinity] ─────────────────────────────────────────────")
 
     async def _start_health_monitor(self) -> None:
         """Start health monitoring loop."""
