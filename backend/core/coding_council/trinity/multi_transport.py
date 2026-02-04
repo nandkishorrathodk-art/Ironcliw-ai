@@ -300,8 +300,10 @@ class WebSocketTransport(BaseTransport):
 
             return True
         except Exception as e:
-            # v109.2: Connection failures during startup are expected
-            logger.info(f"[WebSocketTransport] Not available: {e}")
+            # v109.2/v210.0: Connection failures during startup are expected.
+            # WebSocket transport is optional - file transport will be used as fallback.
+            # Log at DEBUG level to reduce noise during normal startup.
+            logger.debug(f"[WebSocketTransport] Not available (using file transport fallback): {e}")
             self.status = TransportStatus.FAILED
             return False
 

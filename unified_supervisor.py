@@ -57124,11 +57124,18 @@ class JarvisSystemKernel:
             # Log takeover success details
             self.logger.success(f"[Kernel] Startup lock acquired (method: {takeover_result.takeover_method})")
 
+            # v210.0: Log orphan cleanup at INFO level - this is routine maintenance, not an error
             if takeover_result.processes_cleaned > 0:
-                self.logger.info(f"[Kernel] Cleaned {takeover_result.processes_cleaned} orphaned process(es)")
+                self.logger.info(
+                    f"[Kernel] Cleaned {takeover_result.processes_cleaned} orphaned process(es) "
+                    "(normal cleanup from previous session)"
+                )
 
+            # v210.0: Log warnings at INFO level since they're informational, not errors
             for warning in takeover_result.warnings:
-                self.logger.warning(f"[Kernel] {warning}")
+                # Filter out the orphan message since we already logged it above
+                if "orphaned processes" not in warning.lower():
+                    self.logger.info(f"[Kernel] {warning}")
 
             self.logger.debug(f"[Kernel] Takeover completed in {takeover_result.duration_ms:.1f}ms")
 
@@ -57547,15 +57554,26 @@ class JarvisSystemKernel:
                     pass
 
             # =====================================================================
-            # v199.0: WAIT FOR INVINCIBLE NODE (Non-blocking on failure)
+            # v199.0/v210.0: WAIT FOR INVINCIBLE NODE (Non-blocking on failure)
+            # v210.0: Use configurable timeout instead of hardcoded 60s.
+            #         GCP Spot VMs can take 2-5 minutes to provision and start.
             # =====================================================================
             # Check Invincible Node result - this is non-fatal if it fails
             if invincible_node_task:
                 try:
-                    # Give it up to 60 more seconds beyond resource init
+                    # v210.0: Use configurable timeout - GCP VMs need more time
+                    # Default: invincible_node_health_timeout (300s) or GCP_VM_STARTUP_TIMEOUT
+                    node_wait_timeout = float(os.environ.get(
+                        "GCP_VM_STARTUP_TIMEOUT",
+                        str(self.config.invincible_node_health_timeout)
+                    ))
+                    # Cap at reasonable maximum to prevent infinite waits
+                    node_wait_timeout = min(node_wait_timeout, 600.0)  # Max 10 minutes
+                    
+                    self.logger.info(f"[InvincibleNode] Waiting for cloud node (timeout: {node_wait_timeout:.0f}s)...")
                     node_success, node_ip, node_status = await asyncio.wait_for(
                         invincible_node_task,
-                        timeout=60.0
+                        timeout=node_wait_timeout
                     )
                     if node_success:
                         self.logger.info(f"[InvincibleNode] Cloud Node READY at {node_ip}")
@@ -57571,15 +57589,17 @@ class JarvisSystemKernel:
                             }
                         )
                     else:
-                        self.logger.warning(f"[InvincibleNode] Wake-up failed: {node_status}")
+                        # v210.0: Log at INFO level since this is graceful degradation
+                        self.logger.info(f"[InvincibleNode] Wake-up deferred: {node_status} (background recovery active)")
                         self._invincible_node_ready = False
                 except asyncio.TimeoutError:
-                    self.logger.warning("[InvincibleNode] Wake-up timed out (continuing without)")
+                    # v210.0: Log at INFO level since this is graceful degradation
+                    self.logger.info(f"[InvincibleNode] Wake-up deferred after {node_wait_timeout:.0f}s (background recovery active)")
                     self._invincible_node_ready = False
                 except asyncio.CancelledError:
                     self._invincible_node_ready = False
                 except Exception as e:
-                    self.logger.warning(f"[InvincibleNode] Unexpected error: {e}")
+                    self.logger.info(f"[InvincibleNode] Wake-up deferred: {e} (background recovery active)")
                     self._invincible_node_ready = False
 
             # =====================================================================
@@ -57664,24 +57684,28 @@ class JarvisSystemKernel:
             self.logger.success(f"[Kernel] Resources: {ready_count}/{len(results)} initialized")
 
             # =====================================================================
-            # v207.0: RESILIENCE HEALTH CHECKS WITH AUTO-RECOVERY
+            # v207.0/v210.0: RESILIENCE HEALTH CHECKS WITH AUTO-RECOVERY
             # Non-blocking health checks that start background recovery if services
             # are unavailable. Startup continues regardless of service status.
+            # v210.0: Changed logging to INFO level since these are expected 
+            # graceful degradation scenarios, not errors.
             # =====================================================================
             if self._startup_resilience:
                 # Docker health check (starts background recovery if not healthy)
                 docker_healthy = await self._startup_resilience.check_docker()
                 if docker_healthy:
-                    self.logger.info("[Kernel] Docker: healthy (resilience check)")
+                    self.logger.info("[Kernel] Docker: healthy")
                 else:
-                    self.logger.warning("[Kernel] Docker: unhealthy - background recovery started")
+                    # v210.0: INFO level - Docker is optional, background recovery handles it
+                    self.logger.info("[Kernel] Docker: not running (optional - background recovery active)")
 
                 # Ollama health check (starts background recovery if not healthy)
                 ollama_healthy = await self._startup_resilience.check_ollama()
                 if ollama_healthy:
-                    self.logger.info("[Kernel] Ollama: healthy (resilience check)")
+                    self.logger.info("[Kernel] Ollama: healthy")
                 else:
-                    self.logger.warning("[Kernel] Ollama: unhealthy - background recovery started")
+                    # v210.0: INFO level - Ollama is optional, system works without local LLM
+                    self.logger.info("[Kernel] Ollama: not running (optional - using cloud LLM fallback)")
 
                 # Configure and check Invincible Node resilience (if enabled)
                 if self.config.invincible_node_enabled:
@@ -57694,9 +57718,10 @@ class JarvisSystemKernel:
                         # Check Invincible Node health (starts background recovery if not ready)
                         node_healthy = await self._startup_resilience.check_invincible_node()
                         if node_healthy:
-                            self.logger.info("[Kernel] Invincible Node: healthy (resilience check)")
+                            self.logger.info("[Kernel] Invincible Node: healthy")
                         else:
-                            self.logger.warning("[Kernel] Invincible Node: unhealthy - background recovery started")
+                            # v210.0: INFO level - Invincible Node is optional
+                            self.logger.info("[Kernel] Invincible Node: provisioning (background recovery active)")
                     except ImportError:
                         self.logger.debug("[Kernel] Invincible Node: GCP module not available")
 
