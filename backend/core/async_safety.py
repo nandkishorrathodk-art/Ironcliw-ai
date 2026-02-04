@@ -1680,6 +1680,166 @@ def signal_shutdown() -> None:
 
 
 # =============================================================================
+# v210.0: FIRE-AND-FORGET TASK WRAPPER
+# =============================================================================
+# Properly handles "Future exception was never retrieved" errors by wrapping
+# fire-and-forget tasks with exception handling.
+
+# Global set to hold references to fire-and-forget tasks (prevent GC)
+_fire_and_forget_tasks: Set[asyncio.Task] = set()
+
+def _task_done_callback(task: asyncio.Task, name: str = "unnamed") -> None:
+    """
+    Callback for fire-and-forget tasks that properly handles exceptions.
+    
+    This prevents "Future exception was never retrieved" errors by:
+    1. Retrieving and logging any exceptions
+    2. Removing the task from the tracking set
+    """
+    _fire_and_forget_tasks.discard(task)
+    
+    if task.cancelled():
+        logger.debug(f"[FireAndForget] Task '{name}' was cancelled")
+        return
+    
+    exc = task.exception()
+    if exc is not None:
+        # Log the exception instead of letting it go unretrieved
+        logger.warning(
+            f"[FireAndForget] Task '{name}' raised {type(exc).__name__}: {exc}",
+            exc_info=exc
+        )
+
+
+def create_safe_task(
+    coro: Coroutine[Any, Any, T],
+    name: Optional[str] = None,
+    log_exceptions: bool = True,
+    suppress_cancellation: bool = True,
+) -> asyncio.Task[T]:
+    """
+    Create an asyncio task with proper exception handling.
+    
+    This is a drop-in replacement for asyncio.create_task() that prevents
+    "Future exception was never retrieved" errors.
+    
+    Args:
+        coro: The coroutine to run as a task
+        name: Optional name for the task (for logging)
+        log_exceptions: Whether to log exceptions (default: True)
+        suppress_cancellation: Whether to suppress CancelledError logging (default: True)
+    
+    Returns:
+        The created task
+    
+    Example:
+        # Instead of:
+        asyncio.create_task(some_background_work())
+        
+        # Use:
+        create_safe_task(some_background_work(), name="background_work")
+    """
+    task_name = name or coro.__qualname__ if hasattr(coro, '__qualname__') else "anonymous"
+    
+    try:
+        # Python 3.8+ supports the name parameter
+        task = asyncio.create_task(coro, name=task_name)
+    except TypeError:
+        # Python 3.7 fallback
+        task = asyncio.create_task(coro)
+    
+    # Keep reference to prevent garbage collection before completion
+    _fire_and_forget_tasks.add(task)
+    
+    # Add callback to handle exceptions and cleanup
+    if log_exceptions:
+        task.add_done_callback(lambda t: _task_done_callback(t, task_name))
+    else:
+        task.add_done_callback(lambda t: _fire_and_forget_tasks.discard(t))
+    
+    return task
+
+
+async def fire_and_forget(
+    coro: Coroutine[Any, Any, Any],
+    name: Optional[str] = None,
+    timeout: Optional[float] = None,
+) -> None:
+    """
+    Execute a coroutine in a fire-and-forget manner with proper exception handling.
+    
+    This is useful when you want to spawn a background task but don't care about
+    the result, while still handling exceptions properly.
+    
+    Args:
+        coro: The coroutine to execute
+        name: Optional name for logging
+        timeout: Optional timeout in seconds
+    
+    Example:
+        # Instead of:
+        asyncio.create_task(send_notification())
+        
+        # Use:
+        await fire_and_forget(send_notification(), name="notification")
+        # Or for truly fire-and-forget (no await):
+        create_safe_task(send_notification(), name="notification")
+    """
+    task_name = name or "fire_and_forget"
+    
+    async def wrapped() -> None:
+        try:
+            if timeout:
+                await asyncio.wait_for(coro, timeout=timeout)
+            else:
+                await coro
+        except asyncio.CancelledError:
+            logger.debug(f"[FireAndForget] '{task_name}' cancelled")
+        except asyncio.TimeoutError:
+            logger.debug(f"[FireAndForget] '{task_name}' timed out after {timeout}s")
+        except Exception as e:
+            logger.warning(f"[FireAndForget] '{task_name}' error: {type(e).__name__}: {e}")
+    
+    create_safe_task(wrapped(), name=task_name, log_exceptions=False)
+
+
+def get_pending_fire_and_forget_count() -> int:
+    """Get the number of pending fire-and-forget tasks."""
+    return len(_fire_and_forget_tasks)
+
+
+async def wait_for_fire_and_forget_tasks(timeout: float = 5.0) -> int:
+    """
+    Wait for all fire-and-forget tasks to complete.
+    
+    Useful during shutdown to ensure all background tasks complete.
+    
+    Args:
+        timeout: Maximum time to wait in seconds
+    
+    Returns:
+        Number of tasks that were still pending after timeout
+    """
+    if not _fire_and_forget_tasks:
+        return 0
+    
+    tasks = list(_fire_and_forget_tasks)
+    logger.debug(f"[FireAndForget] Waiting for {len(tasks)} pending tasks...")
+    
+    try:
+        done, pending = await asyncio.wait(tasks, timeout=timeout)
+        
+        # Cancel any remaining tasks
+        for task in pending:
+            task.cancel()
+        
+        return len(pending)
+    except Exception as e:
+        logger.debug(f"[FireAndForget] Wait error: {e}")
+        return len(tasks)
+
+
+# =============================================================================
 # Exports
 # =============================================================================
 
@@ -1706,6 +1866,12 @@ __all__ = [
     "TimeoutConfig",
     "TimeoutOptions",  # v100.2: Renamed from TimeoutConfig (dataclass for TimeoutManager)
     "TimeoutManager",
+    
+    # v210.0: Fire-and-forget
+    "create_safe_task",
+    "fire_and_forget",
+    "get_pending_fire_and_forget_count",
+    "wait_for_fire_and_forget_tasks",
 
     # Backpressure
     "BackpressureController",

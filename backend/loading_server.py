@@ -127,6 +127,25 @@ logging.basicConfig(
 )
 logger = logging.getLogger("LoadingServer.v212")
 
+# v210.0: Import safe task wrapper to prevent "Future exception was never retrieved"
+try:
+    from backend.core.async_safety import create_safe_task
+except ImportError:
+    # Fallback if async_safety is not available
+    def create_safe_task(coro, name=None, **kwargs):
+        """Fallback for create_safe_task."""
+        try:
+            task = asyncio.create_task(coro, name=name)
+        except TypeError:
+            task = asyncio.create_task(coro)
+        
+        def _handle_exception(t):
+            if not t.cancelled() and t.exception():
+                logger.warning(f"[Task] {name or 'unnamed'} error: {t.exception()}")
+        
+        task.add_done_callback(_handle_exception)
+        return task
+
 T = TypeVar('T')
 
 
@@ -1079,7 +1098,8 @@ class LoadingServer:
         self._message = state.get("message", self._message)
 
         # Broadcast to WebSocket clients
-        asyncio.create_task(self._broadcast_progress())
+        # v210.0: Use safe task to prevent "Future exception was never retrieved"
+        create_safe_task(self._broadcast_progress(), name="hub_broadcast_progress")
 
     async def _broadcast_progress(self):
         """
@@ -2283,9 +2303,10 @@ console.log('[v186.0] Port config injected by loading_server.py:', {{
             self._enhanced_eta.start_session(self._session_id)
 
         # Start background tasks
+        # v210.0: Use safe tasks to prevent "Future exception was never retrieved"
         self._background_tasks = [
-            asyncio.create_task(self._background_ping_task()),
-            asyncio.create_task(self._background_eta_update_task()),
+            create_safe_task(self._background_ping_task(), name="background_ping"),
+            create_safe_task(self._background_eta_update_task(), name="background_eta_update"),
         ]
 
         # Start server

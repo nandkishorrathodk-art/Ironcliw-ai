@@ -995,6 +995,7 @@ except ImportError as e:
 
 # --- Async Safety Utilities ---
 # Provides: timeout management, retry engines, backpressure control
+# v210.0: Added create_safe_task to prevent "Future exception was never retrieved" errors
 try:
     from backend.core.async_safety import (
         TimeoutConfig as AsyncTimeoutConfig,
@@ -1007,6 +1008,9 @@ try:
         with_retry as async_with_retry,
         with_backpressure as async_with_backpressure,
         safe_operation as async_safe_operation,
+        # v210.0: Safe fire-and-forget task wrapper
+        create_safe_task,
+        wait_for_fire_and_forget_tasks,
     )
     ASYNC_SAFETY_AVAILABLE = True
 except ImportError:
@@ -1021,6 +1025,16 @@ except ImportError:
     async_with_retry = None
     async_with_backpressure = None
     async_safe_operation = None
+    # v210.0: Fallback for create_safe_task - just use asyncio.create_task
+    def create_safe_task(coro, name=None, **kwargs):
+        """Fallback for create_safe_task when async_safety is not available."""
+        try:
+            return asyncio.create_task(coro, name=name)
+        except TypeError:
+            return asyncio.create_task(coro)
+    async def wait_for_fire_and_forget_tasks(timeout=5.0):
+        """Fallback - no-op when async_safety is not available."""
+        return 0
 
 # =============================================================================
 # v210.0: MODULAR INTEGRATION HELPERS
@@ -7266,7 +7280,8 @@ class SemanticVoiceCacheManager(ResourceManagerBase):
                         # Schedule cleanup
                         entry_id = results.get("ids", [[]])[0]
                         if entry_id:
-                            asyncio.create_task(self._delete_entry(entry_id[0]))
+                            # v210.0: Use safe task to prevent "Future exception was never retrieved"
+                            create_safe_task(self._delete_entry(entry_id[0]), name="delete_stale_entry")
 
                         return None
 
@@ -19978,7 +19993,8 @@ class MultiAgentSystem:
                     task = await asyncio.wait_for(
                         self._task_queue.get(), timeout=1.0
                     )
-                    asyncio.create_task(self.execute_task(task))
+                    # v210.0: Use safe task to prevent "Future exception was never retrieved"
+                    create_safe_task(self.execute_task(task), name=f"execute_task_{task.get('id', 'unknown')}")
                 except asyncio.TimeoutError:
                     pass
 
@@ -20401,7 +20417,8 @@ class DataFlywheelManager:
 
         # Check if we should trigger immediate flush
         if len(self._experience_buffer) >= self._batch_size:
-            asyncio.create_task(self._flush_buffer())
+            # v210.0: Use safe task to prevent "Future exception was never retrieved"
+            create_safe_task(self._flush_buffer(), name="experience_flush")
 
         return experience_id
 
@@ -22190,7 +22207,8 @@ class DistributedObservabilitySystem:
         self.increment_counter("errors_total", labels={"type": error_type})
 
         # Check alert rules
-        asyncio.create_task(self._check_alerts())
+        # v210.0: Use safe task to prevent "Future exception was never retrieved"
+        create_safe_task(self._check_alerts(), name="check_alerts")
 
     # Alerting API
     def add_alert_rule(
@@ -22632,7 +22650,8 @@ class CrossRepoExperienceForwarder:
 
         # Trigger flush if buffer is full
         if len(self._buffer) >= self._batch_size:
-            asyncio.create_task(self._flush_buffer())
+            # v210.0: Use safe task to prevent "Future exception was never retrieved"
+            create_safe_task(self._flush_buffer(), name="buffer_flush")
 
     async def _flush_loop(self) -> None:
         """Background loop to periodically flush experiences."""
@@ -25040,7 +25059,8 @@ class DynamicConfigurationManager:
         # Notify if changed
         if old_value != value:
             self._stats["changes_detected"] += 1
-            asyncio.create_task(self._notify_change(key, old_value, value))
+            # v210.0: Use safe task to prevent "Future exception was never retrieved"
+            create_safe_task(self._notify_change(key, old_value, value), name="config_notify_change")
 
         return True
 
@@ -26462,7 +26482,8 @@ class ObservabilityPipeline:
 
         # Check buffer size
         if len(self._traces_buffer) >= self._max_batch_size:
-            asyncio.create_task(self._flush_traces())
+            # v210.0: Use safe task to prevent "Future exception was never retrieved"
+            create_safe_task(self._flush_traces(), name="traces_flush")
 
     @contextmanager
     def trace(
@@ -26513,7 +26534,8 @@ class ObservabilityPipeline:
         self._stats["logs_recorded"] += 1
 
         if len(self._logs_buffer) >= self._max_batch_size:
-            asyncio.create_task(self._flush_logs())
+            # v210.0: Use safe task to prevent "Future exception was never retrieved"
+            create_safe_task(self._flush_logs(), name="logs_flush")
 
     def _get_current_trace_id(self) -> Optional[str]:
         """Get current trace ID if available."""
@@ -28131,7 +28153,8 @@ class AuditTrailRecorder:
 
         # Flush if buffer is full
         if len(self._buffer) >= self._batch_size:
-            asyncio.create_task(self._flush())
+            # v210.0: Use safe task to prevent "Future exception was never retrieved"
+            create_safe_task(self._flush(), name="event_buffer_flush")
 
         return event.event_id
 
@@ -28662,7 +28685,8 @@ class WorkflowEngine:
         self._stats["workflows_started"] += 1
 
         # Start execution in background
-        asyncio.create_task(self._execute_workflow(instance))
+        # v210.0: Use safe task to prevent "Future exception was never retrieved"
+        create_safe_task(self._execute_workflow(instance), name=f"workflow_{instance_id}")
 
         return instance_id
 
@@ -30888,7 +30912,8 @@ class ConnectionPoolManager:
         self._stats["pools_created"] += 1
 
         if self._running:
-            asyncio.create_task(pool.start())
+            # v210.0: Use safe task to prevent "Future exception was never retrieved"
+            create_safe_task(pool.start(), name=f"pool_{pool.name}_start")
 
         return pool
 
@@ -31422,7 +31447,8 @@ class DeploymentCoordinator:
         self._stats["deployments_started"] += 1
 
         # Execute deployment in background
-        asyncio.create_task(self._execute_deployment(deployment))
+        # v210.0: Use safe task to prevent "Future exception was never retrieved"
+        create_safe_task(self._execute_deployment(deployment), name=f"deployment_{deployment_id}")
 
         return deployment_id
 
