@@ -3288,6 +3288,7 @@ class GCPVMManager:
         self,
         port: Optional[int] = None,
         timeout: Optional[float] = None,
+        progress_callback: Optional[Callable[[int, str, str], None]] = None,
     ) -> Tuple[bool, Optional[str], str]:
         """
         Ensure the static/persistent VM (Invincible Node) is ready for requests.
@@ -3304,6 +3305,7 @@ class GCPVMManager:
         Args:
             port: Port for health endpoint (default: JARVIS_PRIME_PORT or 8000)
             timeout: Max time to wait for VM to be ready (default: 300s)
+            progress_callback: v220.1 - Optional callback(progress_pct, phase, detail) for real-time dashboard updates
 
         Returns:
             Tuple of (success: bool, ip_address: Optional[str], status_message: str)
@@ -3387,7 +3389,8 @@ class GCPVMManager:
         # Step 5: Poll health endpoint until ready (outside lock to avoid blocking)
         logger.info(f"☁️ [InvincibleNode] Polling health endpoint (timeout: {max_timeout}s)...")
         poll_success, final_status = await self._poll_health_until_ready(
-            static_ip, target_port, max_timeout, poll_interval
+            static_ip, target_port, max_timeout, poll_interval,
+            progress_callback=progress_callback  # v220.1: Pass through for real-time updates
         )
 
         if poll_success:
@@ -3689,10 +3692,20 @@ class GCPVMManager:
             return False, str(e)
 
     async def _poll_health_until_ready(
-        self, ip: str, port: int, timeout: float, poll_interval: float
+        self, ip: str, port: int, timeout: float, poll_interval: float,
+        progress_callback: Optional[Callable[[int, str, str], None]] = None,
     ) -> Tuple[bool, str]:
         """
         Poll the health endpoint until the VM reports ready_for_inference=true.
+        
+        v220.1: Added progress_callback for real-time dashboard updates.
+
+        Args:
+            ip: IP address to poll
+            port: Port number
+            timeout: Max timeout in seconds
+            poll_interval: Seconds between polls
+            progress_callback: Optional callback(progress_pct, phase, detail) for real-time updates
 
         Returns:
             Tuple of (success: bool, final_status: str)
@@ -3701,21 +3714,45 @@ class GCPVMManager:
         last_status = "starting"
 
         while (time.time() - start_time) < timeout:
+            elapsed = time.time() - start_time
             is_ready, health_data = await self._ping_health_endpoint(ip, port, timeout=10.0)
 
             if is_ready:
+                # v220.1: Report 100% on success
+                if progress_callback:
+                    try:
+                        progress_callback(100, "ready", f"VM ready at {ip}")
+                    except Exception:
+                        pass
                 return True, "ready_for_inference"
 
-            # Extract progress info for logging
+            # Extract progress info for logging and callback
+            progress_pct = 0
+            phase_name = "starting"
+            detail = "Waiting for VM..."
+            
             if "apars" in health_data:
                 apars = health_data["apars"]
-                progress = apars.get("total_progress", 0)
-                phase = apars.get("phase_name", "unknown")
+                progress_pct = apars.get("total_progress", 0)
+                phase_name = apars.get("phase_name", "unknown")
                 eta = apars.get("eta_seconds", 0)
-                last_status = f"phase={phase}, progress={progress}%, eta={eta}s"
+                detail = f"{phase_name} ({progress_pct}%, ETA {eta}s)"
+                last_status = f"phase={phase_name}, progress={progress_pct}%, eta={eta}s"
                 logger.debug(f"☁️ [InvincibleNode] Health poll: {last_status}")
             elif "error" in health_data:
                 last_status = f"error={health_data['error']}"
+                detail = health_data.get("error", "Unknown error")[:40]
+            else:
+                # Estimate progress based on elapsed time
+                progress_pct = min(90, int((elapsed / timeout) * 90) + 20)
+                detail = f"Polling health ({int(elapsed)}s elapsed)"
+            
+            # v220.1: Call progress callback for real-time dashboard updates
+            if progress_callback:
+                try:
+                    progress_callback(progress_pct, phase_name, detail)
+                except Exception:
+                    pass  # Don't let callback errors break polling
 
             await asyncio.sleep(poll_interval)
 

@@ -4018,6 +4018,14 @@ class LiveProgressDashboard:
             "estimated_total_seconds": 720,  # Default 12 minutes for large models
             "elapsed_seconds": 0,
             "reason": "",  # Why it takes so long
+            # v220.1: Persistent start time to prevent progress reset
+            "start_time": None,  # Set when loading starts, prevents reset
+            "max_progress_seen": 0,  # Never go backwards
+        }
+        # v220.1: GCP progress also needs persistent tracking
+        self._gcp_loading_state = {
+            "start_time": None,
+            "max_progress_seen": 0,
         }
         # v197.2: Use dynamic ports from environment (matching TrinityIntegrator)
         # This fixes the port mismatch where dashboard showed 8001 but component used 8000
@@ -4071,20 +4079,49 @@ class LiveProgressDashboard:
         elapsed_seconds: int = None,
         status: str = None,
     ) -> None:
-        """Update GCP VM progress state."""
+        """
+        Update GCP VM progress state.
+        
+        v220.1: Enhanced to track start time persistently and prevent progress
+        from ever going backwards, fixing the 0% stuck issue.
+        """
         with self._lock:
+            # v220.1: Track start time on first non-zero update
+            if status == "starting" and self._gcp_loading_state["start_time"] is None:
+                self._gcp_loading_state["start_time"] = time.time()
+                self._gcp_loading_state["max_progress_seen"] = 0
+            elif status in ("healthy", "ready", "error", "stopped"):
+                # GCP startup finished - reset tracking
+                self._gcp_loading_state["start_time"] = None
+                self._gcp_loading_state["max_progress_seen"] = 0
+            
             if phase is not None:
                 self._gcp_state["phase"] = phase
             if phase_name is not None:
                 self._gcp_state["phase_name"] = phase_name
             if checkpoint is not None:
                 self._gcp_state["checkpoint"] = checkpoint
+            
+            # v220.1: NEVER let progress go backwards
             if progress is not None:
-                self._gcp_state["progress"] = progress
+                new_progress = float(progress)
+                max_seen = self._gcp_loading_state["max_progress_seen"]
+                if new_progress >= max_seen:
+                    self._gcp_state["progress"] = new_progress
+                    self._gcp_loading_state["max_progress_seen"] = new_progress
+                elif self._gcp_state["progress"] < max_seen:
+                    self._gcp_state["progress"] = max_seen
+            
             if eta_seconds is not None:
                 self._gcp_state["eta_seconds"] = eta_seconds
-            if elapsed_seconds is not None:
+            
+            # v220.1: Use persistent start time for elapsed calculation
+            if self._gcp_loading_state["start_time"] is not None:
+                actual_elapsed = int(time.time() - self._gcp_loading_state["start_time"])
+                self._gcp_state["elapsed_seconds"] = actual_elapsed
+            elif elapsed_seconds is not None:
                 self._gcp_state["elapsed_seconds"] = elapsed_seconds
+            
             if status is not None:
                 self._gcp_state["status"] = status
                 self._components["gcp-vm"]["status"] = status
@@ -4119,22 +4156,50 @@ class LiveProgressDashboard:
             reason: Explanation of why it takes time (e.g., "Loading 7B parameters into GPU memory")
         """
         with self._lock:
+            # v220.1: CRITICAL - Track persistent start time to prevent progress reset
+            if active is True and self._model_loading_state["start_time"] is None:
+                # Model loading just started - record the start time
+                self._model_loading_state["start_time"] = time.time()
+                self._model_loading_state["max_progress_seen"] = 0
+            elif active is False:
+                # Model loading finished - reset tracking
+                self._model_loading_state["start_time"] = None
+                self._model_loading_state["max_progress_seen"] = 0
+            
             if active is not None:
                 self._model_loading_state["active"] = active
             if model_name is not None:
                 self._model_loading_state["model_name"] = model_name
             if model_size_gb is not None:
                 self._model_loading_state["model_size_gb"] = model_size_gb
+            
+            # v220.1: NEVER let progress go backwards - this prevents the 7% → 0% issue
             if progress_pct is not None:
-                self._model_loading_state["progress_pct"] = min(100, max(0, progress_pct))
+                new_pct = min(100, max(0, progress_pct))
+                max_seen = self._model_loading_state["max_progress_seen"]
+                # Only update if new progress is >= what we've seen
+                if new_pct >= max_seen:
+                    self._model_loading_state["progress_pct"] = new_pct
+                    self._model_loading_state["max_progress_seen"] = new_pct
+                # Otherwise keep showing max_seen (progress never goes backwards)
+                elif self._model_loading_state["progress_pct"] < max_seen:
+                    self._model_loading_state["progress_pct"] = max_seen
+            
             if stage is not None:
                 self._model_loading_state["stage"] = stage
             if stage_detail is not None:
                 self._model_loading_state["stage_detail"] = stage_detail
             if estimated_total_seconds is not None:
                 self._model_loading_state["estimated_total_seconds"] = estimated_total_seconds
-            if elapsed_seconds is not None:
+            
+            # v220.1: Use persistent start time for elapsed calculation
+            if self._model_loading_state["start_time"] is not None:
+                # Always use our tracked start time for accurate elapsed
+                actual_elapsed = int(time.time() - self._model_loading_state["start_time"])
+                self._model_loading_state["elapsed_seconds"] = actual_elapsed
+            elif elapsed_seconds is not None:
                 self._model_loading_state["elapsed_seconds"] = elapsed_seconds
+            
             if reason is not None:
                 self._model_loading_state["reason"] = reason
 
@@ -58163,27 +58228,103 @@ class JarvisSystemKernel:
             invincible_node_task: Optional[asyncio.Task] = None
             if self.config.invincible_node_enabled and self.config.invincible_node_static_ip_name:
                 self.logger.info("[Kernel] Starting Invincible Node wake-up in parallel...")
+                
+                # v220.1: Update dashboard with GCP starting status
+                update_dashboard_gcp_progress(
+                    phase=1, 
+                    phase_name="Initiating", 
+                    checkpoint="Starting GCP VM wake-up",
+                    progress=5,
+                    status="starting"
+                )
 
                 async def _wake_invincible_node() -> Tuple[bool, Optional[str], str]:
-                    """Wake up the Invincible Node (cloud VM with static IP)."""
+                    """
+                    Wake up the Invincible Node (cloud VM with static IP).
+                    v220.1: Now reports progress to dashboard in real-time via callback.
+                    """
                     try:
                         from backend.core.gcp_vm_manager import get_gcp_vm_manager
+                        
+                        # v220.1: Report GCP progress to dashboard
+                        update_dashboard_gcp_progress(
+                            phase=2, phase_name="Connecting", 
+                            checkpoint="Loading GCP manager",
+                            progress=10
+                        )
+                        
                         manager = await get_gcp_vm_manager()
+                        
+                        update_dashboard_gcp_progress(
+                            phase=2, phase_name="Connecting",
+                            checkpoint="GCP manager loaded",
+                            progress=15
+                        )
 
                         if manager.is_static_vm_mode:
                             self.logger.info(f"[InvincibleNode] Waking cloud node...")
+                            
+                            update_dashboard_gcp_progress(
+                                phase=3, phase_name="Waking VM",
+                                checkpoint="Sending wake request",
+                                progress=20
+                            )
+                            
+                            # v220.1: Create progress callback for real-time dashboard updates
+                            def _gcp_progress_callback(pct: int, phase: str, detail: str) -> None:
+                                """Callback from GCP VM manager to update dashboard."""
+                                # Map progress: GCP reports 0-100, we map 20-100 (20% is starting)
+                                dashboard_pct = 20 + int(pct * 0.8)  # 20% base + 80% from polling
+                                update_dashboard_gcp_progress(
+                                    phase=4, phase_name=phase.title()[:15],
+                                    checkpoint=detail[:50],
+                                    progress=dashboard_pct
+                                )
+                            
                             success, ip, status = await manager.ensure_static_vm_ready(
                                 port=self.config.invincible_node_port,
                                 timeout=self.config.invincible_node_health_timeout,
+                                progress_callback=_gcp_progress_callback,  # v220.1: Real-time updates
                             )
+                            
+                            if success:
+                                update_dashboard_gcp_progress(
+                                    phase=5, phase_name="Ready",
+                                    checkpoint=f"VM ready at {ip}",
+                                    progress=100,
+                                    status="healthy"
+                                )
+                            else:
+                                update_dashboard_gcp_progress(
+                                    phase=4, phase_name="Pending",
+                                    checkpoint=status[:40] if status else "Waiting...",
+                                    progress=50
+                                )
+                            
                             return success, ip, status
                         else:
+                            update_dashboard_gcp_progress(
+                                phase=0, phase_name="Skipped",
+                                checkpoint="Static VM not configured",
+                                progress=0,
+                                status="skipped"
+                            )
                             return False, None, "STATIC_VM_NOT_CONFIGURED"
                     except ImportError as e:
                         self.logger.warning(f"[InvincibleNode] GCP module not available: {e}")
+                        update_dashboard_gcp_progress(
+                            phase=0, phase_name="Error",
+                            checkpoint="GCP module unavailable",
+                            progress=0, status="error"
+                        )
                         return False, None, f"IMPORT_ERROR: {e}"
                     except Exception as e:
                         self.logger.warning(f"[InvincibleNode] Wake-up failed: {e}")
+                        update_dashboard_gcp_progress(
+                            phase=0, phase_name="Error",
+                            checkpoint=str(e)[:40],
+                            progress=0, status="error"
+                        )
                         return False, None, f"ERROR: {e}"
 
                 invincible_node_task = create_safe_task(
@@ -58241,6 +58382,14 @@ class JarvisSystemKernel:
                 
                 try:
                     self.logger.info(f"[InvincibleNode] Quick check (max {quick_check_timeout:.0f}s)...")
+                    
+                    # v220.1: Update dashboard during quick check
+                    update_dashboard_gcp_progress(
+                        phase=3, phase_name="Quick Check",
+                        checkpoint=f"Waiting {int(quick_check_timeout)}s for response",
+                        progress=30
+                    )
+                    
                     node_success, node_ip, node_status = await asyncio.wait_for(
                         invincible_node_task,
                         timeout=quick_check_timeout
@@ -58253,6 +58402,14 @@ class JarvisSystemKernel:
                         # v219.0: ROOT CAUSE FIX - Propagate URL so all Prime clients
                         # know where to send requests (hollow client actually works now)
                         self._propagate_invincible_node_url(node_ip, source="quick_check")
+                        
+                        # v220.1: Update dashboard with success
+                        update_dashboard_gcp_progress(
+                            phase=5, phase_name="Ready",
+                            checkpoint=f"VM ready at {node_ip}",
+                            progress=100,
+                            status="healthy"
+                        )
                         
                         await self._broadcast_startup_progress(
                             stage="resources",
@@ -58267,15 +58424,32 @@ class JarvisSystemKernel:
                     else:
                         self.logger.info(f"[InvincibleNode] Not ready yet: {node_status}")
                         self._invincible_node_ready = False
+                        
+                        # v220.1: Update dashboard with pending status
+                        update_dashboard_gcp_progress(
+                            phase=4, phase_name="Pending",
+                            checkpoint=node_status[:40] if node_status else "Waiting...",
+                            progress=50
+                        )
                 except asyncio.TimeoutError:
                     # v211.0: Node didn't respond in 15s - that's OK, let it continue in background
                     # We create a NEW background task to monitor it without blocking startup
                     self.logger.info(f"[InvincibleNode] Still starting (continuing in background)...")
                     self._invincible_node_ready = False
                     
+                    # v220.1: Update dashboard - continuing in background
+                    update_dashboard_gcp_progress(
+                        phase=4, phase_name="Background",
+                        checkpoint="Monitoring in background",
+                        progress=40
+                    )
+                    
                     # v211.0: Create background monitor task that doesn't block startup
                     async def _background_node_monitor():
-                        """Monitor Invincible Node in background, update status when ready."""
+                        """
+                        Monitor Invincible Node in background, update status when ready.
+                        v220.1: Now reports progress to dashboard in real-time.
+                        """
                         try:
                             # v219.0: Use config-driven background timeout
                             if StartupTimeouts is not None:
@@ -58288,14 +58462,53 @@ class JarvisSystemKernel:
                                 background_timeout = float(os.environ.get(
                                     "JARVIS_INVINCIBLE_BACKGROUND_TIMEOUT", "600.0"
                                 ))
-                            node_success, node_ip, node_status = await asyncio.wait_for(
-                                invincible_node_task,
-                                timeout=background_timeout
-                            )
+                            
+                            # v220.1: Report background monitoring progress
+                            _bg_start = time.time()
+                            _last_pct = 40
+                            
+                            # Create a progress updater that runs while waiting
+                            async def _update_gcp_progress_periodically():
+                                nonlocal _last_pct
+                                while True:
+                                    await asyncio.sleep(5.0)  # Update every 5 seconds
+                                    elapsed = time.time() - _bg_start
+                                    # Progress from 40% to 95% over background_timeout
+                                    new_pct = min(95, 40 + int((elapsed / background_timeout) * 55))
+                                    if new_pct > _last_pct:
+                                        _last_pct = new_pct
+                                        update_dashboard_gcp_progress(
+                                            phase=4, phase_name="Waking",
+                                            checkpoint=f"VM starting ({int(elapsed)}s elapsed)",
+                                            progress=new_pct
+                                        )
+                            
+                            progress_task = create_safe_task(_update_gcp_progress_periodically())
+                            
+                            try:
+                                node_success, node_ip, node_status = await asyncio.wait_for(
+                                    invincible_node_task,
+                                    timeout=background_timeout
+                                )
+                            finally:
+                                progress_task.cancel()
+                                try:
+                                    await progress_task
+                                except asyncio.CancelledError:
+                                    pass
+                            
                             if node_success and node_ip:
                                 self.logger.success(f"[InvincibleNode] Cloud Node READY (background): {node_ip}")
                                 self._invincible_node_ip = node_ip
                                 self._invincible_node_ready = True
+                                
+                                # v220.1: Update dashboard with success
+                                update_dashboard_gcp_progress(
+                                    phase=5, phase_name="Ready",
+                                    checkpoint=f"VM ready at {node_ip}",
+                                    progress=100,
+                                    status="healthy"
+                                )
                                 
                                 # v219.0: ROOT CAUSE FIX - Propagate URL when background monitor succeeds
                                 # This allows late-ready node to still be used by all Prime clients
@@ -58318,12 +58531,30 @@ class JarvisSystemKernel:
                                     self.logger.debug(f"[InvincibleNode] Background broadcast error (non-fatal): {broadcast_err}")
                             else:
                                 self.logger.info(f"[InvincibleNode] Background wake-up result: {node_status}")
+                                # v220.1: Update dashboard with pending status
+                                update_dashboard_gcp_progress(
+                                    phase=4, phase_name="Pending",
+                                    checkpoint=node_status[:40] if node_status else "Unknown",
+                                    progress=60
+                                )
                         except asyncio.TimeoutError:
                             self.logger.warning(f"[InvincibleNode] Background timeout - node may need manual intervention")
+                            # v220.1: Update dashboard with timeout
+                            update_dashboard_gcp_progress(
+                                phase=4, phase_name="Timeout",
+                                checkpoint="Background monitor timed out",
+                                progress=0, status="error"
+                            )
                         except asyncio.CancelledError:
                             pass  # Shutdown, ignore
                         except Exception as e:
                             self.logger.debug(f"[InvincibleNode] Background monitor error: {e}")
+                            # v220.1: Update dashboard with error
+                            update_dashboard_gcp_progress(
+                                phase=0, phase_name="Error",
+                                checkpoint=str(e)[:40],
+                                progress=0, status="error"
+                            )
                     
                     # Fire and forget the background monitor
                     create_safe_task(
