@@ -56,18 +56,35 @@
 
 class JARVISLoadingManager {
     constructor() {
-        // v181.0: Dynamic port detection - use current origin port for unified_supervisor
-        // This ensures the loading page communicates with the correct server regardless
-        // of whether we're running via start_system.py (3001) or unified_supervisor.py (8080)
+        // v186.0: Priority port detection - server-injected > window.location > defaults
+        // loading_server.py injects window.JARVIS_LOADING_SERVER_PORT with the correct port
+        // This is CRITICAL when the page is served from a different origin (e.g., 8080) 
+        // than where the loading server actually runs (e.g., 3001)
+        const injectedLoadingPort = window.JARVIS_LOADING_SERVER_PORT;
+        const injectedFrontendPort = window.JARVIS_FRONTEND_PORT;
+        const injectedBackendPort = window.JARVIS_BACKEND_PORT;
+        
+        // Fallback to window.location.port only if no injection
         const currentPort = parseInt(window.location.port) || (window.location.protocol === 'https:' ? 443 : 80);
         const isUnifiedSupervisor = currentPort === 8080 || window.location.pathname.includes('unified');
 
+        // v186.0: Determine loading server port with clear priority
+        // 1. Server-injected port (most reliable - loading_server.py knows its own port)
+        // 2. window.location.port (works when page is served from same server)
+        // 3. Default 3001 (legacy fallback)
+        const loadingServerPort = injectedLoadingPort || currentPort || 3001;
+        
+        if (injectedLoadingPort) {
+            console.log(`[v186.0] Using server-injected loading port: ${injectedLoadingPort}`);
+        } else {
+            console.warn(`[v186.0] No server-injected port, using fallback: ${loadingServerPort}`);
+        }
+
         this.config = {
-            // v181.0: Use current port for same-origin API calls
-            // Fallback to 3001 only if we can't detect the port (e.g., running on default HTTP port)
-            loadingServerPort: currentPort || 3001,
-            backendPort: 8010,
-            mainAppPort: 3000,
+            // v186.0: Use server-injected port when available
+            loadingServerPort: loadingServerPort,
+            backendPort: injectedBackendPort || 8010,
+            mainAppPort: injectedFrontendPort || 3000,
             wsProtocol: window.location.protocol === 'https:' ? 'wss:' : 'ws:',
             httpProtocol: window.location.protocol,
             hostname: window.location.hostname || 'localhost',
@@ -2026,8 +2043,9 @@ class JARVISLoadingManager {
         }
 
         try {
-            // Connect to loading server on port 3001
-            const wsUrl = `${this.config.wsProtocol}//${this.config.hostname}:${this.config.loadingServerPort}/ws/startup-progress`;
+            // v186.0: Connect to loading server using canonical endpoint /ws/progress
+            // (loading_server.py accepts any WebSocket upgrade, but /ws/progress is the documented endpoint)
+            const wsUrl = `${this.config.wsProtocol}//${this.config.hostname}:${this.config.loadingServerPort}/ws/progress`;
             console.log(`[WebSocket] Connecting to ${wsUrl}...`);
 
             this.state.ws = new WebSocket(wsUrl);
@@ -2223,7 +2241,8 @@ class JARVISLoadingManager {
         this.pollingState.lastRequestTime = startTime;
 
         try {
-            const url = `${this.config.httpProtocol}//${this.config.hostname}:${this.config.loadingServerPort}/api/startup-progress`;
+            // v186.0: Use canonical endpoint /api/progress (alias /api/startup-progress also works)
+            const url = `${this.config.httpProtocol}//${this.config.hostname}:${this.config.loadingServerPort}/api/progress`;
 
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), this.config.polling.timeout);
