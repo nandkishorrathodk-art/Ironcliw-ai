@@ -1707,12 +1707,31 @@ class JARVISLoadingManager {
     }
 
     async init() {
-        console.log('[JARVIS] Loading Manager v4.1 starting...');
-        console.log(`[Config] Loading server: ${this.config.hostname}:${this.config.loadingServerPort}`);
+        console.log('[JARVIS] Loading Manager v210.0 starting...');
+        console.log(`[Config] Initial loading server guess: ${this.config.hostname}:${this.config.loadingServerPort}`);
         console.log('[Mode] DISPLAY - trusts start_system.py as authority');
 
-        // Quick check: Skip loading if system already fully ready
-        // This handles page refresh when JARVIS is already running
+        // ═══════════════════════════════════════════════════════════════════════════
+        // v210.0: PHASE 1 - INTELLIGENT PORT DISCOVERY
+        // Run port discovery FIRST to determine actual server locations
+        // ═══════════════════════════════════════════════════════════════════════════
+        console.log('[v210.0] Phase 1: Discovering server ports...');
+        const loadingServerPort = await this.discoverLoadingServerPort();
+        const loadingServerFound = this._discoveredLoadingPort !== null;
+        
+        if (loadingServerFound) {
+            console.log(`[v210.0] ✅ Loading server found on port ${loadingServerPort}`);
+        } else {
+            console.warn('[v210.0] ⚠️ No loading server responding - checking if system is already running...');
+        }
+
+        // ═══════════════════════════════════════════════════════════════════════════
+        // v210.0: PHASE 2 - SYSTEM READINESS CHECK
+        // If no loading server, check if system is already running
+        // ═══════════════════════════════════════════════════════════════════════════
+        console.log('[v210.0] Phase 2: Checking system readiness...');
+        
+        // Quick check: Skip loading if system already fully ready (backend + frontend)
         const fullyReady = await this.checkFullSystemReady();
         if (fullyReady) {
             console.log('[JARVIS] ✅ Full system already ready - skipping loading screen');
@@ -1720,6 +1739,30 @@ class JARVISLoadingManager {
             return;
         }
 
+        // v210.0: If no loading server but backend is healthy, startup is complete
+        if (!loadingServerFound) {
+            const backendHealthy = await this.checkBackendHealth();
+            if (backendHealthy) {
+                console.log('[v210.0] ✅ Backend healthy, no loading server - startup likely complete');
+                
+                // Check if frontend is ready
+                const frontendReady = await this.checkFrontendReady();
+                if (frontendReady) {
+                    console.log('[v210.0] ✅ Frontend also ready - redirecting');
+                    this.quickRedirectToApp();
+                    return;
+                } else {
+                    console.log('[v210.0] ℹ️ Frontend not ready yet - showing backend fallback option');
+                    // Continue initialization but show backend fallback immediately
+                    this._showBackendFallbackEarly = true;
+                }
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════════════════════
+        // v210.0: PHASE 3 - UI INITIALIZATION
+        // ═══════════════════════════════════════════════════════════════════════════
+        console.log('[v210.0] Phase 3: Initializing UI...');
         this.createParticles();
         this.createDetailedStatusPanel();
         this.startSmoothProgress();
@@ -1729,13 +1772,33 @@ class JARVISLoadingManager {
             this.elements.detailsPanel.classList.add('visible');
         }
         this.addLogEntry('System', 'Loading manager initialized', 'info');
-        this.addLogEntry('System', 'Connecting to supervisor...', 'info');
+        
+        if (loadingServerFound) {
+            this.addLogEntry('System', `Connecting to loading server on port ${loadingServerPort}...`, 'info');
+        } else {
+            this.addLogEntry('System', 'Loading server not found - monitoring backend directly...', 'warning');
+        }
 
-        // Connect to loading server (port 3001) - this is our PRIMARY source
-        // start_system.py → loading_server.py → here
-        await this.connectWebSocket();
-        this.startPolling();
+        // ═══════════════════════════════════════════════════════════════════════════
+        // v210.0: PHASE 4 - CONNECTION ESTABLISHMENT
+        // Only try WebSocket if loading server was found
+        // ═══════════════════════════════════════════════════════════════════════════
+        console.log('[v210.0] Phase 4: Establishing connections...');
+        
+        if (loadingServerFound) {
+            // Connect to loading server - this is our PRIMARY source
+            await this.connectWebSocket();
+            this.startPolling();
+        } else {
+            console.log('[v210.0] Skipping WebSocket - no loading server, using backend health polling only');
+        }
+        
         this.startHealthMonitoring();
+
+        // v210.0: Show backend fallback button early if loading server not found
+        if (this._showBackendFallbackEarly) {
+            this.showBackendFallbackButton();
+        }
 
         // CRITICAL: Start backend health polling for stuck detection & fallback
         // This enables automatic redirect when system is already running but loading server is down
