@@ -60605,33 +60605,42 @@ class JarvisSystemKernel:
             env["BROWSER"] = "none"  # Don't auto-open browser
             env["REACT_APP_BACKEND_URL"] = f"http://localhost:{self.config.backend_port}"
             
-            # v210.1: CI mode to reduce npm output
-            env["CI"] = "true"  # Makes npm output less verbose
-
-            # v210.1: Create log file for frontend output (fixes subprocess buffer deadlock)
-            # When using PIPE, the subprocess will BLOCK if its output buffer fills up.
-            # This was causing the frontend to hang indefinitely.
+            # v211.0: DO NOT set CI=true - it causes React dev server issues
+            # CI mode is for build processes, not the development server
+            # Setting CI=true can cause the dev server to exit after first compile
+            env.pop("CI", None)  # Remove CI if set in parent environment
+            
+            # v211.0: Proper log file handling for subprocess output
+            # The key is to open the file with proper flags and keep it open
             logs_dir = self.config.project_root / "backend" / "logs"
             logs_dir.mkdir(parents=True, exist_ok=True)
             frontend_log_path = logs_dir / f"frontend_{time.strftime('%Y%m%d_%H%M%S')}.log"
             
+            # v211.0: Open file with unbuffered write to ensure log integrity
+            # Store the path for later reference
+            self._frontend_log_path = frontend_log_path
+            
             try:
-                self._frontend_log_file = await asyncio.to_thread(
-                    open, frontend_log_path, "w"
-                )
+                # Open file in append mode with line buffering
+                self._frontend_log_file = open(frontend_log_path, "w", buffering=1)
+                self._frontend_log_fd = self._frontend_log_file.fileno()
                 self.logger.debug(f"[Frontend] Log file: {frontend_log_path}")
             except Exception as log_err:
                 self.logger.debug(f"[Frontend] Could not create log file: {log_err}")
                 self._frontend_log_file = None
+                self._frontend_log_fd = None
 
-            # Start the frontend with output going to log file (prevents buffer deadlock)
-            if self._frontend_log_file:
+            # v211.0: Start frontend with proper process isolation
+            # - start_new_session=True: Prevents signals from propagating to child
+            # - Use file descriptor directly for more reliable output handling
+            if self._frontend_log_fd is not None:
                 self._frontend_process = await asyncio.create_subprocess_exec(
                     "npm", "start",
                     cwd=str(frontend_dir),
                     env=env,
-                    stdout=self._frontend_log_file,
-                    stderr=asyncio.subprocess.STDOUT,  # Combine stderr into log
+                    stdout=self._frontend_log_fd,
+                    stderr=self._frontend_log_fd,  # Also capture stderr to same log
+                    start_new_session=True,  # v211.0: Process isolation
                 )
             else:
                 # Fallback: use DEVNULL to prevent blocking (lose output but process won't hang)
@@ -60641,6 +60650,7 @@ class JarvisSystemKernel:
                     env=env,
                     stdout=asyncio.subprocess.DEVNULL,
                     stderr=asyncio.subprocess.DEVNULL,
+                    start_new_session=True,  # v211.0: Process isolation
                 )
 
             self.logger.info(f"[Frontend] npm start process started (PID: {self._frontend_process.pid})")
@@ -60713,29 +60723,50 @@ class JarvisSystemKernel:
             return False
 
     async def _stop_frontend(self) -> None:
-        """Stop the frontend (called during shutdown)."""
+        """
+        Stop the frontend (called during shutdown).
+        
+        v211.0: Enhanced to handle process groups and proper cleanup.
+        Since frontend is started with start_new_session=True, we need to
+        terminate the entire process group to stop npm and its children.
+        """
         if hasattr(self, '_frontend_process') and self._frontend_process:
             if self._frontend_process.returncode is None:
                 self.logger.info("[Frontend] Stopping...")
                 try:
-                    self._frontend_process.terminate()
+                    # v211.0: Try to terminate the process group (includes npm children)
+                    pid = self._frontend_process.pid
+                    try:
+                        # Send SIGTERM to the entire process group
+                        import signal
+                        os.killpg(os.getpgid(pid), signal.SIGTERM)
+                    except (ProcessLookupError, PermissionError, OSError):
+                        # Fallback to just terminating the main process
+                        self._frontend_process.terminate()
+                    
                     await asyncio.wait_for(
                         self._frontend_process.wait(),
                         timeout=10.0
                     )
                 except asyncio.TimeoutError:
-                    self._frontend_process.kill()
+                    # Force kill if graceful shutdown fails
+                    try:
+                        import signal
+                        os.killpg(os.getpgid(self._frontend_process.pid), signal.SIGKILL)
+                    except (ProcessLookupError, PermissionError, OSError):
+                        self._frontend_process.kill()
                     await self._frontend_process.wait()
                 self.logger.info("[Frontend] Stopped")
             self._frontend_process = None
         
-        # v210.1: Close frontend log file
+        # v211.0: Close frontend log file (synchronous file, no need for to_thread)
         if hasattr(self, '_frontend_log_file') and self._frontend_log_file:
             try:
-                await asyncio.to_thread(self._frontend_log_file.close)
+                self._frontend_log_file.close()
             except Exception:
                 pass
             self._frontend_log_file = None
+            self._frontend_log_fd = None
 
     # =========================================================================
     # v182.0: DYNAMIC COMPONENT TRACKING
