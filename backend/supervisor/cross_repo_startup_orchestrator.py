@@ -1837,7 +1837,22 @@ async def ensure_gcp_vm_ready_for_prime(
 
         # v147.0: start_spot_vm now returns IP on success
         vm_ip = result_or_error  # This is the IP address when success=True
-        logger.info(f"[v147.0] 🔧 VM provisioned with IP: {vm_ip}, waiting for service to start...")
+        
+        # v213.0: Track VM name for diagnosis - get it immediately after provisioning
+        # This fixes the "Could not find VM for IP" error by tracking the name upfront
+        provisioned_vm_name: Optional[str] = None
+        try:
+            active_vm = await vm_manager.get_active_vm()
+            if active_vm:
+                provisioned_vm_name = active_vm.name
+                # v213.0: Also verify/update the IP if it was initially None
+                if not vm_ip and active_vm.ip_address:
+                    vm_ip = active_vm.ip_address
+                    logger.info(f"[v213.0] Updated VM IP from manager: {vm_ip}")
+        except Exception as vm_track_err:
+            logger.debug(f"[v213.0] Could not track VM name (non-fatal): {vm_track_err}")
+        
+        logger.info(f"[v213.0] 🔧 VM provisioned: name={provisioned_vm_name}, IP={vm_ip}, waiting for service...")
 
         # v189.0: Use intelligent model readiness detection
         # This waits for ACTUAL model loading to complete, not just HTTP health
@@ -1921,24 +1936,42 @@ async def ensure_gcp_vm_ready_for_prime(
         # Timeout reached - v155.0: Run diagnostics before failing
         logger.warning(f"[v155.0] ⏳ GCP VM health check timeout - running diagnostics...")
 
-        # v155.0: Get VM diagnostics to understand WHY health checks failed
-        vm_name = None
+        # v213.0: Enhanced VM diagnostics with multi-strategy lookup
+        # Use the VM name we tracked at provision time, or search by IP, or by any active VM
+        vm_name = provisioned_vm_name  # v213.0: Use tracked name from provision
         diagnosis = None
         try:
-            # Find the VM name from managed_vms
-            async with vm_manager._vm_lock:
-                for name, vm in vm_manager.managed_vms.items():
-                    if vm.ip_address == vm_ip:
-                        vm_name = name
-                        break
-
+            # If we didn't track the name, try to find it by IP or get any active VM
+            if not vm_name:
+                async with vm_manager._vm_lock:
+                    # Strategy 1: Find by IP
+                    for name, vm in vm_manager.managed_vms.items():
+                        if vm.ip_address == vm_ip:
+                            vm_name = name
+                            break
+                    
+                    # Strategy 2: Find by most recent running VM (if IP lookup failed)
+                    if not vm_name:
+                        for name, vm in vm_manager.managed_vms.items():
+                            if vm.state.value == "running":
+                                vm_name = name
+                                logger.info(f"[v213.0] Found running VM by state: {vm_name}")
+                                break
+            
+            # Now run diagnosis with whatever VM name we found
             if vm_name and hasattr(vm_manager, 'diagnose_vm_startup_failure'):
                 diagnosis = await vm_manager.diagnose_vm_startup_failure(vm_name, vm_ip)
-                logger.info(f"[v155.0] Diagnosis complete: {diagnosis.get('detected_issues', [])}")
+                logger.info(f"[v213.0] Diagnosis complete for VM '{vm_name}': {diagnosis.get('detected_issues', [])}")
             else:
-                logger.warning(f"[v155.0] Could not find VM for IP {vm_ip} or diagnosis method unavailable")
+                # v213.0: Enhanced warning with debug info
+                tracked_vms = list(vm_manager.managed_vms.keys()) if vm_manager.managed_vms else []
+                logger.warning(
+                    f"[v213.0] Could not find VM for diagnosis. "
+                    f"IP={vm_ip}, tracked_name={provisioned_vm_name}, "
+                    f"managed_vms={tracked_vms}, has_diagnose={hasattr(vm_manager, 'diagnose_vm_startup_failure')}"
+                )
         except Exception as diag_err:
-            logger.warning(f"[v155.0] Diagnosis error (non-fatal): {diag_err}")
+            logger.warning(f"[v213.0] Diagnosis error (non-fatal): {diag_err}")
 
         timeout_error = TimeoutError(
             f"GCP VM not ready after {timeout_seconds}s timeout. "
@@ -2450,31 +2483,61 @@ class AdaptiveProgressAwareWaiter:
     
     def _extend_if_eta_exceeds_remaining(self, snapshot: APARSProgressSnapshot, remaining: float) -> None:
         """
-        v197.1: ALWAYS extend if VM's ETA exceeds our remaining time.
+        v213.0: ALWAYS extend if VM's ETA exceeds our remaining time.
         
         This is the KEY fix: If the VM is responding and says it needs 211s,
         but we only have 6s remaining, we MUST extend - regardless of progress delta.
+        
+        v213.0 ENHANCEMENT: More aggressive extension for active VMs.
+        - Increased extension buffer from 60s to 120s
+        - Removed hard cap restriction when VM is actively progressing
+        - Added model loading phase detection (Phase 3 typically takes 400-600s)
         """
         now = time.time()
         elapsed = now - self.start_time
         vm_eta = snapshot.eta_seconds
         
-        # Don't extend past hard cap
-        max_remaining = self.max_extension_time - elapsed
+        # v213.0: Check if VM is in model loading phase (Phase 3)
+        # Model loading can take 5-10 minutes on cold start - be more generous
+        is_model_loading_phase = (
+            snapshot.phase_number >= 3 or
+            "model" in snapshot.checkpoint.lower() or
+            "loading" in snapshot.checkpoint.lower() or
+            "weights" in snapshot.checkpoint.lower()
+        )
+        
+        # v213.0: Dynamic hard cap based on phase
+        # Model loading phase gets 20 minutes, other phases get 15 minutes
+        effective_max = self.max_extension_time
+        if is_model_loading_phase and snapshot.total_progress > 10:
+            effective_max = max(self.max_extension_time, 1200)  # 20 minutes for model loading
+            
+        # Don't extend past hard cap (but use dynamic cap)
+        max_remaining = effective_max - elapsed
         if max_remaining <= 0:
+            logger.warning(
+                f"[APARS v213.0] Hard cap reached ({effective_max}s). "
+                f"Phase={snapshot.phase_number}, progress={snapshot.total_progress:.1f}%, "
+                f"checkpoint={snapshot.checkpoint}"
+            )
             return
         
-        # v197.1: If VM says it needs more time than we have, EXTEND!
-        if vm_eta > remaining and remaining < 120:  # Only auto-extend when < 2min remaining
+        # v213.0: More aggressive extension logic
+        # - Always extend when VM reports needing time (removed the 120s restriction)
+        # - Larger buffer for model loading phases
+        extension_buffer = 120 if is_model_loading_phase else 60
+        
+        if vm_eta > remaining:
             # Grant extension based on VM's ETA, with buffer
-            extension = min(vm_eta - remaining + 60, max_remaining)  # +60s buffer for safety
-            if extension > 30:  # Only extend if meaningful (>30s)
+            extension = min(vm_eta - remaining + extension_buffer, max_remaining)
+            if extension > 20:  # Lower threshold: extend if meaningful (>20s)
                 self.current_deadline += extension
                 self.extensions_granted += 1
                 logger.info(
-                    f"[APARS v197.1] ⏰ ETA-BASED EXTENSION: +{extension:.0f}s "
+                    f"[APARS v213.0] ⏰ ETA-BASED EXTENSION: +{extension:.0f}s "
                     f"(VM ETA={vm_eta}s > remaining={remaining:.0f}s, "
-                    f"extensions={self.extensions_granted})"
+                    f"phase={snapshot.phase_number}, is_model_loading={is_model_loading_phase}, "
+                    f"extensions={self.extensions_granted}, hard_cap={effective_max}s)"
                 )
                 self.stall_start_time = None  # VM is working, reset stall detection
     
@@ -2546,7 +2609,7 @@ class AdaptiveProgressAwareWaiter:
     
     def should_continue(self) -> Tuple[bool, str]:
         """
-        Check if we should continue waiting.
+        v213.0: Check if we should continue waiting with intelligent timeout management.
         
         Returns:
             Tuple of (should_continue, reason)
@@ -2554,13 +2617,39 @@ class AdaptiveProgressAwareWaiter:
         now = time.time()
         elapsed = now - self.start_time
         
-        # Hard cap check
-        if elapsed >= self.max_extension_time:
-            return False, f"Hard timeout cap reached ({self.max_extension_time:.0f}s)"
+        # v213.0: Get latest progress info for intelligent decision
+        latest_progress = None
+        latest_checkpoint = "unknown"
+        if self.progress_history:
+            latest_progress = self.progress_history[-1].total_progress
+            latest_checkpoint = self.progress_history[-1].checkpoint
+        
+        # v213.0: Dynamic hard cap based on progress
+        # If VM is making good progress and past 50%, extend the hard cap
+        effective_max = self.max_extension_time
+        if latest_progress and latest_progress > 50:
+            # Past halfway - give more time (up to 25 minutes for model loading)
+            effective_max = max(self.max_extension_time, 1500)
+        elif latest_progress and latest_progress > 30:
+            # Making progress - standard extended cap (20 minutes)
+            effective_max = max(self.max_extension_time, 1200)
+        
+        # Hard cap check with dynamic value
+        if elapsed >= effective_max:
+            progress_str = f"{latest_progress:.1f}%" if latest_progress else "unknown"
+            return False, (
+                f"Hard timeout cap reached ({effective_max:.0f}s, "
+                f"progress={progress_str}, "
+                f"checkpoint={latest_checkpoint})"
+            )
         
         # Deadline check
         if now >= self.current_deadline:
-            return False, f"Deadline reached ({elapsed:.0f}s elapsed, {self.extensions_granted} extensions)"
+            progress_str = f"{latest_progress:.1f}%" if latest_progress else "unknown"
+            return False, (
+                f"Deadline reached ({elapsed:.0f}s elapsed, {self.extensions_granted} extensions, "
+                f"progress={progress_str})"
+            )
         
         return True, "Continuing"
     

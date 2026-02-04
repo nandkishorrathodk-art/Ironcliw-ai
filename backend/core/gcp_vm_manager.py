@@ -1438,10 +1438,49 @@ class GCPVMManager:
                 trigger_reason="auto_offload",
             )
             
-            # Wait for IP (create_vm usually returns loaded VM but IP might take a moment)
+            # v213.0: Wait for IP assignment with retry loop
+            # GCP can take a few seconds to assign the external IP after VM creation
             if vm and vm.state == VMState.RUNNING:
-                logger.info(f"[v147.0] Spot VM created successfully: {vm.ip_address}")
-                return True, vm.ip_address
+                if vm.ip_address:
+                    logger.info(f"[v213.0] Spot VM created successfully: {vm.ip_address}")
+                    return True, vm.ip_address
+                
+                # v213.0: IP not immediately available - poll GCP for up to 60s
+                logger.info(f"[v213.0] VM created but IP not yet assigned. Waiting for IP assignment...")
+                ip_wait_start = time.time()
+                ip_wait_timeout = 60.0  # 60 second timeout for IP assignment
+                
+                while (time.time() - ip_wait_start) < ip_wait_timeout:
+                    try:
+                        # Query GCP for current VM state
+                        instance = await asyncio.to_thread(
+                            self.instances_client.get,
+                            project=self.config.project_id,
+                            zone=self.config.zone,
+                            instance=vm.name,
+                        )
+                        
+                        # Check for external IP
+                        if instance.network_interfaces:
+                            ni = instance.network_interfaces[0]
+                            if ni.access_configs:
+                                ip_address = ni.access_configs[0].nat_i_p
+                                if ip_address:
+                                    # Update our tracked VM with the IP
+                                    async with self._vm_lock:
+                                        if vm.name in self.managed_vms:
+                                            self.managed_vms[vm.name].ip_address = ip_address
+                                    logger.info(f"[v213.0] IP assigned after {time.time() - ip_wait_start:.1f}s: {ip_address}")
+                                    return True, ip_address
+                        
+                        await asyncio.sleep(2.0)  # Poll every 2 seconds
+                    except Exception as ip_poll_err:
+                        logger.debug(f"[v213.0] IP poll error (retrying): {ip_poll_err}")
+                        await asyncio.sleep(3.0)
+                
+                # Timed out waiting for IP - return what we have (might be None)
+                logger.warning(f"[v213.0] Timed out waiting for IP assignment after {ip_wait_timeout}s")
+                return True, vm.ip_address  # Still return success - VM is running
             
             # VM creation returned but not running
             if vm:
