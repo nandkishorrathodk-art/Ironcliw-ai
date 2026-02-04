@@ -2037,14 +2037,17 @@ async def ensure_gcp_vm_ready_for_prime(
         except Exception as diag_err:
             logger.warning(f"[v214.0] Diagnosis error (non-fatal): {diag_err}")
 
+        # v214.0: Report actual elapsed time, not just base timeout
+        # APARS may have extended the deadline, so elapsed time is more accurate
+        actual_elapsed = time.time() - start_time
         timeout_error = TimeoutError(
-            f"GCP VM not ready after {timeout_seconds}s timeout. "
+            f"GCP VM not ready after {actual_elapsed:.1f}s (base timeout: {timeout_seconds}s). "
             f"VM IP was: {vm_ip}. "
             f"Detected issues: {diagnosis.get('detected_issues', ['diagnosis unavailable']) if diagnosis else ['no diagnosis']}. "
             f"Firewall rule verified: {diagnosis.get('firewall_rule_verified', 'unknown') if diagnosis else 'unknown'}."
         )
         logger.error(
-            f"[v155.0] ❌ Active Rescue: {timeout_error}"
+            f"[v214.0] ❌ Active Rescue: {timeout_error}"
         )
 
         # v149.0: Use enterprise hooks for intelligent recovery decision
