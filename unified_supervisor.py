@@ -58440,6 +58440,9 @@ class JarvisSystemKernel:
                                     self.logger.debug(f"[TwoTier/Runner] TTS error: {e}")
                         
                         # v1.0.1: Try direct creation first for better error diagnostics
+                        # v2.0.0: Increased timeout to 60s to account for individual component timeouts
+                        # The runner now has 10s timeouts per component, so we need room for multiple
+                        # components to timeout without failing the overall creation.
                         try:
                             from core.agentic_task_runner import create_agentic_runner
                             
@@ -58449,7 +58452,7 @@ class JarvisSystemKernel:
                                     tts_callback=runner_tts if self.config.voice_enabled else None,
                                     watchdog=self._agentic_watchdog,
                                 ),
-                                timeout=30.0,
+                                timeout=60.0,  # v2.0.0: 60s to allow component timeouts
                             )
                             
                             if self._agentic_runner:
@@ -58460,7 +58463,7 @@ class JarvisSystemKernel:
                                 self.logger.warning("[TwoTier] ⚠ AgenticTaskRunner creation returned None")
                                 
                         except asyncio.TimeoutError:
-                            self.logger.warning("[TwoTier] ⚠ AgenticTaskRunner creation timed out (30s)")
+                            self.logger.warning("[TwoTier] ⚠ AgenticTaskRunner creation timed out (60s) - check network/component health")
                         except ImportError as ie:
                             self.logger.warning(f"[TwoTier] ⚠ AgenticTaskRunner import failed: {ie}")
                         except Exception as create_err:
