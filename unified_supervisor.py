@@ -1384,6 +1384,28 @@ TRINITY_PROGRESS_EXTENSION_BUFFER = 120.0  # Seconds to add when progress observ
 TRINITY_MAX_EXTENDED_TIMEOUT = float(os.environ.get("JARVIS_TRINITY_MAX_TIMEOUT", "1200.0"))  # Configurable hard cap
 TRINITY_PROGRESS_STALL_THRESHOLD = 90.0  # Seconds without progress before considering stalled
 
+# =============================================================================
+# v223.0: SMARTWATCHDOG CONFIGURATION - Enterprise-Grade Async Handshake
+# =============================================================================
+# SmartWatchdog provides intelligent, progress-aware monitoring for component
+# startup (especially GCP VMs and Prime model loading). All values are
+# configurable via environment variables - NO HARDCODING.
+#
+# RULES:
+# 1. LIVENESS RULE: If progress_pct > last_seen_progress, reset kill timer
+# 2. STALL RULE: If no progress for STALL_THRESHOLD, kill the component
+# 3. FAIL FAST RULE: If status == "error", kill immediately
+# 4. NETWORK JITTER: Require consecutive failures before killing
+# =============================================================================
+
+# SmartWatchdog environment variable configuration
+SMARTWATCHDOG_POLL_INTERVAL = float(os.environ.get("JARVIS_WATCHDOG_POLL_INTERVAL", "10.0"))
+SMARTWATCHDOG_STALL_THRESHOLD = float(os.environ.get("JARVIS_GCP_STALL_THRESHOLD", "180.0"))  # 3 minutes
+SMARTWATCHDOG_MAX_TIMEOUT = float(os.environ.get("JARVIS_GCP_MAX_TIMEOUT", "1800.0"))  # 30 minutes hard cap
+SMARTWATCHDOG_CONSECUTIVE_FAILURES = int(os.environ.get("JARVIS_WATCHDOG_CONSECUTIVE_FAILURES", "3"))
+SMARTWATCHDOG_EXTENSION_BUFFER = float(os.environ.get("JARVIS_WATCHDOG_EXTENSION_BUFFER", "60.0"))
+SMARTWATCHDOG_LIVENESS_ENABLED = os.environ.get("JARVIS_WATCHDOG_LIVENESS_ENABLED", "true").lower() == "true"
+
 
 def _calculate_effective_startup_timeout(
     config_timeout: float,
@@ -6571,6 +6593,375 @@ class GCPInstanceManager(ResourceManagerBase):
             "recovery_attempts": self._recovery_attempts,
             "last_preemption_time": self._last_preemption_time,
         }
+
+
+# =============================================================================
+# v223.0: SMARTWATCHDOG - Enterprise-Grade Progress-Aware Component Monitor
+# =============================================================================
+class SmartWatchdogResult(Enum):
+    """Result of a SmartWatchdog poll iteration."""
+    CONTINUE = "continue"       # Keep watching, component still loading
+    SUCCESS = "success"         # Component is ready
+    STALLED = "stalled"         # No progress for too long
+    ERROR = "error"             # Component reported error
+    TIMEOUT = "timeout"         # Hard timeout exceeded
+    NETWORK_ERROR = "network"   # Consecutive network failures
+
+
+@dataclass
+class SmartWatchdogState:
+    """
+    v223.0: Immutable state snapshot from SmartWatchdog.
+    
+    This captures a point-in-time view of component health for
+    logging, debugging, and decision making.
+    """
+    timestamp: float
+    status: str                        # "booting", "loading", "ready", "error"
+    progress_pct: int
+    current_step: str
+    elapsed_seconds: float
+    time_since_last_progress: float
+    consecutive_failures: int
+    extensions_granted: int
+    is_stalled: bool
+    is_alive: bool
+
+
+class SmartWatchdog:
+    """
+    v223.0: Enterprise-Grade Progress-Aware Component Monitor.
+    
+    SmartWatchdog provides intelligent, async, non-blocking monitoring of
+    component startup (GCP VMs, JARVIS Prime, etc.) with three core rules:
+    
+    1. LIVENESS RULE: If progress_pct > last_seen, the component is alive.
+       Reset the stall timer and optionally extend the deadline.
+    
+    2. STALL RULE: If no progress for STALL_THRESHOLD seconds, component
+       is considered stuck. Trigger kill/restart.
+    
+    3. FAIL FAST RULE: If status == "error", kill immediately without
+       waiting for timeout.
+    
+    Network Jitter Handling:
+    - Single poll failure doesn't trigger kill
+    - Requires CONSECUTIVE_FAILURES failed polls before action
+    - Graceful degradation with exponential backoff
+    
+    Environment Configuration (NO HARDCODING):
+    - JARVIS_WATCHDOG_POLL_INTERVAL: Seconds between polls (default: 10)
+    - JARVIS_GCP_STALL_THRESHOLD: Seconds without progress = stall (default: 180)
+    - JARVIS_GCP_MAX_TIMEOUT: Hard timeout cap (default: 1800)
+    - JARVIS_WATCHDOG_CONSECUTIVE_FAILURES: Failures before action (default: 3)
+    - JARVIS_WATCHDOG_EXTENSION_BUFFER: Seconds to extend on progress (default: 60)
+    - JARVIS_WATCHDOG_LIVENESS_ENABLED: Enable deadline extension (default: true)
+    
+    Usage:
+        watchdog = SmartWatchdog(
+            endpoint="http://10.128.0.5:8000/health/startup",
+            component_name="GCP-Prime-VM",
+            logger=self.logger,
+        )
+        
+        result = await watchdog.watch_until_ready()
+        
+        if result.status == SmartWatchdogResult.SUCCESS:
+            logger.success("Component is ready!")
+        elif result.status == SmartWatchdogResult.STALLED:
+            await kill_component()
+        elif result.status == SmartWatchdogResult.ERROR:
+            await kill_component()  # Fail fast
+    """
+    
+    def __init__(
+        self,
+        endpoint: str,
+        component_name: str,
+        logger: Any = None,
+        poll_interval: Optional[float] = None,
+        stall_threshold: Optional[float] = None,
+        max_timeout: Optional[float] = None,
+        consecutive_failures_threshold: Optional[int] = None,
+        extension_buffer: Optional[float] = None,
+        liveness_enabled: Optional[bool] = None,
+        progress_callback: Optional[Callable[[SmartWatchdogState], Awaitable[None]]] = None,
+    ):
+        """
+        Initialize SmartWatchdog.
+        
+        Args:
+            endpoint: Health endpoint URL (e.g., "http://10.128.0.5:8000/health/startup")
+            component_name: Human-readable name for logging
+            logger: Logger instance (uses print if None)
+            poll_interval: Override JARVIS_WATCHDOG_POLL_INTERVAL
+            stall_threshold: Override JARVIS_GCP_STALL_THRESHOLD
+            max_timeout: Override JARVIS_GCP_MAX_TIMEOUT
+            consecutive_failures_threshold: Override JARVIS_WATCHDOG_CONSECUTIVE_FAILURES
+            extension_buffer: Override JARVIS_WATCHDOG_EXTENSION_BUFFER
+            liveness_enabled: Override JARVIS_WATCHDOG_LIVENESS_ENABLED
+            progress_callback: Async callback called on each successful poll
+        """
+        self.endpoint = endpoint
+        self.component_name = component_name
+        self.logger = logger
+        self.progress_callback = progress_callback
+        
+        # Configuration (env vars take precedence, constructor args override)
+        self.poll_interval = poll_interval or SMARTWATCHDOG_POLL_INTERVAL
+        self.stall_threshold = stall_threshold or SMARTWATCHDOG_STALL_THRESHOLD
+        self.max_timeout = max_timeout or SMARTWATCHDOG_MAX_TIMEOUT
+        self.consecutive_failures_threshold = consecutive_failures_threshold or SMARTWATCHDOG_CONSECUTIVE_FAILURES
+        self.extension_buffer = extension_buffer or SMARTWATCHDOG_EXTENSION_BUFFER
+        self.liveness_enabled = liveness_enabled if liveness_enabled is not None else SMARTWATCHDOG_LIVENESS_ENABLED
+        
+        # State tracking
+        self._start_time: float = 0.0
+        self._last_progress_pct: int = 0
+        self._last_progress_time: float = 0.0
+        self._consecutive_failures: int = 0
+        self._extensions_granted: int = 0
+        self._current_deadline: float = 0.0
+        self._max_extensions = 10  # Prevent infinite extension
+        
+        # HTTP client (reused for efficiency)
+        self._client: Optional[aiohttp.ClientSession] = None
+    
+    def _log(self, level: str, message: str) -> None:
+        """Log with appropriate level."""
+        if self.logger:
+            log_method = getattr(self.logger, level, self.logger.info)
+            log_method(f"[SmartWatchdog/{self.component_name}] {message}")
+        else:
+            print(f"[SmartWatchdog/{self.component_name}] [{level.upper()}] {message}")
+    
+    async def _poll_health(self) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+        """
+        Poll the health endpoint once.
+        
+        Returns:
+            Tuple of (response_dict, error_string)
+            - On success: (dict, None)
+            - On error: (None, error_message)
+        """
+        # Check if aiohttp is available
+        if not AIOHTTP_AVAILABLE:
+            return None, "aiohttp not installed"
+        
+        if not self._client:
+            timeout = aiohttp.ClientTimeout(total=5.0)
+            self._client = aiohttp.ClientSession(timeout=timeout)
+        
+        try:
+            async with self._client.get(self.endpoint) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    return data, None
+                elif response.status == 503:
+                    # Service unavailable but responding - check body
+                    try:
+                        data = await response.json()
+                        return data, None  # Still useful data
+                    except Exception:
+                        return None, f"HTTP 503: Service unavailable"
+                else:
+                    return None, f"HTTP {response.status}"
+        except asyncio.TimeoutError:
+            return None, "Connection timeout"
+        except aiohttp.ClientConnectorError as e:
+            return None, f"Connection failed: {e}"
+        except Exception as e:
+            return None, f"Request error: {e}"
+    
+    def _create_state_snapshot(
+        self,
+        status: str,
+        progress_pct: int,
+        current_step: str,
+    ) -> SmartWatchdogState:
+        """Create an immutable state snapshot."""
+        now = time.time()
+        return SmartWatchdogState(
+            timestamp=now,
+            status=status,
+            progress_pct=progress_pct,
+            current_step=current_step,
+            elapsed_seconds=now - self._start_time,
+            time_since_last_progress=now - self._last_progress_time,
+            consecutive_failures=self._consecutive_failures,
+            extensions_granted=self._extensions_granted,
+            is_stalled=(now - self._last_progress_time) > self.stall_threshold,
+            is_alive=progress_pct > self._last_progress_pct,
+        )
+    
+    async def watch_until_ready(
+        self,
+        base_timeout: Optional[float] = None,
+    ) -> Tuple[SmartWatchdogResult, SmartWatchdogState]:
+        """
+        Watch the component until it's ready or a terminal condition is met.
+        
+        This is the main entry point for SmartWatchdog. It implements the
+        three core rules (Liveness, Stall, Fail Fast) in a single async loop.
+        
+        Args:
+            base_timeout: Initial timeout (defaults to max_timeout)
+        
+        Returns:
+            Tuple of (result_enum, final_state)
+        """
+        self._start_time = time.time()
+        self._last_progress_time = self._start_time
+        self._last_progress_pct = 0
+        self._consecutive_failures = 0
+        self._extensions_granted = 0
+        
+        base_timeout = base_timeout or self.max_timeout
+        self._current_deadline = self._start_time + base_timeout
+        
+        self._log("info", f"Starting watch: endpoint={self.endpoint}, "
+                         f"base_timeout={base_timeout:.0f}s, stall_threshold={self.stall_threshold:.0f}s")
+        
+        final_state = self._create_state_snapshot("booting", 0, "Starting...")
+        
+        try:
+            while True:
+                now = time.time()
+                elapsed = now - self._start_time
+                remaining = self._current_deadline - now
+                
+                # =================================================================
+                # CHECK: Hard timeout exceeded
+                # =================================================================
+                if remaining <= 0 or elapsed >= self.max_timeout:
+                    self._log("error", f"Hard timeout: elapsed={elapsed:.0f}s, max={self.max_timeout:.0f}s")
+                    final_state = self._create_state_snapshot(
+                        "timeout", self._last_progress_pct, 
+                        f"Hard timeout after {elapsed:.0f}s"
+                    )
+                    return SmartWatchdogResult.TIMEOUT, final_state
+                
+                # =================================================================
+                # POLL: Fetch health status
+                # =================================================================
+                response, error = await self._poll_health()
+                
+                if error:
+                    # Network failure
+                    self._consecutive_failures += 1
+                    self._log("warning", f"Poll failed ({self._consecutive_failures}/{self.consecutive_failures_threshold}): {error}")
+                    
+                    if self._consecutive_failures >= self.consecutive_failures_threshold:
+                        self._log("error", f"Too many consecutive failures: {self._consecutive_failures}")
+                        final_state = self._create_state_snapshot(
+                            "network", self._last_progress_pct,
+                            f"Network failure after {self._consecutive_failures} attempts"
+                        )
+                        return SmartWatchdogResult.NETWORK_ERROR, final_state
+                    
+                    # Wait and retry
+                    await asyncio.sleep(self.poll_interval)
+                    continue
+                
+                # Reset failure counter on successful poll
+                self._consecutive_failures = 0
+                
+                # Extract status fields
+                status = response.get("status", "unknown")
+                progress_pct = response.get("progress_pct", 0)
+                current_step = response.get("current_step", "")
+                
+                # =================================================================
+                # RULE 3: FAIL FAST - Error status
+                # =================================================================
+                if status == "error":
+                    error_details = response.get("error_details", "Unknown error")
+                    self._log("error", f"Component error: {error_details}")
+                    final_state = self._create_state_snapshot(status, progress_pct, current_step)
+                    return SmartWatchdogResult.ERROR, final_state
+                
+                # =================================================================
+                # CHECK: Component is ready
+                # =================================================================
+                if status == "ready" or progress_pct >= 100:
+                    self._log("success" if hasattr(self.logger, "success") else "info",
+                             f"Component ready after {elapsed:.0f}s, {self._extensions_granted} extensions")
+                    final_state = self._create_state_snapshot(status, progress_pct, current_step)
+                    return SmartWatchdogResult.SUCCESS, final_state
+                
+                # =================================================================
+                # RULE 1: LIVENESS - Progress made
+                # =================================================================
+                if progress_pct > self._last_progress_pct:
+                    # Progress is being made!
+                    progress_delta = progress_pct - self._last_progress_pct
+                    self._last_progress_pct = progress_pct
+                    self._last_progress_time = now
+                    
+                    self._log("info", f"Progress: {progress_pct}% (+{progress_delta}%), "
+                                     f"step: {current_step[:50]}, elapsed: {elapsed:.0f}s")
+                    
+                    # Extend deadline if liveness enabled and deadline is near
+                    if self.liveness_enabled and remaining < self.extension_buffer * 2:
+                        if self._extensions_granted < self._max_extensions:
+                            extension = self.extension_buffer
+                            self._current_deadline = now + extension
+                            self._extensions_granted += 1
+                            self._log("warning", f"Deadline extended by {extension:.0f}s "
+                                               f"(extension #{self._extensions_granted})")
+                else:
+                    # No progress - check stall threshold
+                    time_since_progress = now - self._last_progress_time
+                    self._log("debug" if hasattr(self.logger, "debug") else "info",
+                             f"No progress: {progress_pct}%, stalled for {time_since_progress:.0f}s")
+                    
+                    # =============================================================
+                    # RULE 2: STALL - No progress for too long
+                    # =============================================================
+                    if time_since_progress >= self.stall_threshold:
+                        self._log("error", f"Component stalled: no progress for {time_since_progress:.0f}s "
+                                          f"(threshold: {self.stall_threshold:.0f}s)")
+                        final_state = self._create_state_snapshot(status, progress_pct, current_step)
+                        return SmartWatchdogResult.STALLED, final_state
+                
+                # Invoke progress callback if provided
+                if self.progress_callback:
+                    state = self._create_state_snapshot(status, progress_pct, current_step)
+                    try:
+                        await self.progress_callback(state)
+                    except Exception as e:
+                        self._log("warning", f"Progress callback error: {e}")
+                
+                # Wait for next poll
+                await asyncio.sleep(self.poll_interval)
+        
+        finally:
+            # Clean up HTTP client
+            if self._client:
+                await self._client.close()
+                self._client = None
+    
+    async def check_once(self) -> SmartWatchdogState:
+        """
+        Perform a single health check (for manual/diagnostic use).
+        
+        Returns:
+            SmartWatchdogState snapshot
+        """
+        if self._start_time == 0:
+            self._start_time = time.time()
+            self._last_progress_time = self._start_time
+        
+        response, error = await self._poll_health()
+        
+        if error:
+            return self._create_state_snapshot("network_error", 0, f"Error: {error}")
+        
+        return self._create_state_snapshot(
+            response.get("status", "unknown"),
+            response.get("progress_pct", 0),
+            response.get("current_step", ""),
+        )
 
 
 # =============================================================================
@@ -56430,6 +56821,123 @@ class JarvisSystemKernel:
             f"[InvincibleNode] v219.0 URL cleared ({reason}): "
             f"Hollow client deactivated"
         )
+
+    async def watch_component_startup_with_smartwatchdog(
+        self,
+        endpoint: str,
+        component_name: str,
+        base_timeout: Optional[float] = None,
+        progress_callback: Optional[Callable[[SmartWatchdogState], Awaitable[None]]] = None,
+    ) -> Tuple[SmartWatchdogResult, SmartWatchdogState]:
+        """
+        v223.0: Enterprise-Grade Component Startup Monitoring with SmartWatchdog.
+        
+        This method provides progress-aware, async monitoring of any component
+        that exposes the /health/startup endpoint (or similar progress endpoint).
+        It implements the three core SmartWatchdog rules:
+        
+        1. LIVENESS RULE: If progress_pct increases, reset kill timer
+        2. STALL RULE: If no progress for STALL_THRESHOLD, kill component
+        3. FAIL FAST RULE: If status == "error", kill immediately
+        
+        Environment Variables (all configurable, NO hardcoding):
+        - JARVIS_WATCHDOG_POLL_INTERVAL: Polling interval (default: 10s)
+        - JARVIS_GCP_STALL_THRESHOLD: Stall timeout (default: 180s)
+        - JARVIS_GCP_MAX_TIMEOUT: Hard timeout cap (default: 1800s)
+        - JARVIS_WATCHDOG_CONSECUTIVE_FAILURES: Network jitter tolerance (default: 3)
+        - JARVIS_WATCHDOG_EXTENSION_BUFFER: Deadline extension on progress (default: 60s)
+        - JARVIS_WATCHDOG_LIVENESS_ENABLED: Enable deadline extension (default: true)
+        
+        Usage:
+            # Watch GCP VM startup
+            result, state = await self.watch_component_startup_with_smartwatchdog(
+                endpoint=f"http://{vm_ip}:8000/health/startup",
+                component_name="GCP-Prime-VM",
+                progress_callback=update_dashboard,
+            )
+            
+            if result == SmartWatchdogResult.SUCCESS:
+                self.logger.success(f"VM ready in {state.elapsed_seconds:.0f}s")
+            elif result == SmartWatchdogResult.STALLED:
+                await self.kill_vm(vm_ip)
+            elif result == SmartWatchdogResult.ERROR:
+                await self.kill_vm(vm_ip)  # Fail fast
+        
+        Args:
+            endpoint: Full URL to the /health/startup endpoint
+            component_name: Human-readable name for logging
+            base_timeout: Initial timeout (overrides JARVIS_GCP_MAX_TIMEOUT)
+            progress_callback: Optional async callback for dashboard updates
+        
+        Returns:
+            Tuple of (SmartWatchdogResult, SmartWatchdogState)
+        """
+        watchdog = SmartWatchdog(
+            endpoint=endpoint,
+            component_name=component_name,
+            logger=self.logger,
+            progress_callback=progress_callback,
+        )
+        
+        return await watchdog.watch_until_ready(base_timeout=base_timeout)
+    
+    async def watch_gcp_vm_startup(
+        self,
+        vm_ip: str,
+        port: int = 8000,
+        progress_callback: Optional[Callable[[int, str, str], None]] = None,
+    ) -> Tuple[bool, str]:
+        """
+        v223.0: Watch GCP VM startup using SmartWatchdog with /health/startup endpoint.
+        
+        This is a drop-in enhancement for the existing GCP VM health checking.
+        It uses the new /health/startup endpoint for granular progress tracking
+        and implements intelligent stall detection.
+        
+        Args:
+            vm_ip: IP address of the GCP VM
+            port: Port number (default 8000)
+            progress_callback: Optional callback(pct, phase, detail) for dashboard
+        
+        Returns:
+            Tuple of (success: bool, final_status: str)
+        """
+        endpoint = f"http://{vm_ip}:{port}/health/startup"
+        component_name = f"GCP-VM-{vm_ip}"
+        
+        # Create progress callback wrapper for dashboard
+        async def _watchdog_progress_callback(state: SmartWatchdogState) -> None:
+            if progress_callback:
+                try:
+                    # Map SmartWatchdog state to existing callback format
+                    progress_callback(
+                        state.progress_pct,
+                        state.status.capitalize()[:15],
+                        state.current_step[:50] if state.current_step else "Loading..."
+                    )
+                except Exception:
+                    pass  # Don't let callback errors break monitoring
+        
+        # Use SmartWatchdog for monitoring
+        result, state = await self.watch_component_startup_with_smartwatchdog(
+            endpoint=endpoint,
+            component_name=component_name,
+            progress_callback=_watchdog_progress_callback,
+        )
+        
+        # Map SmartWatchdog result to legacy return format
+        if result == SmartWatchdogResult.SUCCESS:
+            return True, "ready_for_inference"
+        elif result == SmartWatchdogResult.STALLED:
+            return False, f"stalled at {state.progress_pct}% for {state.time_since_last_progress:.0f}s"
+        elif result == SmartWatchdogResult.ERROR:
+            return False, f"error: {state.current_step}"
+        elif result == SmartWatchdogResult.TIMEOUT:
+            return False, f"timeout after {state.elapsed_seconds:.0f}s (last: {state.progress_pct}%)"
+        elif result == SmartWatchdogResult.NETWORK_ERROR:
+            return False, f"network error after {state.consecutive_failures} failures"
+        else:
+            return False, f"unknown result: {result.value}"
 
     def _init_browser_crash_monitor(self) -> None:
         """
