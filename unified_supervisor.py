@@ -57792,11 +57792,57 @@ class JarvisSystemKernel:
             stall_threshold=TRINITY_PROGRESS_STALL_THRESHOLD,
             logger=self.logger,
         )
-        
-        # Create a progress state getter that the controller can poll
+
+        # v225.1: Fallback timestamp for progress elapsed calculation.
+        # _started_at is set later in Phase 0, but we need a reference now
+        # for the progress getter closure defined below.
+        _startup_entry_time = time.time()
+
+        # v225.1: Composite progress state getter that bridges two tracking systems.
+        #
+        # BUG FIX: The original closure referenced self._model_loading_state, but that
+        # attribute lives on LiveProgressDashboard, NOT on JarvisSystemKernel. Every call
+        # raised AttributeError, silently caught by the controller (line 1514), causing
+        # permanent 0% progress and guaranteed timeout at the base deadline.
+        #
+        # Additionally, _model_loading_state only tracks LLM model loading. The 7 startup
+        # phases report progress via _broadcast_startup_progress() → self._current_progress,
+        # which was never visible to the ProgressAwareStartupController.
+        #
+        # This composite getter returns:
+        #   - Model loading state (from LiveProgressDashboard) when LLM is actively loading
+        #     (more granular, includes ETA for intelligent deadline extension)
+        #   - Overall startup phase progress otherwise, so the controller observes forward
+        #     progress throughout all phases and extends deadlines appropriately
         def get_progress_state() -> Dict:
-            """Get current model loading state for progress monitoring."""
-            return self._model_loading_state.copy()
+            # Source 1: Model loading state from the dashboard (where it actually lives)
+            try:
+                dashboard = _live_dashboard
+                if dashboard is not None:
+                    model_state = dashboard._model_loading_state
+                    if model_state.get("active", False) and model_state.get("progress_pct", 0) > 0:
+                        return model_state.copy()
+            except Exception:
+                pass
+
+            # Source 2: Overall startup phase progress (set by _broadcast_startup_progress)
+            phase_progress = getattr(self, '_current_progress', 0) or 0
+            started = self._started_at or _startup_entry_time
+            elapsed = max(0, time.time() - started) if started else 0
+
+            return {
+                "active": 0 < phase_progress < 100,
+                "progress_pct": phase_progress,
+                "elapsed_seconds": int(elapsed),
+                "estimated_total_seconds": 0,
+                "stage": getattr(self, '_current_startup_phase', 'startup'),
+                "stage_detail": "",
+                "model_name": "",
+                "model_size_gb": 0.0,
+                "reason": "",
+                "start_time": started,
+                "max_progress_seen": phase_progress,
+            }
         
         self.logger.info(
             f"[Kernel] Starting with PROGRESS-AWARE timeout "
