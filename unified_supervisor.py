@@ -61869,9 +61869,14 @@ class JarvisSystemKernel:
                         # ProgressController sees accurate values via get_progress_state().
                         # Previously only the watchdog was updated, leaving the controller
                         # with stale phase progress (e.g., 65% while actual is 73-79%).
+                        # v227.1: Phase ceiling guard — don't exceed the current phase
+                        # milestone + buffer. Prevents poisoning if _current_progress was
+                        # set high by a rogue broadcast before this fix.
+                        phase_ceiling = getattr(self, '_current_startup_progress', 100) or 100
+                        capped = min(new_progress, phase_ceiling + 14)
                         current = getattr(self, '_current_progress', 0) or 0
-                        if new_progress > current:
-                            self._current_progress = new_progress
+                        if capped > current:
+                            self._current_progress = capped
 
                         self.logger.debug(
                             f"[Trinity] DMS heartbeat: progress={new_progress} "
@@ -64688,10 +64693,29 @@ class JarvisSystemKernel:
         }
 
         # v183.0: Track current progress for heartbeat payloads
-        # v227.0: Monotonic guard — never regress progress (heartbeat may have
-        # pushed _current_progress higher than an out-of-order broadcast)
+        # v227.1: Phase-aware monotonic guard — only startup phases update
+        # _current_progress. Runtime status notifications (readiness monitor,
+        # background node monitor, loading server shutdown) use progress=100
+        # as a UI indicator, NOT startup completion. Without this guard,
+        # a background "node ready" broadcast (progress=99) or readiness
+        # "restored" broadcast (progress=100) permanently poisons the
+        # ProgressController into thinking startup is complete.
+        _STARTUP_STAGES = {
+            "loading", "preflight", "resources", "backend", "intelligence",
+            "two_tier", "trinity", "enterprise", "agi_os", "frontend",
+        }
         current = getattr(self, '_current_progress', 0) or 0
-        self._current_progress = max(current, progress)
+        if stage in _STARTUP_STAGES or is_heartbeat:
+            # Startup phase or heartbeat: monotonic guard prevents regression
+            # Also cap at the phase ceiling (_current_startup_progress + buffer)
+            # to prevent heartbeat overshoot from poisoning the value
+            phase_ceiling = getattr(self, '_current_startup_progress', 100) or 100
+            capped_progress = min(progress, phase_ceiling + 14)  # +14 = max heartbeat drift
+            self._current_progress = max(current, capped_progress)
+        elif stage == "complete" and progress == 100:
+            # Explicit "startup complete" — allow 100% through
+            self._current_progress = 100
+        # else: runtime status (degraded, ready, invincible_node) — don't touch _current_progress
 
         # v186.0: Update Dead Man's Switch with current phase/progress
         if self._startup_watchdog:
