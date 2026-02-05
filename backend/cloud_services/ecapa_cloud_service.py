@@ -2511,6 +2511,76 @@ if FASTAPI_AVAILABLE:
         return result
 
     # =========================================================================
+    # Non-Blocking Readiness Check (v21.1.0)
+    # =========================================================================
+
+    def _check_model_readiness(manager: 'ECAPAModelManager') -> Optional[JSONResponse]:
+        """
+        Non-blocking model readiness check.
+
+        Returns None if model is ready (proceed with request).
+        Returns JSONResponse(503) if model is not ready (return immediately).
+
+        ROOT CAUSE FIX v21.1.0: Previous code called `await manager.initialize()`
+        which blocked for up to 60s waiting for the background init lock. Cloud Run's
+        request timeout would expire first, producing a bare 500 Internal Server Error.
+        This function never blocks - it checks the startup state machine and returns
+        an immediate, informative 503.
+        """
+        if manager.is_ready:
+            return None  # Model ready - proceed with request
+
+        startup_state = _startup_context.get("state", StartupState.PENDING)
+
+        if startup_state in (StartupState.INITIALIZING, StartupState.RETRYING, StartupState.PENDING):
+            # Model still loading - return 503 immediately, do NOT block
+            elapsed_ms = 0
+            ctx_start = _startup_context.get("start_time")
+            if ctx_start:
+                elapsed_ms = (time.time() - ctx_start) * 1000
+
+            retry_after = int(os.getenv("ECAPA_INIT_RETRY_AFTER", "5"))
+
+            return JSONResponse(
+                status_code=503,
+                content={
+                    "success": False,
+                    "error": "ECAPA model initializing",
+                    "detail": f"Model loading in progress ({elapsed_ms / 1000:.1f}s elapsed)",
+                    "startup_state": startup_state.value,
+                    "retry_after": retry_after,
+                },
+                headers={"Retry-After": str(retry_after)},
+            )
+
+        if startup_state == StartupState.FAILED:
+            return JSONResponse(
+                status_code=503,
+                content={
+                    "success": False,
+                    "error": "ECAPA model failed to initialize",
+                    "detail": _startup_context.get("last_error", "Unknown error"),
+                    "startup_state": startup_state.value,
+                },
+            )
+
+        if startup_state == StartupState.DEGRADED:
+            # Partially loaded - let the request proceed; extraction itself
+            # will return None if the model truly cannot produce embeddings.
+            return None
+
+        # Unknown state - fail fast
+        return JSONResponse(
+            status_code=503,
+            content={
+                "success": False,
+                "error": "ECAPA model not available",
+                "detail": f"Unknown startup state: {startup_state}",
+                "startup_state": str(startup_state),
+            },
+        )
+
+    # =========================================================================
     # Embedding Endpoints
     # =========================================================================
 
@@ -2521,14 +2591,12 @@ if FASTAPI_AVAILABLE:
 
         manager = get_model_manager()
 
+        # v21.1.0: Non-blocking readiness check (never blocks on init lock)
+        not_ready_response = _check_model_readiness(manager)
+        if not_ready_response is not None:
+            return not_ready_response
+
         try:
-            # Ensure model is ready
-            if not manager.is_ready:
-                if not await manager.initialize():
-                    raise HTTPException(
-                        status_code=503,
-                        detail="ECAPA model not available"
-                    )
 
             # Decode audio
             try:
@@ -2592,14 +2660,12 @@ if FASTAPI_AVAILABLE:
 
         manager = get_model_manager()
 
+        # v21.1.0: Non-blocking readiness check (never blocks on init lock)
+        not_ready_response = _check_model_readiness(manager)
+        if not_ready_response is not None:
+            return not_ready_response
+
         try:
-            # Ensure model is ready
-            if not manager.is_ready:
-                if not await manager.initialize():
-                    raise HTTPException(
-                        status_code=503,
-                        detail="ECAPA model not available"
-                    )
 
             # Decode audio
             audio_bytes = base64.b64decode(request.audio_data)
@@ -2667,13 +2733,12 @@ if FASTAPI_AVAILABLE:
 
         manager = get_model_manager()
 
+        # v21.1.0: Non-blocking readiness check (never blocks on init lock)
+        not_ready_response = _check_model_readiness(manager)
+        if not_ready_response is not None:
+            return not_ready_response
+
         try:
-            if not manager.is_ready:
-                if not await manager.initialize():
-                    raise HTTPException(
-                        status_code=503,
-                        detail="ECAPA model not available"
-                    )
 
             embeddings = []
 

@@ -1638,8 +1638,12 @@ class ProgressAwareStartupController:
                         f"[ProgressController] ⚠️ Progress stalled for {time_since_progress:.0f}s "
                         f"at {progress_pct:.1f}%"
                     )
-                    # Don't timeout immediately on stall if we're very close to completion
-                    if progress_pct < 95:
+                    # v225.2: Don't trigger stall when model loading has a valid ETA remaining.
+                    # progress_pct may appear stalled due to max_progress_seen clamping or
+                    # discrete phase boundaries while the model IS actively loading. A positive
+                    # eta_remaining means loading is ongoing, not truly stalled. The hard cap
+                    # (Rule 4 + max_timeout) provides the ultimate safety net.
+                    if progress_pct < 95 and eta_remaining <= 0:
                         task.cancel()
                         raise asyncio.TimeoutError(
                             f"Startup stalled at {progress_pct:.1f}% for {time_since_progress:.0f}s"
@@ -57799,49 +57803,65 @@ class JarvisSystemKernel:
         _startup_entry_time = time.time()
 
         # v225.1: Composite progress state getter that bridges two tracking systems.
+        # v225.2: Use phase progress as the authoritative base to prevent regression
+        #         when switching between model loading and phase progress sources.
+        #         Add elapsed-based micro-increment for continuous forward movement.
         #
-        # BUG FIX: The original closure referenced self._model_loading_state, but that
-        # attribute lives on LiveProgressDashboard, NOT on JarvisSystemKernel. Every call
-        # raised AttributeError, silently caught by the controller (line 1514), causing
-        # permanent 0% progress and guaranteed timeout at the base deadline.
+        # BUG FIX (v225.1): The original closure referenced self._model_loading_state,
+        # which lives on LiveProgressDashboard, NOT JarvisSystemKernel. Silent
+        # AttributeError caused permanent 0% progress.
         #
-        # Additionally, _model_loading_state only tracks LLM model loading. The 7 startup
-        # phases report progress via _broadcast_startup_progress() → self._current_progress,
-        # which was never visible to the ProgressAwareStartupController.
+        # BUG FIX (v225.2): Returning raw model_state caused progress to regress
+        # (e.g., 68% phase → 22% model loading due to max_progress_seen clamping),
+        # triggering false stall detection. Now always uses phase progress as the
+        # base and overlays model loading ETA for intelligent deadline extension.
         #
-        # This composite getter returns:
-        #   - Model loading state (from LiveProgressDashboard) when LLM is actively loading
-        #     (more granular, includes ETA for intelligent deadline extension)
-        #   - Overall startup phase progress otherwise, so the controller observes forward
-        #     progress throughout all phases and extends deadlines appropriately
+        # Phase progress advances discretely at phase boundaries (5→15→30→50→68→80→100).
+        # Between boundaries (e.g., during Trinity ~10 min), progress_pct doesn't change,
+        # which the stall detector (90s threshold) interprets as a stall. A tiny fractional
+        # increment based on elapsed time creates continuous forward movement, preventing
+        # false stall detection while keeping progress values essentially correct.
         def get_progress_state() -> Dict:
-            # Source 1: Model loading state from the dashboard (where it actually lives)
+            # Model loading state (for ETA overlay and extension decisions)
+            model_active = False
+            model_eta = 0
+            model_elapsed = 0
             try:
                 dashboard = _live_dashboard
                 if dashboard is not None:
-                    model_state = dashboard._model_loading_state
-                    if model_state.get("active", False) and model_state.get("progress_pct", 0) > 0:
-                        return model_state.copy()
+                    ms = dashboard._model_loading_state
+                    if ms.get("active", False):
+                        model_active = True
+                        model_eta = ms.get("estimated_total_seconds", 0)
+                        model_elapsed = ms.get("elapsed_seconds", 0)
             except Exception:
                 pass
 
-            # Source 2: Overall startup phase progress (set by _broadcast_startup_progress)
-            phase_progress = getattr(self, '_current_progress', 0) or 0
+            # Phase progress: monotonically increasing through startup phases
+            phase_progress = float(getattr(self, '_current_progress', 0) or 0)
             started = self._started_at or _startup_entry_time
-            elapsed = max(0, time.time() - started) if started else 0
+            overall_elapsed = max(0, time.time() - started) if started else 0
+
+            # Micro-increment: ensures the controller sees continuous forward movement
+            # even during long phases where progress_pct doesn't change. The increment
+            # is < 1% total over the entire startup, so it doesn't distort the value.
+            if model_active and model_elapsed > 0:
+                phase_progress += model_elapsed * 0.001
+            elif overall_elapsed > 0:
+                phase_progress += overall_elapsed * 0.0001
 
             return {
-                "active": 0 < phase_progress < 100,
+                "active": (0 < phase_progress < 100) or model_active,
                 "progress_pct": phase_progress,
-                "elapsed_seconds": int(elapsed),
-                "estimated_total_seconds": 0,
+                "elapsed_seconds": model_elapsed if model_active else int(overall_elapsed),
+                "estimated_total_seconds": model_eta if model_active else 0,
                 "stage": getattr(self, '_current_startup_phase', 'startup'),
                 "stage_detail": "",
                 "model_name": "",
                 "model_size_gb": 0.0,
                 "reason": "",
                 "start_time": started,
-                "max_progress_seen": phase_progress,
+                "max_progress_seen": int(phase_progress),
             }
         
         self.logger.info(

@@ -391,6 +391,98 @@ class RegistryStatus:
 
 
 # =============================================================================
+# CLOUD EMBEDDING CIRCUIT BREAKER (v21.1.0)
+# =============================================================================
+# Prevents hammering the cloud endpoint after consecutive failures.
+# Follows the same CLOSED -> OPEN -> HALF_OPEN -> CLOSED pattern
+# as EndpointCircuitBreaker in cloud_ecapa_client.py.
+
+@dataclass
+class CloudEmbeddingCircuitBreaker:
+    """
+    Lightweight circuit breaker for cloud embedding/verification requests.
+
+    Configuration driven by environment variables - no hardcoding.
+    """
+    failure_threshold: int = field(
+        default_factory=lambda: int(os.getenv("JARVIS_CLOUD_CB_FAILURES", "3"))
+    )
+    recovery_timeout: float = field(
+        default_factory=lambda: float(os.getenv("JARVIS_CLOUD_CB_RECOVERY", "30.0"))
+    )
+    success_threshold: int = field(
+        default_factory=lambda: int(os.getenv("JARVIS_CLOUD_CB_SUCCESS", "2"))
+    )
+
+    state: str = "CLOSED"
+    failure_count: int = 0
+    success_count: int = 0
+    half_open_success: int = 0
+    last_failure_time: Optional[float] = None
+    last_error: Optional[str] = None
+
+    def record_success(self) -> None:
+        """Record a successful cloud request."""
+        self.failure_count = 0
+        self.success_count += 1
+        if self.state == "HALF_OPEN":
+            self.half_open_success += 1
+            if self.half_open_success >= self.success_threshold:
+                self.state = "CLOSED"
+                self.half_open_success = 0
+                logger.info("[CloudCB] Circuit CLOSED (recovered)")
+
+    def record_failure(self, error: str = "") -> None:
+        """Record a failed cloud request."""
+        self.failure_count += 1
+        self.success_count = 0
+        self.last_failure_time = time.time()
+        self.last_error = error
+        if self.state == "HALF_OPEN":
+            self.state = "OPEN"
+            self.half_open_success = 0
+            logger.warning(f"[CloudCB] Circuit OPEN (half-open test failed: {error})")
+        elif self.failure_count >= self.failure_threshold:
+            self.state = "OPEN"
+            logger.warning(
+                f"[CloudCB] Circuit OPEN ({self.failure_count} consecutive failures)"
+            )
+
+    def can_execute(self) -> Tuple[bool, str]:
+        """Check if a request is allowed through the circuit breaker."""
+        if self.state == "CLOSED":
+            return True, "closed"
+        if self.state == "OPEN":
+            if (
+                self.last_failure_time
+                and (time.time() - self.last_failure_time) >= self.recovery_timeout
+            ):
+                self.state = "HALF_OPEN"
+                self.half_open_success = 0
+                logger.info("[CloudCB] Circuit HALF_OPEN (testing recovery)")
+                return True, "half_open"
+            remaining = self.recovery_timeout - (
+                time.time() - (self.last_failure_time or 0)
+            )
+            return False, (
+                f"open (wait {remaining:.0f}s, last: {self.last_error})"
+            )
+        # HALF_OPEN - allow one test request
+        return True, "half_open"
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Serialize state for diagnostics."""
+        return {
+            "state": self.state,
+            "failure_count": self.failure_count,
+            "failure_threshold": self.failure_threshold,
+            "recovery_timeout": self.recovery_timeout,
+            "last_error": self.last_error,
+            "last_failure_time": self.last_failure_time,
+        }
+
+
+# =============================================================================
 # ENGINE WRAPPER - Base class for all ML engines
 # =============================================================================
 
@@ -1042,6 +1134,9 @@ class MLEngineRegistry:
         self._startup_decision: Optional[Any] = None  # StartupDecision from MemoryAwareStartup
         self._memory_pressure_at_init: Tuple[bool, float, str] = (False, 0.0, "Not checked")
         self._cloud_fallback_enabled: bool = MLConfig.CLOUD_FALLBACK_ENABLED
+
+        # v21.1.0: Cloud embedding circuit breaker
+        self._cloud_embedding_cb = CloudEmbeddingCircuitBreaker()
 
         # Register available engines based on config
         self._register_engines()
@@ -2449,11 +2544,69 @@ class MLEngineRegistry:
             status["source"] = "cloud" if not status["local_loaded"] else "local_preferred"
             status["diagnostics"]["cloud_last_verified"] = getattr(self, "_cloud_last_verified", None)
 
+        # v21.1.0: Include cloud circuit breaker state
+        if hasattr(self, '_cloud_embedding_cb'):
+            status["diagnostics"]["cloud_circuit_breaker"] = self._cloud_embedding_cb.to_dict()
+
         # Final determination
         if not status["available"]:
             status["error"] = "No ECAPA encoder available (local not loaded, cloud not verified)"
 
         return status
+
+    async def _check_cloud_readiness(self) -> bool:
+        """
+        v21.1.0: Quick non-blocking readiness check before cloud requests.
+
+        Checks _cloud_verified flag and re-verifies via a fast health check
+        if the verification is stale. Returns True if cloud is ready.
+        """
+        cloud_verified = getattr(self, '_cloud_verified', False)
+        cloud_last_verified = getattr(self, '_cloud_last_verified', 0)
+
+        verify_ttl = float(os.getenv("JARVIS_CLOUD_VERIFY_TTL", "300"))
+        verification_stale = (
+            (time.time() - cloud_last_verified) > verify_ttl
+            if cloud_last_verified else True
+        )
+
+        if cloud_verified and not verification_stale:
+            return True
+
+        # Quick single-shot health check (not the full polling verifier)
+        quick_timeout = float(os.getenv("JARVIS_CLOUD_QUICK_HEALTH_TIMEOUT", "3.0"))
+        try:
+            import aiohttp
+            health_url = f"{self._cloud_endpoint.rstrip('/')}/health"
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    health_url,
+                    timeout=aiohttp.ClientTimeout(total=quick_timeout),
+                    headers={"Accept": "application/json"},
+                ) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        if data.get("ecapa_ready", False):
+                            self._cloud_verified = True
+                            self._cloud_last_verified = time.time()
+                            logger.debug("Cloud ECAPA re-verified via quick health check")
+                            return True
+                        else:
+                            status = data.get("status", data.get("startup_state", "unknown"))
+                            logger.warning(
+                                f"Cloud ECAPA not ready (status: {status}), "
+                                "skipping cloud request"
+                            )
+                            return False
+                    else:
+                        logger.warning(
+                            f"Cloud health check returned {response.status}, "
+                            "skipping cloud request"
+                        )
+                        return False
+        except Exception as e:
+            logger.warning(f"Quick cloud health check failed: {e}, skipping cloud request")
+            return False
 
     async def extract_speaker_embedding_cloud(
         self,
@@ -2462,6 +2615,8 @@ class MLEngineRegistry:
     ) -> Optional[Any]:
         """
         Extract speaker embedding using cloud backend.
+
+        v21.1.0: Added readiness gate, circuit breaker, and 503 handling.
 
         Args:
             audio_data: Raw audio bytes (16kHz, mono, float32)
@@ -2472,6 +2627,16 @@ class MLEngineRegistry:
         """
         if not self._cloud_endpoint:
             logger.error("Cloud endpoint not configured")
+            return None
+
+        # v21.1.0: Readiness gate - verify cloud is ready before sending
+        if not await self._check_cloud_readiness():
+            return None
+
+        # v21.1.0: Circuit breaker check
+        can_exec, cb_reason = self._cloud_embedding_cb.can_execute()
+        if not can_exec:
+            logger.warning(f"Cloud embedding circuit breaker OPEN: {cb_reason}")
             return None
 
         try:
@@ -2508,19 +2673,56 @@ class MLEngineRegistry:
                             # CRITICAL: Validate for NaN values
                             if np.any(np.isnan(embedding)):
                                 logger.error("❌ Cloud embedding contains NaN values!")
+                                self._cloud_embedding_cb.record_failure("NaN in embedding")
                                 return None
 
                             import torch
                             embedding_tensor = torch.tensor(embedding).unsqueeze(0)
 
                             logger.debug(f"Cloud embedding received: shape {embedding_tensor.shape}")
+                            self._cloud_embedding_cb.record_success()
                             return embedding_tensor
                         else:
-                            logger.error(f"Cloud embedding failed: {result.get('error')}")
+                            error_msg = result.get('error', 'unknown')
+                            logger.error(f"Cloud embedding failed: {error_msg}")
+                            self._cloud_embedding_cb.record_failure(f"API error: {error_msg}")
                             return None
+
+                    elif response.status == 503:
+                        # v21.1.0: Server not ready - parse structured 503 response
+                        retry_after = response.headers.get("Retry-After")
+                        try:
+                            body = await response.json()
+                            detail = body.get("detail", body.get("error", "unknown"))
+                            startup_state = body.get("startup_state", "")
+                        except Exception:
+                            detail = await response.text()
+                            startup_state = ""
+
+                        logger.warning(
+                            f"Cloud ECAPA not ready (503): {detail}"
+                            + (f", retry after {retry_after}s" if retry_after else "")
+                        )
+
+                        # Invalidate verification since server is not ready
+                        self._cloud_verified = False
+
+                        # Only trip circuit breaker for permanent failures,
+                        # not transient init states
+                        if startup_state in ("failed", "degraded"):
+                            self._cloud_embedding_cb.record_failure(f"503: {detail}")
+
+                        return None
+
                     else:
                         error_text = await response.text()
-                        logger.error(f"Cloud embedding request failed ({response.status}): {error_text}")
+                        logger.error(
+                            f"Cloud embedding request failed ({response.status}): "
+                            f"{error_text[:200]}"
+                        )
+                        self._cloud_embedding_cb.record_failure(
+                            f"HTTP {response.status}: {error_text[:100]}"
+                        )
                         return None
 
         except ImportError:
@@ -2528,9 +2730,11 @@ class MLEngineRegistry:
             return None
         except asyncio.TimeoutError:
             logger.error(f"Cloud embedding request timed out ({timeout}s)")
+            self._cloud_embedding_cb.record_failure(f"Timeout after {timeout}s")
             return None
         except Exception as e:
             logger.error(f"Cloud embedding request failed: {e}")
+            self._cloud_embedding_cb.record_failure(str(e)[:100])
             return None
 
     async def verify_speaker_cloud(
@@ -2542,6 +2746,8 @@ class MLEngineRegistry:
         """
         Verify speaker using cloud backend.
 
+        v21.1.0: Added readiness gate, circuit breaker, and 503 handling.
+
         Args:
             audio_data: Raw audio bytes (16kHz, mono, float32)
             reference_embedding: Reference embedding to compare against
@@ -2552,6 +2758,16 @@ class MLEngineRegistry:
         """
         if not self._cloud_endpoint:
             logger.error("Cloud endpoint not configured")
+            return None
+
+        # v21.1.0: Readiness gate - verify cloud is ready before sending
+        if not await self._check_cloud_readiness():
+            return None
+
+        # v21.1.0: Circuit breaker check
+        can_exec, cb_reason = self._cloud_embedding_cb.can_execute()
+        if not can_exec:
+            logger.warning(f"Cloud verification circuit breaker OPEN: {cb_reason}")
             return None
 
         try:
@@ -2589,10 +2805,39 @@ class MLEngineRegistry:
                     if response.status == 200:
                         result = await response.json()
                         logger.debug(f"Cloud verification result: {result}")
+                        self._cloud_embedding_cb.record_success()
                         return result
+
+                    elif response.status == 503:
+                        # v21.1.0: Server not ready - handle structured 503
+                        try:
+                            body = await response.json()
+                            detail = body.get("detail", body.get("error", "unknown"))
+                            startup_state = body.get("startup_state", "")
+                        except Exception:
+                            detail = await response.text()
+                            startup_state = ""
+
+                        retry_after = response.headers.get("Retry-After")
+                        logger.warning(
+                            f"Cloud verification not ready (503): {detail}"
+                            + (f", retry after {retry_after}s" if retry_after else "")
+                        )
+                        self._cloud_verified = False
+
+                        if startup_state in ("failed", "degraded"):
+                            self._cloud_embedding_cb.record_failure(f"503: {detail}")
+                        return None
+
                     else:
                         error_text = await response.text()
-                        logger.error(f"Cloud verification failed ({response.status}): {error_text}")
+                        logger.error(
+                            f"Cloud verification failed ({response.status}): "
+                            f"{error_text[:200]}"
+                        )
+                        self._cloud_embedding_cb.record_failure(
+                            f"HTTP {response.status}: {error_text[:100]}"
+                        )
                         return None
 
         except ImportError:
@@ -2600,9 +2845,11 @@ class MLEngineRegistry:
             return None
         except asyncio.TimeoutError:
             logger.error(f"Cloud verification request timed out ({timeout}s)")
+            self._cloud_embedding_cb.record_failure(f"Timeout after {timeout}s")
             return None
         except Exception as e:
             logger.error(f"Cloud verification request failed: {e}")
+            self._cloud_embedding_cb.record_failure(str(e)[:100])
             return None
 
     def set_cloud_endpoint(self, endpoint: str) -> None:
