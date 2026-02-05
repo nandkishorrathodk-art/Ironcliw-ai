@@ -3321,6 +3321,7 @@ class GCPVMManager:
         # v224.0: Check for golden image (highest priority)
         use_golden_image_mode = False
         golden_image_source = None
+        golden_image_disk_size_gb: Optional[int] = None  # Track golden image disk size for VM creation
         
         if self.config.use_golden_image:
             # Check if we have a cached golden image
@@ -3338,8 +3339,9 @@ class GCPVMManager:
                     use_golden_image_mode = True
                     # Use specific image name (not family) for deterministic behavior
                     golden_image_source = f"projects/{golden_project}/global/images/{golden_image.name}"
+                    golden_image_disk_size_gb = golden_image.disk_size_gb  # Track for disk sizing
                     logger.info(f"🌟 [GCP] Using cached golden image: {golden_image.name}")
-                    logger.info(f"   Age: {golden_image.age_days:.1f} days")
+                    logger.info(f"   Age: {golden_image.age_days:.1f} days, Disk: {golden_image_disk_size_gb}GB")
                 else:
                     logger.warning(
                         f"⚠️ [GCP] Golden image is stale ({golden_image.age_days:.1f} days old). "
@@ -3355,13 +3357,39 @@ class GCPVMManager:
                     golden_project = self.config.golden_image_project or self.config.project_id
                     golden_image_source = f"projects/{golden_project}/global/images/{self.config.golden_image_name}"
                     use_golden_image_mode = True
-                    logger.info(f"🌟 [GCP] Using configured golden image: {self.config.golden_image_name}")
+                    # Query the actual image to get its disk size
+                    try:
+                        if hasattr(self, '_images_client') and self._images_client:
+                            img_info = self._images_client.get(project=golden_project, image=self.config.golden_image_name)
+                            golden_image_disk_size_gb = int(img_info.disk_size_gb) if img_info.disk_size_gb else 100
+                            logger.info(f"🌟 [GCP] Using configured golden image: {self.config.golden_image_name} ({golden_image_disk_size_gb}GB)")
+                        else:
+                            # Default to 100GB for golden images (safe minimum)
+                            golden_image_disk_size_gb = 100
+                            logger.info(f"🌟 [GCP] Using configured golden image: {self.config.golden_image_name} (defaulting to {golden_image_disk_size_gb}GB)")
+                    except Exception as e:
+                        # Default to 100GB for golden images (safe minimum)
+                        golden_image_disk_size_gb = 100
+                        logger.warning(f"⚠️ [GCP] Could not query image size: {e}. Defaulting to {golden_image_disk_size_gb}GB")
                 elif self.config.golden_image_family:
                     # Use image family (GCP auto-selects latest)
                     golden_project = self.config.golden_image_project or self.config.project_id
                     golden_image_source = f"projects/{golden_project}/global/images/family/{self.config.golden_image_family}"
                     use_golden_image_mode = True
-                    logger.info(f"🌟 [GCP] Using golden image family: {self.config.golden_image_family}")
+                    # Query the latest image from family to get its disk size
+                    try:
+                        if hasattr(self, '_images_client') and self._images_client:
+                            img_info = self._images_client.get_from_family(project=golden_project, family=self.config.golden_image_family)
+                            golden_image_disk_size_gb = int(img_info.disk_size_gb) if img_info.disk_size_gb else 100
+                            logger.info(f"🌟 [GCP] Using golden image family: {self.config.golden_image_family} (latest: {img_info.name}, {golden_image_disk_size_gb}GB)")
+                        else:
+                            # Default to 100GB for golden images (safe minimum)
+                            golden_image_disk_size_gb = 100
+                            logger.info(f"🌟 [GCP] Using golden image family: {self.config.golden_image_family} (defaulting to {golden_image_disk_size_gb}GB)")
+                    except Exception as e:
+                        # Default to 100GB for golden images (safe minimum)
+                        golden_image_disk_size_gb = 100
+                        logger.warning(f"⚠️ [GCP] Could not query family image size: {e}. Defaulting to {golden_image_disk_size_gb}GB")
         
         # Log deployment mode decision
         if use_golden_image_mode:
@@ -3385,11 +3413,22 @@ class GCPVMManager:
             source_image = f"projects/{self.config.image_project}/global/images/family/{self.config.image_family}"
 
         # Boot disk configuration
+        # v224.1: Dynamic disk sizing - use larger of configured size or golden image size
+        # This prevents "disk size smaller than image size" errors when using golden images
+        effective_disk_size_gb = self.config.boot_disk_size_gb
+        if use_golden_image_mode and golden_image_disk_size_gb:
+            effective_disk_size_gb = max(self.config.boot_disk_size_gb, golden_image_disk_size_gb)
+            if effective_disk_size_gb > self.config.boot_disk_size_gb:
+                logger.info(
+                    f"📀 [GCP] Adjusting disk size: {self.config.boot_disk_size_gb}GB → {effective_disk_size_gb}GB "
+                    f"(golden image requires {golden_image_disk_size_gb}GB minimum)"
+                )
+        
         boot_disk = compute_v1.AttachedDisk(
             auto_delete=True,
             boot=True,
             initialize_params=compute_v1.AttachedDiskInitializeParams(
-                disk_size_gb=self.config.boot_disk_size_gb,
+                disk_size_gb=effective_disk_size_gb,
                 disk_type=f"zones/{self.config.zone}/diskTypes/{self.config.boot_disk_type}",
                 source_image=source_image,
             ),
