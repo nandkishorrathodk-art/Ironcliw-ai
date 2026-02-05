@@ -64538,7 +64538,10 @@ class JarvisSystemKernel:
         }
 
         # v183.0: Track current progress for heartbeat payloads
-        self._current_progress = progress
+        # v227.0: Monotonic guard — never regress progress (heartbeat may have
+        # pushed _current_progress higher than an out-of-order broadcast)
+        current = getattr(self, '_current_progress', 0) or 0
+        self._current_progress = max(current, progress)
 
         # v186.0: Update Dead Man's Switch with current phase/progress
         if self._startup_watchdog:
