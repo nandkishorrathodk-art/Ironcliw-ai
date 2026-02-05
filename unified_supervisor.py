@@ -62118,10 +62118,10 @@ class JarvisSystemKernel:
                                         comp_result = results.get(comp_key) if results else None
                                         if comp_result is True:
                                             self._update_component_status(
-                                                comp_status_key, "healthy",
+                                                comp_status_key, "complete",
                                                 f"{comp_key} started successfully (peer timed out)"
                                             )
-                                            self.logger.info(f"[Trinity]   \u2713 {comp_key}: HEALTHY (started before timeout)")
+                                            self.logger.info(f"[Trinity]   \u2713 {comp_key}: COMPLETE (started before timeout)")
                                         else:
                                             self._update_component_status(
                                                 comp_status_key, "error",
@@ -62138,8 +62138,8 @@ class JarvisSystemKernel:
                                 for comp_key, comp_status_key in [("jarvis-prime", "jarvis_prime"), ("reactor-core", "reactor_core")]:
                                     actual_port = self._get_component_port(comp_status_key)
                                     if await self._quick_health_probe(actual_port):
-                                        self._update_component_status(comp_status_key, "healthy", f"{comp_key} healthy despite phase timeout")
-                                        self.logger.info(f"[Trinity]   \u2713 {comp_key}: HEALTHY (live probe)")
+                                        self._update_component_status(comp_status_key, "complete", f"{comp_key} healthy despite phase timeout")
+                                        self.logger.info(f"[Trinity]   \u2713 {comp_key}: COMPLETE (live probe)")
                                     else:
                                         self._update_component_status(comp_status_key, "error", "Phase budget exceeded")
                                         self.logger.error(f"[Trinity]   \u2717 {comp_key}: ERROR (phase budget exceeded)")
@@ -62151,8 +62151,8 @@ class JarvisSystemKernel:
                                 for comp_key, comp_status_key in [("jarvis-prime", "jarvis_prime"), ("reactor-core", "reactor_core")]:
                                     actual_port = self._get_component_port(comp_status_key)
                                     if await self._quick_health_probe(actual_port):
-                                        self._update_component_status(comp_status_key, "healthy", f"{comp_key} healthy despite error: {e}")
-                                        self.logger.info(f"[Trinity]   \u2713 {comp_key}: HEALTHY (live probe)")
+                                        self._update_component_status(comp_status_key, "complete", f"{comp_key} healthy despite error: {e}")
+                                        self.logger.info(f"[Trinity]   \u2713 {comp_key}: COMPLETE (live probe)")
                                     else:
                                         self._update_component_status(comp_status_key, "error", f"Error: {e}")
                                         self.logger.error(f"[Trinity]   \u2717 {comp_key}: ERROR ({e})")
@@ -62300,10 +62300,10 @@ class JarvisSystemKernel:
                             comp_result = results.get(comp_key) if results else None
                             if comp_result is True:
                                 self._update_component_status(
-                                    comp_status_key, "healthy",
+                                    comp_status_key, "complete",
                                     f"{comp_key} started successfully (peer timed out)"
                                 )
-                                self.logger.info(f"[Trinity]   \u2713 {comp_key}: HEALTHY (started before timeout)")
+                                self.logger.info(f"[Trinity]   \u2713 {comp_key}: COMPLETE (started before timeout)")
                             else:
                                 self._update_component_status(
                                     comp_status_key, "error",
@@ -64165,6 +64165,8 @@ class JarvisSystemKernel:
                     hb_port = data.get("port", 0)
                     if hb_port == port:
                         age = time.time() - data.get("timestamp", 0)
+                        # v228.0: 30s threshold for health probes (stricter than
+                        # 60s in _get_component_port — health needs fresher data)
                         if age < 30.0 and data.get("healthy", False):
                             return True
         except Exception:
@@ -64262,7 +64264,7 @@ class JarvisSystemKernel:
                     f"but is actually healthy on port {actual_port} — correcting"
                 )
                 self._update_component_status(
-                    comp_status_key, "healthy",
+                    comp_status_key, "complete",
                     f"Reconciled: live probe on port {actual_port} succeeded"
                 )
 
@@ -64599,7 +64601,11 @@ class JarvisSystemKernel:
             )
 
         # v228.0: Reconcile stale error states with live data before broadcasting
-        await self._reconcile_component_status()  # v228.0
+        # Throttle: at most once every 10s to avoid repeated HTTP probes on every broadcast
+        _now = time.time()
+        if _now - getattr(self, "_last_reconcile_ts", 0) >= 10.0:
+            self._last_reconcile_ts = _now
+            await self._reconcile_component_status()  # v228.0
 
         # Calculate dynamic progress
         progress = self._calculate_dynamic_progress()
