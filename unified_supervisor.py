@@ -656,15 +656,50 @@ except ImportError:
     np = None
 
 # v186.0: rich - enhanced CLI experience
+# v228.0: Extended Rich imports for full UX overhaul
 try:
-    from rich.console import Console
+    from rich.console import Console, Group as RichGroup
     from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeRemainingColumn
     from rich.panel import Panel
     from rich.table import Table
     from rich.live import Live
+    from rich.tree import Tree as RichTree
+    from rich.rule import Rule as RichRule
+    from rich.text import Text as RichText
+    from rich.align import Align as RichAlign
+    from rich.columns import Columns as RichColumns
+    from rich.theme import Theme as RichTheme
     from rich import box
     RICH_AVAILABLE = True
-    _rich_console = Console()
+
+    # ── JARVIS Rich Theme (v228.0) ─────────────────────────────────
+    # Centralized color palette for consistent CLI experience across
+    # all display components: banners, logs, dashboards, phase headers.
+    JARVIS_THEME_STYLES = {
+        "jarvis.title":       "bold bright_cyan",
+        "jarvis.subtitle":    "dim cyan",
+        "jarvis.success":     "bold green",
+        "jarvis.error":       "bold red",
+        "jarvis.warning":     "bold yellow",
+        "jarvis.info":        "bold blue",
+        "jarvis.phase":       "bold magenta",
+        "jarvis.progress":    "bold bright_green",
+        "jarvis.dim":         "dim white",
+        "jarvis.highlight":   "bold bright_white",
+        "jarvis.zone":        "cyan",
+        "jarvis.component":   "bright_white",
+        "jarvis.metric":      "bright_yellow",
+        "jarvis.border":      "bright_cyan",
+        "jarvis.timestamp":   "dim bright_black",
+        "jarvis.pid":         "dim cyan",
+        "jarvis.label":       "bold white",
+        "jarvis.value":       "bright_white",
+        "jarvis.active":      "bold bright_green",
+        "jarvis.inactive":    "dim red",
+    }
+    JARVIS_RICH_THEME = RichTheme(JARVIS_THEME_STYLES)
+    _rich_console = Console(theme=JARVIS_RICH_THEME, highlight=False)
+
 except ImportError:
     RICH_AVAILABLE = False
     Console = None
@@ -672,8 +707,17 @@ except ImportError:
     Panel = None
     Table = None
     Live = None
+    RichTree = None
+    RichRule = None
+    RichText = None
+    RichAlign = None
+    RichColumns = None
+    RichTheme = None
+    RichGroup = None
     box = None
     _rich_console = None
+    JARVIS_THEME_STYLES = {}
+    JARVIS_RICH_THEME = None
 
 # =============================================================================
 # BACKEND HELPER IMPORTS (v180.0 - Advanced Gap Fixes)
@@ -2621,26 +2665,44 @@ class UnifiedLogger:
         return SectionContext(self, section, title)
 
     def _render_section_header(self, section: LogSection, title: str) -> None:
-        """Render ASCII box header."""
-        width = 70
+        """Render section header. v228.0: Uses Rich Rule when available."""
         elapsed = self._elapsed_ms()
-        reset = "\033[0m" if self._colors_enabled else ""
-        blue = "\033[94m" if self._colors_enabled else ""
 
         with self._log_lock:
-            print(f"\n{blue}{'═' * width}{reset}")
-            print(f"{blue}║{reset} {section.value:12} │ {title:<43} │ +{elapsed:>6.0f}ms {blue}║{reset}")
-            print(f"{blue}{'═' * width}{reset}")
+            if RICH_AVAILABLE and _rich_console:
+                label = (
+                    f"[jarvis.phase]{section.value}[/jarvis.phase]"
+                    f" [jarvis.dim]|[/jarvis.dim] "
+                    f"[jarvis.highlight]{title}[/jarvis.highlight]"
+                    f"  [jarvis.timestamp]+{elapsed:.0f}ms[/jarvis.timestamp]"
+                )
+                _rich_console.print()
+                _rich_console.print(RichRule(label, style="jarvis.border"))
+            else:
+                width = 70
+                reset = "\033[0m" if self._colors_enabled else ""
+                blue = "\033[94m" if self._colors_enabled else ""
+                print(f"\n{blue}{'═' * width}{reset}")
+                print(f"{blue}║{reset} {section.value:12} │ {title:<43} │ +{elapsed:>6.0f}ms {blue}║{reset}")
+                print(f"{blue}{'═' * width}{reset}")
 
     def _render_section_footer(self, section: LogSection, duration_ms: float) -> None:
-        """Render ASCII box footer with timing."""
-        width = 70
-        reset = "\033[0m" if self._colors_enabled else ""
-        blue = "\033[94m" if self._colors_enabled else ""
-
+        """Render section footer. v228.0: Uses Rich Rule when available."""
         with self._log_lock:
-            print(f"{blue}{'─' * width}{reset}")
-            print(f"  └── {section.value} completed in {duration_ms:.1f}ms\n")
+            if RICH_AVAILABLE and _rich_console:
+                _rich_console.print(
+                    RichRule(
+                        f"[jarvis.dim]{section.value} completed in {duration_ms:.1f}ms[/jarvis.dim]",
+                        style="dim",
+                    )
+                )
+                _rich_console.print()
+            else:
+                width = 70
+                reset = "\033[0m" if self._colors_enabled else ""
+                blue = "\033[94m" if self._colors_enabled else ""
+                print(f"{blue}{'─' * width}{reset}")
+                print(f"  └── {section.value} completed in {duration_ms:.1f}ms\n")
 
     # ═══════════════════════════════════════════════════════════════════════════
     # PERFORMANCE TRACKING
@@ -2690,13 +2752,35 @@ class UnifiedLogger:
     # STANDARD LOGGING METHODS
     # ═══════════════════════════════════════════════════════════════════════════
 
+    # v228.0: Map LogLevel to JARVIS Rich theme styles
+    _LEVEL_THEME_MAP = {
+        "DEBUG": "jarvis.dim",
+        "INFO": "jarvis.info",
+        "WARNING": "jarvis.warning",
+        "ERROR": "jarvis.error",
+        "CRITICAL": "jarvis.error",
+        "SUCCESS": "jarvis.success",
+        "PHASE": "jarvis.phase",
+    }
+
     def _log(self, level: LogLevel, message: str, **kwargs) -> None:
-        """Core logging method."""
+        """Core logging method. v228.0: Rich-styled output when available."""
         elapsed = self._elapsed_ms()
         indent = "  " * self._indent_level
 
         if self._json_mode:
             self._log_json(level, message, elapsed, **kwargs)
+        elif RICH_AVAILABLE and _rich_console and self._colors_enabled:
+            level_name = level.value[0]
+            style = self._LEVEL_THEME_MAP.get(level_name, "jarvis.dim")
+            level_str = f"[{level_name:8}]"
+            time_str = f"+{elapsed:>7.0f}ms"
+            with self._log_lock:
+                _rich_console.print(
+                    f"[{style}]{level_str}[/{style}]"
+                    f" [jarvis.timestamp]{time_str}[/jarvis.timestamp]"
+                    f" [jarvis.dim]\u2502[/jarvis.dim] {indent}{message}"
+                )
         else:
             reset = "\033[0m" if self._colors_enabled else ""
             color = level.value[1] if self._colors_enabled else ""
@@ -2705,7 +2789,7 @@ class UnifiedLogger:
 
             with self._log_lock:
                 print(f"{color}{level_str}{reset} {time_str} │ {indent}{message}")
-                sys.stdout.flush()  # Ensure output appears immediately during async ops
+                sys.stdout.flush()
 
     def _log_json(self, level: LogLevel, message: str, elapsed: float, **kwargs) -> None:
         """Log in JSON format."""
@@ -3792,9 +3876,9 @@ else:
 # TERMINAL UI HELPERS
 # =============================================================================
 class TerminalUI:
-    """Terminal UI utilities for visual feedback."""
+    """Terminal UI utilities for visual feedback. v228.0: Rich-enhanced."""
 
-    # ANSI color codes
+    # ANSI color codes (fallback)
     RESET = "\033[0m"
     BOLD = "\033[1m"
     RED = "\033[31m"
@@ -3818,9 +3902,17 @@ class TerminalUI:
 
     @classmethod
     def print_banner(cls, title: str, subtitle: str = "") -> None:
-        """Print a banner with title."""
-        width = 70
+        """Print a banner with title. v228.0: Rich Panel when available."""
+        if RICH_AVAILABLE and _rich_console:
+            content = f"[jarvis.title]{title}[/jarvis.title]"
+            if subtitle:
+                content += f"\n[jarvis.subtitle]{subtitle}[/jarvis.subtitle]"
+            _rich_console.print()
+            _rich_console.print(Panel(content, border_style="jarvis.border", box=box.DOUBLE, padding=(0, 2)))
+            _rich_console.print()
+            return
 
+        width = 70
         print()
         print(cls._color("╔" + "═" * (width - 2) + "╗", cls.CYAN))
         print(cls._color("║", cls.CYAN) + f" {title:^{width - 4}} " + cls._color("║", cls.CYAN))
@@ -3831,23 +3923,46 @@ class TerminalUI:
 
     @classmethod
     def print_success(cls, message: str) -> None:
-        """Print success message."""
+        """Print success message. v228.0: Rich-styled."""
+        if RICH_AVAILABLE and _rich_console:
+            _rich_console.print(f"  [jarvis.success]\u2713 {message}[/jarvis.success]")
+            return
         print(cls._color(f"✓ {message}", cls.GREEN))
 
     @classmethod
     def print_error(cls, message: str) -> None:
-        """Print error message."""
+        """Print error message. v228.0: Rich-styled."""
+        if RICH_AVAILABLE and _rich_console:
+            _rich_console.print(f"  [jarvis.error]\u2717 {message}[/jarvis.error]")
+            return
         print(cls._color(f"✗ {message}", cls.RED))
 
     @classmethod
     def print_warning(cls, message: str) -> None:
-        """Print warning message."""
+        """Print warning message. v228.0: Rich-styled."""
+        if RICH_AVAILABLE and _rich_console:
+            _rich_console.print(f"  [jarvis.warning]\u26a0 {message}[/jarvis.warning]")
+            return
         print(cls._color(f"⚠ {message}", cls.YELLOW))
 
     @classmethod
     def print_info(cls, message: str) -> None:
-        """Print info message."""
+        """Print info message. v228.0: Rich-styled."""
+        if RICH_AVAILABLE and _rich_console:
+            _rich_console.print(f"  [jarvis.info]\u2139 {message}[/jarvis.info]")
+            return
         print(cls._color(f"ℹ {message}", cls.BLUE))
+
+    @classmethod
+    def print_section(cls, title: str) -> None:
+        """Print a section separator. v228.0: Rich Rule when available."""
+        if RICH_AVAILABLE and _rich_console:
+            _rich_console.print(RichRule(f"[jarvis.highlight]{title}[/jarvis.highlight]", style="jarvis.border"))
+            return
+        width = 70
+        print(cls._color("─" * width, cls.CYAN))
+        print(cls._color(f"  {title}", cls.BOLD + cls.CYAN))
+        print(cls._color("─" * width, cls.CYAN))
 
     @classmethod
     def print_progress(cls, current: int, total: int, label: str = "") -> None:
@@ -4839,144 +4954,233 @@ class LiveProgressDashboard:
     
     def _render_compact(self, final: bool = False) -> None:
         """
-        Render a single-line status bar (minimal intrusion).
-        v220.0: Enhanced to show model loading progress.
+        v228.0: Compact single-line status bar. Rich-styled when available.
         """
         elapsed = time.time() - self._start_time
-        
-        # Count component statuses
         healthy = sum(1 for c in self._components.values() if c.get("status") == "healthy")
         starting = sum(1 for c in self._components.values() if c.get("status") == "starting")
         total = len(self._components)
-        
-        # Build compact status
         gcp = self._gcp_state
         mem = self._memory
         model_state = self._model_loading_state
-        
-        # v220.0: Include model loading progress when active
-        if model_state.get("active", False):
-            model_pct = model_state.get("progress_pct", 0)
-            model_name = (model_state.get("model_name") or "LLM")[:10]
-            status_line = (
-                f"\r{self.BOLD}[JARVIS]{self.RESET} "
-                f"{elapsed:>5.0f}s | "
-                f"GCP:{gcp['progress']:>3.0f}% | "
-                f"{self.CYAN}🧠 {model_name}:{model_pct}%{self.RESET} | "
-                f"Mem: {mem['percent']:.0f}%"
-            )
+
+        if RICH_AVAILABLE and _rich_console:
+            # Build Rich-styled compact line (still uses carriage return for overwrite)
+            parts = [
+                f"[jarvis.title]JARVIS[/jarvis.title]",
+                f"[jarvis.timestamp]{elapsed:>5.0f}s[/jarvis.timestamp]",
+                f"[jarvis.label]GCP:[/jarvis.label][jarvis.metric]{gcp['progress']:.0f}%[/jarvis.metric]",
+            ]
+            if model_state.get("active", False):
+                m_pct = model_state.get("progress_pct", 0)
+                m_name = (model_state.get("model_name") or "LLM")[:8]
+                parts.append(f"[jarvis.label]{m_name}:[/jarvis.label][jarvis.metric]{m_pct}%[/jarvis.metric]")
+            else:
+                parts.append(
+                    f"[jarvis.success]{healthy}[/jarvis.success]"
+                    f"[jarvis.dim]/[/jarvis.dim]"
+                    f"[jarvis.info]{starting}[/jarvis.info]"
+                    f"[jarvis.dim]/{total}[/jarvis.dim]"
+                )
+            mem_style = "jarvis.success" if mem["percent"] < 70 else ("jarvis.warning" if mem["percent"] < 85 else "jarvis.error")
+            parts.append(f"[jarvis.label]Mem:[/jarvis.label][{mem_style}]{mem['percent']:.0f}%[/{mem_style}]")
+
+            # Render to string for carriage-return overwrite
+            from io import StringIO
+            buf = StringIO()
+            temp_console = Console(file=buf, theme=JARVIS_RICH_THEME, highlight=False, no_color=False)
+            temp_console.print(" [jarvis.dim]|[/jarvis.dim] ".join(parts), end="")
+            status_line = "\r\033[K" + buf.getvalue()
         else:
-            status_line = (
-                f"\r{self.BOLD}[JARVIS]{self.RESET} "
-                f"{elapsed:>5.0f}s | "
-                f"GCP:{gcp['progress']:>3.0f}% | "
-                f"Components: {self.GREEN}{healthy}{self.RESET}/{self.CYAN}{starting}{self.RESET}/{total} | "
-                f"Mem: {mem['percent']:.0f}%"
-            )
-        
+            if model_state.get("active", False):
+                model_pct = model_state.get("progress_pct", 0)
+                model_name = (model_state.get("model_name") or "LLM")[:10]
+                status_line = (
+                    f"\r{self.BOLD}[JARVIS]{self.RESET} "
+                    f"{elapsed:>5.0f}s | GCP:{gcp['progress']:>3.0f}% | "
+                    f"{self.CYAN}{model_name}:{model_pct}%{self.RESET} | "
+                    f"Mem: {mem['percent']:.0f}%"
+                )
+            else:
+                status_line = (
+                    f"\r{self.BOLD}[JARVIS]{self.RESET} "
+                    f"{elapsed:>5.0f}s | GCP:{gcp['progress']:>3.0f}% | "
+                    f"{self.GREEN}{healthy}{self.RESET}/{self.CYAN}{starting}{self.RESET}/{total} | "
+                    f"Mem: {mem['percent']:.0f}%"
+                )
+
         if status_line != self._last_status_line or final:
-            # Clear line and print
             sys.stdout.write(f"\r\033[K{status_line}")
             sys.stdout.flush()
             self._last_status_line = status_line
     
     def _render_passthrough(self, final: bool = False) -> None:
         """
-        v197.3: Passthrough mode - prints dashboard periodically but lets logs flow.
-        v220.0: Enhanced to update more frequently during model loading.
-        
-        This mode:
-        - Prints full dashboard every N seconds (or 2s during model loading)
-        - Doesn't overwrite previous output
-        - Shows recent logs from buffer
-        - Logs from logger still appear normally
+        v228.0: Passthrough mode — Rich-enhanced periodic status block.
+        Prints dashboard periodically, lets logs flow through.
         """
-        # v220.0: During model loading, update more frequently for real-time progress
         model_loading_active = self._model_loading_state.get("active", False)
-        
-        # Determine interval: every 2 renders (2s) during model loading, else every 5
         effective_interval = 2 if model_loading_active else self._passthrough_interval
-        
+
         if self._render_count % effective_interval != 0 and not final:
             return
-        
-        lines = []
+
         elapsed = time.time() - self._start_time
-        
-        # Separator to distinguish from logs
+
+        # ── Rich path ──────────────────────────────────────────────
+        if RICH_AVAILABLE and _rich_console:
+            try:
+                return self._render_passthrough_rich(elapsed, final)
+            except Exception:
+                pass
+
+        # ── ANSI fallback ──────────────────────────────────────────
+        lines = []
         lines.append("")
         lines.append(f"{self.DIM}{'─' * 70}{self.RESET}")
-        lines.append(f"{self.BOLD}🚀 JARVIS STATUS{self.RESET} @ {elapsed:.0f}s")
-        
-        # Component summary (compact)
+        lines.append(f"{self.BOLD}JARVIS STATUS{self.RESET} @ {elapsed:.0f}s")
+
         comp_parts = []
         for name, comp in self._components.items():
             status = comp.get("status", "pending")
             color = self.STATUS_COLORS.get(status, self.STATUS_COLORS["pending"])
             short_name = name.replace("jarvis-", "").replace("-", "")[:8]
-            # v208.0: Use STATUS_DISPLAY_MAP for consistent 4-char codes
-            # CRITICAL: "skipped" -> "SKIP" (NOT "STOP")
             status_code = STATUS_DISPLAY_MAP.get(status, status[:4].upper())
             comp_parts.append(f"{short_name}:{color}{status_code}{self.RESET}")
         lines.append(f"  {' | '.join(comp_parts)}")
-        
-        # GCP Progress
+
         gcp = self._gcp_state
         progress_bar = self._make_progress_bar(gcp["progress"], width=20)
         lines.append(f"  GCP: {progress_bar} {gcp['progress']:.0f}% - {gcp['checkpoint']}")
-        
-        # v220.0: Model Loading Progress (shows what's happening during 12-minute wait)
+
         model_loading_lines = self._get_model_loading_display()
         if model_loading_lines:
             lines.extend(model_loading_lines)
-        
-        # Memory
+
         mem = self._memory
         mem_color = self.GREEN if mem["percent"] < 70 else (self.YELLOW if mem["percent"] < 85 else self.STATUS_COLORS["error"])
         lines.append(f"  Memory: {mem_color}{mem['percent']:.0f}%{self.RESET} ({mem['used_gb']:.1f}/{mem['total_gb']:.1f} GB)")
-        
-        # Recent logs from buffer (if any)
+
         if self._log_buffer:
             lines.append(f"  {self.DIM}─ Recent Activity ─{self.RESET}")
             for log_line in self._log_buffer[-self._max_log_lines:]:
                 lines.append(f"  {log_line}")
-        
+
         lines.append(f"{self.DIM}{'─' * 70}{self.RESET}")
         lines.append("")
-        
-        # Print (no cursor manipulation - just append)
+
         output = "\n".join(lines)
         sys.stdout.write(output)
         sys.stdout.flush()
+
+    def _render_passthrough_rich(self, elapsed: float, final: bool = False) -> None:
+        """v228.0: Rich-rendered passthrough status block."""
+        gcp = self._gcp_state
+        mem = self._memory
+        model_state = self._model_loading_state
+
+        _rich_console.print()
+        _rich_console.print(RichRule(
+            f"[jarvis.title]JARVIS STATUS[/jarvis.title]"
+            f" [jarvis.dim]@[/jarvis.dim] "
+            f"[jarvis.timestamp]{elapsed:.0f}s[/jarvis.timestamp]",
+            style="jarvis.dim",
+        ))
+
+        # Component status line
+        _status_styles = {
+            "pending": "dim", "starting": "bright_cyan",
+            "healthy": "bold green", "degraded": "bold yellow",
+            "error": "bold red", "stopped": "dim red",
+            "skipped": "dim", "unavailable": "dim red",
+        }
+        comp_parts = []
+        for name, comp in self._components.items():
+            status = comp.get("status", "pending")
+            style = _status_styles.get(status, "dim")
+            short = name.replace("jarvis-", "").replace("-", "")[:8]
+            code = STATUS_DISPLAY_MAP.get(status, status[:4].upper())
+            comp_parts.append(f"[jarvis.component]{short}[/jarvis.component]:[{style}]{code}[/{style}]")
+        _rich_console.print("  " + " [jarvis.dim]|[/jarvis.dim] ".join(comp_parts))
+
+        # GCP progress
+        gcp_pct = gcp["progress"]
+        gcp_bar_filled = int(20 * gcp_pct / 100)
+        gcp_bar = "\u2588" * gcp_bar_filled + "\u2591" * (20 - gcp_bar_filled)
+        _rich_console.print(
+            f"  [jarvis.label]GCP[/jarvis.label]  "
+            f"[jarvis.progress]{gcp_bar}[/jarvis.progress] "
+            f"[jarvis.metric]{gcp_pct:.0f}%[/jarvis.metric] "
+            f"[jarvis.dim]{gcp['checkpoint']}[/jarvis.dim]"
+        )
+
+        # Model loading
+        if model_state.get("active", False):
+            m_pct = model_state.get("progress_pct", 0)
+            m_name = (model_state.get("model_name") or "LLM")[:15]
+            m_bar_filled = int(20 * m_pct / 100)
+            m_bar = "\u2588" * m_bar_filled + "\u2591" * (20 - m_bar_filled)
+            _rich_console.print(
+                f"  [jarvis.label]Model[/jarvis.label] {m_name}  "
+                f"[jarvis.progress]{m_bar}[/jarvis.progress] "
+                f"[jarvis.metric]{m_pct}%[/jarvis.metric]"
+            )
+
+        # Memory
+        mem_pct = mem["percent"]
+        mem_style = "jarvis.success" if mem_pct < 70 else ("jarvis.warning" if mem_pct < 85 else "jarvis.error")
+        _rich_console.print(
+            f"  [jarvis.label]Memory[/jarvis.label] "
+            f"[{mem_style}]{mem_pct:.0f}%[/{mem_style}] "
+            f"[jarvis.dim]({mem['used_gb']:.1f}/{mem['total_gb']:.1f} GB)[/jarvis.dim]"
+        )
+
+        # Recent logs
+        if self._log_buffer:
+            import re
+            _rich_console.print(f"  [jarvis.dim]\u2500 Recent Activity \u2500[/jarvis.dim]")
+            for log_line in self._log_buffer[-self._max_log_lines:]:
+                clean = re.sub(r'\033\[[0-9;]*m', '', log_line)
+                _rich_console.print(f"  [jarvis.dim]{clean[:70]}[/jarvis.dim]")
+
+        _rich_console.print(RichRule(style="jarvis.dim"))
+        _rich_console.print()
     
     def _render_overlay(self, final: bool = False) -> None:
-        """Original overlay mode - overwrites previous output."""
-        lines = []
+        """
+        v228.0: Overlay mode — Rich Table/Panel when available, ANSI fallback.
+        Overwrites previous output for a clean live dashboard.
+        """
         elapsed = time.time() - self._start_time
-        
-        # Header
+
+        # ── Rich rendering path ────────────────────────────────────
+        if RICH_AVAILABLE and _rich_console:
+            try:
+                return self._render_overlay_rich(elapsed, final)
+            except Exception:
+                pass  # Fall through to ANSI
+
+        # ── ANSI fallback ──────────────────────────────────────────
+        lines = []
         lines.append("")
         lines.append(f"{self.BOLD}╔══════════════════════════════════════════════════════════════════╗{self.RESET}")
-        lines.append(f"{self.BOLD}║  🚀 JARVIS SYSTEM STATUS                      {elapsed:>6.1f}s elapsed  ║{self.RESET}")
+        lines.append(f"{self.BOLD}║  JARVIS SYSTEM STATUS                         {elapsed:>6.1f}s elapsed  ║{self.RESET}")
         lines.append(f"{self.BOLD}╠══════════════════════════════════════════════════════════════════╣{self.RESET}")
-        
-        # GCP VM Progress Section
+
         gcp = self._gcp_state
         gcp_status_color = self.STATUS_COLORS.get(gcp["status"], self.STATUS_COLORS["pending"])
         progress_bar = self._make_progress_bar(gcp["progress"])
         eta_str = f"{gcp['eta_seconds']}s" if gcp["eta_seconds"] > 0 else "ready"
-        
-        lines.append(f"║  {self.BOLD}☁️  GCP VM:{self.RESET}")
+        lines.append(f"║  {self.BOLD}GCP VM:{self.RESET}")
         lines.append(f"║      Phase {gcp['phase']}: {gcp['phase_name']:<20} {gcp_status_color}[{gcp['status'].upper():^8}]{self.RESET}")
         lines.append(f"║      {progress_bar} {gcp['progress']:>3.0f}%  ETA: {eta_str:<6}")
         lines.append(f"║      Checkpoint: {gcp['checkpoint']:<40}")
         lines.append(f"║")
-        
-        # Components Section
-        lines.append(f"║  {self.BOLD}📦 COMPONENTS:{self.RESET}")
+
+        lines.append(f"║  {self.BOLD}COMPONENTS:{self.RESET}")
         for name, comp in self._components.items():
             if name == "gcp-vm":
-                continue  # Already shown above
+                continue
             status = comp.get("status", "pending")
             status_color = self.STATUS_COLORS.get(status, self.STATUS_COLORS["pending"])
             port = comp.get("port", "")
@@ -4985,74 +5189,164 @@ class LiveProgressDashboard:
             port_str = f":{port}" if port else ""
             lines.append(f"║      {name:<15} {status_color}[{status.upper():^10}]{self.RESET} {port_str:<6} {pid_str}")
         lines.append(f"║")
-        
-        # v220.0: Model Loading Section (detailed progress during 12-minute wait)
+
         model_state = self._model_loading_state
         if model_state["active"]:
-            lines.append(f"║  {self.BOLD}🧠 MODEL LOADING:{self.RESET}")
-            model_name = model_state["model_name"] or "LLM"
-            progress = model_state["progress_pct"]
-            bar = self._make_progress_bar(progress, width=20)
-            elapsed = model_state["elapsed_seconds"]
-            estimated = model_state["estimated_total_seconds"]
-            
-            # ETA calculation
-            if progress > 5 and elapsed > 0:
-                rate = progress / elapsed
-                remaining = (100 - progress) / rate if rate > 0 else estimated
-                eta_str = f"~{remaining:.0f}s remaining"
-            else:
-                eta_str = f"~{estimated // 60}m total"
-            
-            lines.append(f"║      {model_name}: {bar} {progress}%  {eta_str}")
-            
-            stage_map = {
-                "downloading": "Downloading weights",
-                "loading_weights": "Loading into memory",
-                "initializing": "Initializing model",
-                "warming_up": "Warming up inference",
-            }
-            stage_desc = stage_map.get(model_state["stage"], model_state["stage"])
-            if model_state["stage_detail"]:
-                stage_desc = model_state["stage_detail"]
-            lines.append(f"║      Stage: {self.CYAN}{stage_desc}{self.RESET}")
-            
-            if model_state["reason"]:
-                reason = model_state["reason"][:55]
-                lines.append(f"║      {self.DIM}{reason}{self.RESET}")
+            lines.extend(self._get_model_loading_display())
             lines.append(f"║")
-        
-        # Recent logs section (v197.3)
+
         if self._log_buffer and self._max_log_lines > 0:
-            lines.append(f"║  {self.BOLD}📋 RECENT LOGS:{self.RESET}")
+            lines.append(f"║  {self.BOLD}RECENT LOGS:{self.RESET}")
             for log_line in self._log_buffer[-min(4, self._max_log_lines):]:
-                # Truncate long logs
                 truncated = log_line[:62] + "..." if len(log_line) > 65 else log_line
                 lines.append(f"║    {truncated}")
             lines.append(f"║")
-        
-        # Memory Section
+
         mem = self._memory
         mem_bar = self._make_progress_bar(mem["percent"], width=20)
         mem_color = self.STATUS_COLORS["healthy"] if mem["percent"] < 70 else (
             self.STATUS_COLORS["degraded"] if mem["percent"] < 85 else self.STATUS_COLORS["error"]
         )
-        lines.append(f"║  {self.BOLD}🧠 MEMORY:{self.RESET}")
+        lines.append(f"║  {self.BOLD}MEMORY:{self.RESET}")
         lines.append(f"║      {mem_bar} {mem_color}{mem['percent']:>5.1f}%{self.RESET}  ({mem['used_gb']:.1f}/{mem['total_gb']:.1f} GB)")
-        
-        # Footer
         lines.append(f"{self.BOLD}╚══════════════════════════════════════════════════════════════════╝{self.RESET}")
-        
-        # Render
+
         output = "\n".join(lines)
-        
-        # Only update if changed (reduces flicker)
         if output != self._last_render or final:
-            # Move cursor up and clear
             if self._last_render:
                 num_lines = self._last_render.count("\n") + 1
                 sys.stdout.write(f"\033[{num_lines}A\033[J")
-            
+            sys.stdout.write(output)
+            sys.stdout.flush()
+            self._last_render = output
+
+    def _render_overlay_rich(self, elapsed: float, final: bool = False) -> None:
+        """v228.0: Rich-rendered overlay using Table and Panel."""
+        gcp = self._gcp_state
+        model_state = self._model_loading_state
+        mem = self._memory
+
+        # Status table for components
+        comp_table = Table(
+            show_header=True,
+            header_style="jarvis.label",
+            box=box.SIMPLE_HEAVY,
+            border_style="jarvis.dim",
+            pad_edge=False,
+            expand=True,
+        )
+        comp_table.add_column("Component", style="jarvis.component", ratio=3)
+        comp_table.add_column("Status", justify="center", ratio=2)
+        comp_table.add_column("Port", style="jarvis.dim", justify="right", ratio=1)
+        comp_table.add_column("PID", style="jarvis.pid", justify="right", ratio=1)
+
+        # Status style map
+        _status_styles = {
+            "pending": "dim white", "starting": "bright_cyan",
+            "healthy": "bold green", "degraded": "bold yellow",
+            "error": "bold red", "stopped": "dim red",
+            "skipped": "dim", "unavailable": "dim red",
+        }
+
+        for name, comp in self._components.items():
+            status = comp.get("status", "pending")
+            style = _status_styles.get(status, "dim")
+            port = str(comp.get("port", "")) if comp.get("port") else ""
+            pid = str(comp.get("pid", "")) if comp.get("pid") else ""
+            comp_table.add_row(name, f"[{style}]{status.upper()}[/{style}]", port, pid)
+
+        # GCP progress bar via Rich Text
+        gcp_pct = gcp["progress"]
+        gcp_bar_filled = int(25 * gcp_pct / 100)
+        gcp_bar = "\u2588" * gcp_bar_filled + "\u2591" * (25 - gcp_bar_filled)
+        eta_str = f"{gcp['eta_seconds']}s" if gcp["eta_seconds"] > 0 else "ready"
+        gcp_line = (
+            f"[jarvis.label]GCP VM[/jarvis.label] "
+            f"[jarvis.dim]Phase {gcp['phase']}:[/jarvis.dim] {gcp['phase_name']}  "
+            f"[jarvis.progress]{gcp_bar}[/jarvis.progress] "
+            f"[jarvis.metric]{gcp_pct:.0f}%[/jarvis.metric]  "
+            f"[jarvis.dim]ETA: {eta_str}[/jarvis.dim]  "
+            f"[jarvis.dim]{gcp['checkpoint']}[/jarvis.dim]"
+        )
+
+        # Model loading line
+        model_line = None
+        if model_state.get("active", False):
+            m_pct = model_state.get("progress_pct", 0)
+            m_name = (model_state.get("model_name") or "LLM")[:15]
+            m_bar_filled = int(20 * m_pct / 100)
+            m_bar = "\u2588" * m_bar_filled + "\u2591" * (20 - m_bar_filled)
+            m_elapsed = model_state.get("elapsed_seconds", 0)
+            m_estimated = model_state.get("estimated_total_seconds", 0)
+            if m_pct > 5 and m_elapsed > 0:
+                rate = m_pct / m_elapsed
+                remaining = (100 - m_pct) / rate if rate > 0 else m_estimated
+                m_eta = f"~{remaining:.0f}s"
+            elif m_estimated > 0:
+                m_eta = f"~{m_estimated // 60}m"
+            else:
+                m_eta = ""
+            stage_desc = model_state.get("stage_detail") or model_state.get("stage", "")
+            model_line = (
+                f"[jarvis.label]Model[/jarvis.label] {m_name}  "
+                f"[jarvis.progress]{m_bar}[/jarvis.progress] "
+                f"[jarvis.metric]{m_pct}%[/jarvis.metric]  "
+                f"[jarvis.dim]{m_eta}  {stage_desc}[/jarvis.dim]"
+            )
+
+        # Memory line
+        mem_pct = mem["percent"]
+        mem_style = "jarvis.success" if mem_pct < 70 else ("jarvis.warning" if mem_pct < 85 else "jarvis.error")
+        mem_bar_filled = int(15 * mem_pct / 100)
+        mem_bar = "\u2588" * mem_bar_filled + "\u2591" * (15 - mem_bar_filled)
+        mem_line = (
+            f"[jarvis.label]Memory[/jarvis.label]  "
+            f"[{mem_style}]{mem_bar} {mem_pct:.0f}%[/{mem_style}]  "
+            f"[jarvis.dim]({mem['used_gb']:.1f}/{mem['total_gb']:.1f} GB)[/jarvis.dim]"
+        )
+
+        # Recent logs
+        log_lines = []
+        if self._log_buffer:
+            for log_line in self._log_buffer[-min(4, self._max_log_lines):]:
+                # Strip ANSI codes for Rich display since we already have Rich markup
+                import re
+                clean = re.sub(r'\033\[[0-9;]*m', '', log_line)
+                log_lines.append(f"  [jarvis.dim]{clean[:70]}[/jarvis.dim]")
+
+        # Compose panel content
+        parts = [gcp_line, ""]
+        if model_line:
+            parts.append(model_line)
+            parts.append("")
+        parts.append(comp_table)
+        parts.append("")
+        parts.append(mem_line)
+        if log_lines:
+            parts.append("")
+            parts.append("[jarvis.label]Recent Activity[/jarvis.label]")
+            parts.extend(log_lines)
+
+        panel = Panel(
+            RichGroup(*parts),
+            title=f"[jarvis.title]JARVIS SYSTEM STATUS[/jarvis.title]",
+            subtitle=f"[jarvis.timestamp]{elapsed:.1f}s elapsed[/jarvis.timestamp]",
+            border_style="jarvis.border",
+            box=box.ROUNDED,
+            padding=(0, 1),
+        )
+
+        # Render with cursor management
+        from io import StringIO
+        buf = StringIO()
+        temp_console = Console(file=buf, theme=JARVIS_RICH_THEME, highlight=False, width=80)
+        temp_console.print(panel)
+        output = buf.getvalue()
+
+        if output != self._last_render or final:
+            if self._last_render:
+                num_lines = self._last_render.count("\n")
+                sys.stdout.write(f"\033[{num_lines}A\033[J")
             sys.stdout.write(output)
             sys.stdout.flush()
             self._last_render = output
@@ -5545,13 +5839,20 @@ class StartupIssueCollector:
         self._zone_stack.clear()
         self._start_time = time.time()
 
+    # v228.0: Severity to Rich theme style mapping
+    _SEVERITY_RICH_STYLE = {
+        "info": "jarvis.info",
+        "warning": "jarvis.warning",
+        "error": "jarvis.error",
+        "critical": "bold bright_magenta",
+    }
+
     def print_health_report(self, show_all: bool = False) -> None:
         """
-        Print a beautiful health report summary.
+        Print health report summary. v228.0: Rich-enhanced with Panel and Tree.
 
         Args:
             show_all: If True, show all issues including info level.
-                     If False, only show warnings, errors, and critical.
         """
         # Filter issues for display
         if show_all:
@@ -5562,159 +5863,164 @@ class StartupIssueCollector:
                 if i.severity in (IssueSeverity.WARNING, IssueSeverity.ERROR, IssueSeverity.CRITICAL)
             ]
 
-        # Count by severity
         critical_count = len(self.get_issues_by_severity(IssueSeverity.CRITICAL))
         error_count = len(self.get_issues_by_severity(IssueSeverity.ERROR))
         warning_count = len(self.get_issues_by_severity(IssueSeverity.WARNING))
         info_count = len(self.get_issues_by_severity(IssueSeverity.INFO))
-
-        # ANSI colors
-        RESET = "\033[0m"
-        BOLD = "\033[1m"
-        DIM = "\033[2m"
-        RED = "\033[31m"
-        GREEN = "\033[32m"
-        YELLOW = "\033[33m"
-        BLUE = "\033[34m"
-        MAGENTA = "\033[35m"
-        CYAN = "\033[36m"
-        WHITE = "\033[37m"
-        BG_RED = "\033[41m"
-        BG_GREEN = "\033[42m"
-        BG_YELLOW = "\033[43m"
-
-        # Determine overall health status
-        if critical_count > 0:
-            health_status = f"{BG_RED}{WHITE}{BOLD} CRITICAL {RESET}"
-            health_icon = "🔥"
-            border_color = RED
-        elif error_count > 0:
-            health_status = f"{RED}{BOLD} DEGRADED {RESET}"
-            health_icon = "⚠️"
-            border_color = RED
-        elif warning_count > 0:
-            health_status = f"{YELLOW}{BOLD} WARNINGS {RESET}"
-            health_icon = "⚡"
-            border_color = YELLOW
-        else:
-            health_status = f"{BG_GREEN}{WHITE}{BOLD} HEALTHY {RESET}"
-            health_icon = "✅"
-            border_color = GREEN
-
-        # Print header
-        print()
-        print(f"{border_color}╔══════════════════════════════════════════════════════════════════════════════╗{RESET}")
-        print(f"{border_color}║{RESET}  {health_icon} {BOLD}JARVIS STARTUP HEALTH REPORT{RESET}                          {health_status}  {border_color}║{RESET}")
-        print(f"{border_color}╠══════════════════════════════════════════════════════════════════════════════╣{RESET}")
-
-        # Print summary counts
         elapsed = time.time() - self._start_time
-        print(f"{border_color}║{RESET}  {DIM}Startup Time:{RESET} {elapsed:.2f}s                                                       {border_color}║{RESET}")
-        print(f"{border_color}║{RESET}                                                                              {border_color}║{RESET}")
 
-        # Severity counts bar
-        print(f"{border_color}║{RESET}  {BOLD}Issue Summary:{RESET}                                                             {border_color}║{RESET}")
+        # ── Rich path ──────────────────────────────────────────────
+        if RICH_AVAILABLE and _rich_console:
+            try:
+                return self._print_health_report_rich(
+                    display_issues, critical_count, error_count,
+                    warning_count, info_count, elapsed, show_all,
+                )
+            except Exception:
+                pass  # Fall through to ANSI
 
-        # Critical
+        # ── ANSI fallback ──────────────────────────────────────────
+        RESET = "\033[0m"; BOLD = "\033[1m"; DIM = "\033[2m"
+        RED = "\033[31m"; GREEN = "\033[32m"; YELLOW = "\033[33m"
+        MAGENTA = "\033[35m"; CYAN = "\033[36m"
+        WHITE = "\033[37m"; BG_RED = "\033[41m"; BG_GREEN = "\033[42m"
+
         if critical_count > 0:
-            print(f"{border_color}║{RESET}    {MAGENTA}🔥 Critical:{RESET} {critical_count:<3} {'█' * min(critical_count * 2, 30):<30}                  {border_color}║{RESET}")
+            health_status = f"{BG_RED}{WHITE}{BOLD} CRITICAL {RESET}"; border_color = RED
+        elif error_count > 0:
+            health_status = f"{RED}{BOLD} DEGRADED {RESET}"; border_color = RED
+        elif warning_count > 0:
+            health_status = f"{YELLOW}{BOLD} WARNINGS {RESET}"; border_color = YELLOW
+        else:
+            health_status = f"{BG_GREEN}{WHITE}{BOLD} HEALTHY {RESET}"; border_color = GREEN
 
-        # Errors
-        if error_count > 0:
-            print(f"{border_color}║{RESET}    {RED}✗ Errors:{RESET}   {error_count:<3} {'█' * min(error_count * 2, 30):<30}                  {border_color}║{RESET}")
+        print()
+        print(f"{border_color}{'═' * 78}{RESET}")
+        print(f"  JARVIS STARTUP HEALTH REPORT  {health_status}  ({elapsed:.2f}s)")
+        print(f"{border_color}{'═' * 78}{RESET}")
 
-        # Warnings
-        if warning_count > 0:
-            print(f"{border_color}║{RESET}    {YELLOW}⚠ Warnings:{RESET} {warning_count:<3} {'█' * min(warning_count * 2, 30):<30}                  {border_color}║{RESET}")
+        # Summary counts
+        if critical_count: print(f"  {MAGENTA}Critical: {critical_count}{RESET}")
+        if error_count: print(f"  {RED}Errors:   {error_count}{RESET}")
+        if warning_count: print(f"  {YELLOW}Warnings: {warning_count}{RESET}")
+        if show_all and info_count: print(f"  {CYAN}Info:     {info_count}{RESET}")
+        if not (critical_count or error_count or warning_count):
+            print(f"  {GREEN}All systems operational{RESET}")
 
-        # Info (only if showing all)
-        if show_all and info_count > 0:
-            print(f"{border_color}║{RESET}    {CYAN}ℹ Info:{RESET}     {info_count:<3} {'█' * min(info_count * 2, 30):<30}                  {border_color}║{RESET}")
-
-        # If no issues at all
-        if critical_count == 0 and error_count == 0 and warning_count == 0:
-            print(f"{border_color}║{RESET}    {GREEN}✓ All systems operational - no issues detected{RESET}                          {border_color}║{RESET}")
-
-        print(f"{border_color}║{RESET}                                                                              {border_color}║{RESET}")
-
-        # Group issues by category for detailed display
+        # Issues by category
         if display_issues:
-            print(f"{border_color}╠══════════════════════════════════════════════════════════════════════════════╣{RESET}")
-            print(f"{border_color}║{RESET}  {BOLD}Issues by Category:{RESET}                                                        {border_color}║{RESET}")
-            print(f"{border_color}║{RESET}                                                                              {border_color}║{RESET}")
-
-            # Group by category
             issues_by_cat: Dict[IssueCategory, List[StartupIssue]] = {}
             for issue in display_issues:
-                if issue.category not in issues_by_cat:
-                    issues_by_cat[issue.category] = []
-                issues_by_cat[issue.category].append(issue)
+                issues_by_cat.setdefault(issue.category, []).append(issue)
 
-            # Sort categories by severity of their issues
-            def cat_priority(cat: IssueCategory) -> int:
+            for cat in sorted(issues_by_cat, key=lambda c: min(
+                list(IssueSeverity).index(i.severity) for i in issues_by_cat[c])):
                 issues = issues_by_cat[cat]
-                if any(i.severity == IssueSeverity.CRITICAL for i in issues):
-                    return 0
-                if any(i.severity == IssueSeverity.ERROR for i in issues):
-                    return 1
-                if any(i.severity == IssueSeverity.WARNING for i in issues):
-                    return 2
-                return 3
-
-            sorted_cats = sorted(issues_by_cat.keys(), key=cat_priority)
-
-            for cat in sorted_cats:
-                issues = issues_by_cat[cat]
-                cat_name = cat.value
-
-                # Category header with icon based on most severe issue
-                most_severe = min(issues, key=lambda i: list(IssueSeverity).index(i.severity))
-                cat_color = most_severe.severity.value[1]
-                cat_icon = most_severe.severity.value[2]
-
-                print(f"{border_color}║{RESET}  {cat_color}┌─ {cat_icon} {cat_name} ({len(issues)}){RESET}")
-
-                # Show each issue (condensed)
-                for issue in issues[:5]:  # Limit to 5 per category
-                    sev_color = issue.severity.value[1]
+                print(f"\n  {BOLD}{cat.value} ({len(issues)}){RESET}")
+                for issue in issues[:5]:
                     sev_icon = issue.severity.value[2]
-                    msg = issue.message[:55] + "..." if len(issue.message) > 55 else issue.message
-                    print(f"{border_color}║{RESET}  {DIM}│{RESET}   {sev_color}{sev_icon}{RESET} {msg}")
-
-                    # Show suggestion if available
+                    sev_color = issue.severity.value[1]
+                    msg = issue.message[:60] + "..." if len(issue.message) > 60 else issue.message
+                    print(f"    {sev_color}{sev_icon}{RESET} {msg}")
                     if issue.suggestion:
-                        sugg = issue.suggestion[:50] + "..." if len(issue.suggestion) > 50 else issue.suggestion
-                        print(f"{border_color}║{RESET}  {DIM}│{RESET}     {DIM}💡 {sugg}{RESET}")
-
+                        print(f"      {DIM}-> {issue.suggestion[:55]}{RESET}")
                 if len(issues) > 5:
-                    print(f"{border_color}║{RESET}  {DIM}│{RESET}   {DIM}... and {len(issues) - 5} more{RESET}")
+                    print(f"    {DIM}... and {len(issues) - 5} more{RESET}")
 
-                print(f"{border_color}║{RESET}  {DIM}└{'─' * 70}{RESET}")
-                print(f"{border_color}║{RESET}                                                                              {border_color}║{RESET}")
-
-        # Suggestions section
-        suggestions = [i for i in display_issues if i.suggestion]
-        if suggestions:
-            print(f"{border_color}╠══════════════════════════════════════════════════════════════════════════════╣{RESET}")
-            print(f"{border_color}║{RESET}  {BOLD}💡 Quick Fixes:{RESET}                                                             {border_color}║{RESET}")
-
-            for i, issue in enumerate(suggestions[:3], 1):
-                sugg = issue.suggestion[:65] if issue.suggestion else ""
-                print(f"{border_color}║{RESET}    {i}. {sugg:<65}     {border_color}║{RESET}")
-
-            print(f"{border_color}║{RESET}                                                                              {border_color}║{RESET}")
-
-        # Tracebacks section (collapsed by default)
         tracebacks = [i for i in display_issues if i.traceback]
         if tracebacks:
-            print(f"{border_color}╠══════════════════════════════════════════════════════════════════════════════╣{RESET}")
-            print(f"{border_color}║{RESET}  {BOLD}📋 Tracebacks Available:{RESET} {len(tracebacks)}                                              {border_color}║{RESET}")
-            print(f"{border_color}║{RESET}  {DIM}Run with --debug to see full tracebacks{RESET}                                    {border_color}║{RESET}")
-            print(f"{border_color}║{RESET}                                                                              {border_color}║{RESET}")
+            print(f"\n  {DIM}Tracebacks available: {len(tracebacks)} (run with --debug){RESET}")
 
-        # Footer
-        print(f"{border_color}╚══════════════════════════════════════════════════════════════════════════════╝{RESET}")
+        print(f"{border_color}{'═' * 78}{RESET}")
         print()
+
+    def _print_health_report_rich(
+        self,
+        display_issues: list,
+        critical_count: int,
+        error_count: int,
+        warning_count: int,
+        info_count: int,
+        elapsed: float,
+        show_all: bool,
+    ) -> None:
+        """v228.0: Rich-rendered health report with Panel, Tree, and themed styles."""
+        # Overall status
+        if critical_count > 0:
+            status_text = "[bold bright_magenta]CRITICAL[/bold bright_magenta]"
+            border_style = "bright_magenta"
+        elif error_count > 0:
+            status_text = "[jarvis.error]DEGRADED[/jarvis.error]"
+            border_style = "red"
+        elif warning_count > 0:
+            status_text = "[jarvis.warning]WARNINGS[/jarvis.warning]"
+            border_style = "yellow"
+        else:
+            status_text = "[jarvis.success]HEALTHY[/jarvis.success]"
+            border_style = "green"
+
+        # Summary counts
+        summary_parts = []
+        if critical_count:
+            summary_parts.append(f"[bold bright_magenta]{critical_count} critical[/bold bright_magenta]")
+        if error_count:
+            summary_parts.append(f"[jarvis.error]{error_count} errors[/jarvis.error]")
+        if warning_count:
+            summary_parts.append(f"[jarvis.warning]{warning_count} warnings[/jarvis.warning]")
+        if show_all and info_count:
+            summary_parts.append(f"[jarvis.info]{info_count} info[/jarvis.info]")
+        if not summary_parts:
+            summary_parts.append("[jarvis.success]All systems operational[/jarvis.success]")
+
+        summary_line = " [jarvis.dim]\u2022[/jarvis.dim] ".join(summary_parts)
+        header = f"{status_text}  [jarvis.dim]|[/jarvis.dim]  {summary_line}  [jarvis.dim]|[/jarvis.dim]  [jarvis.timestamp]{elapsed:.2f}s[/jarvis.timestamp]"
+
+        # Build issues tree
+        if display_issues:
+            issues_by_cat: Dict[IssueCategory, list] = {}
+            for issue in display_issues:
+                issues_by_cat.setdefault(issue.category, []).append(issue)
+
+            issue_tree = RichTree(
+                "[jarvis.label]Issues by Category[/jarvis.label]",
+                guide_style="jarvis.dim",
+            )
+            for cat in sorted(issues_by_cat, key=lambda c: min(
+                list(IssueSeverity).index(i.severity) for i in issues_by_cat[c])):
+                issues = issues_by_cat[cat]
+                most_severe = min(issues, key=lambda i: list(IssueSeverity).index(i.severity))
+                style = self._SEVERITY_RICH_STYLE.get(most_severe.severity.value[0], "jarvis.dim")
+                cat_branch = issue_tree.add(
+                    f"[{style}]{most_severe.severity.value[2]} {cat.value}[/{style}]"
+                    f" [jarvis.dim]({len(issues)})[/jarvis.dim]"
+                )
+                for issue in issues[:5]:
+                    sev_style = self._SEVERITY_RICH_STYLE.get(issue.severity.value[0], "jarvis.dim")
+                    msg = issue.message[:65] + "..." if len(issue.message) > 65 else issue.message
+                    node = cat_branch.add(f"[{sev_style}]{issue.severity.value[2]}[/{sev_style}] {msg}")
+                    if issue.suggestion:
+                        node.add(f"[jarvis.dim]\u2192 {issue.suggestion[:60]}[/jarvis.dim]")
+                if len(issues) > 5:
+                    cat_branch.add(f"[jarvis.dim]... and {len(issues) - 5} more[/jarvis.dim]")
+
+            content = RichGroup(header, RichText(), issue_tree)
+        else:
+            content = header
+
+        _rich_console.print()
+        _rich_console.print(Panel(
+            content,
+            title="[jarvis.highlight]JARVIS Health Report[/jarvis.highlight]",
+            border_style=border_style,
+            box=box.ROUNDED,
+            padding=(1, 2),
+        ))
+
+        # Tracebacks note
+        tracebacks = [i for i in display_issues if i.traceback]
+        if tracebacks:
+            _rich_console.print(f"  [jarvis.dim]Tracebacks available: {len(tracebacks)} (run with --debug)[/jarvis.dim]")
+        _rich_console.print()
 
     def print_tracebacks(self) -> None:
         """Print all collected tracebacks in detail."""
@@ -57993,88 +58299,107 @@ class JarvisSystemKernel:
             self._state = KernelState.FAILED
             return 1
 
+    # v228.0: ASCII art logo (compact, no FIGlet dependency)
+    _JARVIS_ASCII_LOGO = (
+        "     ██╗ █████╗ ██████╗ ██╗   ██╗██╗███████╗\n"
+        "     ██║██╔══██╗██╔══██╗██║   ██║██║██╔════╝\n"
+        "     ██║███████║██████╔╝██║   ██║██║███████╗\n"
+        "██   ██║██╔══██║██╔══██╗╚██╗ ██╔╝██║╚════██║\n"
+        "╚█████╔╝██║  ██║██║  ██║ ╚████╔╝ ██║███████║\n"
+        " ╚════╝ ╚═╝  ╚═╝╚═╝  ╚═╝  ╚═══╝  ╚═╝╚══════╝"
+    )
+
+    # v228.0: Zone architecture data for DRY banner rendering
+    _ZONE_DATA = [
+        ("0", "Early Protection", "Signal guards, venv activation"),
+        ("1", "Foundation", "Imports, SystemKernelConfig"),
+        ("2", "Core Utilities", "Logger, Lock, CircuitBreaker"),
+        ("3", "Resources", "Docker, GCP, Ports, Storage"),
+        ("4", "Intelligence", "ML, Routing, Goal Inference"),
+        ("5", "Orchestration", "Signals, Zombies, Hot Reload, Trinity"),
+        ("6", "The Kernel", "Lock, IPC, JarvisSystemKernel"),
+        ("7", "Entry Point", "CLI, main()"),
+    ]
+
     def _print_startup_banner(self) -> None:
         """
-        v186.0: Print enterprise startup banner with Rich CLI support.
-        
-        Uses Rich library for enhanced visuals if available, otherwise
-        falls back to plain text ASCII art.
+        v228.0: Print enterprise startup banner with Rich CLI support.
+
+        Uses Rich library for enhanced visuals with ASCII art logo,
+        themed Panel with DOUBLE border, and Tree for zone architecture.
+        Falls back to plain text if Rich is unavailable.
         """
         if RICH_AVAILABLE and _rich_console:
-            # =========================================================================
-            # RICH CLI BANNER (v186.0)
-            # =========================================================================
             try:
-                # Build the header panel
-                header_text = (
-                    "[bold cyan]⚡ JARVIS UNIFIED SYSTEM KERNEL v1.0.0 ⚡[/bold cyan]\n"
-                    "[dim]Enterprise Edition (v186.0)[/dim]"
+                # ASCII art logo with theme colors
+                logo_text = RichText(self._JARVIS_ASCII_LOGO, style="jarvis.title")
+
+                # Version and feature info
+                version_line = RichText()
+                version_line.append("Unified System Kernel v1.0.0", style="jarvis.highlight")
+                version_line.append("  |  ", style="jarvis.dim")
+                version_line.append("Enterprise Edition (v228.0)", style="jarvis.subtitle")
+
+                # Feature tags
+                features = RichText()
+                features.append("Self-Healing", style="bold green")
+                features.append(" \u2022 ", style="jarvis.dim")
+                features.append("Zero-Touch", style="bold yellow")
+                features.append(" \u2022 ", style="jarvis.dim")
+                features.append("Cross-Repo", style="bold blue")
+                features.append(" \u2022 ", style="jarvis.dim")
+                features.append("Trinity-Ready", style="bold magenta")
+
+                # Compose into panel
+                banner_content = RichGroup(
+                    RichAlign.center(logo_text),
+                    RichText(),  # spacer
+                    RichAlign.center(version_line),
+                    RichAlign.center(features),
                 )
-                features_text = (
-                    "[green]🤖 Self-Healing[/green] • "
-                    "[yellow]Zero-Touch[/yellow] • "
-                    "[blue]Cross-Repo[/blue] • "
-                    "[magenta]Trinity-Ready[/magenta]"
-                )
-                
+
                 _rich_console.print()
                 _rich_console.print(Panel(
-                    f"{header_text}\n\n{features_text}",
-                    title="[bold white]JARVIS[/bold white]",
-                    border_style="cyan",
+                    banner_content,
+                    border_style="jarvis.border",
+                    box=box.DOUBLE,
                     padding=(1, 2),
                 ))
-                
-                # Build the zone architecture table
-                zone_table = Table(
-                    title="Zone Architecture Overview",
-                    box=box.ROUNDED,  # type: ignore[arg-type]
-                    border_style="dim cyan",
-                    show_header=True,
-                    header_style="bold white",
+
+                # Zone architecture as Tree
+                zone_tree = RichTree(
+                    "[jarvis.highlight]Zone Architecture[/jarvis.highlight]",
+                    guide_style="jarvis.border",
                 )
-                zone_table.add_column("Zone", style="cyan", justify="left")
-                zone_table.add_column("Components", style="white")
-                
-                zone_table.add_row("[dim]Zone 0[/dim]", "Early Protection • Signal guards, venv activation")
-                zone_table.add_row("[dim]Zone 1[/dim]", "Foundation • Imports, SystemKernelConfig")
-                zone_table.add_row("[dim]Zone 2[/dim]", "Core Utilities • Logger, Lock, CircuitBreaker")
-                zone_table.add_row("[dim]Zone 3[/dim]", "Resources • Docker, GCP, Ports, Storage")
-                zone_table.add_row("[dim]Zone 4[/dim]", "Intelligence • ML, Routing, Goal Inference")
-                zone_table.add_row("[dim]Zone 5[/dim]", "Orchestration • Signals, Zombies, Hot Reload, Trinity")
-                zone_table.add_row("[dim]Zone 6[/dim]", "The Kernel • Lock, IPC, JarvisSystemKernel")
-                zone_table.add_row("[dim]Zone 7[/dim]", "Entry Point • CLI, main()")
-                
-                _rich_console.print(zone_table)
+                for num, name, desc in self._ZONE_DATA:
+                    zone_tree.add(
+                        f"[jarvis.zone]Zone {num}[/jarvis.zone]"
+                        f" [jarvis.dim]\u2502[/jarvis.dim] "
+                        f"[jarvis.label]{name}[/jarvis.label]"
+                        f" [jarvis.dim]\u2014[/jarvis.dim] "
+                        f"[jarvis.component]{desc}[/jarvis.component]"
+                    )
+
+                _rich_console.print(zone_tree)
                 _rich_console.print()
-                
-                return  # Rich banner printed successfully
+
+                return
             except Exception as rich_err:
                 self.logger.debug(f"[Kernel] Rich banner failed, using fallback: {rich_err}")
-        
+
         # =========================================================================
         # FALLBACK PLAIN TEXT BANNER
         # =========================================================================
         self.logger.info("")
         self.logger.info("╔═════════════════════════════════════════════════════════════════════╗")
         self.logger.info("║          ⚡ JARVIS UNIFIED SYSTEM KERNEL v1.0.0 ⚡                  ║")
-        self.logger.info("║                   Enterprise Edition (v186.0)                       ║")
+        self.logger.info("║                   Enterprise Edition (v228.0)                       ║")
         self.logger.info("╠═════════════════════════════════════════════════════════════════════╣")
-        self.logger.info("║  🤖 Self-Healing • Zero-Touch • Cross-Repo • Trinity-Ready         ║")
+        self.logger.info("║  Self-Healing • Zero-Touch • Cross-Repo • Trinity-Ready            ║")
         self.logger.info("╚═════════════════════════════════════════════════════════════════════╝")
         self.logger.info("")
-        self.logger.info("╭─────────────────────────────────────────────────────────────────────╮")
-        self.logger.info("│                    ZONE ARCHITECTURE OVERVIEW                       │")
-        self.logger.info("├─────────────────────────────────────────────────────────────────────┤")
-        self.logger.info("│  Zone 0: Early Protection  │ Signal guards, venv activation         │")
-        self.logger.info("│  Zone 1: Foundation        │ Imports, SystemKernelConfig            │")
-        self.logger.info("│  Zone 2: Core Utilities    │ Logger, Lock, CircuitBreaker           │")
-        self.logger.info("│  Zone 3: Resources         │ Docker, GCP, Ports, Storage            │")
-        self.logger.info("│  Zone 4: Intelligence      │ ML, Routing, Goal Inference            │")
-        self.logger.info("│  Zone 5: Orchestration     │ Signals, Zombies, Hot Reload, Trinity  │")
-        self.logger.info("│  Zone 6: The Kernel        │ Lock, IPC, JarvisSystemKernel          │")
-        self.logger.info("│  Zone 7: Entry Point       │ CLI, main()                            │")
-        self.logger.info("╰─────────────────────────────────────────────────────────────────────╯")
+        for num, name, desc in self._ZONE_DATA:
+            self.logger.info(f"  Zone {num}: {name:<18} | {desc}")
         self.logger.info("")
 
     def _print_completion_banner(
@@ -58118,64 +58443,66 @@ class JarvisSystemKernel:
         
         if RICH_AVAILABLE and _rich_console:
             # =========================================================================
-            # RICH CLI COMPLETION BANNER (v213.0)
+            # RICH CLI COMPLETION BANNER (v228.0)
             # =========================================================================
             try:
                 _rich_console.print()
-                
-                # Ready tier panel - now shows ACTUAL tier
+
+                # Ready tier panel
                 _rich_console.print(Panel(
                     tier_text_rich,
                     border_style=tier_color,
+                    box=box.ROUNDED,
                     padding=(0, 2),
                 ))
-                
-                # v213.0: Show blocking/degraded components if not fully ready
+
+                # Show blocking/degraded components if not fully ready
                 if not is_fully_ready:
                     if blocking_components:
-                        _rich_console.print(f"[red]Critical components not ready: {', '.join(blocking_components)}[/red]")
+                        _rich_console.print(f"  [jarvis.error]Critical: {', '.join(blocking_components)}[/jarvis.error]")
                     if degraded_components:
-                        _rich_console.print(f"[yellow]Degraded components: {', '.join(degraded_components)}[/yellow]")
+                        _rich_console.print(f"  [jarvis.warning]Degraded: {', '.join(degraded_components)}[/jarvis.warning]")
                     if readiness_message:
-                        _rich_console.print(f"[dim]{readiness_message}[/dim]")
+                        _rich_console.print(f"  [jarvis.dim]{readiness_message}[/jarvis.dim]")
                     _rich_console.print()
-                
-                # Access points table - v213.0: Uses dynamic status text
-                access_table = Table(
-                    title=f"[bold cyan]{status_text}[/bold cyan]",
-                    box=box.ROUNDED,  # type: ignore[arg-type]
-                    border_style="cyan",
-                    show_header=True,
-                    header_style="bold white",
+
+                # Access points tree
+                access_tree = RichTree(
+                    f"[jarvis.title]{status_text}[/jarvis.title]",
+                    guide_style="jarvis.border",
                 )
-                access_table.add_column("Category", style="cyan", justify="left")
-                access_table.add_column("Details", style="white")
-                
-                access_table.add_row(
-                    "[bold]Access Points[/bold]",
-                    f"Frontend: [link=http://localhost:{frontend_port}]http://localhost:{frontend_port}/[/link]\n"
-                    f"Backend API: [link=http://localhost:{backend_port}/docs]http://localhost:{backend_port}/docs[/link]\n"
-                    f"Health: [link=http://localhost:{backend_port}/health]http://localhost:{backend_port}/health[/link]"
-                )
-                access_table.add_row(
-                    "[bold]Voice Commands[/bold]",
-                    "Say [yellow]'Hey JARVIS'[/yellow] to activate\n"
-                    "'What can you do?' - List capabilities\n"
-                    "'Can you see my screen?' - Vision test"
-                )
-                access_table.add_row(
-                    "[bold]IPC Commands[/bold]",
-                    "[dim]python unified_supervisor.py --status[/dim]\n"
-                    "[dim]python unified_supervisor.py --shutdown[/dim]\n"
-                    "[dim]python unified_supervisor.py --restart[/dim]"
-                )
-                
-                _rich_console.print(access_table)
+
+                # Web endpoints
+                web_branch = access_tree.add("[jarvis.label]Web Endpoints[/jarvis.label]")
+                web_branch.add(f"[jarvis.component]Frontend[/jarvis.component]    [jarvis.dim]\u2192[/jarvis.dim] [link=http://localhost:{frontend_port}]http://localhost:{frontend_port}/[/link]")
+                web_branch.add(f"[jarvis.component]API Docs[/jarvis.component]    [jarvis.dim]\u2192[/jarvis.dim] [link=http://localhost:{backend_port}/docs]http://localhost:{backend_port}/docs[/link]")
+                web_branch.add(f"[jarvis.component]Health[/jarvis.component]      [jarvis.dim]\u2192[/jarvis.dim] [link=http://localhost:{backend_port}/health]http://localhost:{backend_port}/health[/link]")
+
+                # Voice commands
+                voice_branch = access_tree.add("[jarvis.label]Voice Commands[/jarvis.label]")
+                voice_branch.add("[jarvis.metric]'Hey JARVIS'[/jarvis.metric] [jarvis.dim]\u2014 Activate[/jarvis.dim]")
+                voice_branch.add("[jarvis.metric]'What can you do?'[/jarvis.metric] [jarvis.dim]\u2014 Capabilities[/jarvis.dim]")
+                voice_branch.add("[jarvis.metric]'Can you see my screen?'[/jarvis.metric] [jarvis.dim]\u2014 Vision test[/jarvis.dim]")
+
+                # IPC commands
+                ipc_branch = access_tree.add("[jarvis.label]IPC Commands[/jarvis.label]")
+                ipc_branch.add("[jarvis.dim]python unified_supervisor.py --status[/jarvis.dim]")
+                ipc_branch.add("[jarvis.dim]python unified_supervisor.py --shutdown[/jarvis.dim]")
+                ipc_branch.add("[jarvis.dim]python unified_supervisor.py --restart[/jarvis.dim]")
+
+                _rich_console.print(access_tree)
                 _rich_console.print()
-                _rich_console.print(f"[dim]Press [bold]Ctrl+C[/bold] to stop • Startup: {startup_duration:.2f}s[/dim]")
+
+                # Timing footer
+                timing_text = RichText()
+                timing_text.append("Press ", style="jarvis.dim")
+                timing_text.append("Ctrl+C", style="jarvis.highlight")
+                timing_text.append(f" to stop  \u2502  Startup: ", style="jarvis.dim")
+                timing_text.append(f"{startup_duration:.2f}s", style="jarvis.metric")
+                _rich_console.print(timing_text)
                 _rich_console.print()
-                
-                return  # Rich banner printed successfully
+
+                return
             except Exception as rich_err:
                 self.logger.debug(f"[Kernel] Rich completion banner failed, using fallback: {rich_err}")
         
@@ -59733,6 +60060,7 @@ class JarvisSystemKernel:
         - Storage tiers
         """
         self._state = KernelState.STARTING_RESOURCES
+        self._update_component_status("resources", "running", "Initializing resource managers")
 
         # v183.0: Resource initialization timeout - increased from 60s to 300s
         # GCP/Docker init often takes 2-4 minutes, 60s was causing premature timeouts
@@ -59793,7 +60121,11 @@ class JarvisSystemKernel:
                 # Build component status for loading server
                 status_icon = "✓" if status == "complete" else "✗"
                 message = f"Resources: {manager_name} {status_icon} ({completed}/{total})"
-                
+
+                # v226.0: Update resource sub-progress for accurate dynamic progress
+                sub = completed / max(total, 1)
+                self._update_component_status("resources", "running", message, sub_progress=sub)
+
                 # Broadcast intermediate progress to loading server
                 await self._broadcast_startup_progress(
                     stage="resources",
@@ -60058,6 +60390,7 @@ class JarvisSystemKernel:
                 heartbeat_task.cancel()
                 if invincible_node_task:
                     invincible_node_task.cancel()
+                self._update_component_status("resources", "error", f"Timed out after {resource_timeout}s")
                 return False
             finally:
                 # Stop heartbeat task
@@ -60438,6 +60771,7 @@ class JarvisSystemKernel:
                 except Exception:
                     pass
 
+            self._update_component_status("resources", "complete", "Resources initialized")
             return True
 
     async def _phase_backend(self) -> bool:
@@ -60738,6 +61072,7 @@ class JarvisSystemKernel:
         - Hybrid intelligence coordinator
         """
         self._state = KernelState.STARTING_INTELLIGENCE
+        self._update_component_status("intelligence", "running", "Initializing intelligence layer")
 
         with self.logger.section_start(LogSection.INTELLIGENCE, "Zone 4 | Phase 4: Intelligence"):
             try:
@@ -60762,10 +61097,15 @@ class JarvisSystemKernel:
                 if self._readiness_manager:
                     self._readiness_manager.mark_component_ready("intelligence", ready_count > 0)
 
+                if ready_count > 0:
+                    self._update_component_status("intelligence", "complete", f"Intelligence ready: {ready_count}/{len(results)} initialized")
+                else:
+                    self._update_component_status("intelligence", "error", "No intelligence components initialized")
                 return ready_count > 0
 
             except Exception as e:
                 self.logger.warning(f"[Kernel] Intelligence initialization failed: {e}")
+                self._update_component_status("intelligence", "error", f"Failed: {e}")
                 return False
 
     # =========================================================================
@@ -62596,6 +62936,7 @@ class JarvisSystemKernel:
             # Configurable timeout via JARVIS_SERVICE_TIMEOUT env var (default: 30s)
             SERVICE_TIMEOUT = float(os.getenv("JARVIS_SERVICE_TIMEOUT", "30.0"))
             self.logger.info(f"[Zone6] Initializing 5 enterprise services (parallel, {SERVICE_TIMEOUT}s timeout each)...")
+            self._update_component_status("enterprise", "running", "Initializing enterprise services")
 
             # Service definitions with display names
             services = [
@@ -62683,6 +63024,7 @@ class JarvisSystemKernel:
                              init_status.get("voice_biometrics", {}).get("initialized", False)
                 self._readiness_manager.mark_component_ready("voice_biometrics", voice_ready)
 
+            self._update_component_status("enterprise", "complete", f"Enterprise: {len(successful)}/{len(services)} active")
             return True  # Enterprise services are optional
 
     # =========================================================================
@@ -63225,7 +63567,9 @@ class JarvisSystemKernel:
 
                             # v182.0: Send initial progress with REAL component status
                             self._update_component_status("loading_server", "complete", "Loading server ready")
-                            self._update_component_status("preflight", "running", "Preflight checks in progress")
+                            # v226.0: Guard against overwriting "complete" with "running"
+                            if self._component_status.get("preflight", {}).get("status") != "complete":
+                                self._update_component_status("preflight", "running", "Preflight checks in progress")
                             await self._broadcast_component_update(
                                 stage="initializing",
                                 message="JARVIS kernel starting...",
@@ -63249,7 +63593,9 @@ class JarvisSystemKernel:
         # (covers non-macOS platforms and cases where another process opened the browser)
         if loading_server_started and not browser_lock_acquired:
             self._update_component_status("loading_server", "complete", "Loading server ready")
-            self._update_component_status("preflight", "running", "Preflight checks in progress")
+            # v226.0: Guard against overwriting "complete" with "running"
+            if self._component_status.get("preflight", {}).get("status") != "complete":
+                self._update_component_status("preflight", "running", "Preflight checks in progress")
             await self._broadcast_component_update(
                 stage="initializing",
                 message="JARVIS kernel starting...",
@@ -64369,7 +64715,12 @@ class JarvisSystemKernel:
             if status == "complete":
                 completed_weight += weight
             elif status == "running":
-                running_weight += weight * 0.5  # 50% credit for running
+                # v226.0: Use sub_progress if reported, else default 50%
+                sub = self._component_status.get(component, {}).get("sub_progress")
+                if sub is not None:
+                    running_weight += weight * min(1.0, max(0.0, float(sub)))
+                else:
+                    running_weight += weight * 0.5
             elif status == "skipped":
                 completed_weight += weight  # Full credit for intentionally skipped
 
@@ -64994,11 +65345,13 @@ class JarvisSystemKernel:
 
                 elapsed = time.monotonic() - start_time
                 current_phase = getattr(self, '_current_startup_phase', 'unknown')
-                base_progress = getattr(self, '_current_startup_progress', last_sent_progress)
+                # v226.0: Use dynamic progress as primary baseline for accuracy
+                dynamic_progress = self._calculate_dynamic_progress()
+                milestone_progress = getattr(self, '_current_startup_progress', last_sent_progress)
+                base_progress = max(dynamic_progress, milestone_progress)
 
-                # Slightly increment progress to show activity (max +2% per heartbeat)
-                # This gives visual feedback that system is working
-                increment = min(2, max(0.5, 0.1 * elapsed / 10))
+                # Reduced increment since dynamic progress now tracks actual work
+                increment = min(1, max(0.3, 0.05 * elapsed / 10))
                 effective_progress = min(95, base_progress + increment)
 
                 # Enforce monotonic: never send lower than previous
