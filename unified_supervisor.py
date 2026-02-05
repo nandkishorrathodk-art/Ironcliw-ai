@@ -64598,6 +64598,9 @@ class JarvisSystemKernel:
                 component_message or message
             )
 
+        # v228.0: Reconcile stale error states with live data before broadcasting
+        await self._reconcile_component_status()  # v228.0
+
         # Calculate dynamic progress
         progress = self._calculate_dynamic_progress()
 
