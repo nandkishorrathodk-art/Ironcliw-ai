@@ -67755,6 +67755,31 @@ Environment Variables:
         action="store_true",
         help="Stream live logs from Invincible Node via SSH",
     )
+    
+    # v224.0: Golden Image Management Commands
+    gcp.add_argument(
+        "--create-golden-image",
+        action="store_true",
+        help="Create a golden image with everything pre-installed (reduces startup from 10-15 min to ~30-60 sec)",
+    )
+    gcp.add_argument(
+        "--list-golden-images",
+        action="store_true",
+        help="List all available golden images",
+    )
+    gcp.add_argument(
+        "--check-golden-image",
+        action="store_true",
+        help="Check golden image availability and status",
+    )
+    gcp.add_argument(
+        "--cleanup-golden-images",
+        type=int,
+        metavar="KEEP_COUNT",
+        nargs="?",
+        const=3,
+        help="Clean up old golden images, keeping N most recent (default: 3)",
+    )
 
     # =========================================================================
     # COST OPTIMIZATION
@@ -68741,6 +68766,277 @@ async def handle_cloud_monitor_logs() -> int:
         return 1
     except Exception as e:
         print(f"\033[91m⚠  Error streaming logs: {e}\033[0m")
+        return 1
+
+
+# =============================================================================
+# v224.0: GOLDEN IMAGE MANAGEMENT COMMANDS
+# =============================================================================
+# Enterprise-grade custom VM image management for ~30-60 second startup.
+# =============================================================================
+
+
+async def handle_create_golden_image() -> int:
+    """
+    Handle --create-golden-image command: Create a new golden image.
+    
+    This creates a VM, installs everything, and creates an image from it.
+    The process takes 10-20 minutes but reduces future VM startup to ~30-60 seconds.
+    """
+    # Suppress shutdown diagnostics for CLI-only commands
+    set_cli_only_mode(True)
+    
+    print()
+    print("\033[1m\033[93m" + "═" * 70 + "\033[0m")
+    print("\033[1m\033[93m  🌟  JARVIS GOLDEN IMAGE BUILDER\033[0m")
+    print("\033[1m\033[93m" + "═" * 70 + "\033[0m")
+    print()
+    print("Creating a golden image with everything pre-installed.")
+    print("This will:")
+    print("  1. Create a temporary builder VM")
+    print("  2. Install Python, ML dependencies, and JARVIS-Prime")
+    print("  3. Download and cache the LLM model")
+    print("  4. Create a machine image from the VM")
+    print("  5. Clean up the builder VM")
+    print()
+    print("\033[93mEstimated time: 10-20 minutes\033[0m")
+    print("\033[92mResult: Future VM startup in ~30-60 seconds!\033[0m")
+    print()
+    print("-" * 70)
+    
+    try:
+        from backend.core.gcp_vm_manager import get_gcp_vm_manager_safe
+        manager = await get_gcp_vm_manager_safe()
+        
+        if not manager:
+            print("\033[91m⚠  GCP VM Manager not available\033[0m")
+            print("   Ensure GCP is configured with GCP_PROJECT_ID and GCP_ZONE")
+            return 1
+        
+        # Progress callback for real-time updates
+        def progress_callback(pct: int, message: str):
+            bar_width = 40
+            filled = int(bar_width * pct / 100)
+            bar = "█" * filled + "░" * (bar_width - filled)
+            print(f"\r[{bar}] {pct}% - {message[:40]:<40}", end="", flush=True)
+        
+        print()
+        success, message, image_info = await manager.create_golden_image(
+            progress_callback=progress_callback
+        )
+        print()  # New line after progress bar
+        
+        if success:
+            print()
+            print("\033[92m" + "═" * 70 + "\033[0m")
+            print("\033[92m  ✅ GOLDEN IMAGE CREATED SUCCESSFULLY\033[0m")
+            print("\033[92m" + "═" * 70 + "\033[0m")
+            if image_info:
+                print(f"   Name:    {image_info.name}")
+                print(f"   Family:  {image_info.family}")
+                print(f"   Model:   {image_info.model_name}")
+            print()
+            print("To use the golden image:")
+            print("  1. Set JARVIS_GCP_USE_GOLDEN_IMAGE=true")
+            print("  2. Run unified_supervisor.py normally")
+            print()
+            return 0
+        else:
+            print()
+            print(f"\033[91m⚠  Failed to create golden image: {message}\033[0m")
+            return 1
+            
+    except ImportError as e:
+        print(f"\033[91m⚠  GCP module import failed: {e}\033[0m")
+        return 1
+    except Exception as e:
+        print(f"\033[91m⚠  Error creating golden image: {e}\033[0m")
+        return 1
+
+
+async def handle_list_golden_images() -> int:
+    """
+    Handle --list-golden-images command: List all available golden images.
+    """
+    set_cli_only_mode(True)
+    
+    print()
+    print("\033[1m\033[94m" + "═" * 70 + "\033[0m")
+    print("\033[1m\033[94m  🌟  JARVIS GOLDEN IMAGES\033[0m")
+    print("\033[1m\033[94m" + "═" * 70 + "\033[0m")
+    print()
+    
+    try:
+        from backend.core.gcp_vm_manager import get_gcp_vm_manager_safe
+        manager = await get_gcp_vm_manager_safe()
+        
+        if not manager:
+            print("\033[91m⚠  GCP VM Manager not available\033[0m")
+            return 1
+        
+        images = await manager.list_golden_images()
+        
+        if not images:
+            print("\033[93m⚠  No golden images found\033[0m")
+            print()
+            print("Create one with:")
+            print("  python3 unified_supervisor.py --create-golden-image")
+            return 0
+        
+        print(f"Found {len(images)} golden image(s):\n")
+        
+        for i, img in enumerate(images):
+            status_color = "\033[92m" if img.status == "READY" else "\033[93m"
+            age_color = "\033[91m" if img.is_stale(30) else "\033[92m"
+            
+            print(f"  {i+1}. {img.name}")
+            print(f"     Status:  {status_color}{img.status}\033[0m")
+            print(f"     Family:  {img.family}")
+            print(f"     Model:   {img.model_name}")
+            print(f"     Age:     {age_color}{img.age_days:.1f} days\033[0m")
+            print(f"     Created: {img.creation_time.strftime('%Y-%m-%d %H:%M:%S')}")
+            print()
+        
+        return 0
+        
+    except ImportError as e:
+        print(f"\033[91m⚠  GCP module import failed: {e}\033[0m")
+        return 1
+    except Exception as e:
+        print(f"\033[91m⚠  Error listing golden images: {e}\033[0m")
+        return 1
+
+
+async def handle_check_golden_image() -> int:
+    """
+    Handle --check-golden-image command: Check golden image availability and status.
+    """
+    set_cli_only_mode(True)
+    
+    print()
+    print("\033[1m\033[94m" + "═" * 70 + "\033[0m")
+    print("\033[1m\033[94m  🌟  JARVIS GOLDEN IMAGE STATUS\033[0m")
+    print("\033[1m\033[94m" + "═" * 70 + "\033[0m")
+    print()
+    
+    try:
+        from backend.core.gcp_vm_manager import get_gcp_vm_manager_safe, VMManagerConfig
+        
+        # First check configuration
+        config = VMManagerConfig()
+        _GREEN = "\033[92m"
+        _YELLOW = "\033[93m"
+        _RESET = "\033[0m"
+        enabled_str = f"{_GREEN}Yes{_RESET}" if config.use_golden_image else f"{_YELLOW}No{_RESET}"
+        print("Configuration:")
+        print(f"  Enabled:        {enabled_str}")
+        print(f"  Image Family:   {config.golden_image_family}")
+        print(f"  Max Age (days): {config.golden_image_max_age_days}")
+        print(f"  Auto Rebuild:   {config.golden_image_auto_rebuild}")
+        print(f"  Fallback:       {config.golden_image_fallback}")
+        print()
+        
+        manager = await get_gcp_vm_manager_safe()
+        
+        if not manager:
+            print("\033[91m⚠  GCP VM Manager not available\033[0m")
+            return 1
+        
+        status = await manager.check_golden_image_availability()
+        
+        print("Status:")
+        if status["available"]:
+            image = status["image_info"]
+            print(f"  \033[92m✓ Golden image available\033[0m")
+            if image:
+                print(f"  Name:   {image.name}")
+                print(f"  Age:    {status.get('age_days', 0):.1f} days")
+                
+                if status.get("is_stale"):
+                    print(f"  \033[93m⚠ Image is stale - consider rebuilding\033[0m")
+        else:
+            print(f"  \033[93m✗ No golden image available\033[0m")
+        
+        print()
+        print(f"Recommendation: \033[1m{status['recommendation']}\033[0m")
+        print(f"Message: {status['message']}")
+        print()
+        
+        if status["recommendation"] == "CREATE_NEW":
+            print("Create a golden image with:")
+            print("  python3 unified_supervisor.py --create-golden-image")
+        elif status["recommendation"] == "REBUILD":
+            print("Rebuild the golden image with:")
+            print("  python3 unified_supervisor.py --create-golden-image")
+        elif status["recommendation"] == "READY":
+            if not config.use_golden_image:
+                print("Enable golden image deployment with:")
+                print("  export JARVIS_GCP_USE_GOLDEN_IMAGE=true")
+        
+        return 0
+        
+    except ImportError as e:
+        print(f"\033[91m⚠  GCP module import failed: {e}\033[0m")
+        return 1
+    except Exception as e:
+        print(f"\033[91m⚠  Error checking golden image status: {e}\033[0m")
+        return 1
+
+
+async def handle_cleanup_golden_images(keep_count: int) -> int:
+    """
+    Handle --cleanup-golden-images command: Clean up old golden images.
+    
+    Args:
+        keep_count: Number of recent images to keep
+    """
+    set_cli_only_mode(True)
+    
+    print()
+    print("\033[1m\033[93m" + "═" * 70 + "\033[0m")
+    print("\033[1m\033[93m  🧹  JARVIS GOLDEN IMAGE CLEANUP\033[0m")
+    print("\033[1m\033[93m" + "═" * 70 + "\033[0m")
+    print()
+    print(f"Cleaning up old golden images, keeping {keep_count} most recent...")
+    print()
+    
+    try:
+        from backend.core.gcp_vm_manager import get_gcp_vm_manager_safe
+        manager = await get_gcp_vm_manager_safe()
+        
+        if not manager:
+            print("\033[91m⚠  GCP VM Manager not available\033[0m")
+            return 1
+        
+        # List images first
+        images = await manager.list_golden_images()
+        print(f"Found {len(images)} golden image(s)")
+        
+        if len(images) <= keep_count:
+            print(f"\033[92m✓ No images to delete (have {len(images)}, keeping {keep_count})\033[0m")
+            return 0
+        
+        images_to_delete = len(images) - keep_count
+        print(f"Will delete {images_to_delete} image(s)")
+        print()
+        
+        # Perform cleanup
+        deleted_count, deleted_names = await manager.cleanup_old_golden_images(keep_count=keep_count)
+        
+        if deleted_count > 0:
+            print(f"\033[92m✓ Deleted {deleted_count} image(s):\033[0m")
+            for name in deleted_names:
+                print(f"  - {name}")
+        else:
+            print("\033[93m⚠ No images were deleted\033[0m")
+        
+        return 0
+        
+    except ImportError as e:
+        print(f"\033[91m⚠  GCP module import failed: {e}\033[0m")
+        return 1
+    except Exception as e:
+        print(f"\033[91m⚠  Error cleaning up golden images: {e}\033[0m")
         return 1
 
 
@@ -70216,6 +70512,19 @@ async def async_main(args: argparse.Namespace) -> int:
     # Handle --monitor-trinity
     if args.monitor_trinity:
         return await handle_monitor_trinity()
+
+    # v224.0: Handle golden image management commands
+    if getattr(args, 'create_golden_image', False):
+        return await handle_create_golden_image()
+    
+    if getattr(args, 'list_golden_images', False):
+        return await handle_list_golden_images()
+    
+    if getattr(args, 'check_golden_image', False):
+        return await handle_check_golden_image()
+    
+    if getattr(args, 'cleanup_golden_images', None) is not None:
+        return await handle_cleanup_golden_images(args.cleanup_golden_images)
 
     if args.cleanup:
         return await handle_cleanup()
