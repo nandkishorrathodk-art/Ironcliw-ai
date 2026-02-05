@@ -1329,8 +1329,9 @@ wait
             machine_type = f"zones/{zone}/machineTypes/{self.config.golden_image_builder_machine_type}"
             
             # Disk configuration (large enough for model + deps)
+            # IMPORTANT: auto_delete=False to preserve disk for image creation
             boot_disk = compute_v1.AttachedDisk(
-                auto_delete=True,
+                auto_delete=False,  # Keep disk for image creation!
                 boot=True,
                 initialize_params=compute_v1.AttachedDiskInitializeParams(
                     disk_size_gb=100,  # 100GB for model + deps
@@ -1412,10 +1413,15 @@ wait
             report_progress(20, f"Builder VM IP: {vm_ip}")
             
             # Poll health endpoint until build completes
+            # The health endpoint may not be accessible from outside GCP (firewall),
+            # so we use a timeout-based approach with graceful fallback.
             health_url = f"http://{vm_ip}:8000/health/startup"
-            max_build_time = 30 * 60  # 30 minutes max
+            max_build_time = 20 * 60  # 20 minutes max (typical build is 10-15 min)
+            min_build_time = 10 * 60  # Wait at least 10 minutes before giving up
             start_time = time.time()
             last_progress = 0
+            consecutive_failures = 0
+            max_consecutive_failures = 20  # Give up on health checks after 20 failures (~10 min)
             
             if AIOHTTP_AVAILABLE:
                 import aiohttp
@@ -1424,6 +1430,7 @@ wait
                         try:
                             async with session.get(health_url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
                                 if resp.status == 200:
+                                    consecutive_failures = 0  # Reset on success
                                     data = await resp.json()
                                     status = data.get("status", "unknown")
                                     build_progress = data.get("progress_pct", 0)
@@ -1441,13 +1448,25 @@ wait
                                     elif status == "error":
                                         raise RuntimeError(f"Build failed: {data.get('error_details', 'Unknown error')}")
                         except Exception as e:
-                            self.logger.debug(f"Health check failed (expected during startup): {e}")
+                            consecutive_failures += 1
+                            self.logger.debug(f"Health check failed ({consecutive_failures}/{max_consecutive_failures}): {e}")
+                            
+                            # If health endpoint is consistently unreachable (likely firewall),
+                            # and we've waited the minimum time, proceed anyway
+                            elapsed = time.time() - start_time
+                            if consecutive_failures >= max_consecutive_failures and elapsed >= min_build_time:
+                                self.logger.info(
+                                    f"[GoldenImageBuilder] Health endpoint unreachable after {int(elapsed/60)}min. "
+                                    f"Proceeding with image creation (build likely complete)."
+                                )
+                                report_progress(75, "Build time elapsed - proceeding...")
+                                break
                         
                         await asyncio.sleep(30)  # Poll every 30 seconds
             else:
                 # Fallback: wait a fixed time
                 report_progress(40, "Waiting for build (no aiohttp)...")
-                await asyncio.sleep(20 * 60)  # Wait 20 minutes
+                await asyncio.sleep(15 * 60)  # Wait 15 minutes
             
             # ─────────────────────────────────────────────────────────────────
             # Phase 3: Stop VM and Create Image
