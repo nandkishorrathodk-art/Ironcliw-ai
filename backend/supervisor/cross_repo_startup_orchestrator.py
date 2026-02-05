@@ -4776,26 +4776,55 @@ except ImportError:
 
 def _get_port_from_trinity(service: str, fallback: int) -> int:
     """
-    Get port from trinity_config (single source of truth) with fallback.
+    v228.0: Enhanced with heartbeat file check for actual runtime port.
+
+    Priority:
+    1. Live heartbeat file (most accurate — written by the running process)
+    2. Trinity config (single source of truth for configured port)
+    3. Environment variable
+    4. Fallback default
 
     v5.0: This ensures all services use consistent ports from trinity_config.
     v193.0: Safe env var parsing to prevent ValueError on malformed input.
+    v228.0: Heartbeat files checked first for actual runtime port.
     """
-    if not _TRINITY_CONFIG_AVAILABLE:
-        return _safe_int_env(f"{service.upper()}_PORT", fallback)
+    import json as _json
 
-    try:
-        config = get_trinity_config()
-        if service == "jarvis_prime":
-            return config.jarvis_prime_endpoint.port
-        elif service == "reactor_core":
-            return config.reactor_core_endpoint.port
-        elif service == "jarvis":
-            return config.jarvis_endpoint.port
-    except Exception:
-        pass
+    # v228.0: Check heartbeat file first for actual runtime port
+    hb_map = {
+        "jarvis_prime": "jarvis_prime.json",
+        "reactor_core": "reactor_core.json",
+    }
+    hb_file = hb_map.get(service)
+    if hb_file:
+        hb_path = Path.home() / ".jarvis" / "trinity" / "components" / hb_file
+        try:
+            if hb_path.exists():
+                data = _json.loads(hb_path.read_text())
+                age = time.time() - data.get("timestamp", 0)
+                if age < 60.0:  # Fresh heartbeat
+                    port = data.get("port")
+                    if port:
+                        logger.debug(f"[PortResolve] {service} port {port} from heartbeat (age: {age:.0f}s)")
+                        return int(port)
+        except Exception as e:
+            logger.debug(f"[PortResolve] Failed to read heartbeat for {service}: {e}")
 
-    return int(os.getenv(f"{service.upper()}_PORT", str(fallback)))
+    # Original logic: trinity config
+    if _TRINITY_CONFIG_AVAILABLE:
+        try:
+            config = get_trinity_config()
+            if service == "jarvis_prime":
+                return config.jarvis_prime_endpoint.port
+            elif service == "reactor_core":
+                return config.reactor_core_endpoint.port
+            elif service == "jarvis":
+                return config.jarvis_endpoint.port
+        except Exception:
+            pass
+
+    # Environment variable fallback
+    return _safe_int_env(f"{service.upper()}_PORT", fallback)
 
 
 def get_service_port_from_registry(

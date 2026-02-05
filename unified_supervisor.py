@@ -62113,33 +62113,49 @@ class JarvisSystemKernel:
                                     _trinity_startup_error = True
                                     _trinity_startup_timed_out = True  # v222.0: Track for result handling
                                     self.logger.error(f"[Trinity] Component startup timeout: {_timeout_context}")
-                                    # v222.0: Mark as TIMEOUT, not skipped - we attempted startup
-                                    # v223.0: Set BOTH components to error on timeout
-                                    self._update_component_status(
-                                        "jarvis_prime", "error",
-                                        f"Startup timeout: {_timeout_context or 'timed out'}"
-                                    )
-                                    self._update_component_status(
-                                        "reactor_core", "error",
-                                        f"Startup timeout: {_timeout_context or 'timed out'}"
-                                    )
+                                    # v228.0: Per-component error tracking — check each independently
+                                    for comp_key, comp_status_key in [("jarvis-prime", "jarvis_prime"), ("reactor-core", "reactor_core")]:
+                                        comp_result = results.get(comp_key) if results else None
+                                        if comp_result is True:
+                                            self._update_component_status(
+                                                comp_status_key, "healthy",
+                                                f"{comp_key} started successfully (peer timed out)"
+                                            )
+                                            self.logger.info(f"[Trinity]   \u2713 {comp_key}: HEALTHY (started before timeout)")
+                                        else:
+                                            self._update_component_status(
+                                                comp_status_key, "error",
+                                                f"Startup timeout: {_timeout_context or 'timed out'}"
+                                            )
+                                            self.logger.error(f"[Trinity]   \u2717 {comp_key}: ERROR (timeout)")
 
                             except TimeoutError:
                                 _trinity_startup_error = True
                                 _trinity_startup_timed_out = True  # v222.0: Track for result handling
                                 self.logger.error(f"[Trinity] Trinity phase timeout after {trinity_budget}s")
                                 self.logger.warning("[Trinity] Consider increasing JARVIS_TRINITY_BUDGET if startup needs more time")
-                                # v222.0: Mark as error, not skipped
-                                # v223.0: Set BOTH components to error on timeout
-                                self._update_component_status("jarvis_prime", "error", "Phase budget exceeded")
-                                self._update_component_status("reactor_core", "error", "Phase budget exceeded")
+                                # v228.0: Check live health before blanket-marking error
+                                for comp_key, comp_status_key in [("jarvis-prime", "jarvis_prime"), ("reactor-core", "reactor_core")]:
+                                    actual_port = self._get_component_port(comp_status_key)
+                                    if await self._quick_health_probe(actual_port):
+                                        self._update_component_status(comp_status_key, "healthy", f"{comp_key} healthy despite phase timeout")
+                                        self.logger.info(f"[Trinity]   \u2713 {comp_key}: HEALTHY (live probe)")
+                                    else:
+                                        self._update_component_status(comp_status_key, "error", "Phase budget exceeded")
+                                        self.logger.error(f"[Trinity]   \u2717 {comp_key}: ERROR (phase budget exceeded)")
                             except Exception as e:
                                 _trinity_startup_error = True
                                 _trinity_startup_timed_out = True  # v222.0: Treat exceptions as timeout for status
                                 self.logger.error(f"[Trinity] Unexpected error during startup: {e}")
-                                # v223.0: Set BOTH components to error on unexpected exception
-                                self._update_component_status("jarvis_prime", "error", f"Error: {e}")
-                                self._update_component_status("reactor_core", "error", f"Error: {e}")
+                                # v228.0: Check live health before blanket-marking error
+                                for comp_key, comp_status_key in [("jarvis-prime", "jarvis_prime"), ("reactor-core", "reactor_core")]:
+                                    actual_port = self._get_component_port(comp_status_key)
+                                    if await self._quick_health_probe(actual_port):
+                                        self._update_component_status(comp_status_key, "healthy", f"{comp_key} healthy despite error: {e}")
+                                        self.logger.info(f"[Trinity]   \u2713 {comp_key}: HEALTHY (live probe)")
+                                    else:
+                                        self._update_component_status(comp_status_key, "error", f"Error: {e}")
+                                        self.logger.error(f"[Trinity]   \u2717 {comp_key}: ERROR ({e})")
                             finally:
                                 # v200.0/v206.0: Cleanup - stop integrator ONLY on error/timeout
                                 # On success, Trinity keeps running; tiered_stop() is called during shutdown
@@ -62279,16 +62295,21 @@ class JarvisSystemKernel:
                     if _legacy_timed_out:
                         _trinity_startup_timed_out = True  # v222.0: Track for result handling
                         self.logger.error(f"[Trinity] Component startup timeout: {_legacy_timeout_context}")
-                        # v222.0: Mark as TIMEOUT error, not skipped - we attempted startup
-                        # v223.0: Set BOTH components to error on timeout
-                        self._update_component_status(
-                            "jarvis_prime", "error",
-                            f"Startup timeout: {_legacy_timeout_context or 'timed out'}"
-                        )
-                        self._update_component_status(
-                            "reactor_core", "error",
-                            f"Startup timeout: {_legacy_timeout_context or 'timed out'}"
-                        )
+                        # v228.0: Per-component error tracking — check each independently
+                        for comp_key, comp_status_key in [("jarvis-prime", "jarvis_prime"), ("reactor-core", "reactor_core")]:
+                            comp_result = results.get(comp_key) if results else None
+                            if comp_result is True:
+                                self._update_component_status(
+                                    comp_status_key, "healthy",
+                                    f"{comp_key} started successfully (peer timed out)"
+                                )
+                                self.logger.info(f"[Trinity]   \u2713 {comp_key}: HEALTHY (started before timeout)")
+                            else:
+                                self._update_component_status(
+                                    comp_status_key, "error",
+                                    f"Startup timeout: {_legacy_timeout_context or 'timed out'}"
+                                )
+                                self.logger.error(f"[Trinity]   \u2717 {comp_key}: ERROR (timeout)")
 
                 # Log start results
                 started_count = sum(1 for v in results.values() if v)
@@ -64123,7 +64144,127 @@ class JarvisSystemKernel:
     # v182.0: DYNAMIC COMPONENT TRACKING
     # =========================================================================
     # Real-time component status tracking and Trinity readiness verification.
+    # v228.0: Per-component error tracking helpers (_quick_health_probe,
+    #         _get_component_port, _reconcile_component_status).
     # =========================================================================
+
+    async def _quick_health_probe(self, port: int, timeout: float = 3.0) -> bool:
+        """
+        v228.0: Quick live health probe for a component by port.
+        Used during error handling to check if a component is actually
+        healthy before marking it as error.
+        Returns True if the component appears healthy.
+        """
+        # Method 1: Check heartbeat file (fast, no network)
+        try:
+            for hb_name in ["jarvis_prime.json", "reactor_core.json"]:
+                hb_path = Path.home() / ".jarvis" / "trinity" / "components" / hb_name
+                if hb_path.exists():
+                    import json as _json
+                    data = _json.loads(hb_path.read_text())
+                    hb_port = data.get("port", 0)
+                    if hb_port == port:
+                        age = time.time() - data.get("timestamp", 0)
+                        if age < 30.0 and data.get("healthy", False):
+                            return True
+        except Exception:
+            pass
+
+        # Method 2: HTTP probe (reliable but slower)
+        try:
+            import aiohttp
+            async with aiohttp.ClientSession() as session:
+                url = f"http://localhost:{port}/health"
+                async with session.get(url, timeout=aiohttp.ClientTimeout(total=timeout)) as resp:
+                    if resp.status == 200:
+                        body = await resp.json()
+                        status = body.get("status", "")
+                        return status in ("healthy", "ready", "starting")
+        except Exception:
+            pass
+
+        return False
+
+    def _get_component_port(self, component: str) -> int:
+        """
+        v228.0: Get the actual runtime port for a component.
+        Priority: heartbeat file > trinity heartbeat > cross-repo state > default.
+        """
+        import json as _json
+
+        # 1. Component heartbeat file (most reliable)
+        comp_map = {
+            "jarvis_prime": "jarvis_prime.json",
+            "reactor_core": "reactor_core.json",
+        }
+        hb_file = comp_map.get(component)
+        if hb_file:
+            hb_path = Path.home() / ".jarvis" / "trinity" / "components" / hb_file
+            try:
+                if hb_path.exists():
+                    data = _json.loads(hb_path.read_text())
+                    age = time.time() - data.get("timestamp", 0)
+                    if age < 60.0:
+                        port = data.get("port")
+                        if port:
+                            return int(port)
+            except Exception:
+                pass
+
+        # 2. Trinity heartbeat directory
+        try:
+            hb_dir = Path.home() / ".jarvis" / "trinity" / "heartbeats"
+            if component == "reactor_core":
+                hb_path = hb_dir / "reactor_core.json"
+                if hb_path.exists():
+                    data = _json.loads(hb_path.read_text())
+                    port = data.get("port")
+                    if port:
+                        return int(port)
+        except Exception:
+            pass
+
+        # 3. Cross-repo state file
+        try:
+            state_map = {
+                "jarvis_prime": "jarvis_prime_state.json",
+                "reactor_core": "reactor_state.json",
+            }
+            state_file = state_map.get(component)
+            if state_file:
+                state_path = Path.home() / ".jarvis" / "cross_repo" / state_file
+                if state_path.exists():
+                    data = _json.loads(state_path.read_text())
+                    port = data.get("port")
+                    if port:
+                        return int(port)
+        except Exception:
+            pass
+
+        # 4. Fallback defaults
+        defaults = {"jarvis_prime": 8001, "reactor_core": 8090}
+        return defaults.get(component, 8000)
+
+    async def _reconcile_component_status(self) -> None:
+        """
+        v228.0: Cross-check _component_status against actual runtime state.
+        If a component is marked as 'error' but is actually healthy, correct it.
+        """
+        for comp_status_key in ["jarvis_prime", "reactor_core"]:
+            current = self._component_status.get(comp_status_key, {})
+            if current.get("status") not in ("error", "unavailable"):
+                continue
+
+            actual_port = self._get_component_port(comp_status_key)
+            if await self._quick_health_probe(actual_port):
+                self.logger.info(
+                    f"[Reconcile] {comp_status_key} was marked '{current.get('status')}' "
+                    f"but is actually healthy on port {actual_port} — correcting"
+                )
+                self._update_component_status(
+                    comp_status_key, "healthy",
+                    f"Reconciled: live probe on port {actual_port} succeeded"
+                )
 
     def _update_component_status(
         self,

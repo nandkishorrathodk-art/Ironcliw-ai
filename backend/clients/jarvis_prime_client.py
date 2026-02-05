@@ -471,8 +471,10 @@ class IntelligentServiceDiscovery:
     PROBE_PORTS: List[int] = [
         int(os.getenv("JARVIS_PRIME_PORT", "8001")),  # Default/configured
         8001,  # Standard J-Prime port (v192.2)
+        8002,  # First fallback
+        8003,  # v228.0: Extended fallback range
+        8004,  # v228.0: Extended fallback range
         8000,  # Legacy (conflicts with jarvis-body)
-        8002,  # Legacy
         11434, # Ollama compatibility
     ]
 

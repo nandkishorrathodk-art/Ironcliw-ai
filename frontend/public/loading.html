@@ -101,6 +101,30 @@
             }
         }
 
+        /* v225.0: CRT Scan Line Overlay */
+        .scan-lines {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 2;
+            pointer-events: none;
+            background: repeating-linear-gradient(
+                0deg,
+                transparent,
+                transparent 2px,
+                rgba(0, 0, 0, 0.03) 2px,
+                rgba(0, 0, 0, 0.03) 4px
+            );
+            animation: scanMove 8s linear infinite;
+        }
+
+        @keyframes scanMove {
+            0% { background-position: 0 0; }
+            100% { background-position: 0 8px; }
+        }
+
         /* Main container - above all background layers */
         .loading-container {
             text-align: center;
@@ -116,6 +140,91 @@
             gap: clamp(0.5rem, 2vh, 1.5rem);
             min-height: 100vh;
             box-sizing: border-box;
+        }
+
+        /* v225.0: HUD Corner Brackets */
+        .hud-frame {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 3;
+        }
+
+        .hud-corner {
+            position: absolute;
+            width: 50px;
+            height: 50px;
+            border-color: rgba(0, 255, 65, 0.25);
+            border-style: solid;
+        }
+
+        .hud-corner.top-left {
+            top: 15px;
+            left: 15px;
+            border-width: 2px 0 0 2px;
+        }
+
+        .hud-corner.top-right {
+            top: 15px;
+            right: 15px;
+            border-width: 2px 2px 0 0;
+        }
+
+        .hud-corner.bottom-left {
+            bottom: 15px;
+            left: 15px;
+            border-width: 0 0 2px 2px;
+        }
+
+        .hud-corner.bottom-right {
+            bottom: 15px;
+            right: 15px;
+            border-width: 0 2px 2px 0;
+        }
+
+        .hud-corner::after {
+            content: '';
+            position: absolute;
+            background: var(--jarvis-green);
+            border-radius: 50%;
+            width: 4px;
+            height: 4px;
+            opacity: 0.5;
+        }
+
+        .hud-corner.top-left::after { top: -2px; left: -2px; }
+        .hud-corner.top-right::after { top: -2px; right: -2px; }
+        .hud-corner.bottom-left::after { bottom: -2px; left: -2px; }
+        .hud-corner.bottom-right::after { bottom: -2px; right: -2px; }
+
+        /* v225.0: Staggered Entrance Animations */
+        .loading-container > [style*="order"] {
+            opacity: 0;
+            animation: fadeSlideIn 0.6s ease forwards;
+        }
+
+        .loading-container > [style*="order: 1"] { animation-delay: 0.05s; }
+        .loading-container > [style*="order: 2"] { animation-delay: 0.15s; }
+        .loading-container > [style*="order: 3"] { animation-delay: 0.3s; }
+        .loading-container > [style*="order: 4"] { animation-delay: 0.5s; }
+        .loading-container > [style*="order: 5"] { animation-delay: 0.6s; }
+        .loading-container > [style*="order: 6"] { animation-delay: 0.7s; }
+        .loading-container > [style*="order: 7"] { animation-delay: 0.8s; }
+        .loading-container > [style*="order: 8"] { animation-delay: 0.9s; }
+        .loading-container > [style*="order: 9"] { animation-delay: 1.0s; }
+
+        @keyframes fadeSlideIn {
+            from {
+                opacity: 0;
+                transform: translateY(12px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
         }
 
         /* Logo */
@@ -151,6 +260,43 @@
             align-items: center;
             justify-content: center;
             flex-shrink: 0;
+        }
+
+        /* v225.0: SVG Circular Progress Ring */
+        .progress-ring {
+            position: absolute;
+            width: 112%;
+            height: 112%;
+            top: -6%;
+            left: -6%;
+            z-index: 1;
+            transform: rotate(-90deg);
+            pointer-events: none;
+        }
+
+        .progress-ring-bg {
+            fill: none;
+            stroke: rgba(0, 255, 65, 0.06);
+            stroke-width: 2.5;
+        }
+
+        .progress-ring-fill {
+            fill: none;
+            stroke: var(--jarvis-green);
+            stroke-width: 2.5;
+            stroke-linecap: round;
+            stroke-dasharray: 597;
+            stroke-dashoffset: 597;
+            transition: stroke-dashoffset 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+            filter: drop-shadow(0 0 6px var(--jarvis-green-glow));
+        }
+
+        /* Secondary tick marks around the ring */
+        .progress-ring-ticks {
+            fill: none;
+            stroke: rgba(0, 255, 65, 0.12);
+            stroke-width: 0.5;
+            stroke-dasharray: 2 12.4;
         }
 
         /* Arc Reactor */
@@ -332,32 +478,172 @@
             flex-shrink: 0;
         }
 
-        /* Progress bar */
+        /* v225.0: ETA Display */
+        .eta-display {
+            font-family: 'Orbitron', monospace;
+            font-size: clamp(0.75rem, 1.5vw, 0.9rem);
+            color: var(--jarvis-green-dark);
+            letter-spacing: 0.12em;
+            opacity: 0.85;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-shrink: 0;
+        }
+
+        .eta-label {
+            font-size: 0.65em;
+            text-transform: uppercase;
+            opacity: 0.6;
+            letter-spacing: 0.2em;
+        }
+
+        .eta-value {
+            color: var(--jarvis-green);
+            font-weight: 700;
+        }
+
+        .eta-separator {
+            width: 1px;
+            height: 12px;
+            background: rgba(0, 255, 65, 0.2);
+        }
+
+        .eta-confidence {
+            font-size: 0.6em;
+            opacity: 0.5;
+        }
+
+        /* v225.0: Phase Timeline */
+        .phase-timeline {
+            width: 100%;
+            position: relative;
+            padding: 8px 0 28px;
+            flex-shrink: 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+        }
+
+        .timeline-track-wrapper {
+            position: absolute;
+            top: 14px;
+            left: 4%;
+            right: 4%;
+            height: 2px;
+        }
+
+        .timeline-track {
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 255, 65, 0.1);
+            border-radius: 1px;
+        }
+
+        .timeline-fill {
+            height: 100%;
+            width: 0%;
+            background: var(--jarvis-green);
+            border-radius: 1px;
+            transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 0 8px var(--jarvis-green-glow);
+        }
+
+        .timeline-dot-wrapper {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 6px;
+            z-index: 1;
+            flex: 1;
+            max-width: 60px;
+        }
+
+        .timeline-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            border: 2px solid rgba(0, 255, 65, 0.2);
+            background: rgba(0, 0, 0, 0.8);
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            flex-shrink: 0;
+        }
+
+        .timeline-dot.active {
+            border-color: var(--jarvis-green);
+            background: rgba(0, 255, 65, 0.15);
+            box-shadow: 0 0 10px var(--jarvis-green-glow), 0 0 20px rgba(0, 255, 65, 0.15);
+            animation: dotPulse 1.5s ease-in-out infinite;
+        }
+
+        .timeline-dot.completed {
+            border-color: var(--jarvis-green);
+            background: var(--jarvis-green);
+            box-shadow: 0 0 6px var(--jarvis-green-glow);
+        }
+
+        @keyframes dotPulse {
+            0%, 100% {
+                box-shadow: 0 0 10px var(--jarvis-green-glow), 0 0 20px rgba(0, 255, 65, 0.15);
+                transform: scale(1);
+            }
+            50% {
+                box-shadow: 0 0 16px var(--jarvis-green-glow), 0 0 30px rgba(0, 255, 65, 0.25);
+                transform: scale(1.2);
+            }
+        }
+
+        .timeline-label {
+            font-size: clamp(0.5rem, 1vw, 0.6rem);
+            color: rgba(0, 255, 65, 0.35);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            font-weight: 600;
+            text-align: center;
+            line-height: 1.2;
+            transition: color 0.3s;
+            white-space: nowrap;
+        }
+
+        .timeline-dot-wrapper.active .timeline-label {
+            color: var(--jarvis-green);
+        }
+
+        .timeline-dot-wrapper.completed .timeline-label {
+            color: rgba(0, 255, 65, 0.6);
+        }
+
+        @media (max-width: 600px) {
+            .timeline-label { font-size: 0.45rem; }
+            .timeline-dot { width: 8px; height: 8px; }
+        }
+
+        /* Progress bar - v225.0: Refined thinner style */
         .progress-container {
             width: 100%;
-            height: clamp(30px, 5vh, 50px);
-            background: rgba(0, 255, 65, 0.08);
-            border: 2px solid var(--jarvis-green);
-            border-radius: 25px;
+            height: 8px;
+            background: rgba(0, 255, 65, 0.06);
+            border: 1px solid rgba(0, 255, 65, 0.25);
+            border-radius: 4px;
             overflow: hidden;
             position: relative;
-            box-shadow:
-                0 0 15px var(--jarvis-green-glow),
-                inset 0 0 15px rgba(0, 255, 65, 0.1);
+            box-shadow: 0 0 10px rgba(0, 255, 65, 0.08);
             flex-shrink: 0;
         }
 
         .progress-bar {
             height: 100%;
             background: linear-gradient(90deg,
-                var(--jarvis-green) 0%,
-                var(--jarvis-green-dark) 50%,
-                var(--jarvis-green) 100%);
+                var(--jarvis-green-dark) 0%,
+                var(--jarvis-green) 50%,
+                var(--jarvis-green-dark) 100%);
             background-size: 200% 100%;
-            animation: shimmer 2s infinite linear;
+            animation: shimmer 3s infinite linear;
             width: 0%;
             transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
             position: relative;
+            border-radius: 3px;
+            box-shadow: 0 0 8px var(--jarvis-green-glow);
         }
 
         .progress-bar::after {
@@ -368,10 +654,10 @@
             right: 0;
             bottom: 0;
             background: linear-gradient(90deg,
-                transparent,
-                rgba(255, 255, 255, 0.4),
-                transparent);
-            animation: slide 1.5s infinite;
+                transparent 0%,
+                rgba(255, 255, 255, 0.3) 50%,
+                transparent 100%);
+            animation: slide 2s infinite;
         }
 
         @keyframes shimmer {
@@ -1334,8 +1620,19 @@
     <!-- Particle background - floating particles above matrix -->
     <div class="particles-bg" id="particles"></div>
 
-    <!-- Connection status - clickable to toggle details panel -->
-    <div class="connection-status" id="connection-status" title="Click to toggle details panel">
+    <!-- v225.0: CRT Scan Lines Overlay -->
+    <div class="scan-lines"></div>
+
+    <!-- v225.0: HUD Corner Brackets -->
+    <div class="hud-frame">
+        <div class="hud-corner top-left"></div>
+        <div class="hud-corner top-right"></div>
+        <div class="hud-corner bottom-left"></div>
+        <div class="hud-corner bottom-right"></div>
+    </div>
+
+    <!-- Connection status - v225.0: Hidden (replaced by phase timeline + progress ring) -->
+    <div class="connection-status" id="connection-status" style="display: none !important;">
         <div class="status-indicator connecting" id="status-indicator"></div>
         <span id="status-text">Connecting to backend...</span>
         <span class="toggle-hint" id="toggle-hint">▼</span>
@@ -1346,8 +1643,14 @@
         <div class="jarvis-logo" style="order: 1;">J.A.R.V.I.S.</div>
         <div class="subtitle" id="subtitle" style="order: 2;">STARTING</div>
 
-        <!-- Arc Reactor -->
+        <!-- Arc Reactor with SVG Progress Ring -->
         <div class="arc-reactor-wrapper" style="order: 3;">
+            <!-- v225.0: SVG Circular Progress Ring -->
+            <svg class="progress-ring" viewBox="0 0 200 200">
+                <circle class="progress-ring-ticks" cx="100" cy="100" r="95" />
+                <circle class="progress-ring-bg" cx="100" cy="100" r="95" />
+                <circle class="progress-ring-fill" id="progress-ring-fill" cx="100" cy="100" r="95" />
+            </svg>
             <div class="arc-reactor">
                 <div class="reactor-ring"></div>
                 <div class="reactor-ring"></div>
@@ -1356,8 +1659,12 @@
             </div>
         </div>
 
-        <!-- Progress percentage -->
+        <!-- Progress percentage + ETA -->
         <div class="progress-percentage" id="progress-percentage" style="order: 4;">0%</div>
+        <div class="eta-display" id="eta-display" style="order: 4;">
+            <span class="eta-label">ETA</span>
+            <span class="eta-value" id="eta-value">--</span>
+        </div>
 
         <!-- Progress bar -->
         <div class="progress-container" style="order: 5;">
@@ -1369,11 +1676,56 @@
 
         <!-- Detailed status panel will be dynamically inserted here with order: 7 -->
 
-        <!-- Stage indicators (dynamically populated) -->
-        <div class="stages-container" id="stages-container" style="order: 8;"></div>
+        <!-- v225.0: Phase Timeline (replaces flat stage grid) -->
+        <div class="phase-timeline" id="phase-timeline" style="order: 8;">
+            <div class="timeline-track-wrapper">
+                <div class="timeline-track">
+                    <div class="timeline-fill" id="timeline-fill"></div>
+                </div>
+            </div>
+            <div class="timeline-dot-wrapper" data-phase="importing_ml_libraries">
+                <div class="timeline-dot"></div>
+                <span class="timeline-label">ML</span>
+            </div>
+            <div class="timeline-dot-wrapper" data-phase="initializing_bridge">
+                <div class="timeline-dot"></div>
+                <span class="timeline-label">Bridge</span>
+            </div>
+            <div class="timeline-dot-wrapper" data-phase="initializing_trinity">
+                <div class="timeline-dot"></div>
+                <span class="timeline-label">Trinity</span>
+            </div>
+            <div class="timeline-dot-wrapper" data-phase="initializing_agi_hub">
+                <div class="timeline-dot"></div>
+                <span class="timeline-label">AGI</span>
+            </div>
+            <div class="timeline-dot-wrapper" data-phase="initializing_neural_orchestrator">
+                <div class="timeline-dot"></div>
+                <span class="timeline-label">Neural</span>
+            </div>
+            <div class="timeline-dot-wrapper" data-phase="resolving_model">
+                <div class="timeline-dot"></div>
+                <span class="timeline-label">Model</span>
+            </div>
+            <div class="timeline-dot-wrapper" data-phase="configuring_hardware">
+                <div class="timeline-dot"></div>
+                <span class="timeline-label">HW</span>
+            </div>
+            <div class="timeline-dot-wrapper" data-phase="loading_model">
+                <div class="timeline-dot"></div>
+                <span class="timeline-label">Load</span>
+            </div>
+            <div class="timeline-dot-wrapper" data-phase="marking_ready">
+                <div class="timeline-dot"></div>
+                <span class="timeline-label">Ready</span>
+            </div>
+        </div>
 
-        <!-- Details panel - with minimize/hide capability -->
-        <div class="details-panel" id="details-panel" style="order: 9;">
+        <!-- Legacy stage indicators (hidden, kept for backward compat) -->
+        <div class="stages-container" id="stages-container" style="order: 8; display: none;"></div>
+
+        <!-- Details panel - v225.0: Removed (user cannot see real-time detail, replaced by phase timeline + ETA) -->
+        <div class="details-panel" id="details-panel" style="order: 9; display: none !important;">
             <!-- Panel header with minimize button -->
             <div class="panel-control-header">
                 <span class="panel-title">System Status</span>

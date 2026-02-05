@@ -54,6 +54,19 @@
  * - Retry button for frontend reconnection
  */
 
+// v225.0: Phase label mapping for v2 init_progress protocol timeline
+const PHASE_LABELS = {
+    'importing_ml_libraries': { short: 'ML', full: 'ML Libraries' },
+    'initializing_bridge': { short: 'Bridge', full: 'Bridge Init' },
+    'initializing_trinity': { short: 'Trinity', full: 'Trinity Sync' },
+    'initializing_agi_hub': { short: 'AGI', full: 'AGI Hub' },
+    'initializing_neural_orchestrator': { short: 'Neural', full: 'Neural Orch.' },
+    'resolving_model': { short: 'Model', full: 'Model Resolve' },
+    'configuring_hardware': { short: 'HW', full: 'Hardware Config' },
+    'loading_model': { short: 'Load', full: 'Model Loading' },
+    'marking_ready': { short: 'Ready', full: 'Finalizing' }
+};
+
 class JARVISLoadingManager {
     constructor() {
         // v210.0: Enhanced port detection with dynamic discovery
@@ -2346,11 +2359,13 @@ class JARVISLoadingManager {
                                 stage: inner.stage || inner.phase,
                                 message: inner.message,
                                 progress: inner.progress,
+                                eta: inner.eta,  // v225.0: ML-based ETA from loading server
                                 metadata: {
                                     ...(inner.metadata || {}),
                                     components: inner.components || (inner.metadata || {}).components,
                                     trinity: inner.trinity || (inner.metadata || {}).trinity,
-                                    trinity_ready: inner.trinity_ready ?? (inner.metadata || {}).trinity_ready
+                                    trinity_ready: inner.trinity_ready ?? (inner.metadata || {}).trinity_ready,
+                                    init_progress: inner.init_progress || (inner.metadata || {}).init_progress  // v225.0: Prime v2 phase data
                                 }
                             };
                         } else {
@@ -2832,6 +2847,41 @@ class JARVISLoadingManager {
                     this.addLogEntry('Security', 'Two-Tier Security System operational', 'success');
                 } else if (this.state.twoTierSecurity.overallStatus === 'partial') {
                     this.addLogEntry('Security', tt.message || 'Partial security ready', 'warning');
+                }
+            }
+
+            // ===================================================================
+            // v225.0: Prime v2 init_progress Protocol Handler
+            // ===================================================================
+            const initProgress = metadata.init_progress;
+            if (initProgress && initProgress.protocol_version >= 2) {
+                this._v2Progress = {
+                    overallPct: initProgress.overall_pct,
+                    currentPhase: initProgress.current_phase,
+                    completedPhases: initProgress.completed_phases,
+                    totalPhases: initProgress.total_phases,
+                    phases: initProgress.phases || []
+                };
+                this.updatePhaseTimeline(this._v2Progress);
+            }
+
+            // v225.0: ETA Display from ML-based prediction
+            if (data.eta && data.eta.seconds != null) {
+                const etaEl = document.getElementById('eta-value');
+                if (etaEl) {
+                    const secs = Math.round(data.eta.seconds);
+                    if (secs <= 0) {
+                        etaEl.textContent = 'Soon';
+                    } else if (secs > 60) {
+                        etaEl.textContent = `~${Math.ceil(secs / 60)}m ${secs % 60}s`;
+                    } else {
+                        etaEl.textContent = `~${secs}s`;
+                    }
+                    // Show confidence if available
+                    const etaDisplay = document.getElementById('eta-display');
+                    if (etaDisplay && data.eta.confidence != null) {
+                        etaDisplay.title = `Confidence: ${Math.round(data.eta.confidence * 100)}%`;
+                    }
                 }
             }
 
@@ -4142,6 +4192,60 @@ class JARVISLoadingManager {
             this.elements.progressBar.style.background = 'linear-gradient(90deg, #00ff41 0%, #00ff88 100%)';
             this.elements.progressBar.style.boxShadow = '0 0 20px rgba(0, 255, 65, 0.8)';
         }
+
+        // v225.0: Update SVG circular progress ring around arc reactor
+        const ring = document.getElementById('progress-ring-fill');
+        if (ring) {
+            const circumference = 597; // 2 * Math.PI * 95 ≈ 597
+            const offset = circumference - (displayProgress / 100) * circumference;
+            ring.style.strokeDashoffset = offset;
+
+            // Intensify glow as progress increases
+            const glowIntensity = 4 + (displayProgress / 100) * 12;
+            ring.style.filter = `drop-shadow(0 0 ${glowIntensity}px rgba(0, 255, 65, ${0.4 + displayProgress / 200}))`;
+        }
+    }
+
+    // v225.0: Update phase timeline from v2 init_progress protocol data
+    updatePhaseTimeline(v2Data) {
+        const timeline = document.getElementById('phase-timeline');
+        const fill = document.getElementById('timeline-fill');
+        if (!timeline || !fill) return;
+
+        // Update fill width based on completed phases
+        const completedPct = v2Data.totalPhases > 0
+            ? (v2Data.completedPhases / v2Data.totalPhases) * 100
+            : 0;
+        fill.style.width = `${completedPct}%`;
+
+        // Update individual dot wrappers (wrapper carries active/completed class for CSS)
+        const wrappers = timeline.querySelectorAll('.timeline-dot-wrapper');
+        const phaseNames = Object.keys(PHASE_LABELS);
+
+        wrappers.forEach((wrapper, i) => {
+            const dot = wrapper.querySelector('.timeline-dot');
+            if (!dot) return;
+
+            // Reset classes
+            wrapper.classList.remove('active', 'completed');
+            dot.className = 'timeline-dot';
+
+            if (i < v2Data.completedPhases) {
+                wrapper.classList.add('completed');
+                dot.classList.add('completed');
+            } else if (i === v2Data.completedPhases) {
+                wrapper.classList.add('active');
+                dot.classList.add('active');
+            }
+
+            // Update tooltip with detailed phase data
+            if (v2Data.phases && v2Data.phases[i]) {
+                const phaseData = v2Data.phases[i];
+                const phaseName = phaseNames[i] || `Phase ${i + 1}`;
+                const label = PHASE_LABELS[phaseName];
+                wrapper.title = `${label ? label.full : phaseName}: ${phaseData.status || 'pending'}`;
+            }
+        });
     }
 
     updateStatusText(text, status) {
@@ -5020,6 +5124,8 @@ class JARVISLoadingManager {
      * v5.2: Show a button to manually redirect to backend.
      */
     showBackendFallbackButton() {
+        // v225.0: Suppress fallback buttons — progress ring + phase timeline provide status
+        return;
         const existingButton = document.getElementById('backend-fallback-btn');
         if (existingButton) return; // Already shown
 
