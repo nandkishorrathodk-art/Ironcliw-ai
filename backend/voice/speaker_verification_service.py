@@ -5579,6 +5579,89 @@ class SpeakerVerificationService:
             logger.info("   3. Run database migrations if needed")
             logger.info("   4. Check Cloud SQL proxy is running (if using Cloud SQL)")
 
+            # v226.0: Schedule background retry so voice verification can self-heal
+            # without requiring a full restart. The learning database singleton
+            # (v226.0) now discards broken instances on retry, so a deferred call
+            # to _load_speaker_profiles() has a real chance of succeeding once the
+            # transient condition (e.g., DB lock, proxy startup) resolves.
+            self._schedule_deferred_profile_load()
+
+    def _schedule_deferred_profile_load(self):
+        """
+        v226.0: Schedule exponential-backoff retries for speaker profile loading.
+
+        When the initial profile load fails (e.g., learning database not yet
+        initialized due to transient startup conditions), this schedules a
+        background task that retries with exponential backoff. Combined with
+        the self-healing singleton in get_learning_database() (v226.0), each
+        retry gets a fresh database instance, giving the system a real chance
+        to recover once the transient condition resolves.
+
+        Retry schedule: 5s, 10s, 20s, 40s, 60s (capped) — up to 5 attempts.
+        """
+        existing = getattr(self, '_deferred_profile_task', None)
+        if existing is not None and not existing.done():
+            # Already running, don't duplicate
+            return
+
+        async def _deferred_retry():
+            max_retries = 5
+            base_delay = 5.0
+            max_delay = 60.0
+
+            for attempt in range(1, max_retries + 1):
+                delay = min(base_delay * (2 ** (attempt - 1)), max_delay)
+                logger.info(
+                    f"🔄 [ProfileRetry] Attempt {attempt}/{max_retries} "
+                    f"in {delay:.0f}s..."
+                )
+                await asyncio.sleep(delay)
+
+                try:
+                    # Reset learning_db so _load_speaker_profiles() fetches
+                    # a fresh singleton (which discards broken instances).
+                    self.learning_db = None
+                    await self._load_speaker_profiles()
+
+                    # _load_speaker_profiles swallows its own exceptions,
+                    # so verify the DB actually connected by checking state.
+                    db = self.learning_db
+                    if db is not None and db._initialized:
+                        count = len(self.speaker_profiles)
+                        if count > 0:
+                            logger.info(
+                                f"✅ [ProfileRetry] Recovered! "
+                                f"{count} profiles loaded on attempt {attempt}"
+                            )
+                        else:
+                            logger.info(
+                                "✅ [ProfileRetry] Database connected but "
+                                "0 profiles found (enrollment needed)"
+                            )
+                        return  # Success — stop retrying
+                    else:
+                        logger.warning(
+                            f"⚠️ [ProfileRetry] Attempt {attempt}/{max_retries}: "
+                            f"database still not initialized"
+                        )
+                except Exception as e:
+                    logger.warning(
+                        f"⚠️ [ProfileRetry] Attempt {attempt}/{max_retries} "
+                        f"failed: {e}"
+                    )
+
+            logger.error(
+                f"❌ [ProfileRetry] All {max_retries} retry attempts failed. "
+                f"Voice verification will remain unavailable until manual "
+                f"restart or next profile reload cycle."
+            )
+
+        try:
+            self._deferred_profile_task = asyncio.create_task(_deferred_retry())
+        except RuntimeError:
+            # No running event loop (shouldn't happen in async context, but safe)
+            logger.warning("⚠️ [ProfileRetry] Cannot schedule retry — no event loop")
+
     async def _auto_create_owner_profile_from_macos(self) -> None:
         """
         Auto-create an owner profile from macOS system user when no profiles exist.

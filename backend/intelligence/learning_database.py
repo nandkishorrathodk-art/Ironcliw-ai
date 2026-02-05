@@ -8528,13 +8528,49 @@ _cross_repo_sync = None
 
 
 async def get_learning_database(config: Optional[Dict] = None) -> JARVISLearningDatabase:
-    """Get or create the global async learning database"""
+    """Get or create the global async learning database.
+
+    v226.0: Self-healing singleton. If a previous initialization failed
+    (leaving _db_instance assigned but _initialized=False), the broken
+    instance is discarded and a fresh one is created. This prevents
+    permanent singleton poisoning from transient failures (e.g., SQLite
+    lock contention, filesystem hiccup, Cloud SQL proxy not ready yet).
+
+    On initialization failure, _db_instance is reset to None so the next
+    call gets a fresh retry opportunity rather than the broken instance.
+    """
     global _db_instance
 
     async with _db_lock:
-        if _db_instance is None:
-            _db_instance = JARVISLearningDatabase(config=config)
+        # Fast path: already initialized and healthy
+        if _db_instance is not None and _db_instance._initialized:
+            return _db_instance
+
+        # Discard broken instance from a previous failed initialization.
+        # Without this, the singleton is permanently poisoned: _db_instance
+        # is non-None so the old `if _db_instance is None` check skips
+        # creation, but _initialized is False so every consumer fails.
+        if _db_instance is not None and not _db_instance._initialized:
+            logger.warning(
+                "[LearningDB] Discarding uninitialized singleton from previous "
+                "failure — creating fresh instance for retry"
+            )
+            try:
+                await _db_instance.close()
+            except Exception:
+                pass
+            _db_instance = None
+
+        # Create and initialize fresh instance
+        _db_instance = JARVISLearningDatabase(config=config)
+        try:
             await _db_instance.initialize()
+        except Exception:
+            # Reset so the next call retries with a fresh instance
+            # instead of returning this broken one forever.
+            _db_instance = None
+            raise
+
         return _db_instance
 
 
