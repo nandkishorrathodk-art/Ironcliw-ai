@@ -55565,6 +55565,82 @@ class TrinityIntegrator:
                 
             return False
 
+    async def _run_smoke_test_inference(
+        self,
+        component,
+        session,
+        timeout: float = 10.0,
+        max_retries: int = 1,
+    ):
+        """
+        v232.0: Validate actual inference capability after health check passes.
+
+        Sends a trivial inference request to verify the model can generate tokens,
+        not just that the health endpoint reports ready.
+
+        Returns:
+            Tuple of (success: bool, latency_ms: float, error_message: str or None)
+        """
+        import time as _st_time
+
+        # Derive inference URL from health URL
+        health_url = getattr(component, "health_url", "") or ""
+        if "/health" in health_url:
+            inference_url = health_url.replace("/health", "/v1/chat/completions")
+            fallback_url = health_url.replace("/health", "/api/inference")
+        else:
+            return (False, 0.0, "Cannot derive inference URL from health URL")
+
+        payload = {
+            "messages": [{"role": "user", "content": "Hi"}],
+            "max_tokens": 1,
+            "temperature": 0.0,
+        }
+
+        for attempt in range(1 + max_retries):
+            t0 = _st_time.time()
+            try:
+                async with session.post(
+                    inference_url,
+                    json=payload,
+                    timeout=timeout,
+                ) as resp:
+                    latency_ms = (_st_time.time() - t0) * 1000
+                    if resp.status == 200:
+                        data = await resp.json()
+                        choices = data.get("choices", [])
+                        if choices:
+                            return (True, latency_ms, None)
+                        return (False, latency_ms, f"No choices in response: {list(data.keys())}")
+                    elif resp.status == 404 and attempt == 0:
+                        # Try fallback endpoint
+                        async with session.post(
+                            fallback_url,
+                            json={"prompt": "Hi", "max_tokens": 1},
+                            timeout=timeout,
+                        ) as fb_resp:
+                            latency_ms = (_st_time.time() - t0) * 1000
+                            if fb_resp.status == 200:
+                                return (True, latency_ms, None)
+                            return (False, latency_ms, f"Fallback endpoint HTTP {fb_resp.status}")
+                    else:
+                        latency_ms = (_st_time.time() - t0) * 1000
+                        return (False, latency_ms, f"HTTP {resp.status}")
+            except asyncio.TimeoutError:
+                latency_ms = (_st_time.time() - t0) * 1000
+                if attempt < max_retries:
+                    await asyncio.sleep(2.0)
+                    continue
+                return (False, latency_ms, f"Timeout after {timeout}s")
+            except Exception as e:
+                latency_ms = (_st_time.time() - t0) * 1000
+                if attempt < max_retries:
+                    await asyncio.sleep(2.0)
+                    continue
+                return (False, latency_ms, str(e))
+
+        return (False, 0.0, "Exhausted retries")
+
     async def _wait_for_health(self, component: TrinityComponent, timeout: float = 60.0) -> bool:
         """
         v190.0: Wait for component to become SEMANTICALLY READY with intelligent detection.
@@ -55840,6 +55916,48 @@ class TrinityIntegrator:
                             f"[Trinity]   → training_ready={result.training_ready}, "
                             f"trinity_connected={result.trinity_connected}"
                         )
+
+                    # v232.0: Readiness probe — verify actual inference works
+                    if result.component_type == ComponentType.PRIME:
+                        _smoke_enabled = os.environ.get(
+                            "JARVIS_READINESS_SMOKE_TEST", "true"
+                        ).lower() in ("true", "1", "yes")
+                        _smoke_hollow = (
+                            os.environ.get("JARVIS_HOLLOW_CLIENT_ACTIVE", "") == "true"
+                        )
+
+                        if _smoke_enabled and not _smoke_hollow:
+                            self.logger.info(
+                                f"[Trinity] 🔬 Running inference smoke test for {component.name}..."
+                            )
+                            _smoke_ok, _smoke_ms, _smoke_err = await self._run_smoke_test_inference(
+                                component, session,
+                                timeout=float(os.environ.get("JARVIS_SMOKE_TEST_TIMEOUT", "10.0")),
+                                max_retries=int(os.environ.get("JARVIS_SMOKE_TEST_RETRIES", "1")),
+                            )
+                            if _smoke_ok:
+                                self.logger.info(
+                                    f"[Trinity] ✅ Inference smoke test PASSED ({_smoke_ms:.0f}ms)"
+                                )
+                            else:
+                                _smoke_blocking = os.environ.get(
+                                    "JARVIS_SMOKE_TEST_BLOCKING", "false"
+                                ).lower() in ("true", "1", "yes")
+                                if _smoke_blocking:
+                                    self.logger.error(
+                                        f"[Trinity] ⚠️  Smoke test FAILED for {component.name}: "
+                                        f"{_smoke_err} ({_smoke_ms:.0f}ms) — blocking readiness"
+                                    )
+                                    return False
+                                else:
+                                    self.logger.warning(
+                                        f"[Trinity] ⚠️  Smoke test FAILED for {component.name}: "
+                                        f"{_smoke_err} ({_smoke_ms:.0f}ms) — continuing anyway"
+                                    )
+                        elif _smoke_hollow:
+                            self.logger.debug(
+                                "[Trinity] Skipping smoke test (hollow client mode)"
+                            )
 
                     # Broadcast healthy status
                     if self._progress_callback:
@@ -57811,6 +57929,40 @@ class JarvisSystemKernel:
             f"JARVIS_PRIME_URL={prime_url}"
         )
 
+        # v232.0: Notify PrimeRouter singleton of GCP endpoint promotion
+        try:
+            asyncio.ensure_future(self._notify_prime_router_of_gcp(node_ip, port))
+        except Exception:
+            pass
+
+    async def _notify_prime_router_of_gcp(self, host: str, port: int) -> None:
+        """v232.0: Notify PrimeRouter that GCP VM is ready for routing."""
+        try:
+            from backend.core.prime_router import notify_gcp_vm_ready
+            success = await notify_gcp_vm_ready(host, port)
+            if success:
+                self.logger.info(
+                    f"[InvincibleNode] v232.0: PrimeRouter notified of GCP promotion: {host}:{port}"
+                )
+            else:
+                self.logger.warning(
+                    f"[InvincibleNode] v232.0: PrimeRouter GCP promotion failed "
+                    f"(endpoint may be unhealthy)"
+                )
+        except ImportError:
+            self.logger.debug("[InvincibleNode] PrimeRouter not available in this process")
+        except Exception as e:
+            self.logger.warning(f"[InvincibleNode] PrimeRouter notification failed: {e}")
+
+    async def _notify_prime_router_demote(self) -> None:
+        """v232.0: Notify PrimeRouter to demote from GCP back to local."""
+        try:
+            from backend.core.prime_router import notify_gcp_vm_unhealthy
+            await notify_gcp_vm_unhealthy()
+            self.logger.info("[InvincibleNode] v232.0: PrimeRouter notified of GCP demotion")
+        except (ImportError, Exception) as e:
+            self.logger.debug(f"[InvincibleNode] PrimeRouter demotion notification: {e}")
+
     def _clear_invincible_node_url(self, reason: str = "unhealthy") -> None:
         """
         v219.0: Clear Invincible Node URL when the node becomes unhealthy.
@@ -57834,6 +57986,12 @@ class JarvisSystemKernel:
             f"[InvincibleNode] v219.0 URL cleared ({reason}): "
             f"Hollow client deactivated"
         )
+
+        # v232.0: Notify PrimeRouter to demote back to local
+        try:
+            asyncio.ensure_future(self._notify_prime_router_demote())
+        except Exception:
+            pass
 
     async def watch_component_startup_with_smartwatchdog(
         self,
@@ -62442,9 +62600,42 @@ class JarvisSystemKernel:
         extensions_granted = 0
         max_extensions = 5  # Prevent infinite extension
 
-        # v231.0: Model loading stall budget (mirrors GCP stall detection)
-        _ml_stall_budget = float(os.environ.get("JARVIS_MODEL_STALL_BUDGET", "300"))
+        # v232.0: RAM-Aware Model Loading Stall Budget
+        _ml_stall_budget_base = float(os.environ.get("JARVIS_MODEL_STALL_BUDGET", "300"))
+        _ml_stall_budget_max = float(os.environ.get("JARVIS_MODEL_STALL_BUDGET_MAX", "600"))
+        _ml_stall_budget = _ml_stall_budget_base
         _ml_stall_diag_logged = False
+        _ml_stall_last_mem_check = 0.0
+        _ml_stall_mem_check_interval = 30.0
+
+        def _compute_ram_scaled_stall_budget():
+            """v232.0: Scale stall budget by memory pressure (stepped tiers)."""
+            try:
+                import psutil as _ps_budget
+                _mem = _ps_budget.virtual_memory()
+                mem_pct = _mem.percent
+                if mem_pct < 50:
+                    multiplier, tier = 0.8, "low"
+                elif mem_pct < 70:
+                    multiplier, tier = 1.0, "normal"
+                elif mem_pct < 85:
+                    multiplier, tier = 1.5, "high"
+                else:
+                    multiplier, tier = 2.0, "critical"
+                scaled = _ml_stall_budget_base * multiplier
+                clamped = min(scaled, _ml_stall_budget_max)
+                reason = (
+                    f"RAM {mem_pct:.0f}% ({tier}) -> "
+                    f"{multiplier:.1f}x -> {clamped:.0f}s"
+                    + (f" (clamped from {scaled:.0f}s)" if clamped < scaled else "")
+                )
+                return clamped, reason
+            except Exception:
+                return _ml_stall_budget_base, "psutil unavailable, using base"
+
+        # Initial RAM-based scaling
+        _ml_stall_budget, _budget_init_reason = _compute_ram_scaled_stall_budget()
+        _ml_stall_last_mem_check = time.time()
 
         self.logger.info(
             f"[{integrator_name}] v222.0 Progress-aware startup: "

@@ -577,10 +577,88 @@ class DistributedLockManager:
         self._on_lock_released: List[Callable[[str], None]] = []
         self._on_lock_failed: List[Callable[[str, str], None]] = []
 
+        # v3.2: Keepalive exhaustion tracking
+        self._on_keepalive_failed: List[Callable[[str, str], None]] = []
+        self._expired_locks: set = set()
+        self._lock_events: Dict[str, asyncio.Event] = {}
+
         logger.info(
-            f"Distributed Lock Manager v3.0 initialized "
+            f"Distributed Lock Manager v3.2 initialized "
             f"(owner: {self._owner_id}, backend: {self.config.backend.value})"
         )
+
+    # -----------------------------------------------------------------
+    # v3.2: Keepalive exhaustion public API
+    # -----------------------------------------------------------------
+
+    def on_keepalive_failed(self, callback: Callable[[str, str], None]) -> None:
+        """v3.2: Register a callback fired when keepalive exhausts retries.
+
+        Args:
+            callback: Receives (lock_name: str, reason: str)
+        """
+        self._on_keepalive_failed.append(callback)
+
+    def is_lock_expired(self, lock_name: str) -> bool:
+        """v3.2: Check if a lock's keepalive has failed and the lock was auto-released.
+
+        Callers inside ``async with acquire()`` can poll this to detect stale state.
+        """
+        return lock_name in self._expired_locks
+
+    def get_lock_expired_event(self, lock_name: str) -> asyncio.Event:
+        """v3.2: Get an asyncio.Event that is set when a lock's keepalive fails.
+
+        Callers can ``await event.wait()`` or check ``event.is_set()``
+        to detect keepalive exhaustion without polling.
+        """
+        if lock_name not in self._lock_events:
+            self._lock_events[lock_name] = asyncio.Event()
+        return self._lock_events[lock_name]
+
+    async def _handle_keepalive_exhaustion(
+        self,
+        lock_name: str,
+        token: str,
+        backend: str,
+        max_failures: int,
+    ) -> None:
+        """v3.2: Handle keepalive exhaustion — auto-release lock and notify.
+
+        Called when ``_keepalive_loop`` exhausts its retry budget.  Steps:
+        1. Auto-release the lock (prevents race conditions with other holders)
+        2. Mark lock as expired for polling via ``is_lock_expired()``
+        3. Set asyncio.Event for waiting callers
+        4. Fire ``_on_keepalive_failed`` callbacks
+        """
+        # 1. Auto-release
+        try:
+            if backend == "redis" and self._redis_client:
+                await self._release_redis(lock_name, token)
+            else:
+                lock_file = self.config.lock_dir / f"{lock_name}{self.config.lock_extension}"
+                await self._release_lock(lock_file, token)
+            logger.info(f"[v3.2] Lock '{lock_name}' auto-released after keepalive failure")
+        except Exception as release_err:
+            logger.error(f"[v3.2] Failed to auto-release '{lock_name}': {release_err}")
+
+        # 2. Mark expired
+        self._expired_locks.add(lock_name)
+
+        # 3. Set event
+        event = self._lock_events.get(lock_name)
+        if event is not None:
+            event.set()
+
+        # 4. Fire callbacks
+        reason = f"keepalive_exhausted_after_{max_failures}_failures"
+        for cb in self._on_keepalive_failed:
+            try:
+                result = cb(lock_name, reason)
+                if asyncio.iscoroutine(result):
+                    await result
+            except Exception as cb_err:
+                logger.warning(f"[v3.2] Keepalive callback error: {cb_err}")
 
     def _get_own_process_start_time(self) -> float:
         """v96.0: Get our own process start time for owner ID."""
@@ -1821,13 +1899,32 @@ class DistributedLockManager:
 
                 # Start keepalive if enabled
                 if enable_keepalive and self.config.keepalive_enabled:
+                    # v3.2: Create event before starting keepalive
+                    self._lock_events[lock_name] = asyncio.Event()
                     keepalive_task = asyncio.create_task(
                         self._keepalive_loop(lock_name, token, ttl, metadata.backend),
                         name=f"keepalive_{lock_name}"
                     )
                     self._keepalive_tasks[lock_name] = keepalive_task
+
+                # v3.2: Fire lock acquired callbacks
+                for _acq_cb in self._on_lock_acquired:
+                    try:
+                        _acq_result = _acq_cb(lock_name, metadata)
+                        if asyncio.iscoroutine(_acq_result):
+                            await _acq_result
+                    except Exception:
+                        pass
             else:
                 logger.warning(f"[v3.0] Lock acquisition timeout: {lock_name}")
+                # v3.2: Fire lock failed callbacks
+                for _fail_cb in self._on_lock_failed:
+                    try:
+                        _fail_result = _fail_cb(lock_name, "acquisition_timeout")
+                        if asyncio.iscoroutine(_fail_result):
+                            await _fail_result
+                    except Exception:
+                        pass
 
             yield acquired, metadata
 
@@ -1842,6 +1939,10 @@ class DistributedLockManager:
             if lock_name in self._keepalive_tasks:
                 del self._keepalive_tasks[lock_name]
 
+            # v3.2: Clean up expiration tracking
+            self._expired_locks.discard(lock_name)
+            self._lock_events.pop(lock_name, None)
+
             if acquired:
                 if metadata and metadata.backend == "redis":
                     await self._release_redis(lock_name, token)
@@ -1849,6 +1950,15 @@ class DistributedLockManager:
                     lock_file = self.config.lock_dir / f"{lock_name}{self.config.lock_extension}"
                     await self._release_lock(lock_file, token)
                 logger.debug(f"[v3.0] Lock released: {lock_name}")
+
+                # v3.2: Fire lock released callbacks
+                for _rel_cb in self._on_lock_released:
+                    try:
+                        _rel_result = _rel_cb(lock_name)
+                        if asyncio.iscoroutine(_rel_result):
+                            await _rel_result
+                    except Exception:
+                        pass
 
     async def _keepalive_loop(
         self,
@@ -1929,8 +2039,11 @@ class DistributedLockManager:
                     )
                     if consecutive_failures >= max_failures:
                         logger.error(
-                            f"[v3.1] Keepalive gave up for '{lock_name}' after "
-                            f"{max_failures} consecutive failures"
+                            f"[v3.2] Keepalive gave up for '{lock_name}' after "
+                            f"{max_failures} consecutive failures — auto-releasing"
+                        )
+                        await self._handle_keepalive_exhaustion(
+                            lock_name, token, backend, max_failures
                         )
                         break
 
@@ -1944,8 +2057,11 @@ class DistributedLockManager:
                 )
                 if consecutive_failures >= max_failures:
                     logger.error(
-                        f"[v3.1] Keepalive gave up for '{lock_name}' after "
-                        f"{max_failures} consecutive failures"
+                        f"[v3.2] Keepalive gave up for '{lock_name}' after "
+                        f"{max_failures} consecutive failures — auto-releasing"
+                    )
+                    await self._handle_keepalive_exhaustion(
+                        lock_name, token, backend, max_failures
                     )
                     break
 

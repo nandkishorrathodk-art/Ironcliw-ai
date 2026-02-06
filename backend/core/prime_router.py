@@ -130,6 +130,7 @@ class PrimeRouterConfig:
 class RoutingDecision(Enum):
     """Routing decision types."""
     LOCAL_PRIME = "local_prime"
+    GCP_PRIME = "gcp_prime"  # v232.0: GCP VM endpoint (promoted)
     CLOUD_CLAUDE = "cloud_claude"
     HYBRID = "hybrid"  # Try local first, then cloud
     CACHED = "cached"
@@ -196,6 +197,10 @@ class PrimeRouter:
         self._graceful_degradation = None
         self._lock = asyncio.Lock()
         self._initialized = False
+        # v232.0: GCP VM promotion state
+        self._gcp_promoted = False
+        self._gcp_host: Optional[str] = None
+        self._gcp_port: Optional[int] = None
 
     async def initialize(self) -> None:
         """Initialize the router and its clients."""
@@ -264,11 +269,68 @@ class PrimeRouter:
         if self._config.prefer_local and prime_available:
             return RoutingDecision.HYBRID  # Try local first, fallback to cloud
         elif prime_available:
+            # v232.0: Distinguish GCP from local for metrics/logging
+            if self._gcp_promoted:
+                return RoutingDecision.GCP_PRIME
             return RoutingDecision.LOCAL_PRIME
         elif self._config.enable_cloud_fallback:
             return RoutingDecision.CLOUD_CLAUDE
         else:
             return RoutingDecision.DEGRADED
+
+    # -----------------------------------------------------------------
+    # v232.0: Late-arriving GCP VM promotion
+    # -----------------------------------------------------------------
+
+    async def promote_gcp_endpoint(self, host: str, port: int) -> bool:
+        """
+        v232.0: Promote PrimeRouter to use a GCP VM endpoint.
+
+        Called when the unified supervisor detects that the Invincible Node
+        (GCP VM) has become ready.  Hot-swaps the PrimeClient's endpoint
+        and updates routing decisions to prefer GCP_PRIME.
+
+        Returns True if promotion succeeded (GCP endpoint is healthy).
+        """
+        if not self._initialized:
+            await self.initialize()
+
+        if self._prime_client is None:
+            logger.warning("[PrimeRouter] Cannot promote GCP endpoint: no prime client")
+            return False
+
+        logger.info(f"[PrimeRouter] v232.0: GCP VM promotion requested: {host}:{port}")
+
+        success = await self._prime_client.update_endpoint(host, port)
+
+        if success:
+            self._gcp_promoted = True
+            self._gcp_host = host
+            self._gcp_port = port
+            logger.info("[PrimeRouter] v232.0: GCP VM promotion successful, routing updated")
+        else:
+            self._gcp_promoted = False
+            logger.warning("[PrimeRouter] v232.0: GCP VM promotion failed, keeping current routing")
+
+        return success
+
+    async def demote_gcp_endpoint(self) -> bool:
+        """
+        v232.0: Demote back from GCP VM to local Prime endpoint.
+
+        Called when the GCP VM becomes unhealthy or is terminated.
+        Returns True if demotion succeeded.
+        """
+        if self._prime_client is None:
+            return False
+
+        success = await self._prime_client.demote_to_fallback()
+        if success:
+            self._gcp_promoted = False
+            self._gcp_host = None
+            self._gcp_port = None
+            logger.info("[PrimeRouter] v232.0: Demoted from GCP VM to local Prime")
+        return success
 
     async def generate(
         self,
@@ -641,3 +703,45 @@ async def close_prime_router() -> None:
     if _prime_router:
         await _prime_router.close()
         _prime_router = None
+
+
+# -----------------------------------------------------------------
+# v232.0: Module-level GCP VM promotion notifications
+# -----------------------------------------------------------------
+
+async def notify_gcp_vm_ready(host: str, port: int) -> bool:
+    """
+    v232.0: Notify PrimeRouter that a GCP VM is ready.
+
+    Called by unified_supervisor when ``_propagate_invincible_node_url()``
+    succeeds.  Safe to call even if PrimeRouter is not yet initialized —
+    it will initialize on demand.
+
+    Returns True if promotion succeeded.
+    """
+    global _prime_router
+
+    if _prime_router is None:
+        logger.info("[PrimeRouter] GCP VM ready but router not initialized yet, initializing...")
+        router = await get_prime_router()
+    else:
+        router = _prime_router
+
+    return await router.promote_gcp_endpoint(host, port)
+
+
+async def notify_gcp_vm_unhealthy() -> bool:
+    """
+    v232.0: Notify PrimeRouter that the GCP VM is no longer healthy.
+
+    Called by unified_supervisor when ``_clear_invincible_node_url()`` is
+    invoked.
+
+    Returns True if demotion succeeded.
+    """
+    global _prime_router
+
+    if _prime_router is None:
+        return False
+
+    return await _prime_router.demote_gcp_endpoint()

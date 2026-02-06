@@ -406,6 +406,11 @@ class PrimeClient:
         self._lock = asyncio.Lock()
         self._initialized = False
         self._cloud_client: Optional[Any] = None  # Claude client for fallback
+        # v232.0: GCP VM endpoint hot-swap state
+        self._endpoint_source: str = "local"  # "local" or "gcp_vm"
+        self._fallback_host: Optional[str] = None
+        self._fallback_port: Optional[int] = None
+        self._consecutive_gcp_failures: int = 0
 
     async def initialize(self) -> None:
         """Initialize the client and start health monitoring."""
@@ -442,6 +447,119 @@ class PrimeClient:
         self._initialized = False
         logger.info("[PrimeClient] Closed")
 
+    # -----------------------------------------------------------------
+    # v232.0: GCP VM endpoint hot-swap
+    # -----------------------------------------------------------------
+
+    async def update_endpoint(self, host: str, port: int) -> bool:
+        """
+        v232.0: Hot-swap the Prime endpoint to a new host:port.
+
+        Used when GCP VM becomes ready and should replace the local endpoint.
+        Validates the new endpoint before switching.  Keeps old config for fallback.
+
+        Returns True if endpoint was updated and is healthy.
+        """
+        async with self._lock:
+            old_host = self._config.prime_host
+            old_port = self._config.prime_port
+
+            # Skip if already pointing there
+            if old_host == host and old_port == port:
+                logger.debug(f"[PrimeClient] Endpoint already at {host}:{port}, skipping")
+                return self._status in (PrimeStatus.AVAILABLE, PrimeStatus.DEGRADED)
+
+            logger.info(
+                f"[PrimeClient] v232.0: Endpoint promotion: {old_host}:{old_port} -> {host}:{port}"
+            )
+
+            # Store old config for fallback
+            self._fallback_host = old_host
+            self._fallback_port = old_port
+
+            # Update config — health_url property auto-recomputes
+            self._config.prime_host = host
+            self._config.prime_port = port
+
+            # Reinitialize connection pool for the new endpoint
+            try:
+                await self._pool.close()
+            except Exception:
+                pass
+            self._pool = PrimeConnectionPool(self._config)
+            await self._pool.initialize()
+
+            # Reset circuit breaker for fresh start
+            self._circuit = PrimeCircuitBreaker(self._config)
+
+            # Run health check against new endpoint
+            new_status = await self._check_health()
+
+            if new_status in (PrimeStatus.AVAILABLE, PrimeStatus.DEGRADED):
+                logger.info(
+                    f"[PrimeClient] v232.0: GCP endpoint healthy ({new_status.value}), "
+                    f"promotion complete: {host}:{port}"
+                )
+                self._endpoint_source = "gcp_vm"
+                self._consecutive_gcp_failures = 0
+                return True
+            else:
+                # Revert to old endpoint
+                logger.warning(
+                    f"[PrimeClient] v232.0: GCP endpoint unhealthy ({new_status.value}), "
+                    f"reverting to {old_host}:{old_port}"
+                )
+                self._config.prime_host = old_host
+                self._config.prime_port = old_port
+                try:
+                    await self._pool.close()
+                except Exception:
+                    pass
+                self._pool = PrimeConnectionPool(self._config)
+                await self._pool.initialize()
+                self._circuit = PrimeCircuitBreaker(self._config)
+                await self._check_health()
+                self._endpoint_source = "local"
+                self._fallback_host = None
+                self._fallback_port = None
+                return False
+
+    async def demote_to_fallback(self) -> bool:
+        """
+        v232.0: Demote back to the fallback (local) endpoint.
+
+        Called when the current GCP endpoint becomes unhealthy after
+        consecutive failures exceed the demotion threshold.
+
+        Returns True if successfully reverted, False if no fallback available.
+        """
+        if self._fallback_host is None:
+            return False
+
+        async with self._lock:
+            logger.info(
+                f"[PrimeClient] v232.0: Demoting from GCP "
+                f"({self._config.prime_host}:{self._config.prime_port}) "
+                f"back to local ({self._fallback_host}:{self._fallback_port})"
+            )
+            self._config.prime_host = self._fallback_host
+            self._config.prime_port = self._fallback_port
+
+            try:
+                await self._pool.close()
+            except Exception:
+                pass
+            self._pool = PrimeConnectionPool(self._config)
+            await self._pool.initialize()
+            self._circuit = PrimeCircuitBreaker(self._config)
+            await self._check_health()
+
+            self._endpoint_source = "local"
+            self._fallback_host = None
+            self._fallback_port = None
+            self._consecutive_gcp_failures = 0
+            return True
+
     async def _health_monitor_loop(self) -> None:
         """Background health monitoring loop with timeout protection."""
         shutdown_event = get_shutdown_event()
@@ -468,6 +586,48 @@ class PrimeClient:
                     self._check_health(),
                     timeout=TimeoutConfig.HEALTH_CHECK
                 )
+
+                # v232.0: Auto-demote GCP endpoint after consecutive failures
+                if (
+                    self._endpoint_source == "gcp_vm"
+                    and self._status == PrimeStatus.UNAVAILABLE
+                    and self._fallback_host is not None
+                ):
+                    self._consecutive_gcp_failures += 1
+                    _demote_threshold = int(os.getenv("PRIME_GCP_DEMOTE_THRESHOLD", "3"))
+                    if self._consecutive_gcp_failures >= _demote_threshold:
+                        logger.warning(
+                            f"[PrimeClient] v232.0: GCP endpoint failed "
+                            f"{self._consecutive_gcp_failures} times, demoting to local"
+                        )
+                        await self.demote_to_fallback()
+                elif self._endpoint_source == "gcp_vm" and self._status in (
+                    PrimeStatus.AVAILABLE, PrimeStatus.DEGRADED
+                ):
+                    self._consecutive_gcp_failures = 0
+
+                # v232.0: Belt-and-suspenders env-var polling for GCP promotion
+                _hollow_active = os.environ.get(
+                    "JARVIS_HOLLOW_CLIENT_ACTIVE", ""
+                ).lower() == "true"
+                if _hollow_active and self._endpoint_source == "local":
+                    _new_ip = os.environ.get("JARVIS_INVINCIBLE_NODE_IP", "")
+                    _new_port_str = os.environ.get("JARVIS_INVINCIBLE_NODE_PORT", "")
+                    if _new_ip and _new_port_str:
+                        try:
+                            _new_port = int(_new_port_str)
+                            if _new_ip != self._config.prime_host or _new_port != self._config.prime_port:
+                                logger.info(
+                                    f"[PrimeClient] v232.0: Detected GCP VM via env vars: "
+                                    f"{_new_ip}:{_new_port}"
+                                )
+                                await self.update_endpoint(_new_ip, _new_port)
+                        except (ValueError, Exception) as _env_err:
+                            logger.debug(f"[PrimeClient] Env var promotion check failed: {_env_err}")
+                elif not _hollow_active and self._endpoint_source == "gcp_vm":
+                    logger.info("[PrimeClient] v232.0: Hollow client deactivated, demoting")
+                    await self.demote_to_fallback()
+
             except asyncio.TimeoutError:
                 logger.warning(f"[PrimeClient] Health check timed out after {TimeoutConfig.HEALTH_CHECK}s")
             except asyncio.CancelledError:
