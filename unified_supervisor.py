@@ -58902,14 +58902,81 @@ class JarvisSystemKernel:
         # reach Phase 5 (Trinity), Prime may already be ready or nearly ready.
         # This is the ROOT CAUSE FIX for "LLM loading should start first".
         #
+        # v229.0: GOLDEN IMAGE / CLOUD-FIRST INTELLIGENCE
+        # =====================================================================
+        # When golden image deployment is enabled and a GCP Invincible Node is
+        # configured, local LLM loading is wasteful on machines with limited RAM
+        # (< 32GB). The golden image VM has pre-baked models and starts in ~30-60s.
+        # Loading a 7B model locally on a 16GB MacBook takes ~12 minutes AND
+        # consumes RAM needed for the supervisor itself.
+        #
+        # Decision matrix:
+        #   Golden image ON + Invincible Node configured → SKIP local pre-warm
+        #   Hollow Client enforced (< 32GB RAM) + GCP enabled → SKIP local pre-warm
+        #   No GCP / No golden image → START local pre-warm (original behavior)
+        #
         # Strategy:
-        # - Start Prime subprocess NOW (before Phase 0)
-        # - Let it load models in background
-        # - Don't block other phases
-        # - Trinity phase will find Prime already warming up
+        # - Check if cloud inference is the intended path
+        # - If yes: skip local pre-warm, rely on GCP VM with golden image
+        # - If no: start Prime subprocess NOW (before Phase 0)
+        # - Trinity phase handles both paths seamlessly
         # =====================================================================
         self._early_prime_task: Optional[asyncio.Task] = None
+        self._early_prime_skipped_for_cloud: bool = False  # v229.0: Track skip reason
+        
+        # v229.0: Determine if cloud inference should replace local pre-warm
+        _skip_local_prewarm = False
+        _skip_reason = ""
+        
         if self.config.trinity_enabled and os.getenv("JARVIS_EARLY_PRIME_PREWARM", "true").lower() == "true":
+            # Check golden image + GCP indicators
+            _use_golden_image = os.getenv("JARVIS_GCP_USE_GOLDEN_IMAGE", "false").lower() == "true"
+            _has_static_ip = bool(os.getenv("GCP_VM_STATIC_IP_NAME", ""))
+            _hollow_client = os.getenv("JARVIS_HOLLOW_CLIENT", "false").lower() == "true"
+            _gcp_enabled = any([
+                os.getenv("GCP_ENABLED", "false").lower() == "true",
+                os.getenv("GCP_VM_ENABLED", "false").lower() == "true",
+                os.getenv("JARVIS_SPOT_VM_ENABLED", "false").lower() == "true",
+                os.getenv("JARVIS_GCP_ENABLED", "false").lower() == "true",
+            ])
+            _use_gcp_inference = os.getenv("USE_GCP_INFERENCE", "false").lower() == "true"
+            _gcp_prime_endpoint = os.getenv("GCP_PRIME_ENDPOINT", "")
+            
+            # Check RAM (< 32GB means local LLM loading is extremely slow)
+            _low_ram = False
+            _total_ram_gb = 0.0
+            try:
+                import psutil
+                _total_ram_gb = psutil.virtual_memory().total / (1024**3)
+                _low_ram = _total_ram_gb < 32.0
+            except Exception:
+                pass
+            
+            if _use_golden_image and (_has_static_ip or _gcp_enabled):
+                _skip_local_prewarm = True
+                _skip_reason = f"golden_image_enabled (GCP static IP: {_has_static_ip})"
+            elif _hollow_client and _gcp_enabled:
+                _skip_local_prewarm = True
+                _skip_reason = f"hollow_client_mode (RAM: {_total_ram_gb:.0f}GB < 32GB)"
+            elif _use_gcp_inference or _gcp_prime_endpoint:
+                _skip_local_prewarm = True
+                _skip_reason = f"gcp_inference_configured (endpoint: {bool(_gcp_prime_endpoint)})"
+            elif _low_ram and _gcp_enabled:
+                _skip_local_prewarm = True
+                _skip_reason = f"low_ram_gcp_available (RAM: {_total_ram_gb:.0f}GB, GCP: enabled)"
+            
+            if _skip_local_prewarm:
+                self.logger.info(
+                    f"[Kernel] ☁️ SKIPPING local LLM pre-warm → Cloud inference via golden image"
+                )
+                self.logger.info(f"[Kernel]    Reason: {_skip_reason}")
+                self.logger.info(
+                    "[Kernel]    GCP Invincible Node will provide inference (~30-60s with golden image)"
+                )
+                self._early_prime_skipped_for_cloud = True
+                add_dashboard_log("Cloud inference mode: skipping local LLM loading", "INFO")
+        
+        if self.config.trinity_enabled and os.getenv("JARVIS_EARLY_PRIME_PREWARM", "true").lower() == "true" and not _skip_local_prewarm:
             self.logger.info("[Kernel] 🚀 Starting EARLY PRIME PRE-WARM (12-minute LLM load begins NOW)")
             add_dashboard_log("Starting early Prime pre-warm (LLM loading)", "INFO")
             
@@ -60657,6 +60724,42 @@ class JarvisSystemKernel:
                         # know where to send requests (hollow client actually works now)
                         self._propagate_invincible_node_url(node_ip, source="quick_check")
                         
+                        # v229.0: CLOUD TAKEOVER — terminate redundant local Early Prime
+                        _early_prime_pid_str = os.environ.get("JARVIS_EARLY_PRIME_PID")
+                        if _early_prime_pid_str:
+                            try:
+                                _early_pid = int(_early_prime_pid_str)
+                                import signal
+                                os.kill(_early_pid, signal.SIGTERM)
+                                self.logger.info(
+                                    f"[InvincibleNode] v229.0 ☁️ Terminated local Early Prime (PID: {_early_pid}) "
+                                    f"— cloud VM ready via quick check"
+                                )
+                                if "JARVIS_EARLY_PRIME_PID" in os.environ:
+                                    del os.environ["JARVIS_EARLY_PRIME_PID"]
+                                if "JARVIS_EARLY_PRIME_PORT" in os.environ:
+                                    del os.environ["JARVIS_EARLY_PRIME_PORT"]
+                            except (ValueError, ProcessLookupError, OSError):
+                                pass
+                        
+                        # v229.0: Update Prime dashboard to cloud-ready
+                        try:
+                            _dashboard = get_live_dashboard()
+                            _dashboard.update_component(
+                                "jarvis-prime", status="healthy",
+                                message=f"Cloud inference ready at {node_ip}"
+                            )
+                            update_dashboard_model_loading(
+                                active=True,
+                                model_name="LLM (cloud)",
+                                progress_pct=100,
+                                stage="ready",
+                                stage_detail=f"Pre-loaded on golden image VM ({node_ip})",
+                                reason="Golden image: model pre-cached"
+                            )
+                        except Exception:
+                            pass
+                        
                         # v220.1: Update dashboard with success
                         update_dashboard_gcp_progress(
                             phase=5, phase_name="Ready",
@@ -60783,6 +60886,48 @@ class JarvisSystemKernel:
                                 # v219.0: ROOT CAUSE FIX - Propagate URL when background monitor succeeds
                                 # This allows late-ready node to still be used by all Prime clients
                                 self._propagate_invincible_node_url(node_ip, source="background_monitor")
+                                
+                                # v229.0: CLOUD TAKEOVER - Stop local Early Prime if still running
+                                # When GCP VM becomes ready, local LLM loading is redundant.
+                                # Kill the local process to free RAM and avoid confusion.
+                                _early_prime_pid_str = os.environ.get("JARVIS_EARLY_PRIME_PID")
+                                if _early_prime_pid_str:
+                                    try:
+                                        _early_pid = int(_early_prime_pid_str)
+                                        import signal
+                                        os.kill(_early_pid, signal.SIGTERM)
+                                        self.logger.info(
+                                            f"[InvincibleNode] v229.0 ☁️ Terminated local Early Prime (PID: {_early_pid}) "
+                                            f"— cloud VM is ready, local LLM loading no longer needed"
+                                        )
+                                        # Clear env vars so Trinity doesn't adopt the dead process
+                                        if "JARVIS_EARLY_PRIME_PID" in os.environ:
+                                            del os.environ["JARVIS_EARLY_PRIME_PID"]
+                                        if "JARVIS_EARLY_PRIME_PORT" in os.environ:
+                                            del os.environ["JARVIS_EARLY_PRIME_PORT"]
+                                    except (ValueError, ProcessLookupError, OSError) as kill_err:
+                                        self.logger.debug(
+                                            f"[InvincibleNode] Early Prime already stopped: {kill_err}"
+                                        )
+                                
+                                # v229.0: Update Prime component status to reflect cloud readiness
+                                try:
+                                    _dashboard = get_live_dashboard()
+                                    _dashboard.update_component(
+                                        "jarvis-prime", status="healthy",
+                                        message=f"Cloud inference ready at {node_ip}"
+                                    )
+                                    # Update Model LLM to 100% since cloud VM has pre-loaded models
+                                    update_dashboard_model_loading(
+                                        active=True,
+                                        model_name="LLM (cloud)",
+                                        progress_pct=100,
+                                        stage="ready",
+                                        stage_detail=f"Pre-loaded on golden image VM ({node_ip})",
+                                        reason="Golden image: model pre-cached"
+                                    )
+                                except Exception:
+                                    pass  # Dashboard may not be available yet
                                 
                                 # v219.0: Broadcast status update so DMS/health endpoints reflect new state
                                 try:
@@ -62689,6 +62834,23 @@ class JarvisSystemKernel:
                                 
                                 if invincible_ready:
                                     self.logger.info("[Trinity] ☁️ Invincible Node ready - using Hollow Client for Prime")
+                                    
+                                    # v229.0: Update dashboard — Prime is healthy via cloud
+                                    try:
+                                        dashboard.update_component(
+                                            "jarvis-prime", status="healthy",
+                                            message=f"Cloud inference via {invincible_ip}"
+                                        )
+                                        update_dashboard_model_loading(
+                                            active=True,
+                                            model_name="LLM (cloud)",
+                                            progress_pct=100,
+                                            stage="ready",
+                                            stage_detail=f"Golden image VM at {invincible_ip}",
+                                            reason="Cloud inference: pre-loaded model"
+                                        )
+                                    except Exception:
+                                        pass
 
                                 # v222.0: Use progress-aware wrapper instead of fixed timeout
                                 # This enables dynamic deadline extension when Prime model loading shows progress
