@@ -4719,6 +4719,7 @@ class LiveProgressDashboard:
             # v220.1: Persistent start time to prevent progress reset
             "start_time": None,  # Set when loading starts, prevents reset
             "max_progress_seen": 0,  # Never go backwards
+            "progress_source": "unknown",  # v233.1: "health_endpoint", "time_estimate", "stall_detected", "unknown"
         }
         # v220.1: GCP progress also needs persistent tracking
         self._gcp_loading_state = {
@@ -4843,10 +4844,12 @@ class LiveProgressDashboard:
         elapsed_seconds: int = None,
         reason: str = None,
         handoff: bool = False,  # v221.0: Handoff mode - preserve progress during monitor transfer
+        progress_source: str = None,  # v233.1: "health_endpoint", "time_estimate", "stall_detected"
     ) -> None:
         """
         v220.0: Update model loading state for detailed CLI feedback.
         v221.0: Added handoff mode to preserve progress during Early Prime → Trinity transition.
+        v233.1: Added progress_source for transparency (real vs estimated).
         
         This provides users with clear visibility into what's happening during
         the 12-minute model loading process so they understand why it takes time.
@@ -4907,6 +4910,9 @@ class LiveProgressDashboard:
                 self._model_loading_state["model_name"] = model_name
             if model_size_gb is not None:
                 self._model_loading_state["model_size_gb"] = model_size_gb
+            # v233.1: Track progress source for operator transparency
+            if progress_source is not None:
+                self._model_loading_state["progress_source"] = progress_source
             
             # v221.0: ENHANCED progress regression prevention
             # Never let progress go backwards - this prevents the 18% → 0% issue during handoffs
@@ -5003,7 +5009,14 @@ class LiveProgressDashboard:
         if state["stage_detail"]:
             stage_desc = state["stage_detail"]
         lines.append(f"      Stage: {self.CYAN}{stage_desc}{self.RESET}")
-        
+
+        # v233.1: Progress source transparency indicator
+        _ps = state.get("progress_source", "unknown")
+        if _ps == "time_estimate":
+            lines.append(f"      {self.DIM}⚠ Progress is estimated (health endpoint not reporting){self.RESET}")
+        elif _ps == "stall_detected":
+            lines.append(f"      {self.YELLOW}⚠ Progress stalled — see logs for diagnostics{self.RESET}")
+
         # Size info if available
         if state["model_size_gb"] > 0:
             lines.append(f"      Size: {state['model_size_gb']:.1f} GB")
@@ -5610,6 +5623,7 @@ def update_dashboard_model_loading(
     elapsed_seconds: int = None,
     reason: str = None,
     handoff: bool = False,  # v221.0: Handoff mode - preserve progress during monitor transfer
+    progress_source: str = None,  # v233.1: "health_endpoint", "time_estimate", "stall_detected"
 ) -> None:
     """
     v220.0: Helper to update model loading progress on the dashboard.
@@ -5659,6 +5673,7 @@ def update_dashboard_model_loading(
             elapsed_seconds=elapsed_seconds,
             reason=reason,
             handoff=handoff,  # v221.0: Pass through handoff flag
+            progress_source=progress_source,  # v233.1: Pass through progress source
         )
 
 
@@ -55997,6 +56012,12 @@ class TrinityIntegrator:
         _pa_last_progress_time = start_time
         _pa_peak_progress = 0.0  # Monotonic high-water mark
 
+        # v233.1: Periodic diagnostic logging + proactive stall detection
+        self._pa_stall_warned = False
+        _pa_last_diag_time = start_time
+        _pa_diag_interval = float(os.environ.get("JARVIS_HEALTH_DIAG_INTERVAL", "30.0"))
+        _progress_source = "unknown"  # Default; updated per-iteration in model loading block
+
         # Create a reusable session for efficiency
         async with aiohttp.ClientSession() as session:  # type: ignore
             while (time.time() - start_time) < _pa_effective_deadline:
@@ -56114,6 +56135,8 @@ class TrinityIntegrator:
                         loading_progress = raw.get("loading_progress", 0)
                         
                         # Use the best available progress value
+                        # v233.1: Track progress source for operator transparency
+                        _progress_source = "health_endpoint"
                         if model_load_progress > 0:
                             progress_pct = int(model_load_progress)
                         elif startup_progress > 0:
@@ -56123,8 +56146,11 @@ class TrinityIntegrator:
                         else:
                             # Fallback: estimate based on elapsed time
                             # v230.0: Use effective deadline instead of hardcoded 720s
+                            _progress_source = "time_estimate"
                             _est_total = _pa_effective_deadline if _pa_effective_deadline > 0 else timeout
-                            progress_pct = min(95, int((elapsed / _est_total) * 100))
+                            # v233.1: Configurable estimate cap (90 default, not 95)
+                            _progress_estimate_cap = int(os.environ.get("JARVIS_PROGRESS_ESTIMATE_CAP", "90"))
+                            progress_pct = min(_progress_estimate_cap, int((elapsed / _est_total) * 100))
                         
                         # Get model name and stage from response
                         model_name = raw.get("active_model") or raw.get("model") or raw.get("model_name") or "LLM"
@@ -56151,7 +56177,8 @@ class TrinityIntegrator:
                             stage_detail=stage_detail,
                             estimated_total_seconds=int(_est_total_for_eta),
                             elapsed_seconds=int(elapsed),
-                            reason=f"Loading ~7B parameters into memory ({progress_pct}% complete, ~{remaining_seconds//60}m {remaining_seconds%60}s remaining)"
+                            reason=f"Loading ~7B parameters into memory ({progress_pct}% complete, ~{remaining_seconds//60}m {remaining_seconds%60}s remaining)",
+                            progress_source=_progress_source,  # v233.1
                         )
                     elif result.is_ready or result.state == ComponentReadinessState.READY:
                         # Clear model loading display when ready
@@ -56190,13 +56217,39 @@ class TrinityIntegrator:
                         )
 
                         if _smoke_enabled and not _smoke_hollow:
+                            # v233.1: RAM-aware smoke test timeout for cold-start scenarios.
+                            # First inference after model load on low-RAM machines triggers
+                            # memory page faults that make 10s timeout always fail.
+                            _smoke_explicit = os.environ.get("JARVIS_SMOKE_TEST_TIMEOUT", "")
+                            if _smoke_explicit:
+                                _smoke_timeout = float(_smoke_explicit)
+                            else:
+                                # Auto-detect based on available RAM
+                                _smoke_timeout = 30.0  # Safe default
+                                try:
+                                    import psutil as _smoke_psutil
+                                    _smoke_ram_gb = _smoke_psutil.virtual_memory().total / (1024 ** 3)
+                                    if _smoke_ram_gb < 16:
+                                        _smoke_timeout = 60.0
+                                    elif _smoke_ram_gb < 32:
+                                        _smoke_timeout = 45.0
+                                    elif _smoke_ram_gb < 64:
+                                        _smoke_timeout = 30.0
+                                    else:
+                                        _smoke_timeout = 15.0
+                                except Exception:
+                                    pass
+
+                            _smoke_retries = int(os.environ.get("JARVIS_SMOKE_TEST_RETRIES", "2"))
+
                             self.logger.info(
-                                f"[Trinity] 🔬 Running inference smoke test for {component.name}..."
+                                f"[Trinity] 🔬 Smoke test for {component.name}: "
+                                f"timeout={_smoke_timeout:.0f}s, retries={_smoke_retries}"
                             )
                             _smoke_ok, _smoke_ms, _smoke_err = await self._run_smoke_test_inference(
                                 component, session,
-                                timeout=float(os.environ.get("JARVIS_SMOKE_TEST_TIMEOUT", "10.0")),
-                                max_retries=int(os.environ.get("JARVIS_SMOKE_TEST_RETRIES", "1")),
+                                timeout=_smoke_timeout,
+                                max_retries=_smoke_retries,
                             )
                             if _smoke_ok:
                                 self.logger.info(
@@ -56295,6 +56348,54 @@ class TrinityIntegrator:
                         _pa_last_progress_time = time.time()
                         _pa_last_progress = _pa_current_progress
 
+                    # v233.1: PROACTIVE stall warning — fires early, not just when deadline is near
+                    _pa_proactive_stall_s = float(os.environ.get("JARVIS_HEALTH_STALL_WARN_SECONDS", "90.0"))
+                    if _pa_proactive_stall_s > 0:
+                        _pa_stall_dur = time.time() - _pa_last_progress_time
+                        if (
+                            _pa_stall_dur >= _pa_proactive_stall_s
+                            and _pa_current_progress > 0
+                            and _pa_current_progress < 100
+                            and not self._pa_stall_warned
+                        ):
+                            self._pa_stall_warned = True
+                            self.logger.warning(
+                                f"[Trinity] ⚠ STALL: {component.name} progress stuck at "
+                                f"{_pa_peak_progress:.0f}% for {_pa_stall_dur:.0f}s. "
+                                f"model_loaded={result.model_loaded}, "
+                                f"ready_for_inference={result.ready_for_inference}, "
+                                f"state={result.state.value}, phase={result.phase}"
+                            )
+                            # Memory pressure check during stall
+                            try:
+                                import psutil as _stall_psutil
+                                _smem = _stall_psutil.virtual_memory()
+                                if _smem.percent > 90:
+                                    self.logger.warning(
+                                        f"[Trinity] ⚠ MEMORY PRESSURE: {_smem.percent}% used, "
+                                        f"{_smem.available / (1024**3):.1f}GB free — "
+                                        f"possible swap thrashing causing stall"
+                                    )
+                            except Exception:
+                                pass
+                            # Update dashboard with stall indicator
+                            update_dashboard_model_loading(
+                                active=True,
+                                stage_detail=(
+                                    f"Progress stalled at {_pa_peak_progress:.0f}% "
+                                    f"for {_pa_stall_dur:.0f}s — investigating..."
+                                ),
+                                progress_source="stall_detected",
+                            )
+                        elif _pa_stall_dur < _pa_proactive_stall_s and self._pa_stall_warned:
+                            # Progress resumed — stall_dur drops when _pa_last_progress_time
+                            # is updated by the progress tracking block above
+                            self._pa_stall_warned = False
+                            self.logger.info(
+                                f"[Trinity] ✓ Stall resolved: {component.name} "
+                                f"progress resumed at {_pa_current_progress:.0f}%"
+                            )
+
                     # Extension decision: only when deadline is near
                     if _pa_remaining < 60:
                         _pa_time_since_last = time.time() - _pa_last_progress_time
@@ -56350,13 +56451,53 @@ class TrinityIntegrator:
                                 self.logger.warning(
                                     f"[Trinity] 🔄 {component.name} health wait EXTENDED by "
                                     f"{_pa_extension:.0f}s (reason: {_pa_reason}, "
+                                    f"stall_duration={time.time() - _pa_last_progress_time:.0f}s, "
                                     f"extension #{_pa_extensions_granted}/{_pa_max_extensions}, "
                                     f"new effective timeout: {_pa_effective_deadline:.0f}s)"
                                 )
 
+                # v233.1: Periodic diagnostic logging during model loading
+                if _pa_is_heavy_component and _pa_diag_interval > 0:
+                    if (time.time() - _pa_last_diag_time) >= _pa_diag_interval:
+                        _pa_last_diag_time = time.time()
+                        _diag_raw = result.raw_response or {}
+                        self.logger.info(
+                            f"[Trinity] DIAG {component.name}: "
+                            f"peak_progress={_pa_peak_progress:.0f}% "
+                            f"(source={_progress_source}), "
+                            f"model_loaded={result.model_loaded}, "
+                            f"ready_for_inference={result.ready_for_inference}, "
+                            f"state={result.state.value}, phase={result.phase}, "
+                            f"elapsed={elapsed:.0f}s, peak={_pa_peak_progress:.0f}%, "
+                            f"health_fields=["
+                            f"model_load_progress_pct={_diag_raw.get('model_load_progress_pct', 'N/A')}, "
+                            f"startup_progress={_diag_raw.get('startup_progress', 'N/A')}, "
+                            f"loading_progress={_diag_raw.get('loading_progress', 'N/A')}]"
+                        )
+                        # Memory pressure context
+                        try:
+                            import psutil as _diag_psutil
+                            _mem = _diag_psutil.virtual_memory()
+                            self.logger.info(
+                                f"[Trinity] DIAG {component.name} memory: "
+                                f"total={_mem.total / (1024**3):.1f}GB, "
+                                f"available={_mem.available / (1024**3):.1f}GB, "
+                                f"used={_mem.percent}%"
+                            )
+                        except Exception:
+                            pass
+
                 # Dynamic polling interval based on state and estimated wait
                 poll_interval = self._calculate_poll_interval(result)
                 await asyncio.sleep(poll_interval)
+
+        # v233.1: Store diagnostic context for timeout handler
+        self._health_diag_context = {
+            "peak_progress": _pa_peak_progress,
+            "last_progress_time": _pa_last_progress_time,
+            "progress_source": _progress_source,
+            "extensions_granted": _pa_extensions_granted,
+        }
 
         # Timeout - gather diagnostic information
         elapsed = time.time() - start_time
@@ -56543,7 +56684,17 @@ class TrinityIntegrator:
             log_fn(f"[Trinity]   Error: {result.error_message}")
 
         log_fn(f"[Trinity]   Recommendation: {result.recommended_action}")
-        
+
+        # v233.1: Progress tracking context from health wait loop
+        _diag_ctx = getattr(self, '_health_diag_context', None)
+        if _diag_ctx:
+            log_fn(f"[Trinity]   Peak progress: {_diag_ctx['peak_progress']:.0f}%")
+            log_fn(f"[Trinity]   Progress source: {_diag_ctx['progress_source']}")
+            _stall_dur = time.time() - _diag_ctx['last_progress_time']
+            log_fn(f"[Trinity]   Time since last progress: {_stall_dur:.0f}s")
+            if _diag_ctx['extensions_granted'] > 0:
+                log_fn(f"[Trinity]   Extensions granted: {_diag_ctx['extensions_granted']}")
+
         # v215.0: Add clear guidance for optional components
         if is_optional:
             log_fn(f"[Trinity]   ✓ {component_name} is OPTIONAL - JARVIS continues without it")
@@ -59765,14 +59916,19 @@ class JarvisSystemKernel:
                                                 ready = data.get("ready_for_inference", False)
                                                 
                                                 # Get progress from various fields
+                                                # v233.1: Track progress source for transparency
+                                                _ep_source = "health_endpoint"
+                                                _ep_grace = float(os.environ.get("JARVIS_STARTUP_GRACE_PERIOD", "720"))
                                                 progress = data.get("startup_progress", 0)
                                                 if not progress:
                                                     progress = data.get("model_load_progress_pct", 0)
                                                 if not progress:
                                                     progress = data.get("loading_progress", 0)
                                                 if not progress:
-                                                    # Estimate from elapsed time (720s total)
-                                                    progress = min(95, int((elapsed / 720.0) * 100))
+                                                    # v233.1: Estimate from elapsed time (configurable)
+                                                    _ep_source = "time_estimate"
+                                                    _ep_estimate_cap = int(os.environ.get("JARVIS_PROGRESS_ESTIMATE_CAP", "90"))
+                                                    progress = min(_ep_estimate_cap, int((elapsed / _ep_grace) * 100))
                                                 
                                                 # Never go backwards
                                                 progress = max(progress, _last_progress)
@@ -59788,8 +59944,8 @@ class JarvisSystemKernel:
                                                     rate = progress / elapsed
                                                     remaining = int((100 - progress) / rate) if rate > 0 else 600
                                                 else:
-                                                    remaining = 720 - int(elapsed)
-                                                
+                                                    remaining = max(0, int(_ep_grace - elapsed))
+
                                                 # Update dashboard
                                                 update_dashboard_model_loading(
                                                     active=True,
@@ -59797,9 +59953,10 @@ class JarvisSystemKernel:
                                                     progress_pct=progress,
                                                     stage=stage,
                                                     stage_detail=stage_detail,
-                                                    estimated_total_seconds=720,
+                                                    estimated_total_seconds=int(_ep_grace),
                                                     elapsed_seconds=int(elapsed),
-                                                    reason=f"Loading model ({progress}% complete, ~{remaining//60}m {remaining%60}s remaining)"
+                                                    reason=f"Loading model ({progress}% complete, ~{remaining//60}m {remaining%60}s remaining)",
+                                                    progress_source=_ep_source,  # v233.1
                                                 )
                                                 
                                                 if ready or model_loaded:
@@ -59809,19 +59966,22 @@ class JarvisSystemKernel:
                                                     
                                 except aiohttp.ClientError:
                                     # Prime not responding yet - estimate progress
-                                    progress = min(50, max(_last_progress, int((elapsed / 720.0) * 100)))
+                                    # v233.1: Use configurable grace period
+                                    _ep_grace_ce = float(os.environ.get("JARVIS_STARTUP_GRACE_PERIOD", "720"))
+                                    progress = min(50, max(_last_progress, int((elapsed / _ep_grace_ce) * 100)))
                                     _last_progress = progress
-                                    remaining = 720 - int(elapsed)
-                                    
+                                    remaining = max(0, int(_ep_grace_ce - elapsed))
+
                                     update_dashboard_model_loading(
                                         active=True,
                                         model_name="LLM",
                                         progress_pct=progress,
                                         stage="initializing",
                                         stage_detail="Prime starting up...",
-                                        estimated_total_seconds=720,
+                                        estimated_total_seconds=int(_ep_grace_ce),
                                         elapsed_seconds=int(elapsed),
-                                        reason=f"Starting Prime ({progress}% complete, ~{remaining//60}m {remaining%60}s remaining)"
+                                        reason=f"Starting Prime ({progress}% complete, ~{remaining//60}m {remaining%60}s remaining)",
+                                        progress_source="time_estimate",  # v233.1
                                     )
                                 
                                 # Poll every 3 seconds for responsive progress updates
@@ -67188,7 +67348,9 @@ class JarvisSystemKernel:
 
                 # Reduced increment since dynamic progress now tracks actual work
                 increment = min(1, max(0.3, 0.05 * elapsed / 10))
-                effective_progress = min(95, base_progress + increment)
+                # v233.1: Allow heartbeat up to 99% (100% reserved for explicit completion broadcast)
+                _heartbeat_cap = int(os.environ.get("JARVIS_HEARTBEAT_PROGRESS_CAP", "99"))
+                effective_progress = min(_heartbeat_cap, base_progress + increment)
 
                 # Enforce monotonic: never send lower than previous
                 progress_to_send = max(last_sent_progress, int(effective_progress))
