@@ -64064,7 +64064,7 @@ class JarvisSystemKernel:
                                                         elif _gw_recovery.get("terminated"):
                                                             self.logger.warning(
                                                                 f"[Trinity] ⚠️ Stalled VM terminated but recovery failed: "
-                                                                f"{_gw_recovery.get('error')} — falling back to local"
+                                                                f"{_gw_recovery.get('error')} — trying next fallback"
                                                             )
                                                         else:
                                                             self.logger.error(
@@ -64120,7 +64120,8 @@ class JarvisSystemKernel:
                                             # v233.2: Removed _local_is_hedge gate — standard GCP
                                             # fallback must work in cloud-only mode too.
                                             if _try_standard:
-                                                # Check if local Prime is >70% — if so, skip standard (local finishes first)
+                                                # Check if local Prime is >70% — if so, skip standard
+                                                # (only relevant in hybrid/hedge mode; always 0 in cloud-only)
                                                 _local_prog = 0.0
                                                 try:
                                                     _lip = getattr(self, '_prime_init_progress', None)
@@ -64211,7 +64212,7 @@ class JarvisSystemKernel:
                                                     except asyncio.TimeoutError:
                                                         self.logger.warning(
                                                             f"[Trinity] Standard GCP fallback timed out after "
-                                                            f"{_standard_timeout:.0f}s — falling back to local"
+                                                            f"{_standard_timeout:.0f}s — trying Claude API fallback"
                                                         )
                                                     except Exception as _std_err:
                                                         self.logger.error(
@@ -64324,8 +64325,11 @@ class JarvisSystemKernel:
                                         ).lower() == "true"
                                         _standard_timeout_attempted = False
 
-                                        if _try_standard_timeout and _local_is_hedge:
+                                        # v233.2: Removed _local_is_hedge gate — standard GCP
+                                        # fallback must work in cloud-only mode too.
+                                        if _try_standard_timeout:
                                             # Check local Prime progress — skip standard if >70%
+                                            # (only relevant in hybrid/hedge mode)
                                             _local_prog_t = 0.0
                                             try:
                                                 _lip_t = getattr(self, '_prime_init_progress', None)
@@ -64414,7 +64418,7 @@ class JarvisSystemKernel:
                                                 except asyncio.TimeoutError:
                                                     self.logger.warning(
                                                         f"[Trinity] Standard GCP fallback timed out after "
-                                                        f"{_std_fb_timeout:.0f}s — falling back to local"
+                                                        f"{_std_fb_timeout:.0f}s — trying Claude API fallback"
                                                     )
                                                 except Exception as _std_err_t:
                                                     self.logger.error(
@@ -64422,20 +64426,61 @@ class JarvisSystemKernel:
                                                     )
 
                                         if not invincible_ready:
-                                            _gw_fallback_msg = (
-                                                "Continuing with local Prime (already loading in parallel)"
-                                                if _local_is_hedge
-                                                else "Falling back to local Prime."
-                                            )
+                                            if _local_is_hedge:
+                                                _gw_fallback_msg = (
+                                                    "Continuing with local Prime (already loading in parallel)"
+                                                )
+                                            else:
+                                                _gw_fallback_msg = (
+                                                    "Triggering Claude API fallback"
+                                                )
                                             self.logger.warning(
                                                 f"[Trinity] {_gw_fallback_msg}"
                                                 + (f" (standard GCP also failed)" if _standard_timeout_attempted else "")
                                             )
 
-                                            # v232.2: Notify DMS of fallback to local mode
+                                            # v233.2: In cloud-only mode, write Claude API fallback signal
+                                            if not _local_is_hedge:
+                                                try:
+                                                    from backend.supervisor.cross_repo_startup_orchestrator import (
+                                                        write_claude_api_fallback_signal
+                                                    )
+                                                    write_claude_api_fallback_signal(
+                                                        reason=(
+                                                            f"Golden image timed out after "
+                                                            f"{_wait_elapsed:.0f}s"
+                                                            f"{', standard fallback also failed' if _standard_timeout_attempted else ''}"
+                                                        ),
+                                                        gcp_attempts=_gw_stall_count if _gw_stall_count > 0 else 1,
+                                                    )
+                                                    self.logger.warning(
+                                                        "[Trinity] Claude API fallback signal written (timeout path)"
+                                                    )
+                                                except Exception as _fb_err:
+                                                    self.logger.error(
+                                                        f"[Trinity] Failed to write Claude API fallback "
+                                                        f"signal: {_fb_err}"
+                                                    )
+
+                                                try:
+                                                    update_dashboard_gcp_progress(
+                                                        checkpoint="Timed out — Claude API fallback",
+                                                        status="stopped",
+                                                        progress=0,
+                                                        deployment_mode="",
+                                                    )
+                                                    dashboard.update_component(
+                                                        "gcp-vm", status="error",
+                                                        message=f"Timed out at {_gw_last_progress:.0f}% — Claude API fallback"
+                                                    )
+                                                except Exception:
+                                                    pass
+
+                                            # v232.2: Notify DMS of mode change
                                             if self._startup_watchdog:
+                                                _dms_mode = "local_prime" if _local_is_hedge else "claude_api_fallback"
                                                 self._startup_watchdog.notify_mode_change(
-                                                    "local_prime",
+                                                    _dms_mode,
                                                     is_fallback=True,
                                                     fallback_reason="GCP golden image VM not ready in time",
                                                 )

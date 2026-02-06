@@ -6465,9 +6465,25 @@ EOFPROGRESS
 # v233.2: CRITICAL FIX — Previously the APARS health endpoint started before
 # the port was read from metadata, causing it to listen on the wrong port.
 # The supervisor would then poll the metadata port and get no response.
+# v233.2: Try with 5s timeout first, retry with 15s on failure, then default
 JARVIS_PORT=$(timeout 5 curl -s -H 'Metadata-Flavor: Google' \\
     http://metadata.google.internal/computeMetadata/v1/instance/attributes/jarvis-port \\
-    2>/dev/null || echo "8000")
+    2>/dev/null)
+if [ -z "$JARVIS_PORT" ] || ! echo "$JARVIS_PORT" | grep -qE '^[0-9]+$'; then
+    log "WARN: First metadata port read failed — retrying with 15s timeout..."
+    JARVIS_PORT=$(timeout 15 curl -s -H 'Metadata-Flavor: Google' \\
+        http://metadata.google.internal/computeMetadata/v1/instance/attributes/jarvis-port \\
+        2>/dev/null)
+fi
+if [ -z "$JARVIS_PORT" ] || ! echo "$JARVIS_PORT" | grep -qE '^[0-9]+$'; then
+    log "WARN: Metadata port read failed — defaulting to 8000"
+    JARVIS_PORT="8000"
+fi
+# Validate port is in sane range
+if [ "$JARVIS_PORT" -lt 1 ] 2>/dev/null || [ "$JARVIS_PORT" -gt 65535 ] 2>/dev/null; then
+    log "WARN: Invalid port $JARVIS_PORT — defaulting to 8000"
+    JARVIS_PORT="8000"
+fi
 export JARVIS_PORT
 log "Port resolved from metadata: $JARVIS_PORT"
 
