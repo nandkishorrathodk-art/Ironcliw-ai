@@ -337,6 +337,13 @@ class CloudSQLProxyManager:
         self.service_name = "com.jarvis.cloudsql-proxy"
         self.process: Optional[subprocess.Popen] = None
 
+        # v224.0: Startup concurrency guard - prevents race conditions when
+        # multiple callers invoke start() simultaneously (e.g., supervisor +
+        # connection manager both detecting proxy down at the same moment).
+        self._start_lock = asyncio.Lock()
+        # Track the effective port (may differ from config if dynamic fallback used)
+        self._effective_port: Optional[int] = None
+
         # NEW: Health monitoring and timeout tracking
         self.last_successful_query = None
         self.last_connection_check = None
@@ -1021,6 +1028,7 @@ class CloudSQLProxyManager:
         """
         Check if proxy is running and healthy.
 
+        v224.0: Uses effective_port (respects dynamic port fallback).
         v86.0: Enhanced with zombie detection and strict mode.
 
         Args:
@@ -1030,7 +1038,7 @@ class CloudSQLProxyManager:
         Returns:
             True if a healthy cloud-sql-proxy is running on our port.
         """
-        port = self.config["cloud_sql"]["port"]
+        port = self.effective_port
 
         # Quick check: is port in use?
         if not self._is_port_in_use(port):
@@ -1089,6 +1097,7 @@ class CloudSQLProxyManager:
         """
         Check if proxy is running and healthy (async version - doesn't block event loop).
 
+        v224.0: Uses effective_port (respects dynamic port fallback).
         v124.0: Fully async implementation using asyncio.to_thread for all blocking operations.
         This is the preferred method to call from async contexts like Phase 6 initialization.
 
@@ -1099,7 +1108,7 @@ class CloudSQLProxyManager:
         Returns:
             True if a healthy cloud-sql-proxy is running on our port.
         """
-        port = self.config["cloud_sql"]["port"]
+        port = self.effective_port
 
         # Quick check: is port in use? (async - doesn't block)
         if not await self._is_port_in_use_async(port):
@@ -1194,76 +1203,418 @@ class CloudSQLProxyManager:
             return False
 
     def _kill_conflicting_processes(self):
-        """Kill any conflicting proxy processes."""
+        """
+        Kill any processes conflicting with the proxy port (sync version).
+
+        v224.0: Enhanced to also kill non-proxy processes holding the port.
+        See _kill_conflicting_processes_async for full docstring.
+        """
         port = self.config["cloud_sql"]["port"]
 
         if not self._is_port_in_use(port):
             return
 
         logger.warning(f"⚠️  Port {port} in use, killing conflicting processes...")
-        pids = self._find_proxy_processes()
 
+        # Phase 1: Kill all known cloud-sql-proxy processes
+        pids = self._find_proxy_processes()
         for pid in pids:
             try:
                 logger.info(f"🔪 Killing proxy process: PID {pid}")
                 os.kill(pid, signal.SIGTERM)
-                time.sleep(0.5)
-                # Force kill if still alive
+            except (ProcessLookupError, PermissionError) as e:
+                logger.debug(f"Could not SIGTERM PID {pid}: {e}")
+
+        if pids:
+            time.sleep(2.0)  # Grace period for SIGTERM
+
+        for pid in pids:
+            try:
+                os.kill(pid, 0)  # Check if still alive
+                os.kill(pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            except PermissionError:
+                logger.debug(f"Cannot force-kill PID {pid}: permission denied")
+
+        # Phase 2: If port still occupied, kill the actual holder
+        if self._is_port_in_use(port):
+            pid_on_port = self._get_pid_using_port(port)
+            if pid_on_port and pid_on_port not in pids:
+                proc_name = self._get_process_name_from_pid(pid_on_port)
+                logger.warning(
+                    f"⚠️  Port {port} still held by PID {pid_on_port} "
+                    f"({proc_name or 'unknown'}) — killing"
+                )
                 try:
-                    os.kill(pid, signal.SIGKILL)
-                except ProcessLookupError:
-                    pass
-            except Exception as e:
-                logger.debug(f"Error killing PID {pid}: {e}")
+                    os.kill(pid_on_port, signal.SIGTERM)
+                    time.sleep(2.0)
+                    try:
+                        os.kill(pid_on_port, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
+                except (ProcessLookupError, PermissionError) as e:
+                    logger.debug(f"Error killing PID {pid_on_port}: {e}")
 
         # Wait for port to become available
         for _ in range(10):
             if not self._is_port_in_use(port):
-                break
+                logger.info(f"✅ Port {port} freed successfully")
+                return
             time.sleep(0.5)
-        else:
-            logger.error(f"❌ Failed to free port {port}")
+
+        logger.error(f"❌ Failed to free port {port} after all cleanup attempts")
 
     async def _kill_conflicting_processes_async(self):
-        """Kill any conflicting proxy processes (async - doesn't block event loop)."""
+        """
+        Kill any processes conflicting with the proxy port (async).
+
+        v224.0: Enhanced to kill ANY process holding the port, not just
+        cloud-sql-proxy processes. The previous implementation only searched
+        for cloud-sql-proxy by name via pgrep, meaning a stale PostgreSQL
+        or other service on the port would never be cleaned up.
+
+        Strategy:
+        1. First, kill all cloud-sql-proxy processes (broad sweep by name)
+        2. Then, identify the actual process holding the port (by PID via lsof)
+        3. If port is still occupied, kill that specific PID
+        """
         port = self.config["cloud_sql"]["port"]
 
         if not await self._is_port_in_use_async(port):
             return
 
         logger.warning(f"⚠️  Port {port} in use, killing conflicting processes...")
-        pids = await self._find_proxy_processes_async()
 
-        for pid in pids:
+        # Phase 1: Kill all known cloud-sql-proxy processes
+        proxy_pids = await self._find_proxy_processes_async()
+        for pid in proxy_pids:
             try:
                 logger.info(f"🔪 Killing proxy process: PID {pid}")
                 os.kill(pid, signal.SIGTERM)
-                await asyncio.sleep(0.5)  # Non-blocking sleep
-                # Force kill if still alive
-                try:
-                    os.kill(pid, signal.SIGKILL)
-                except ProcessLookupError:
-                    pass
-            except Exception as e:
-                logger.debug(f"Error killing PID {pid}: {e}")
+            except (ProcessLookupError, PermissionError) as e:
+                logger.debug(f"Could not SIGTERM PID {pid}: {e}")
 
-        # Wait for port to become available (non-blocking)
+        # Give processes time to exit gracefully
+        if proxy_pids:
+            await asyncio.sleep(2.0)
+
+        # Force kill any that survived SIGTERM
+        for pid in proxy_pids:
+            try:
+                os.kill(pid, 0)  # Check if still alive
+                logger.info(f"🔪 Force-killing PID {pid} (survived SIGTERM)")
+                os.kill(pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass  # Already dead
+            except PermissionError:
+                logger.debug(f"Cannot force-kill PID {pid}: permission denied")
+
+        # Phase 2: If port is STILL occupied, find and kill the actual holder
+        if await self._is_port_in_use_async(port):
+            pid_on_port = await asyncio.to_thread(self._get_pid_using_port, port)
+            if pid_on_port and pid_on_port not in proxy_pids:
+                proc_name = await asyncio.to_thread(
+                    self._get_process_name_from_pid, pid_on_port
+                )
+                logger.warning(
+                    f"⚠️  Port {port} still held by PID {pid_on_port} "
+                    f"({proc_name or 'unknown'}) — killing"
+                )
+                await self._kill_process_and_wait_async(pid_on_port, port)
+
+        # Final wait for port to become available
         for _ in range(10):
             if not await self._is_port_in_use_async(port):
+                logger.info(f"✅ Port {port} freed successfully")
+                return
+            await asyncio.sleep(0.5)
+
+        logger.error(f"❌ Failed to free port {port} after all cleanup attempts")
+
+    # ========================================================================
+    # v224.0: INTELLIGENT PORT CONFLICT RESOLUTION
+    # ========================================================================
+
+    async def _resolve_port_conflict_async(self, port: int) -> Tuple[bool, int]:
+        """
+        Intelligently resolve port conflicts before launching the proxy.
+
+        v224.0: This is the root-cause fix for the 'address already in use' crash.
+        Previous versions only attempted conflict resolution on retry attempts,
+        meaning the first start() attempt would always crash if the port was busy.
+
+        Strategy:
+        1. If port is free → return immediately
+        2. If port is held by a healthy cloud-sql-proxy we own → adopt it
+        3. If port is held by an orphaned cloud-sql-proxy → kill and reclaim
+        4. If port is held by a non-proxy process → try dynamic port fallback
+        5. As absolute last resort → kill the conflicting process
+
+        Args:
+            port: The desired port number
+
+        Returns:
+            Tuple of (port_is_available, effective_port) where effective_port
+            may differ from the input if dynamic fallback was used.
+        """
+        # Step 1: Is port already free?
+        if not await self._is_port_in_use_async(port):
+            logger.debug(f"[v224.0] Port {port} is free - no conflict to resolve")
+            return True, port
+
+        # Step 2: Diagnose who owns the port using the zombie detection system
+        logger.info(f"[v224.0] Port {port} is occupied - diagnosing owner...")
+        zombie_state = await self.detect_zombie_state_async(retry_on_zombie=True)
+
+        recommendation = zombie_state.get('recommendation', 'investigate')
+        pid_on_port = zombie_state.get('pid_on_port')
+        is_cloud_proxy = zombie_state.get('is_cloud_sql_proxy', False)
+        our_pid_valid = zombie_state.get('our_pid_valid', False)
+
+        # Step 2a: Healthy proxy we own → adopt it (no restart needed)
+        if recommendation == 'healthy':
+            logger.info(
+                f"[v224.0] ✅ Healthy cloud-sql-proxy already on port {port} "
+                f"(PID {pid_on_port}) — adopting"
+            )
+            self._effective_port = port
+            return True, port  # Caller should recognize proxy is already running
+
+        # Step 2b: Orphan cloud-sql-proxy (running but not from our PID file)
+        if recommendation == 'adopt_or_restart' and is_cloud_proxy:
+            logger.info(
+                f"[v224.0] Found orphan cloud-sql-proxy (PID {pid_on_port}) — "
+                f"adopting and updating PID file"
+            )
+            try:
+                await asyncio.to_thread(
+                    lambda: self.pid_path.write_text(str(pid_on_port))
+                )
+            except OSError as e:
+                logger.debug(f"[v224.0] Failed to update PID file: {e}")
+            self._effective_port = port
+            return True, port  # Adopted
+
+        # Step 2c: Port held by cloud-sql-proxy (zombie or otherwise) → kill and reclaim
+        if is_cloud_proxy:
+            logger.info(
+                f"[v224.0] Stale cloud-sql-proxy (PID {pid_on_port}) — "
+                f"terminating to reclaim port {port}"
+            )
+            freed = await self._kill_process_and_wait_async(pid_on_port, port)
+            if freed:
+                return True, port
+            # If still not freed, fall through to dynamic fallback
+
+        # Step 2d: Port held by a NON-proxy process (e.g., PostgreSQL, another service)
+        if pid_on_port and not is_cloud_proxy:
+            proc_name = await asyncio.to_thread(
+                self._get_process_name_from_pid, pid_on_port
+            )
+            logger.warning(
+                f"[v224.0] ⚠️ Port {port} occupied by non-proxy process: "
+                f"PID {pid_on_port} ({proc_name or 'unknown'})"
+            )
+
+            # Try dynamic port fallback instead of killing a legitimate service
+            fallback_port = await self._find_available_port_async(port)
+            if fallback_port and fallback_port != port:
+                logger.info(
+                    f"[v224.0] 🔄 Dynamic port fallback: {port} → {fallback_port} "
+                    f"(non-proxy process left undisturbed)"
+                )
+                self._effective_port = fallback_port
+                return True, fallback_port
+
+            # No fallback port available — last resort: kill conflicting process
+            logger.warning(
+                f"[v224.0] No fallback port available. Killing PID {pid_on_port} "
+                f"({proc_name or 'unknown'}) to reclaim port {port}"
+            )
+            freed = await self._kill_process_and_wait_async(pid_on_port, port)
+            if freed:
+                return True, port
+
+        # Step 3: Unknown situation — try a broader kill of all proxy-like processes
+        logger.warning(
+            f"[v224.0] Port {port} still occupied after targeted resolution — "
+            f"attempting broad cleanup"
+        )
+        await self._kill_conflicting_processes_async()
+        await asyncio.sleep(1)
+
+        if not await self._is_port_in_use_async(port):
+            return True, port
+
+        # Step 4: Absolute last resort — try dynamic fallback
+        fallback_port = await self._find_available_port_async(port)
+        if fallback_port:
+            logger.info(
+                f"[v224.0] 🔄 Final fallback: using port {fallback_port} "
+                f"(original port {port} could not be freed)"
+            )
+            self._effective_port = fallback_port
+            return True, fallback_port
+
+        logger.error(
+            f"[v224.0] ❌ Could not resolve port conflict on {port} "
+            f"and no fallback ports available"
+        )
+        return False, port
+
+    async def _kill_process_and_wait_async(
+        self, pid: int, port: int, grace_seconds: float = 3.0
+    ) -> bool:
+        """
+        Kill a specific process and wait for the port to be freed.
+
+        v224.0: Proper SIGTERM→wait→SIGKILL escalation with configurable grace period.
+        Previous version only waited 0.5s before SIGKILL, which is too aggressive
+        for processes that need to flush state or close connections.
+
+        Args:
+            pid: Process ID to terminate
+            port: Port to wait for
+            grace_seconds: How long to wait after SIGTERM before escalating to SIGKILL
+
+        Returns:
+            True if port was freed, False otherwise
+        """
+        try:
+            # Phase 1: Graceful SIGTERM
+            logger.info(f"[v224.0] Sending SIGTERM to PID {pid}...")
+            os.kill(pid, signal.SIGTERM)
+
+            # Wait for graceful shutdown with exponential polling
+            poll_intervals = [0.1, 0.2, 0.3, 0.5, 0.5, 0.5, 0.5, 0.5]  # ~3.1s total
+            for interval in poll_intervals:
+                await asyncio.sleep(interval)
+                if not await self._is_port_in_use_async(port):
+                    logger.info(f"[v224.0] ✅ Port {port} freed after SIGTERM")
+                    return True
+                # Check if process actually exited
+                try:
+                    os.kill(pid, 0)  # Signal 0 = check if alive
+                except ProcessLookupError:
+                    # Process gone — port may take a moment to unbind (TIME_WAIT)
+                    await asyncio.sleep(0.5)
+                    if not await self._is_port_in_use_async(port):
+                        return True
+
+            # Phase 2: Forceful SIGKILL
+            try:
+                logger.warning(
+                    f"[v224.0] PID {pid} didn't exit after SIGTERM — "
+                    f"escalating to SIGKILL"
+                )
+                os.kill(pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass  # Already exited between checks
+
+            # Wait for port to unbind after SIGKILL
+            for _ in range(10):
+                await asyncio.sleep(0.5)
+                if not await self._is_port_in_use_async(port):
+                    logger.info(f"[v224.0] ✅ Port {port} freed after SIGKILL")
+                    return True
+
+        except ProcessLookupError:
+            logger.debug(f"[v224.0] PID {pid} already gone")
+            # Process already dead — check if port freed
+            await asyncio.sleep(0.3)
+            return not await self._is_port_in_use_async(port)
+        except PermissionError:
+            logger.error(
+                f"[v224.0] ❌ Permission denied killing PID {pid}. "
+                f"The process may be owned by another user."
+            )
+            return False
+        except Exception as e:
+            logger.error(f"[v224.0] Error killing PID {pid}: {e}")
+
+        return False
+
+    async def _find_available_port_async(
+        self, preferred_port: int, search_range: int = 20
+    ) -> Optional[int]:
+        """
+        Find an available port near the preferred port.
+
+        v224.0: Dynamic port fallback when the configured port is permanently
+        occupied by a legitimate service (e.g., a local PostgreSQL on 5432).
+
+        Searches in a small range around the preferred port to minimize
+        configuration disruption for downstream consumers.
+
+        Args:
+            preferred_port: The port we'd ideally like to use
+            search_range: How many ports above to scan
+
+        Returns:
+            An available port number, or None if no port found
+        """
+        # Try ports in the range [preferred+1, preferred+search_range]
+        for offset in range(1, search_range + 1):
+            candidate = preferred_port + offset
+            if candidate > 65535:
                 break
-            await asyncio.sleep(0.5)  # Non-blocking sleep
-        else:
-            logger.error(f"❌ Failed to free port {port}")
+            if not await self._is_port_in_use_async(candidate):
+                # Double-check with a bind test to avoid TOCTOU race
+                try:
+                    available = await asyncio.to_thread(
+                        self._test_port_bindable, candidate
+                    )
+                    if available:
+                        return candidate
+                except Exception:
+                    continue
+        return None
+
+    def _test_port_bindable(self, port: int) -> bool:
+        """
+        Test if a port can actually be bound (not just "not in use").
+
+        This catches edge cases like:
+        - Ports in TIME_WAIT state (recently closed)
+        - Ports that lsof misses but the kernel still reserves
+
+        Returns:
+            True if the port is bindable
+        """
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                s.bind(("127.0.0.1", port))
+                return True
+        except OSError:
+            return False
+
+    @property
+    def effective_port(self) -> int:
+        """
+        Get the actual port the proxy is running on.
+
+        v224.0: May differ from config if dynamic port fallback was used.
+        Downstream consumers should use this instead of reading config directly.
+        """
+        return self._effective_port or self.config["cloud_sql"]["port"]
 
     async def start(self, force_restart: bool = False, max_retries: int = 3) -> bool:
         """
         Start Cloud SQL proxy with health monitoring and auto-recovery.
 
-        v218.0 CRITICAL FIX:
+        v224.0 CRITICAL FIX:
+        - Resolves port conflicts BEFORE launching on EVERY attempt (not just retries)
+        - Integrates zombie detection into startup flow for intelligent resolution
+        - Adds dynamic port fallback when configured port is permanently occupied
+        - Adds asyncio.Lock to prevent concurrent start() race conditions
+        - Proper SIGTERM grace period (3s) before SIGKILL escalation
+
+        v218.0:
         - Intelligent credential type detection (authorized_user vs service_account)
         - authorized_user credentials (from gcloud auth) DON'T use --credentials-file
         - service_account credentials use --credentials-file
-        - This fixes the "exit code 1" crash caused by incorrect auth method
 
         Args:
             force_restart: Kill existing processes and start fresh
@@ -1271,6 +1622,17 @@ class CloudSQLProxyManager:
 
         Returns:
             True if started successfully, False otherwise
+        """
+        # v224.0: Serialize concurrent start() calls to prevent race conditions
+        async with self._start_lock:
+            return await self._start_locked(force_restart, max_retries)
+
+    async def _start_locked(self, force_restart: bool, max_retries: int) -> bool:
+        """
+        Internal start implementation, called under _start_lock.
+
+        Separated from start() so the lock acquisition is clean and the
+        logic is independently testable.
         """
         last_error = None
 
@@ -1307,19 +1669,69 @@ class CloudSQLProxyManager:
                     logger.info(f"🔄 Retry attempt {attempt + 1}/{max_retries}...")
                     await asyncio.sleep(2)  # Wait before retry
 
+                # v224.0: CRITICAL FIX — Resolve port conflicts on EVERY attempt,
+                # not just on retries. This is the root cause of the
+                # "address already in use" crash.
+                cloud_sql = self.config["cloud_sql"]
+                configured_port = cloud_sql["port"]
+                connection_name = cloud_sql["connection_name"]
+
                 # Check if already running (async - doesn't block event loop)
-                if await self.is_running_async() and not force_restart:
-                    logger.info("✅ Cloud SQL proxy already running")
+                if not force_restart:
+                    if await self.is_running_async():
+                        logger.info("✅ Cloud SQL proxy already running")
+                        self._effective_port = configured_port
+                        return True
+
+                # v224.0: Intelligent port conflict resolution (replaces the
+                # old conditional _kill_conflicting_processes_async call)
+                if force_restart:
+                    # Force restart: kill everything first
+                    await self._kill_conflicting_processes_async()
+                    port_available, effective_port = True, configured_port
+                    # Verify port is actually free after kill
+                    if await self._is_port_in_use_async(configured_port):
+                        port_available, effective_port = await self._resolve_port_conflict_async(
+                            configured_port
+                        )
+                else:
+                    # Normal start: intelligently resolve conflicts
+                    port_available, effective_port = await self._resolve_port_conflict_async(
+                        configured_port
+                    )
+
+                if not port_available:
+                    last_error = (
+                        f"Port {configured_port} is occupied and could not be freed "
+                        f"or substituted"
+                    )
+                    logger.error(f"❌ {last_error}")
+                    continue  # Try next attempt
+
+                # v224.0: If resolve_port_conflict returned True because it adopted
+                # an existing healthy proxy, we're done — no need to launch a new one.
+                if await self.is_running_async():
+                    logger.info(
+                        f"✅ Cloud SQL proxy adopted on port {effective_port}"
+                    )
+                    self._effective_port = effective_port
                     return True
 
-                # Kill conflicting processes if needed (async - doesn't block event loop)
-                if force_restart or attempt > 0:
-                    await self._kill_conflicting_processes_async()
+                # v224.0: Pre-launch validation — confirm port is actually bindable
+                # right before we spawn. This closes the TOCTOU window between
+                # conflict resolution and process creation.
+                port_bindable = await asyncio.to_thread(
+                    self._test_port_bindable, effective_port
+                )
+                if not port_bindable:
+                    logger.warning(
+                        f"[v224.0] Port {effective_port} passed conflict resolution "
+                        f"but failed bind test — race condition detected, retrying"
+                    )
+                    last_error = f"Port {effective_port} failed pre-launch bind test"
+                    continue
 
-                # Build proxy command (no hardcoding!)
-                cloud_sql = self.config["cloud_sql"]
-                port = cloud_sql["port"]
-                connection_name = cloud_sql["connection_name"]
+                port = effective_port  # Use the resolved port
 
                 cmd = [
                     self.proxy_binary,
@@ -1351,6 +1763,8 @@ class CloudSQLProxyManager:
                 logger.info(f"   Binary: {self.proxy_binary}")
                 logger.info(f"   Connection: {connection_name}")
                 logger.info(f"   Port: {port}")
+                if port != configured_port:
+                    logger.info(f"   ⚠️ Using fallback port (configured: {configured_port})")
                 logger.info(f"   Log: {self.log_path}")
                 logger.info(f"   Command: {' '.join(cmd)}")
 
@@ -1392,6 +1806,7 @@ class CloudSQLProxyManager:
 
                 self.process = await asyncio.to_thread(_start_proxy_process_sync)
                 logger.info(f"   PID: {self.process.pid}")
+                self._effective_port = port
 
                 # Wait for proxy to be ready (max 15 seconds) - ASYNC!
                 # v124.0: All checks in this loop are now async to not block event loop
@@ -1409,6 +1824,20 @@ class CloudSQLProxyManager:
                         # v218.0: Enhanced error diagnostics with credential-type awareness
                         exit_code = self.process.returncode
                         error_msg = f"Proxy process crashed (exit code: {exit_code})"
+                        
+                        # v224.0: Detect port conflict in log output for targeted remediation
+                        if "address already in use" in log_content.lower():
+                            error_msg += (
+                                "\n   ═══════════════════════════════════════════════════"
+                                "\n   PORT CONFLICT (detected post-launch)"
+                                "\n   ═══════════════════════════════════════════════════"
+                                f"\n   Port {port} was claimed between bind-test and"
+                                "\n   proxy start (TOCTOU race). Will retry with"
+                                "\n   conflict resolution."
+                            )
+                            logger.error(f"❌ {error_msg}")
+                            last_error = error_msg
+                            break  # Retry loop will resolve conflict
                         
                         # v218.0: Credential-type-specific diagnostics
                         if exit_code == 1 and (not log_content.strip() or len(log_content.strip()) < 50):
@@ -1605,16 +2034,24 @@ class CloudSQLProxyManager:
                         except Exception as e:
                             logger.debug(f"[CloudSQL] Failed to notify gate: {e}")
 
-                    # v86.0: Check for zombie state before recovery (async - doesn't block event loop)
+                    # v224.0: Use intelligent port conflict resolution before recovery.
+                    # This replaces the old approach of blindly killing processes.
+                    # The start() method now handles conflict resolution internally
+                    # on every attempt, so we just need to call it.
+                    port = self.config["cloud_sql"]["port"]
                     zombie_state = await self.detect_zombie_state_async()
                     if zombie_state['is_zombie']:
                         logger.warning(
                             f"[CloudSQL] Zombie detected: port {zombie_state['port']} held by "
                             f"non-proxy process (PID {zombie_state['pid_on_port']})"
                         )
-                        # Kill the zombie before attempting recovery (async - doesn't block event loop)
-                        await self._kill_conflicting_processes_async()
-                        await asyncio.sleep(1)  # Wait for port to be freed
+                        # v224.0: Let _resolve_port_conflict_async handle this
+                        # intelligently instead of blindly killing
+                        resolved, effective_port = await self._resolve_port_conflict_async(port)
+                        if resolved:
+                            logger.info(
+                                f"[CloudSQL] Port conflict resolved → port {effective_port}"
+                            )
 
                     if consecutive_failures <= max_recovery_attempts:
                         logger.info(f"🔄 Attempting automatic recovery (attempt {consecutive_failures})...")
@@ -1882,7 +2319,8 @@ WantedBy=default.target
         try:
             for attempt in range(max_retries):
                 try:
-                    port = self.config['cloud_sql']['port']
+                    # v224.0: Use effective_port (respects dynamic port fallback)
+                    port = self.effective_port
                     # Exponential backoff for timeout: 10s, 15s, 20s
                     timeout = base_timeout + (attempt * 5)
 
@@ -2334,7 +2772,8 @@ WantedBy=default.target
         conn = None
         cursor = None
         try:
-            port = self.config['cloud_sql']['port']
+            # v224.0: Use effective_port (respects dynamic port fallback)
+            port = self.effective_port
             conn = psycopg2.connect(
                 host='127.0.0.1',
                 port=port,

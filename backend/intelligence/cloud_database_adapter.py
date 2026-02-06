@@ -551,14 +551,26 @@ class CloudDatabaseAdapter:
             return False
 
         try:
-            from intelligence.cloud_sql_proxy_manager import CloudSQLProxyManager
+            # v224.0: Use singleton get_proxy_manager() instead of creating a new
+            # CloudSQLProxyManager(). This ensures we share the effective_port state
+            # and asyncio.Lock with the supervisor's instance, preventing race
+            # conditions and ensuring dynamic port fallback is visible to all callers.
+            from intelligence.cloud_sql_proxy_manager import get_proxy_manager
 
-            proxy_manager = CloudSQLProxyManager()
+            proxy_manager = get_proxy_manager()
             started = await proxy_manager.start(force_restart=False)
 
             if started:
                 logger.info(f"✅ Cloud SQL proxy started successfully")
                 coordinator.signal_proxy_ready()
+                # v224.0: Update db_port if dynamic fallback was used
+                if hasattr(proxy_manager, 'effective_port'):
+                    effective = proxy_manager.effective_port
+                    if effective != self.config.db_port:
+                        logger.info(
+                            f"[v224.0] Updating db_port: {self.config.db_port} → {effective}"
+                        )
+                        self.config.db_port = effective
                 # Wait a moment for proxy to be fully ready
                 await asyncio.sleep(2)
                 return True

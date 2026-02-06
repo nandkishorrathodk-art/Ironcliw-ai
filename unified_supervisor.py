@@ -67344,6 +67344,7 @@ class JarvisSystemKernel:
             cloud_sql_config = db_config.get("cloud_sql", {})
             result["connection_name"] = cloud_sql_config.get("connection_name")
             result["port"] = cloud_sql_config.get("port", 5432)
+            result["configured_port"] = result["port"]  # v224.0: Track original for fallback comparison
 
             # Set environment variables
             os.environ["JARVIS_DB_TYPE"] = "cloudsql"
@@ -67369,6 +67370,9 @@ class JarvisSystemKernel:
                     result["running"] = True
                     result["reused_existing"] = True
                     result["enabled"] = True
+                    # v224.0: Pick up effective port from existing proxy
+                    result["port"] = proxy_manager.effective_port
+                    self._cloud_sql_proxy_manager = proxy_manager
                     # v2.0.0: Signal proxy is ready to waiting components
                     if signal_proxy_ready:
                         signal_proxy_ready()
@@ -67378,9 +67382,26 @@ class JarvisSystemKernel:
                     started = await proxy_manager.start(force_restart=False)
 
                     if started:
-                        self.logger.success(f"[CloudSQL] Proxy started on port {result['port']}")
+                        # v224.0: Use effective_port — may differ from config
+                        # if dynamic port fallback was triggered (e.g., PostgreSQL
+                        # occupying the configured port 5432)
+                        effective_port = proxy_manager.effective_port
+                        self.logger.success(
+                            f"[CloudSQL] Proxy started on port {effective_port}"
+                        )
                         result["running"] = True
                         result["enabled"] = True
+                        result["port"] = effective_port  # Update result with actual port
+
+                        # v224.0: Propagate effective port to environment so
+                        # downstream consumers (connection managers, etc.)
+                        # connect to the right port
+                        if effective_port != result.get("configured_port", effective_port):
+                            os.environ["JARVIS_DB_PORT"] = str(effective_port)
+                            self.logger.info(
+                                f"[CloudSQL] ⚠️ Using fallback port {effective_port} "
+                                f"(configured: {result.get('configured_port')})"
+                            )
 
                         # v223.0: Verify connectivity after start (ported from start_system.py)
                         try:
