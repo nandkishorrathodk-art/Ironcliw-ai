@@ -3834,13 +3834,75 @@ class GCPVMManager:
             while attempt < self.config.max_create_attempts:
                 attempt += 1
                 try:
-                    # Generate unique VM name
+                    # v233.0: Generate collision-proof VM name using timestamp + random suffix.
+                    # Previous: 1-second granularity timestamp alone caused 409 "already exists"
+                    # when retries fired within the same second. Now includes 4-char hex suffix
+                    # from os.urandom() for uniqueness even within sub-second retries.
                     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-                    vm_name = f"{self.config.vm_name_prefix}-{timestamp}"
+                    _name_suffix = os.urandom(2).hex()  # 4 hex chars, 65536 possibilities
+                    vm_name = f"{self.config.vm_name_prefix}-{timestamp}-{_name_suffix}"
 
                     logger.info(
                         f"🔨 Attempt {attempt}/{self.config.max_create_attempts}: Creating VM '{vm_name}'"
                     )
+
+                    # v233.0: Pre-creation existence check — if a VM with this name somehow
+                    # exists (e.g., from a previous partial creation), handle it before insert.
+                    _pre_status, _pre_meta, _pre_err = await self._describe_instance_full(vm_name)
+                    if _pre_status not in ("NOT_FOUND", "ERROR"):
+                        logger.warning(
+                            f"[CreateVM] v233.0: VM '{vm_name}' already exists "
+                            f"(status={_pre_status}) — reusing if RUNNING"
+                        )
+                        if _pre_status == "RUNNING":
+                            # VM is already running — reuse it instead of failing
+                            instance = await asyncio.to_thread(
+                                self.instances_client.get,
+                                project=self.config.project_id,
+                                zone=self.config.zone,
+                                instance=vm_name,
+                            )
+                            ip_address = None
+                            internal_ip = None
+                            if instance.network_interfaces:
+                                internal_ip = instance.network_interfaces[0].network_i_p
+                                if instance.network_interfaces[0].access_configs:
+                                    ip_address = instance.network_interfaces[0].access_configs[0].nat_i_p
+
+                            vm_instance = VMInstance(
+                                instance_id=str(instance.id),
+                                name=vm_name,
+                                zone=self.config.zone,
+                                state=VMState.RUNNING,
+                                created_at=time.time(),
+                                ip_address=ip_address,
+                                internal_ip=internal_ip,
+                                components=components,
+                                trigger_reason=trigger_reason,
+                                metadata=metadata or {},
+                            )
+                            async with self._vm_lock:
+                                self.managed_vms[vm_name] = vm_instance
+                                self.stats["total_created"] += 1
+                                self.stats["current_active"] += 1
+                            circuit.record_success()
+                            logger.info(f"✅ Reused existing RUNNING VM: {vm_name} ({ip_address})")
+                            return vm_instance
+                        else:
+                            # VM exists in non-RUNNING state — terminate and regenerate name
+                            logger.info(
+                                f"[CreateVM] Cleaning up stale VM '{vm_name}' "
+                                f"(status={_pre_status})"
+                            )
+                            try:
+                                await self.terminate_vm(
+                                    vm_name=vm_name,
+                                    reason=f"Pre-creation cleanup: stale instance in {_pre_status} state",
+                                )
+                            except Exception as _cleanup_err:
+                                logger.debug(f"[CreateVM] Cleanup of '{vm_name}' non-fatal: {_cleanup_err}")
+                            # Regenerate name with new suffix and retry this attempt
+                            continue
 
                     # Build VM configuration
                     instance_config = self._build_instance_config(
@@ -3919,20 +3981,144 @@ class GCPVMManager:
 
                 except Exception as e:
                     last_error = e
+                    _err_str = str(e).lower()
                     self.stats["retries"] += 1
                     self.stats["last_error"] = str(e)
                     self.stats["last_error_time"] = datetime.now().isoformat()
                     logger.error(f"❌ Attempt {attempt} failed: {e}")
-                    
+
+                    # v233.0: Handle 409 Conflict ("already exists") — the insert
+                    # succeeded server-side but we got a stale error, OR a race condition
+                    # created the VM between our existence check and insert call.
+                    _is_conflict = "409" in str(e) or "already exists" in _err_str
+                    if _is_conflict:
+                        logger.warning(
+                            f"[CreateVM] v233.0: 409 Conflict for '{vm_name}' — "
+                            f"checking if VM is usable"
+                        )
+                        try:
+                            _conflict_status, _, _ = await self._describe_instance_full(vm_name)
+                            if _conflict_status == "RUNNING":
+                                # VM actually exists and is running — reuse it
+                                logger.info(
+                                    f"[CreateVM] VM '{vm_name}' is RUNNING despite 409 — reusing"
+                                )
+                                instance = await asyncio.to_thread(
+                                    self.instances_client.get,
+                                    project=self.config.project_id,
+                                    zone=self.config.zone,
+                                    instance=vm_name,
+                                )
+                                ip_address = None
+                                internal_ip = None
+                                if instance.network_interfaces:
+                                    internal_ip = instance.network_interfaces[0].network_i_p
+                                    if instance.network_interfaces[0].access_configs:
+                                        ip_address = instance.network_interfaces[0].access_configs[0].nat_i_p
+
+                                vm_instance = VMInstance(
+                                    instance_id=str(instance.id),
+                                    name=vm_name,
+                                    zone=self.config.zone,
+                                    state=VMState.RUNNING,
+                                    created_at=time.time(),
+                                    ip_address=ip_address,
+                                    internal_ip=internal_ip,
+                                    components=components,
+                                    trigger_reason=trigger_reason,
+                                    metadata=metadata or {},
+                                )
+                                async with self._vm_lock:
+                                    self.managed_vms[vm_name] = vm_instance
+                                    self.stats["total_created"] += 1
+                                    self.stats["current_active"] += 1
+                                circuit.record_success()
+                                logger.info(f"✅ Recovered from 409: reusing VM '{vm_name}' ({ip_address})")
+                                return vm_instance
+                            elif _conflict_status in ("STAGING", "PROVISIONING"):
+                                # VM is still being created — wait for it
+                                logger.info(
+                                    f"[CreateVM] VM '{vm_name}' is {_conflict_status} — "
+                                    f"waiting for it to become RUNNING"
+                                )
+                                _wait_start = time.time()
+                                _wait_max = 120.0  # 2 minutes max wait
+                                while time.time() - _wait_start < _wait_max:
+                                    await asyncio.sleep(5)
+                                    _ws, _, _ = await self._describe_instance_full(vm_name)
+                                    if _ws == "RUNNING":
+                                        instance = await asyncio.to_thread(
+                                            self.instances_client.get,
+                                            project=self.config.project_id,
+                                            zone=self.config.zone,
+                                            instance=vm_name,
+                                        )
+                                        ip_address = None
+                                        internal_ip = None
+                                        if instance.network_interfaces:
+                                            internal_ip = instance.network_interfaces[0].network_i_p
+                                            if instance.network_interfaces[0].access_configs:
+                                                ip_address = instance.network_interfaces[0].access_configs[0].nat_i_p
+                                        vm_instance = VMInstance(
+                                            instance_id=str(instance.id),
+                                            name=vm_name,
+                                            zone=self.config.zone,
+                                            state=VMState.RUNNING,
+                                            created_at=time.time(),
+                                            ip_address=ip_address,
+                                            internal_ip=internal_ip,
+                                            components=components,
+                                            trigger_reason=trigger_reason,
+                                            metadata=metadata or {},
+                                        )
+                                        async with self._vm_lock:
+                                            self.managed_vms[vm_name] = vm_instance
+                                            self.stats["total_created"] += 1
+                                            self.stats["current_active"] += 1
+                                        circuit.record_success()
+                                        logger.info(
+                                            f"✅ Recovered from 409: VM '{vm_name}' "
+                                            f"now RUNNING ({ip_address})"
+                                        )
+                                        return vm_instance
+                                    elif _ws in ("TERMINATED", "NOT_FOUND", "ERROR"):
+                                        break  # VM failed — fall through to retry
+                                # VM didn't become RUNNING — clean up and retry
+                                logger.warning(
+                                    f"[CreateVM] VM '{vm_name}' didn't reach RUNNING after 409"
+                                )
+                            else:
+                                # VM in terminal state — clean up zombie
+                                logger.info(
+                                    f"[CreateVM] Cleaning up zombie VM '{vm_name}' "
+                                    f"(status={_conflict_status})"
+                                )
+                            # Clean up the conflicting instance for next retry
+                            try:
+                                await self.terminate_vm(
+                                    vm_name=vm_name,
+                                    reason="409 conflict cleanup",
+                                )
+                            except Exception:
+                                pass
+                        except Exception as _409_err:
+                            logger.debug(f"[CreateVM] 409 recovery failed: {_409_err}")
+                        # Next retry will generate a new name (new suffix)
+                        if attempt < self.config.max_create_attempts:
+                            delay = self.config.retry_delay_seconds * attempt
+                            logger.info(f"⏳ Retrying with new name in {delay}s...")
+                            await asyncio.sleep(delay)
+                        continue
+
                     # v9.0: Detect quota exceeded errors and stop retrying immediately
                     is_quota_error, quota_name = self._is_quota_exceeded_error(e)
                     if is_quota_error:
                         logger.error(f"🚫 QUOTA EXCEEDED ({quota_name}) - stopping retries immediately")
-                        
+
                         # Set cooldown to prevent future attempts
                         self._quota_exceeded_until = time.time() + self._quota_cooldown_seconds
                         self.stats["quota_blocks"] += 1
-                        
+
                         # Update quota cache with exceeded status
                         if quota_name:
                             async with self._quota_cache_lock:
@@ -3943,7 +4129,7 @@ class GCPVMManager:
                                     region=self.config.region,
                                 )
                                 self._quota_cache[quota_name].is_exceeded = True  # Force exceeded
-                        
+
                         # Report to rate limit manager
                         if RATE_LIMIT_MANAGER_AVAILABLE:
                             try:
@@ -3951,12 +4137,12 @@ class GCPVMManager:
                                 rate_manager.handle_quota_exceeded(GCPService.COMPUTE_ENGINE, quota_name)
                             except Exception:
                                 pass
-                        
+
                         # Don't retry - quotas won't change in seconds
                         break
-                    
+
                     # v9.0: Detect rate limit (429) errors
-                    is_429 = "429" in str(e) or "too many requests" in str(e).lower()
+                    is_429 = "429" in str(e) or "too many requests" in _err_str
                     if is_429:
                         logger.error(f"🚫 RATE LIMITED (429) - entering cooldown")
                         if RATE_LIMIT_MANAGER_AVAILABLE:
