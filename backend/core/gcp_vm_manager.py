@@ -3761,267 +3761,8 @@ class GCPVMManager:
                 compute_v1.Items(key="jarvis-golden-image-source", value=golden_image_source)
             )
             
-            # v228.0: Robust golden startup script with APARS, port config,
-            # model verification, service verification with retry
-            golden_startup_script = '''#!/bin/bash
-# ═══════════════════════════════════════════════════════════════════════════════
-# v228.0: Golden Image Startup - Enterprise-Grade Fast Boot
-# ═══════════════════════════════════════════════════════════════════════════════
-# Runs on VMs created from golden images. Everything is pre-installed:
-#   - Python + venv + ML dependencies (Phase 3 SKIPPED)
-#   - JARVIS-Prime code cloned
-#   - LLM model pre-cached
-#   - systemd service configured
-#
-# This script:
-#   1. Starts APARS health endpoint immediately (<2s)
-#   2. Reads port from GCP metadata
-#   3. Sources pre-baked environment
-#   4. Validates pre-baked code + model integrity
-#   5. Starts the service (systemd or direct)
-#   6. Verifies service health with retries
-#   7. Signals APARS ready
-# ═══════════════════════════════════════════════════════════════════════════════
-
-LOG_FILE="/var/log/jarvis-golden-startup.log"
-PROGRESS_FILE="/tmp/jarvis_progress.json"
-JARVIS_DIR="/opt/jarvis-prime"
-START_TIME=$(date +%s)
-
-log() {
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_FILE"
-}
-
-update_apars() {
-    local phase=$1
-    local phase_progress=$2
-    local total_progress=$3
-    local checkpoint=$4
-    local model_loaded=${5:-false}
-    local ready=${6:-false}
-    local error=${7:-null}
-    local now=$(date +%s)
-    local elapsed=$((now - START_TIME))
-
-    cat > "$PROGRESS_FILE" << EOFPROGRESS
-{
-    "phase": ${phase},
-    "phase_progress": ${phase_progress},
-    "total_progress": ${total_progress},
-    "checkpoint": "${checkpoint}",
-    "model_loaded": ${model_loaded},
-    "ready_for_inference": ${ready},
-    "error": ${error},
-    "updated_at": ${now},
-    "elapsed_seconds": ${elapsed},
-    "deployment_mode": "golden_image",
-    "version": "228.0"
-}
-EOFPROGRESS
-}
-
-# ─── Phase 0: Instant APARS health endpoint (<2 seconds) ───
-update_apars 0 50 2 "golden_image_booting"
-
-python3 << 'EOFHEALTH' &
-import http.server, json, os, time
-
-PROGRESS_FILE = "/tmp/jarvis_progress.json"
-start_time = time.time()
-
-class APARSHandler(http.server.BaseHTTPRequestHandler):
-    def do_GET(self):
-        if self.path in ("/health", "/health/"):
-            try:
-                with open(PROGRESS_FILE, "r") as f:
-                    state = json.load(f)
-            except:
-                state = {"phase": 0, "total_progress": 5, "checkpoint": "golden_booting",
-                         "model_loaded": False, "ready_for_inference": False}
-
-            elapsed = int(time.time() - start_time)
-            ready = state.get("ready_for_inference", False)
-            response = {
-                "status": "healthy" if ready else "starting",
-                "phase": "ready" if ready else "starting",
-                "mode": "inference" if ready else "golden-startup",
-                "model_loaded": state.get("model_loaded", False),
-                "ready_for_inference": ready,
-                "apars": {
-                    "version": "228.0",
-                    "phase_number": state.get("phase", 0),
-                    "phase_name": state.get("checkpoint", "starting"),
-                    "phase_progress": state.get("phase_progress", 0),
-                    "total_progress": state.get("total_progress", 5),
-                    "checkpoint": state.get("checkpoint", "starting"),
-                    "eta_seconds": max(0, 60 - elapsed) if not ready else 0,
-                    "elapsed_seconds": elapsed,
-                    "error": state.get("error"),
-                    "deployment_mode": "golden_image",
-                    "deps_prebaked": True,
-                    "skipped_phases": [2, 3]
-                },
-                "uptime_seconds": elapsed,
-                "version": "v228.0-golden"
-            }
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.end_headers()
-            self.wfile.write(json.dumps(response).encode())
-        elif self.path == "/health/ready":
-            try:
-                with open(PROGRESS_FILE) as f:
-                    ready = json.load(f).get("ready_for_inference", False)
-            except:
-                ready = False
-            code = 200 if ready else 503
-            self.send_response(code)
-            self.send_header("Content-Type", "application/json")
-            self.end_headers()
-            self.wfile.write(json.dumps({"ready": ready}).encode())
-        else:
-            self.send_response(404)
-            self.end_headers()
-
-    def log_message(self, format, *args):
-        pass
-
-port = int(os.environ.get("JARVIS_PORT", "8000"))
-server = http.server.HTTPServer(("0.0.0.0", port), APARSHandler)
-server.serve_forever()
-EOFHEALTH
-
-HEALTH_PID=$!
-sleep 1
-
-log "═══════════════════════════════════════════════════════════════════════════════"
-log "GOLDEN IMAGE STARTUP v228.0 - Pre-baked environment"
-log "═══════════════════════════════════════════════════════════════════════════════"
-
-# ─── Read port from GCP metadata ───
-JARVIS_PORT=$(timeout 5 curl -s -H 'Metadata-Flavor: Google' \
-    http://metadata.google.internal/computeMetadata/v1/instance/attributes/jarvis-port \
-    2>/dev/null || echo "8000")
-export JARVIS_PORT
-log "Port: $JARVIS_PORT"
-
-# ─── Source pre-baked environment ───
-update_apars 1 0 10 "loading_environment"
-
-if [ -f "$JARVIS_DIR/.env" ]; then
-    set -a
-    source "$JARVIS_DIR/.env"
-    set +a
-    log "✅ Environment loaded from $JARVIS_DIR/.env"
-else
-    log "⚠️  No .env file found at $JARVIS_DIR/.env"
-fi
-
-# Ensure PYTHONPATH includes JARVIS_DIR
-export PYTHONPATH="${JARVIS_DIR}:${PYTHONPATH:-}"
-
-# ─── Validate pre-baked integrity ───
-update_apars 4 0 40 "validating_prebaked"
-
-VALIDATION_OK=true
-
-# Check code exists
-if [ -d "$JARVIS_DIR/jarvis_prime" ]; then
-    log "✅ jarvis_prime module found"
-else
-    log "⚠️  jarvis_prime module NOT found — pulling latest code"
-    REPO_URL=$(timeout 5 curl -s -H 'Metadata-Flavor: Google' \
-        http://metadata.google.internal/computeMetadata/v1/instance/attributes/jarvis-repo-url \
-        2>/dev/null || echo "${JARVIS_PRIME_REPO_URL:-}")
-    if [ -n "$REPO_URL" ]; then
-        log "   Cloning from: $REPO_URL"
-        git clone --depth 1 "$REPO_URL" /tmp/jprime-rescue 2>&1 | tee -a "$LOG_FILE" && \
-            cp -a /tmp/jprime-rescue/* "$JARVIS_DIR/" 2>/dev/null && \
-            rm -rf /tmp/jprime-rescue && \
-            log "✅ Code rescued via git clone" || \
-            log "❌ Failed to clone code"
-    else
-        VALIDATION_OK=false
-        log "❌ No repo URL available — cannot rescue code"
-    fi
-fi
-
-# Check model cache
-MODEL_CACHE="${JARVIS_MODEL_CACHE:-$JARVIS_DIR/models}"
-if [ -d "$MODEL_CACHE" ] && [ "$(ls -A "$MODEL_CACHE" 2>/dev/null)" ]; then
-    MODEL_SIZE=$(du -sm "$MODEL_CACHE" 2>/dev/null | cut -f1 || echo "0")
-    log "✅ Model cache: ${MODEL_SIZE}MB"
-    update_apars 5 50 70 "model_cache_verified" true false
-else
-    log "⚠️  Model cache empty — models will download on first use"
-    update_apars 5 50 70 "model_cache_empty" false false
-fi
-
-# ─── Start the service ───
-update_apars 5 80 85 "starting_service" true false
-
-# Kill APARS health stub (the real server takes over the port)
-if [ -n "$HEALTH_PID" ]; then
-    kill "$HEALTH_PID" 2>/dev/null || true
-    sleep 1
-fi
-
-log "Starting JARVIS-Prime service on port $JARVIS_PORT..."
-
-if systemctl is-enabled jarvis-prime.service 2>/dev/null; then
-    # Override port via systemd drop-in (dynamic, not hardcoded)
-    mkdir -p /etc/systemd/system/jarvis-prime.service.d
-    cat > /etc/systemd/system/jarvis-prime.service.d/port.conf << EOFOVERRIDE
-[Service]
-Environment=JARVIS_PORT=${JARVIS_PORT}
-Environment=PYTHONPATH=${JARVIS_DIR}
-EOFOVERRIDE
-    systemctl daemon-reload
-    systemctl start jarvis-prime.service
-    log "Started via systemd (port $JARVIS_PORT)"
-else
-    # Fallback: start directly with proper environment
-    cd "$JARVIS_DIR"
-    source venv/bin/activate
-    set -a
-    [ -f .env ] && source .env
-    set +a
-    export JARVIS_PORT
-    export PYTHONPATH="${JARVIS_DIR}:${PYTHONPATH:-}"
-    nohup python -m jarvis_prime.server \
-        --host 0.0.0.0 --port "$JARVIS_PORT" \
-        > /var/log/jarvis-prime.log 2>&1 &
-    log "Started directly (port $JARVIS_PORT, PID: $!)"
-fi
-
-# ─── Verify service health with retries ───
-update_apars 6 0 90 "verifying_service" true false
-
-READY=false
-for attempt in $(seq 1 15); do
-    sleep 2
-    if curl -sf "http://localhost:${JARVIS_PORT}/health" > /dev/null 2>&1; then
-        READY=true
-        log "✅ Service healthy after $((attempt * 2)) seconds"
-        break
-    fi
-    update_apars 6 $((attempt * 6)) $((90 + attempt / 2)) "verifying_attempt_${attempt}" true false
-done
-
-if [ "$READY" = true ]; then
-    update_apars 6 100 100 "inference_ready" true true
-    log "═══════════════════════════════════════════════════════════════════════════════"
-    ELAPSED=$(($(date +%s) - START_TIME))
-    log "✅ GOLDEN IMAGE STARTUP COMPLETE in ${ELAPSED}s"
-    log "   Port: $JARVIS_PORT | Mode: golden_image | Ready: true"
-    log "═══════════════════════════════════════════════════════════════════════════════"
-else
-    update_apars 6 100 95 "service_start_timeout" true false '"service_health_check_failed"'
-    log "⚠️  Service not responding after 30s — may need more time"
-    log "   Check: curl http://localhost:${JARVIS_PORT}/health"
-    log "   Logs:  journalctl -u jarvis-prime.service"
-fi
-'''
+            # v229.0: Use shared golden startup script (single source of truth)
+            golden_startup_script = self._generate_golden_startup_script()
             metadata_items.append(
                 compute_v1.Items(key="startup-script", value=golden_startup_script)
             )
@@ -5077,14 +4818,21 @@ fi
         """
         Ensure the static/persistent VM (Invincible Node) is ready for requests.
 
-        This implements the Invincible Node state machine:
+        v229.0: Golden Image-Aware Invincible Node State Machine
+        ═══════════════════════════════════════════════════════════
+        
+        This implements intelligent VM lifecycle management that ensures VMs
+        always use the latest golden image when available:
+        
         1. PING: Try health endpoint at static IP
-        2. If unreachable, DESCRIBE instance via GCP API
-        3. Branch:
-           - If STOPPED/TERMINATED -> START the VM
-           - If NOT_FOUND -> CREATE new VM (Hybrid Fallback)
+        2. If unreachable, DESCRIBE instance via GCP API (with full metadata)
+        3. VALIDATE: Check VM lineage against golden image requirements
+        4. Branch:
+           - If NOT_FOUND -> CREATE new VM (from golden image if available)
+           - If STOPPED/TERMINATED + golden mismatch -> DELETE + CREATE from golden
+           - If STOPPED/TERMINATED + golden matches -> START (fast path ~30-60s)
            - If RUNNING but unhealthy -> POLL until ready
-        4. POLL /health until ready
+        5. POLL /health until ready
 
         Args:
             port: Port for health endpoint (default: JARVIS_PRIME_PORT or 8000)
@@ -5135,14 +4883,14 @@ fi
                 logger.info(f"✅ [InvincibleNode] VM already ready: {static_ip}")
                 return True, static_ip, "ALREADY_READY"
 
-            # Step 3: Describe instance to get current state
-            instance_status, gcp_error = await self._describe_instance(instance_name)
+            # Step 3: Describe instance with FULL metadata (v229.0)
+            instance_status, vm_metadata, gcp_error = await self._describe_instance_full(instance_name)
             logger.info(f"☁️ [InvincibleNode] Instance status: {instance_status}")
 
-            # Step 4: Branch based on state
+            # Step 4: Branch based on state with golden image intelligence
             if instance_status == "NOT_FOUND":
-                # Hybrid Fallback: Create new VM
-                logger.info(f"☁️ [InvincibleNode] Instance not found - creating new VM (Hybrid Fallback)")
+                # Create new VM (uses golden image automatically via _create_static_vm)
+                logger.info(f"☁️ [InvincibleNode] Instance not found - creating new VM")
                 create_success, create_error = await self._create_static_vm(
                     instance_name, static_ip_name, target_port
                 )
@@ -5150,11 +4898,50 @@ fi
                     return False, static_ip, f"CREATE_FAILED: {create_error}"
 
             elif instance_status in ("TERMINATED", "STOPPED", "SUSPENDED"):
-                # Start the stopped VM (fast path: ~30s)
-                logger.info(f"☁️ [InvincibleNode] Starting stopped VM: {instance_name}")
-                start_success, start_error = await self._start_instance(instance_name)
-                if not start_success:
-                    return False, static_ip, f"START_FAILED: {start_error}"
+                # v229.0: CHECK GOLDEN IMAGE LINEAGE before deciding start vs recreate
+                should_recreate, lineage_reason = await self._check_vm_golden_image_lineage(
+                    instance_name, vm_metadata
+                )
+                
+                if should_recreate:
+                    # VM doesn't match golden image — delete and recreate
+                    logger.info(
+                        f"🔄 [InvincibleNode] Recreating VM from golden image "
+                        f"(reason: {lineage_reason})"
+                    )
+                    if progress_callback:
+                        progress_callback(35, "gcp", f"Upgrading VM to golden image ({lineage_reason})")
+                    
+                    # Delete the old VM
+                    del_success, del_error = await self._delete_instance(instance_name)
+                    if not del_success:
+                        # If delete fails, fall back to starting the old VM
+                        logger.warning(
+                            f"⚠️ [InvincibleNode] Delete failed ({del_error}), "
+                            f"falling back to starting existing VM"
+                        )
+                        start_success, start_error = await self._start_instance(instance_name)
+                        if not start_success:
+                            return False, static_ip, f"START_FAILED: {start_error}"
+                    else:
+                        # Create new VM from golden image
+                        create_success, create_error = await self._create_static_vm(
+                            instance_name, static_ip_name, target_port
+                        )
+                        if not create_success:
+                            return False, static_ip, f"RECREATE_FAILED: {create_error}"
+                        
+                        if progress_callback:
+                            progress_callback(50, "gcp", "Golden image VM created, waiting for health")
+                else:
+                    # VM matches golden image — fast restart path
+                    logger.info(
+                        f"☁️ [InvincibleNode] Starting VM: {instance_name} "
+                        f"(lineage: {lineage_reason})"
+                    )
+                    start_success, start_error = await self._start_instance(instance_name)
+                    if not start_success:
+                        return False, static_ip, f"START_FAILED: {start_error}"
 
             elif instance_status in ("STAGING", "PROVISIONING"):
                 # VM is starting up, proceed to poll
@@ -5345,6 +5132,467 @@ fi
                 return "NOT_FOUND", None
             return "ERROR", str(e)
 
+    async def _describe_instance_full(self, instance_name: str) -> Tuple[str, Optional[Dict[str, str]], Optional[str]]:
+        """
+        v229.0: Get the current status AND metadata of an instance from GCP.
+        
+        Returns the full instance metadata so callers can inspect deployment mode,
+        golden image source, creation time, and other lineage information needed
+        for intelligent VM reuse vs recreate decisions.
+
+        Returns:
+            Tuple of (status: str, metadata: Optional[Dict], error: Optional[str])
+            - status: RUNNING, STOPPED, TERMINATED, STAGING, etc. or NOT_FOUND, ERROR
+            - metadata: Dict of instance metadata key-value pairs (None if NOT_FOUND)
+            - error: Error message if any
+        """
+        try:
+            instance = await asyncio.to_thread(
+                self.instances_client.get,
+                project=self.config.project_id,
+                zone=self.config.zone,
+                instance=instance_name,
+            )
+            # Extract metadata items into a flat dict for easy lookup
+            metadata_dict: Dict[str, str] = {}
+            if instance.metadata and instance.metadata.items:
+                for item in instance.metadata.items:
+                    metadata_dict[item.key] = item.value
+            # Also include labels as metadata with 'label:' prefix
+            if instance.labels:
+                for key, value in instance.labels.items():
+                    metadata_dict[f"label:{key}"] = value
+            # Include the source disk image if available (from boot disk)
+            if instance.disks:
+                for disk in instance.disks:
+                    if disk.boot and disk.source:
+                        metadata_dict["_boot_disk_source"] = disk.source
+            return instance.status, metadata_dict, None
+        except Exception as e:
+            error_str = str(e).lower()
+            if "404" in error_str or "not found" in error_str or "notfound" in error_str:
+                return "NOT_FOUND", None, None
+            return "ERROR", None, str(e)
+
+    async def _check_vm_golden_image_lineage(
+        self, instance_name: str, vm_metadata: Optional[Dict[str, str]]
+    ) -> Tuple[bool, str]:
+        """
+        v229.0: Check if an existing VM was created from the current golden image.
+        
+        This is the KEY intelligence that prevents restarting stale VMs that were
+        built from standard OS images (or outdated golden images) when a fresh
+        golden image is now available.
+        
+        Decision matrix:
+        ┌─────────────────────────────┬──────────────────────┬──────────────────────┐
+        │ Scenario                    │ VM Metadata          │ Action               │
+        ├─────────────────────────────┼──────────────────────┼──────────────────────┤
+        │ Golden enabled, VM is std   │ No deployment-mode   │ RECREATE from golden │
+        │ Golden enabled, VM is old   │ deployment=golden,   │ RECREATE from golden │
+        │   golden image              │   but source!=latest │                      │
+        │ Golden enabled, VM matches  │ deployment=golden,   │ RESTART (fast path)  │
+        │                             │   source==latest     │                      │
+        │ Golden disabled             │ (any)                │ RESTART (no check)   │
+        └─────────────────────────────┴──────────────────────┴──────────────────────┘
+        
+        Args:
+            instance_name: Name of the existing VM
+            vm_metadata: Metadata dict from _describe_instance_full()
+            
+        Returns:
+            Tuple of (should_recreate: bool, reason: str)
+        """
+        # If golden images are not enabled, always allow restart
+        if not self.config.use_golden_image:
+            return False, "golden_image_disabled"
+        
+        # If we couldn't get metadata, be conservative and check golden image availability
+        if vm_metadata is None:
+            logger.warning(
+                f"⚠️ [InvincibleNode] Cannot read VM metadata for {instance_name}. "
+                "Checking golden image availability to decide."
+            )
+            # If golden images are available, recreate to be safe
+            try:
+                builder = self.get_golden_image_builder()
+                latest = await builder.get_latest_golden_image()
+                if latest and not latest.is_stale(self.config.golden_image_max_age_days):
+                    return True, "metadata_unavailable_golden_exists"
+            except Exception as e:
+                logger.debug(f"[InvincibleNode] Golden image check failed: {e}")
+            return False, "metadata_unavailable_no_golden"
+        
+        # Check if VM was created from a golden image
+        vm_deployment_mode = vm_metadata.get("jarvis-deployment-mode", "")
+        vm_golden_source = vm_metadata.get("jarvis-golden-image-source", "")
+        
+        # Get the latest golden image to compare
+        latest_golden: Optional[GoldenImageInfo] = None
+        try:
+            builder = self.get_golden_image_builder()
+            latest_golden = await builder.get_latest_golden_image()
+        except Exception as e:
+            logger.debug(f"[InvincibleNode] Golden image lookup error: {e}")
+        
+        # Case 1: No golden image available — just restart whatever we have
+        if latest_golden is None:
+            if self.config.golden_image_fallback:
+                logger.info(
+                    "☁️ [InvincibleNode] No golden image available. "
+                    "Restarting existing VM (fallback mode)."
+                )
+                return False, "no_golden_image_available"
+            else:
+                return False, "no_golden_image_no_fallback"
+        
+        # Case 2: Golden image exists but is stale
+        if latest_golden.is_stale(self.config.golden_image_max_age_days):
+            logger.warning(
+                f"⚠️ [InvincibleNode] Latest golden image is stale "
+                f"({latest_golden.age_days:.1f} days old, max: {self.config.golden_image_max_age_days}). "
+                f"Restarting existing VM."
+            )
+            return False, "golden_image_stale"
+        
+        # Case 3: VM was NOT created from a golden image at all
+        if vm_deployment_mode != "golden-image":
+            logger.info(
+                f"🔄 [InvincibleNode] VM '{instance_name}' was created from standard image "
+                f"(deployment_mode='{vm_deployment_mode or 'none'}'). "
+                f"A fresh golden image '{latest_golden.name}' is available. "
+                f"RECREATING for ~30-60s startup instead of ~10-15min."
+            )
+            return True, "vm_not_from_golden_image"
+        
+        # Case 4: VM was from golden image — check if it matches the latest
+        golden_project = self.config.golden_image_project or self.config.project_id
+        expected_source = f"projects/{golden_project}/global/images/{latest_golden.name}"
+        
+        if vm_golden_source and vm_golden_source != expected_source:
+            # VM is from an older golden image
+            logger.info(
+                f"🔄 [InvincibleNode] VM '{instance_name}' golden image is outdated.\n"
+                f"   Current: {vm_golden_source}\n"
+                f"   Latest:  {expected_source}\n"
+                f"   RECREATING to use latest golden image."
+            )
+            return True, "golden_image_outdated"
+        
+        # Case 5: VM matches current golden image — fast restart!
+        logger.info(
+            f"✅ [InvincibleNode] VM '{instance_name}' matches current golden image. "
+            f"Fast restart path (~30-60s)."
+        )
+        return False, "golden_image_matches"
+
+    async def _delete_instance(self, instance_name: str) -> Tuple[bool, Optional[str]]:
+        """
+        v229.0: Delete an instance to allow recreation from golden image.
+        
+        Returns:
+            Tuple of (success: bool, error: Optional[str])
+        """
+        try:
+            logger.info(f"🗑️ [InvincibleNode] Deleting VM for golden image recreation: {instance_name}")
+            
+            operation = await asyncio.to_thread(
+                self.instances_client.delete,
+                project=self.config.project_id,
+                zone=self.config.zone,
+                instance=instance_name,
+            )
+            
+            # Wait for deletion to complete
+            await self._wait_for_operation(operation, timeout=120)
+            
+            logger.info(f"✅ [InvincibleNode] VM deleted: {instance_name}")
+            return True, None
+            
+        except Exception as e:
+            logger.error(f"❌ [InvincibleNode] Failed to delete VM: {e}")
+            return False, str(e)
+
+    def _generate_golden_startup_script(self) -> str:
+        """
+        v229.0: Generate the golden image startup script.
+        
+        This is a SINGLE SOURCE OF TRUTH for the golden image startup script,
+        used by both _build_instance_config() (ephemeral VMs) and
+        _create_static_vm() (Invincible Node VMs).
+        
+        The script:
+        1. Starts APARS health endpoint immediately (<2s)
+        2. Reads port from GCP metadata
+        3. Sources pre-baked environment
+        4. Validates pre-baked code + model integrity
+        5. Starts the service (systemd or direct)
+        6. Verifies service health with retries
+        7. Signals APARS ready
+        
+        Returns:
+            str: Complete bash startup script for golden image VMs
+        """
+        return '''#!/bin/bash
+# ═══════════════════════════════════════════════════════════════════════════════
+# v229.0: Golden Image Startup - Enterprise-Grade Fast Boot
+# ═══════════════════════════════════════════════════════════════════════════════
+# Runs on VMs created from golden images. Everything is pre-installed:
+#   - Python + venv + ML dependencies (Phase 3 SKIPPED)
+#   - JARVIS-Prime code cloned
+#   - LLM model pre-cached
+#   - systemd service configured
+#
+# This script:
+#   1. Starts APARS health endpoint immediately (<2s)
+#   2. Reads port from GCP metadata
+#   3. Sources pre-baked environment
+#   4. Validates pre-baked code + model integrity
+#   5. Starts the service (systemd or direct)
+#   6. Verifies service health with retries
+#   7. Signals APARS ready
+# ═══════════════════════════════════════════════════════════════════════════════
+
+LOG_FILE="/var/log/jarvis-golden-startup.log"
+PROGRESS_FILE="/tmp/jarvis_progress.json"
+JARVIS_DIR="/opt/jarvis-prime"
+START_TIME=$(date +%s)
+
+log() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_FILE"
+}
+
+update_apars() {
+    local phase=$1
+    local phase_progress=$2
+    local total_progress=$3
+    local checkpoint=$4
+    local model_loaded=${5:-false}
+    local ready=${6:-false}
+    local error=${7:-null}
+    local now=$(date +%s)
+    local elapsed=$((now - START_TIME))
+
+    cat > "$PROGRESS_FILE" << EOFPROGRESS
+{
+    "phase": ${phase},
+    "phase_progress": ${phase_progress},
+    "total_progress": ${total_progress},
+    "checkpoint": "${checkpoint}",
+    "model_loaded": ${model_loaded},
+    "ready_for_inference": ${ready},
+    "error": ${error},
+    "updated_at": ${now},
+    "elapsed_seconds": ${elapsed},
+    "deployment_mode": "golden_image",
+    "version": "229.0"
+}
+EOFPROGRESS
+}
+
+# ─── Phase 0: Instant APARS health endpoint (<2 seconds) ───
+update_apars 0 50 2 "golden_image_booting"
+
+python3 << 'EOFHEALTH' &
+import http.server, json, os, time
+
+PROGRESS_FILE = "/tmp/jarvis_progress.json"
+start_time = time.time()
+
+class APARSHandler(http.server.BaseHTTPRequestHandler):
+    def do_GET(self):
+        if self.path in ("/health", "/health/"):
+            try:
+                with open(PROGRESS_FILE, "r") as f:
+                    state = json.load(f)
+            except:
+                state = {"phase": 0, "total_progress": 5, "checkpoint": "golden_booting",
+                         "model_loaded": False, "ready_for_inference": False}
+
+            elapsed = int(time.time() - start_time)
+            ready = state.get("ready_for_inference", False)
+            response = {
+                "status": "healthy" if ready else "starting",
+                "phase": "ready" if ready else "starting",
+                "mode": "inference" if ready else "golden-startup",
+                "model_loaded": state.get("model_loaded", False),
+                "ready_for_inference": ready,
+                "apars": {
+                    "version": "229.0",
+                    "phase_number": state.get("phase", 0),
+                    "phase_name": state.get("checkpoint", "starting"),
+                    "phase_progress": state.get("phase_progress", 0),
+                    "total_progress": state.get("total_progress", 5),
+                    "checkpoint": state.get("checkpoint", "starting"),
+                    "eta_seconds": max(0, 60 - elapsed) if not ready else 0,
+                    "elapsed_seconds": elapsed,
+                    "error": state.get("error"),
+                    "deployment_mode": "golden_image",
+                    "deps_prebaked": True,
+                    "skipped_phases": [2, 3]
+                },
+                "uptime_seconds": elapsed,
+                "version": "v229.0-golden"
+            }
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps(response).encode())
+        elif self.path == "/health/ready":
+            try:
+                with open(PROGRESS_FILE) as f:
+                    ready = json.load(f).get("ready_for_inference", False)
+            except:
+                ready = False
+            code = 200 if ready else 503
+            self.send_response(code)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps({"ready": ready}).encode())
+        else:
+            self.send_response(404)
+            self.end_headers()
+
+    def log_message(self, format, *args):
+        pass
+
+port = int(os.environ.get("JARVIS_PORT", "8000"))
+server = http.server.HTTPServer(("0.0.0.0", port), APARSHandler)
+server.serve_forever()
+EOFHEALTH
+
+HEALTH_PID=$!
+sleep 1
+
+log "═══════════════════════════════════════════════════════════════════════════════"
+log "GOLDEN IMAGE STARTUP v229.0 - Pre-baked environment"
+log "═══════════════════════════════════════════════════════════════════════════════"
+
+# ─── Read port from GCP metadata ───
+JARVIS_PORT=$(timeout 5 curl -s -H 'Metadata-Flavor: Google' \\
+    http://metadata.google.internal/computeMetadata/v1/instance/attributes/jarvis-port \\
+    2>/dev/null || echo "8000")
+export JARVIS_PORT
+log "Port: $JARVIS_PORT"
+
+# ─── Source pre-baked environment ───
+update_apars 1 0 10 "loading_environment"
+
+if [ -f "$JARVIS_DIR/.env" ]; then
+    set -a
+    source "$JARVIS_DIR/.env"
+    set +a
+    log "✅ Environment loaded from $JARVIS_DIR/.env"
+else
+    log "⚠️  No .env file found at $JARVIS_DIR/.env"
+fi
+
+# Ensure PYTHONPATH includes JARVIS_DIR
+export PYTHONPATH="${JARVIS_DIR}:${PYTHONPATH:-}"
+
+# ─── Validate pre-baked integrity ───
+update_apars 4 0 40 "validating_prebaked"
+
+VALIDATION_OK=true
+
+# Check code exists
+if [ -d "$JARVIS_DIR/jarvis_prime" ]; then
+    log "✅ jarvis_prime module found"
+else
+    log "⚠️  jarvis_prime module NOT found — pulling latest code"
+    REPO_URL=$(timeout 5 curl -s -H 'Metadata-Flavor: Google' \\
+        http://metadata.google.internal/computeMetadata/v1/instance/attributes/jarvis-repo-url \\
+        2>/dev/null || echo "${JARVIS_PRIME_REPO_URL:-}")
+    if [ -n "$REPO_URL" ]; then
+        log "   Cloning from: $REPO_URL"
+        git clone --depth 1 "$REPO_URL" /tmp/jprime-rescue 2>&1 | tee -a "$LOG_FILE" && \\
+            cp -a /tmp/jprime-rescue/* "$JARVIS_DIR/" 2>/dev/null && \\
+            rm -rf /tmp/jprime-rescue && \\
+            log "✅ Code rescued via git clone" || \\
+            log "❌ Failed to clone code"
+    else
+        VALIDATION_OK=false
+        log "❌ No repo URL available — cannot rescue code"
+    fi
+fi
+
+# Check model cache
+MODEL_CACHE="${JARVIS_MODEL_CACHE:-$JARVIS_DIR/models}"
+if [ -d "$MODEL_CACHE" ] && [ "$(ls -A "$MODEL_CACHE" 2>/dev/null)" ]; then
+    MODEL_SIZE=$(du -sm "$MODEL_CACHE" 2>/dev/null | cut -f1 || echo "0")
+    log "✅ Model cache: ${MODEL_SIZE}MB"
+    update_apars 5 50 70 "model_cache_verified" true false
+else
+    log "⚠️  Model cache empty — models will download on first use"
+    update_apars 5 50 70 "model_cache_empty" false false
+fi
+
+# ─── Start the service ───
+update_apars 5 80 85 "starting_service" true false
+
+# Kill APARS health stub (the real server takes over the port)
+if [ -n "$HEALTH_PID" ]; then
+    kill "$HEALTH_PID" 2>/dev/null || true
+    sleep 1
+fi
+
+log "Starting JARVIS-Prime service on port $JARVIS_PORT..."
+
+if systemctl is-enabled jarvis-prime.service 2>/dev/null; then
+    # Override port via systemd drop-in (dynamic, not hardcoded)
+    mkdir -p /etc/systemd/system/jarvis-prime.service.d
+    cat > /etc/systemd/system/jarvis-prime.service.d/port.conf << EOFOVERRIDE
+[Service]
+Environment=JARVIS_PORT=${JARVIS_PORT}
+Environment=PYTHONPATH=${JARVIS_DIR}
+EOFOVERRIDE
+    systemctl daemon-reload
+    systemctl start jarvis-prime.service
+    log "Started via systemd (port $JARVIS_PORT)"
+else
+    # Fallback: start directly with proper environment
+    cd "$JARVIS_DIR"
+    source venv/bin/activate
+    set -a
+    [ -f .env ] && source .env
+    set +a
+    export JARVIS_PORT
+    export PYTHONPATH="${JARVIS_DIR}:${PYTHONPATH:-}"
+    nohup python -m jarvis_prime.server \\
+        --host 0.0.0.0 --port "$JARVIS_PORT" \\
+        > /var/log/jarvis-prime.log 2>&1 &
+    log "Started directly (port $JARVIS_PORT, PID: $!)"
+fi
+
+# ─── Verify service health with retries ───
+update_apars 6 0 90 "verifying_service" true false
+
+READY=false
+for attempt in $(seq 1 15); do
+    sleep 2
+    if curl -sf "http://localhost:${JARVIS_PORT}/health" > /dev/null 2>&1; then
+        READY=true
+        log "✅ Service healthy after $((attempt * 2)) seconds"
+        break
+    fi
+    update_apars 6 $((attempt * 6)) $((90 + attempt / 2)) "verifying_attempt_${attempt}" true false
+done
+
+if [ "$READY" = true ]; then
+    update_apars 6 100 100 "inference_ready" true true
+    log "═══════════════════════════════════════════════════════════════════════════════"
+    ELAPSED=$(($(date +%s) - START_TIME))
+    log "✅ GOLDEN IMAGE STARTUP COMPLETE in ${ELAPSED}s"
+    log "   Port: $JARVIS_PORT | Mode: golden_image | Ready: true"
+    log "═══════════════════════════════════════════════════════════════════════════════"
+else
+    update_apars 6 100 95 "service_start_timeout" true false '"service_health_check_failed"'
+    log "⚠️  Service not responding after 30s — may need more time"
+    log "   Check: curl http://localhost:${JARVIS_PORT}/health"
+    log "   Logs:  journalctl -u jarvis-prime.service"
+fi
+'''
+
     async def _start_instance(self, instance_name: str) -> Tuple[bool, Optional[str]]:
         """
         Start a stopped/terminated instance.
@@ -5376,10 +5624,12 @@ fi
         self, instance_name: str, static_ip_name: str, port: int
     ) -> Tuple[bool, Optional[str]]:
         """
-        Create a new VM with static IP (Hybrid Fallback).
-
-        This is called when the VM doesn't exist (NOT_FOUND) and we need
-        to create a new one bound to the reserved static IP.
+        v229.0: Create a new VM with static IP, intelligently selecting the
+        best deployment mode (golden image > container > startup script).
+        
+        This method now uses the same deployment mode hierarchy as
+        _build_instance_config(), ensuring Invincible Node VMs get the
+        golden image treatment when available.
 
         Returns:
             Tuple of (success: bool, error: Optional[str])
@@ -5392,17 +5642,60 @@ fi
             if not static_ip:
                 return False, f"Static IP '{static_ip_name}' not found"
 
-            # Build instance configuration with static IP
             machine_type_url = f"zones/{self.config.zone}/machineTypes/{self.config.machine_type}"
 
-            # Boot disk
+            # ═══════════════════════════════════════════════════════════════════
+            # v229.0: DEPLOYMENT MODE HIERARCHY (same as _build_instance_config)
+            # 1. Golden Image → pre-baked everything (~30-60s startup)
+            # 2. Container Mode → Docker pre-built (~2-3 min startup)
+            # 3. Startup Script → traditional install (~10-15 min startup)
+            # ═══════════════════════════════════════════════════════════════════
+            source_image = None
+            deployment_mode = "startup-script"
+            golden_image_source = None
+            effective_disk_size_gb = self.config.boot_disk_size_gb
+            
+            # Try golden image first (highest priority)
+            if self.config.use_golden_image:
+                try:
+                    builder = self.get_golden_image_builder()
+                    latest_golden = await builder.get_latest_golden_image()
+                    
+                    if latest_golden and not latest_golden.is_stale(self.config.golden_image_max_age_days):
+                        golden_project = self.config.golden_image_project or self.config.project_id
+                        golden_image_source = f"projects/{golden_project}/global/images/{latest_golden.name}"
+                        source_image = golden_image_source
+                        deployment_mode = "golden-image"
+                        # Ensure disk is large enough for the golden image
+                        if latest_golden.disk_size_gb:
+                            effective_disk_size_gb = max(effective_disk_size_gb, latest_golden.disk_size_gb)
+                        logger.info(
+                            f"🌟 [InvincibleNode] Using golden image: {latest_golden.name} "
+                            f"(age: {latest_golden.age_days:.1f}d, disk: {effective_disk_size_gb}GB)"
+                        )
+                    elif latest_golden:
+                        logger.warning(
+                            f"⚠️ [InvincibleNode] Golden image '{latest_golden.name}' is stale "
+                            f"({latest_golden.age_days:.1f}d old). Falling back."
+                        )
+                    else:
+                        logger.info("☁️ [InvincibleNode] No golden image found. Falling back.")
+                except Exception as e:
+                    logger.warning(f"⚠️ [InvincibleNode] Golden image lookup failed: {e}. Falling back.")
+            
+            # Fall back to standard image if no golden image
+            if source_image is None:
+                source_image = f"projects/{self.config.image_project}/global/images/family/{self.config.image_family}"
+                logger.info(f"📜 [InvincibleNode] Using standard image: {self.config.image_family}")
+
+            # Boot disk with intelligently selected source image
             boot_disk = compute_v1.AttachedDisk(
                 auto_delete=True,
                 boot=True,
                 initialize_params=compute_v1.AttachedDiskInitializeParams(
-                    disk_size_gb=self.config.boot_disk_size_gb,
+                    disk_size_gb=effective_disk_size_gb,
                     disk_type=f"zones/{self.config.zone}/diskTypes/{self.config.boot_disk_type}",
-                    source_image=f"projects/{self.config.image_project}/global/images/family/{self.config.image_family}",
+                    source_image=source_image,
                 ),
             )
 
@@ -5424,19 +5717,46 @@ fi
                 scopes=["https://www.googleapis.com/auth/cloud-platform"]
             )
 
+            # v229.0: Dynamic repo URL discovery (consistent with _build_instance_config)
+            jarvis_repo_url = os.environ.get("JARVIS_REPO_URL") or os.environ.get("JARVIS_PRIME_REPO_URL", "")
+            if not jarvis_repo_url:
+                try:
+                    builder = self.get_golden_image_builder()
+                    jarvis_repo_url = builder._discover_prime_repo_url()
+                except Exception:
+                    pass
+
             # Metadata
             metadata_items = [
                 compute_v1.Items(key="jarvis-port", value=str(port)),
                 compute_v1.Items(key="jarvis-components", value="inference"),
-                compute_v1.Items(key="jarvis-trigger", value="invincible_node_hybrid_fallback"),
+                compute_v1.Items(key="jarvis-trigger", value="invincible_node_v229"),
                 compute_v1.Items(key="jarvis-created-at", value=datetime.now().isoformat()),
+                compute_v1.Items(key="jarvis-deployment-mode", value=deployment_mode),
             ]
+            
+            # Pass repo URL to VM metadata
+            if jarvis_repo_url:
+                metadata_items.append(compute_v1.Items(key="jarvis-repo-url", value=jarvis_repo_url))
+            
+            # Track golden image source for lineage validation
+            if golden_image_source:
+                metadata_items.append(
+                    compute_v1.Items(key="jarvis-golden-image-source", value=golden_image_source)
+                )
 
-            # Add startup script
-            if self.config.startup_script_path and os.path.exists(self.config.startup_script_path):
+            # Add startup script based on deployment mode
+            if deployment_mode == "golden-image":
+                # Use the golden image startup script (fast boot, APARS-compliant)
+                # This is the same script used in _build_instance_config for golden images
+                golden_startup_script = self._generate_golden_startup_script()
+                metadata_items.append(compute_v1.Items(key="startup-script", value=golden_startup_script))
+                logger.info("   ⚡ Golden startup script attached (expected: ~30-60s)")
+            elif self.config.startup_script_path and os.path.exists(self.config.startup_script_path):
                 with open(self.config.startup_script_path, "r") as f:
                     startup_script = f.read()
                 metadata_items.append(compute_v1.Items(key="startup-script", value=startup_script))
+                logger.info("   📜 Standard startup script attached (expected: ~10-15min)")
 
             # Build instance with STOP termination (Invincible Node)
             instance = compute_v1.Instance(
@@ -5447,7 +5767,12 @@ fi
                 service_accounts=[service_account],
                 metadata=compute_v1.Metadata(items=metadata_items),
                 tags=compute_v1.Tags(items=["jarvis-node", "http-server", "https-server"]),
-                labels={"created-by": "jarvis", "type": "prime-node", "vm-class": "invincible"},
+                labels={
+                    "created-by": "jarvis",
+                    "type": "prime-node",
+                    "vm-class": "invincible",
+                    "deployment-mode": deployment_mode.replace("-", "_"),
+                },
                 scheduling=compute_v1.Scheduling(
                     preemptible=True,
                     on_host_maintenance="TERMINATE",
@@ -5468,7 +5793,10 @@ fi
             # Wait for creation
             await self._wait_for_operation(operation, timeout=300)
 
-            logger.info(f"✅ [InvincibleNode] VM created: {instance_name}")
+            logger.info(
+                f"✅ [InvincibleNode] VM created: {instance_name} "
+                f"(mode: {deployment_mode}, image: {source_image.split('/')[-1]})"
+            )
             return True, None
 
         except Exception as e:

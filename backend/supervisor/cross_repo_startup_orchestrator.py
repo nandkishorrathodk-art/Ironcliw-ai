@@ -2431,9 +2431,10 @@ class APARSProgressSnapshot:
     raw_data: Optional[Dict[str, Any]] = None
     
     # v1.0.0: Container-based deployment detection
-    deps_prebaked: bool = False  # True if ML deps were pre-baked (Docker image)
+    # v229.0: Extended for golden image deployment awareness
+    deps_prebaked: bool = False  # True if ML deps were pre-baked (Docker or golden image)
     skipped_phases: List[int] = field(default_factory=list)  # Phases skipped due to prebaking
-    deployment_mode: str = "startup-script"  # "container" or "startup-script"
+    deployment_mode: str = "startup-script"  # "golden-image", "container", or "startup-script"
     container_image: Optional[str] = None  # Docker image if container mode
 
 
@@ -2840,13 +2841,25 @@ def _parse_apars_response(data: Dict[str, Any], elapsed: int = 0) -> Optional[AP
         if not deps_prebaked:
             deps_prebaked = data.get("is_docker", False) and data.get("is_gcp_inference", False)
         
-        # Infer deployment mode
-        deployment_mode = "container" if deps_prebaked else "startup-script"
+        # v229.0: Infer deployment mode (golden-image > container > startup-script)
+        apars_deployment = apars.get("deployment_mode", "")
+        if apars_deployment == "golden_image" or apars_deployment == "golden-image":
+            deployment_mode = "golden-image"
+            deps_prebaked = True  # Golden images always have deps pre-baked
+        elif deps_prebaked:
+            deployment_mode = "container"
+        else:
+            deployment_mode = "startup-script"
         if data.get("server_type") == "docker_stub":
             deployment_mode = "container"
         
-        # Log when we detect a container deployment (helpful for debugging)
-        if deps_prebaked:
+        # v229.0: Log deployment mode detection (helpful for debugging)
+        if deployment_mode == "golden-image":
+            logger.debug(
+                f"[APARS v229.0] 🌟 Golden image deployment detected: "
+                f"deps_prebaked={deps_prebaked}, skipped_phases={skipped_phases}"
+            )
+        elif deps_prebaked:
             logger.debug(
                 f"[APARS v1.0.0] 🐳 Container deployment detected: "
                 f"deps_prebaked={deps_prebaked}, skipped_phases={skipped_phases}"
