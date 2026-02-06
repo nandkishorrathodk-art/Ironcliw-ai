@@ -797,7 +797,10 @@ class DistributedLockManager:
         ttl: Optional[float] = None
     ) -> AsyncIterator[bool]:
         """
-        Acquire distributed lock with automatic expiration.
+        Acquire distributed lock with automatic expiration and keepalive.
+
+        v3.1: Now delegates to acquire_unified() for keepalive support,
+        preserving the backward-compatible bool yield signature.
 
         Args:
             lock_name: Name of the lock (e.g., "vbia_events", "prime_state")
@@ -819,44 +822,19 @@ class DistributedLockManager:
         timeout = timeout or self.config.default_timeout_seconds
         ttl = ttl or self.config.default_ttl_seconds
 
-        # v96.2: Use .dlm.lock extension to avoid collision with flock-based locks
-        lock_file = self.config.lock_dir / f"{lock_name}{self.config.lock_extension}"
-        token = str(uuid4())
-        acquired = False
-
-        start_time = time.time()
-
-        attempt = 0
         try:
-            # Try to acquire lock with timeout
-            while time.time() - start_time < timeout:
-                if await self._try_acquire_lock(lock_file, lock_name, token, ttl):
-                    acquired = True
-                    logger.debug(f"Lock acquired: {lock_name} (token: {token[:8]}...)")
-                    break
-
-                # v2.0: Wait before retry with jitter to reduce contention
-                # Jitter prevents multiple processes from retrying at exactly the same time
-                attempt += 1
-                base_delay = self.config.retry_delay_seconds
-                # Add jitter: up to 50% random variation
-                jitter = random.uniform(0, base_delay * 0.5)
-                # Small exponential component for sustained contention (capped)
-                exp_factor = min(1.5, 1.0 + (attempt * 0.1))
-                delay = (base_delay * exp_factor) + jitter
-                await asyncio.sleep(delay)
-
-            if not acquired:
-                logger.warning(f"Lock acquisition timeout: {lock_name} (waited {timeout}s, {attempt} attempts)")
-
-            # Yield control to caller
-            yield acquired
-
-        finally:
-            # Always release lock when exiting context
-            if acquired:
-                await self._release_lock(lock_file, token)
-                logger.debug(f"Lock released: {lock_name} (token: {token[:8]}...)")
+            async with self.acquire_unified(
+                lock_name=lock_name,
+                timeout=timeout,
+                ttl=ttl,
+                enable_keepalive=True,
+            ) as (acquired, _metadata):
+                yield acquired
+        except Exception as e:
+            logger.warning(
+                f"Lock acquire delegation failed for '{lock_name}': {e}"
+            )
+            yield False
 
     async def _try_acquire_lock(
         self,
@@ -1879,12 +1857,21 @@ class DistributedLockManager:
         ttl: float,
         backend: str,
     ) -> None:
-        """v3.0: Background task to extend lock TTL periodically."""
+        """v3.1: Background task to extend lock TTL periodically.
+
+        Resilient keepalive with retry counter — tolerates transient failures
+        instead of silently dying on the first error.
+        """
         interval = self.config.keepalive_interval_seconds
+        max_failures = int(os.environ.get(
+            "DISTRIBUTED_LOCK_KEEPALIVE_MAX_FAILURES", "3"
+        ))
+        consecutive_failures = 0
 
         while True:
             try:
                 await asyncio.sleep(interval)
+                extended = False
 
                 if backend == "redis" and self._redis_client:
                     redis_key = f"{TRINITY_LOCK_PREFIX}{lock_name}"
@@ -1894,9 +1881,22 @@ class DistributedLockManager:
                             meta = LockMetadata(**json.loads(value))
                             if meta.token == token:
                                 await self._redis_client.expire(redis_key, int(ttl))
-                                logger.debug(f"[v3.0] Redis lock TTL extended: {lock_name}")
+                                extended = True
+                                logger.debug(f"[v3.1] Redis lock TTL extended: {lock_name}")
+                            else:
+                                # Token mismatch — lock was stolen
+                                logger.warning(
+                                    f"[v3.1] Keepalive token mismatch for '{lock_name}' — stopping"
+                                )
+                                break
                         except (json.JSONDecodeError, TypeError):
-                            break
+                            consecutive_failures += 1
+                    else:
+                        # Key gone — lock expired or was deleted
+                        logger.warning(
+                            f"[v3.1] Redis key gone for '{lock_name}' — stopping keepalive"
+                        )
+                        break
                 else:
                     lock_file = self.config.lock_dir / f"{lock_name}{self.config.lock_extension}"
                     metadata = await self._read_lock_metadata(lock_file)
@@ -1904,15 +1904,50 @@ class DistributedLockManager:
                         metadata.expires_at = time.time() + ttl
                         metadata.extensions += 1
                         await self._write_lock_metadata(lock_file, metadata)
-                        logger.debug(f"[v3.0] File lock TTL extended: {lock_name}")
+                        extended = True
+                        logger.debug(f"[v3.1] File lock TTL extended: {lock_name}")
+                    elif metadata and metadata.token != token:
+                        # Token mismatch — lock was stolen
+                        logger.warning(
+                            f"[v3.1] Keepalive token mismatch for '{lock_name}' — stopping"
+                        )
+                        break
                     else:
+                        # Lock file gone
+                        logger.warning(
+                            f"[v3.1] Lock file gone for '{lock_name}' — stopping keepalive"
+                        )
+                        break
+
+                if extended:
+                    consecutive_failures = 0
+                else:
+                    consecutive_failures += 1
+                    logger.warning(
+                        f"[v3.1] Keepalive extension failed for '{lock_name}' "
+                        f"({consecutive_failures}/{max_failures})"
+                    )
+                    if consecutive_failures >= max_failures:
+                        logger.error(
+                            f"[v3.1] Keepalive gave up for '{lock_name}' after "
+                            f"{max_failures} consecutive failures"
+                        )
                         break
 
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                logger.debug(f"[v3.0] Keepalive error for {lock_name}: {e}")
-                break
+                consecutive_failures += 1
+                logger.warning(
+                    f"[v3.1] Keepalive error for '{lock_name}': {e} "
+                    f"({consecutive_failures}/{max_failures})"
+                )
+                if consecutive_failures >= max_failures:
+                    logger.error(
+                        f"[v3.1] Keepalive gave up for '{lock_name}' after "
+                        f"{max_failures} consecutive failures"
+                    )
+                    break
 
     def get_active_backend(self) -> LockBackend:
         """v3.0: Get the currently active lock backend."""

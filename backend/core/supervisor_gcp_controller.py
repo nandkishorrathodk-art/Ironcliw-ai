@@ -259,6 +259,14 @@ class SupervisorAwareGCPController:
         self._on_decision: List[Callable[[VMCreationRequest], None]] = []
         self._on_vm_created: List[Callable[[ActiveVM], None]] = []
         self._on_vm_terminated: List[Callable[[ActiveVM], None]] = []
+
+        # v3.1: Stall recovery tracking
+        self._stall_count: int = 0
+        self._max_stall_retries: int = int(
+            os.environ.get("JARVIS_GCP_MAX_STALL_RETRIES", "2")
+        )
+        self._last_stall_time: Optional[datetime] = None
+        self._gcp_marked_unavailable: bool = False
         
         logger.info("🎮 Supervisor-Aware GCP Controller initialized")
         logger.info(f"   Budget: ${self.config.daily_budget_limit:.2f}/day")
@@ -785,6 +793,46 @@ class SupervisorAwareGCPController:
     # STATS AND MONITORING
     # =========================================================================
     
+    # =========================================================================
+    # STALL RECOVERY TRACKING (v3.1)
+    # =========================================================================
+
+    def record_stall(self) -> bool:
+        """
+        Record a VM stall event. Returns True if retries remain.
+
+        Called by the supervisor when stall detection fires. Tracks how many
+        times a VM has stalled so the system knows when to give up.
+        """
+        self._stall_count += 1
+        self._last_stall_time = datetime.now()
+        remaining = self._max_stall_retries - self._stall_count
+        logger.warning(
+            f"[GCP Controller] Stall #{self._stall_count} recorded. "
+            f"{remaining} retries remaining."
+        )
+        return remaining > 0
+
+    def mark_gcp_unavailable(self, reason: str) -> None:
+        """Mark GCP as unavailable after exhausting recovery retries."""
+        self._gcp_marked_unavailable = True
+        logger.error(f"[GCP Controller] GCP marked UNAVAILABLE: {reason}")
+
+    def is_gcp_available(self) -> bool:
+        """Check if GCP is currently available for VM operations."""
+        return not self._gcp_marked_unavailable
+
+    def reset_stall_tracking(self) -> None:
+        """Reset stall tracking after successful VM recovery."""
+        if self._stall_count > 0:
+            logger.info(
+                f"[GCP Controller] Stall tracking reset "
+                f"(was at {self._stall_count} stalls)"
+            )
+        self._stall_count = 0
+        self._last_stall_time = None
+        self._gcp_marked_unavailable = False
+
     def get_stats(self) -> Dict[str, Any]:
         """Get controller statistics."""
         self._reset_daily_counters_if_needed()
@@ -810,6 +858,10 @@ class SupervisorAwareGCPController:
             "last_vm_created": self._last_vm_created.isoformat() if self._last_vm_created else None,
             "last_vm_terminated": self._last_vm_terminated.isoformat() if self._last_vm_terminated else None,
             "request_history_count": len(self._request_history),
+            # v3.1: Stall recovery stats
+            "stall_count": self._stall_count,
+            "gcp_available": not self._gcp_marked_unavailable,
+            "last_stall_time": self._last_stall_time.isoformat() if self._last_stall_time else None,
         }
     
     def get_recent_decisions(self, count: int = 10) -> List[Dict[str, Any]]:

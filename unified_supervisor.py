@@ -4926,8 +4926,8 @@ class LiveProgressDashboard:
                         # Use print since logger may not be available in all contexts
                         import sys
                         print(
-                            f"[v221.0] 🛡️ Progress regression prevented: {new_pct}% → {max_seen}% "
-                            f"(would have lost {max_seen - new_pct}% progress)",
+                            f"[v231.0] 🛡️ Progress regression prevented: {max_seen}% → {new_pct}% "
+                            f"(kept at {max_seen}%, blocked {max_seen - new_pct}% drop)",
                             file=sys.stderr
                         )
                     self._model_loading_state["progress_pct"] = max_seen
@@ -62441,7 +62441,11 @@ class JarvisSystemKernel:
         last_progress_time = start_time
         extensions_granted = 0
         max_extensions = 5  # Prevent infinite extension
-        
+
+        # v231.0: Model loading stall budget (mirrors GCP stall detection)
+        _ml_stall_budget = float(os.environ.get("JARVIS_MODEL_STALL_BUDGET", "300"))
+        _ml_stall_diag_logged = False
+
         self.logger.info(
             f"[{integrator_name}] v222.0 Progress-aware startup: "
             f"base={base_timeout:.0f}s, max={max_timeout:.0f}s, poll={poll_interval:.0f}s"
@@ -62701,8 +62705,19 @@ class JarvisSystemKernel:
                                         # generous than the old 60s grace period)
                                         model_loading_active = True
                                         _cd_model_pct = _cd_data.get("model_load_progress_pct", 0)
+                                        # v231.0: If health endpoint returns 0%, use dashboard's
+                                        # model loading progress for accurate reporting and stall
+                                        # detection. Without this, current_progress stays at 100%
+                                        # (from init), causing the >= 90 branch to grant infinite
+                                        # extensions even when model is genuinely stalled.
+                                        if _cd_model_pct == 0 and _live_dashboard:
+                                            _cd_dash_state = _live_dashboard._model_loading_state
+                                            _cd_dash_pct = _cd_dash_state.get("progress_pct", 0)
+                                            if _cd_dash_pct > 0:
+                                                _cd_model_pct = _cd_dash_pct
+                                                current_progress = float(_cd_model_pct)
                                         self.logger.info(
-                                            f"[{integrator_name}] v230.0: Init 100% but health not ready "
+                                            f"[{integrator_name}] v231.0: Init 100% but health not ready "
                                             f"(model={_cd_model_pct}%, status={_cd_data.get('status')}, "
                                             f"ready_for_inference={_cd_data.get('ready_for_inference')}). "
                                             f"Using normal extension logic instead of grace period."
@@ -62748,6 +62763,7 @@ class JarvisSystemKernel:
                             extension_reason = f"Progress observed: +{progress_delta:.1f}%"
                             last_progress_pct = current_progress
                             last_progress_time = now
+                            _ml_stall_diag_logged = False  # v231.0: Reset stall state on progress
 
                         elif (now - last_progress_time) < effective_stall_threshold:
                             # No progress but not stalled yet - extend
@@ -62765,9 +62781,36 @@ class JarvisSystemKernel:
                             extension_reason = f"ETA imminent: {eta_seconds:.0f}s remaining"
 
                         elif current_progress >= 90:
-                            # Very close to done - give it more time
-                            should_extend = True
-                            extension_reason = f"Near completion: {current_progress:.1f}%"
+                            # Very close to done — extend IF not stalled too long
+                            # v231.0: Without this stall budget, a model stalled at
+                            # 93% (or 100% from init) gets infinite extensions.
+                            _ml_stall_time = now - last_progress_time
+                            if _ml_stall_time < _ml_stall_budget:
+                                should_extend = True
+                                extension_reason = (
+                                    f"Near completion: {current_progress:.1f}% "
+                                    f"(stalled {_ml_stall_time:.0f}s/{_ml_stall_budget:.0f}s budget)"
+                                )
+                            else:
+                                # v231.0: Stall budget exhausted even at near-completion
+                                if not _ml_stall_diag_logged:
+                                    _ml_stall_diag_logged = True
+                                    self.logger.error(
+                                        f"[{integrator_name}] v231.0: Model stall at "
+                                        f"{current_progress:.1f}% — budget exhausted "
+                                        f"({_ml_stall_budget:.0f}s). Allowing deadline to expire."
+                                    )
+                                    try:
+                                        import psutil as _ps
+                                        _mem = _ps.virtual_memory()
+                                        self.logger.error(
+                                            f"[{integrator_name}]    Memory: "
+                                            f"{_mem.used / (1024**3):.1f}/{_mem.total / (1024**3):.1f} GB "
+                                            f"({_mem.percent}% used), "
+                                            f"avail={_mem.available / (1024**3):.1f} GB"
+                                        )
+                                    except Exception:
+                                        pass
 
                     elif model_loading_active and current_progress == 0 and extensions_granted == 0:
                         # Initialization started but no progress yet - grant one extension
@@ -63166,6 +63209,12 @@ class JarvisSystemKernel:
                                     ))
                                     _gw_max_extensions = 4
 
+                                    # v3.1: Stall recovery tracking
+                                    _gw_max_stall_retries = int(os.environ.get(
+                                        "JARVIS_GCP_MAX_STALL_RETRIES", "2"
+                                    ))
+                                    _gw_stall_count = 0
+
                                     _gw_effective_wait = _gw_base_wait
                                     _gw_extensions = 0
                                     _gw_last_progress = 0.0
@@ -63236,18 +63285,89 @@ class JarvisSystemKernel:
                                             _gw_last_progress = _gw_current_progress
                                             _gw_last_progress_time = time.time()
 
-                                        # Stall detection: if no progress for threshold → stop waiting early
+                                        # v3.1: Stall detection with recovery — terminate stuck VM, optionally retry
                                         _gw_time_since_progress = time.time() - _gw_last_progress_time
                                         if (
                                             _gw_time_since_progress > _gw_stall_threshold
                                             and _gw_last_progress > 0
                                             and _local_is_hedge
                                         ):
+                                            _gw_stall_count += 1
+                                            _gw_retries_remaining = _gw_max_stall_retries - _gw_stall_count
                                             self.logger.warning(
                                                 f"[Trinity] ⚠️ GCP VM stalled for {_gw_time_since_progress:.0f}s "
-                                                f"at {_gw_last_progress:.0f}% — stopping wait early "
-                                                f"(local Prime loading in parallel)"
+                                                f"at {_gw_last_progress:.0f}% — initiating recovery "
+                                                f"(stall #{_gw_stall_count}, {_gw_retries_remaining} retries left)"
                                             )
+
+                                            # Attempt recovery: terminate stuck VM + optionally retry
+                                            _gw_recovery_succeeded = False
+                                            if _gw_retries_remaining > 0:
+                                                try:
+                                                    from backend.core.gcp_vm_manager import get_gcp_vm_manager_safe
+                                                    _gw_vm_mgr = await get_gcp_vm_manager_safe()
+                                                    if _gw_vm_mgr:
+                                                        _gw_vm_name = getattr(
+                                                            self.config, 'invincible_node_instance_name',
+                                                            os.environ.get("GCP_VM_INSTANCE_NAME", "jarvis-prime-node")
+                                                        )
+                                                        _gw_recovery = await _gw_vm_mgr.recover_stalled_vm(
+                                                            vm_name=_gw_vm_name,
+                                                            stall_progress=_gw_last_progress,
+                                                            max_retries=_gw_retries_remaining,
+                                                        )
+                                                        if _gw_recovery.get("new_vm_ready"):
+                                                            self.logger.info(
+                                                                f"[Trinity] ✅ GCP VM recovery succeeded! "
+                                                                f"New VM at {_gw_recovery.get('new_vm_ip')} "
+                                                                f"— resuming wait"
+                                                            )
+                                                            # Reset progress tracking for new VM
+                                                            _gw_last_progress_time = time.time()
+                                                            _gw_last_progress = 0.0
+                                                            _gw_recovery_succeeded = True
+                                                            # Don't break — continue the wait loop for new VM
+                                                        elif _gw_recovery.get("terminated"):
+                                                            self.logger.warning(
+                                                                f"[Trinity] ⚠️ Stalled VM terminated but recovery failed: "
+                                                                f"{_gw_recovery.get('error')} — falling back to local"
+                                                            )
+                                                        else:
+                                                            self.logger.error(
+                                                                f"[Trinity] ❌ VM recovery failed: "
+                                                                f"{_gw_recovery.get('error')}"
+                                                            )
+                                                    else:
+                                                        self.logger.warning(
+                                                            "[Trinity] VM manager not available for recovery"
+                                                        )
+                                                except Exception as _gw_recovery_err:
+                                                    self.logger.error(
+                                                        f"[Trinity] ❌ GCP VM recovery error: {_gw_recovery_err}"
+                                                    )
+
+                                            if _gw_recovery_succeeded:
+                                                continue  # Re-enter wait loop for new VM
+
+                                            # No retries left or recovery failed — give up on GCP
+                                            self.logger.warning(
+                                                f"[Trinity] GCP marked unavailable after {_gw_stall_count} stalls. "
+                                                f"Falling back to local Prime."
+                                            )
+                                            # v231.0: Clear GCP dashboard state so UI reflects reality
+                                            try:
+                                                update_dashboard_gcp_progress(
+                                                    checkpoint="Recovery failed — using local Prime",
+                                                    status="stopped",
+                                                    progress=0,
+                                                    deployment_mode="",
+                                                )
+                                                dashboard.update_component(
+                                                    "gcp-vm", status="error",
+                                                    message=f"Stalled at {_gw_last_progress:.0f}% — recovery exhausted"
+                                                )
+                                            except Exception:
+                                                pass
                                             break
 
                                         # Adaptive deadline extension when deadline is near

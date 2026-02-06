@@ -4570,10 +4570,136 @@ class GCPVMManager:
             logger.warning(f"⚠️  Force delete failed for {vm_name}: {e}")
             return False
 
+    async def recover_stalled_vm(
+        self,
+        vm_name: str,
+        stall_progress: float,
+        max_retries: int = 0,
+        recovery_timeout: Optional[float] = None,
+        progress_callback: Optional[Callable[[int, str, str], None]] = None,
+    ) -> Dict[str, Any]:
+        """
+        v3.1: Terminate a stalled VM and optionally retry with a fresh golden image.
+
+        Called when stall detection determines a VM has stopped making progress
+        (e.g., stuck at 58% for >60s during golden image startup).
+
+        Args:
+            vm_name: Name of the stalled VM instance
+            stall_progress: Last known progress percentage when stall was detected
+            max_retries: Number of remaining retry attempts (0 = terminate only)
+            recovery_timeout: Timeout for VM recreation (default from env)
+            progress_callback: Optional callback for progress reporting
+
+        Returns:
+            Dict with keys:
+                terminated (bool): Whether the stuck VM was terminated
+                retried (bool): Whether recreation was attempted
+                new_vm_ready (bool): Whether the new VM is ready
+                new_vm_ip (Optional[str]): IP address of the new VM
+                error (Optional[str]): Error description if something failed
+                status_message (str): Human-readable summary
+        """
+        recovery_timeout = recovery_timeout or float(
+            os.environ.get("JARVIS_GCP_RECOVERY_TIMEOUT", "300")
+        )
+
+        result: Dict[str, Any] = {
+            "terminated": False,
+            "retried": False,
+            "new_vm_ready": False,
+            "new_vm_ip": None,
+            "error": None,
+            "status_message": "",
+        }
+
+        # ── Step 1: Terminate the stuck VM ──────────────────────────────
+        logger.warning(
+            f"[Recovery] Terminating stalled VM '{vm_name}' "
+            f"(stuck at {stall_progress:.0f}%)"
+        )
+        try:
+            terminated = await self.terminate_vm(
+                vm_name=vm_name,
+                reason=f"Stalled at {stall_progress:.0f}% during golden image startup",
+            )
+            result["terminated"] = terminated
+            if not terminated:
+                result["error"] = f"Failed to terminate stalled VM '{vm_name}'"
+                result["status_message"] = result["error"]
+                logger.error(f"[Recovery] {result['error']}")
+                return result
+            logger.info(f"[Recovery] Stalled VM '{vm_name}' terminated successfully")
+        except Exception as e:
+            result["error"] = f"Exception terminating stalled VM: {e}"
+            result["status_message"] = result["error"]
+            logger.error(f"[Recovery] {result['error']}")
+            return result
+
+        # ── Step 2: Check if retry is viable ────────────────────────────
+        if max_retries <= 0:
+            result["status_message"] = (
+                f"Stalled VM terminated. No retries remaining."
+            )
+            logger.info(f"[Recovery] {result['status_message']}")
+            return result
+
+        # Check vm_create circuit breaker
+        circuit = self._circuit_breakers.get("vm_create")
+        if circuit:
+            can_execute, cb_reason = circuit.can_execute()
+            if not can_execute:
+                result["error"] = (
+                    f"Circuit breaker OPEN for VM creation: {cb_reason}"
+                )
+                result["status_message"] = result["error"]
+                logger.warning(f"[Recovery] {result['error']}")
+                return result
+
+        # ── Step 3: Retry with fresh golden image VM ────────────────────
+        result["retried"] = True
+        logger.info(
+            f"[Recovery] Retrying VM creation with fresh golden image "
+            f"(timeout={recovery_timeout}s)..."
+        )
+
+        try:
+            success, ip_address, status_msg = await asyncio.wait_for(
+                self.ensure_static_vm_ready(
+                    progress_callback=progress_callback,
+                ),
+                timeout=recovery_timeout,
+            )
+
+            if success and ip_address:
+                result["new_vm_ready"] = True
+                result["new_vm_ip"] = ip_address
+                result["status_message"] = (
+                    f"Recovery succeeded: new VM ready at {ip_address}"
+                )
+                logger.info(f"[Recovery] {result['status_message']}")
+            else:
+                result["error"] = f"VM recreation completed but not ready: {status_msg}"
+                result["status_message"] = result["error"]
+                logger.warning(f"[Recovery] {result['error']}")
+
+        except asyncio.TimeoutError:
+            result["error"] = (
+                f"VM recreation timed out after {recovery_timeout}s"
+            )
+            result["status_message"] = result["error"]
+            logger.error(f"[Recovery] {result['error']}")
+        except Exception as e:
+            result["error"] = f"VM recreation failed: {e}"
+            result["status_message"] = result["error"]
+            logger.error(f"[Recovery] {result['error']}")
+
+        return result
+
     async def _record_vm_termination_safe(self, vm: VMInstance, reason: str):
         """
         Safely record VM termination in cost tracker with circuit breaker.
-        
+
         This is isolated so cost tracker failures don't affect VM termination.
         """
         if not self.cost_tracker:
