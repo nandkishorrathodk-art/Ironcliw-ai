@@ -60617,10 +60617,15 @@ class JarvisSystemKernel:
                             
                             # v220.1: Create progress callback for real-time dashboard updates
                             # v229.0: Pass source="apars" so synthetic progress defers to real data
+                            # v229.1: Map progress to 40-100% range to avoid anti-regression block.
+                            #   Background monitoring sets baseline at 40%. Health poll progress
+                            #   starts near 0% and maps to <40%, which the "never go backwards"
+                            #   logic blocks. Fix: use 40% floor so even initial polls advance the bar.
                             def _gcp_progress_callback(pct: int, phase: str, detail: str) -> None:
                                 """Callback from GCP VM manager to update dashboard with real APARS data."""
-                                # Map progress: GCP reports 0-100, we map 20-100 (20% is starting)
-                                dashboard_pct = 20 + int(pct * 0.8)  # 20% base + 80% from polling
+                                # Map: VM reports 0-100% → dashboard shows 40-100%
+                                # This ensures progress ALWAYS advances from the 40% background baseline
+                                dashboard_pct = 40 + int(pct * 0.6)  # 40% floor + 60% range
                                 # v229.0: Detect deployment mode from detail string
                                 _mode = ""
                                 if "golden" in detail.lower():
@@ -60629,7 +60634,7 @@ class JarvisSystemKernel:
                                     _mode = "standard"  # Real progress means VM is running
                                 update_dashboard_gcp_progress(
                                     phase=4, phase_name=phase.title()[:15],
-                                    checkpoint=detail[:50],
+                                    checkpoint=detail[:60],
                                     progress=dashboard_pct,
                                     source="apars",  # v229.0: Critical — marks as real data
                                     deployment_mode=_mode if _mode else None,
@@ -62882,14 +62887,23 @@ class JarvisSystemKernel:
                                 _early_prime_was_skipped = getattr(self, '_early_prime_skipped_for_cloud', False)
                                 
                                 if not invincible_ready and _golden_image_active and self.config.invincible_node_enabled:
-                                    _max_golden_wait = 120  # Max seconds to wait for golden image VM
-                                    _poll_interval = 3      # Check every 3 seconds
+                                    _max_golden_wait = 180  # Max seconds to wait for golden image VM
+                                    _poll_interval = 5      # Check every 5 seconds
                                     self.logger.info(
                                         f"[Trinity] ☁️ Golden image VM not ready yet — "
                                         f"waiting up to {_max_golden_wait}s (faster than local LLM ~12min)"
                                     )
                                     
+                                    # v229.1: Explain WHY we're waiting
+                                    # VM was just created from golden image. Creation takes ~60s,
+                                    # boot takes ~30s, startup script takes ~10s. Total: ~100s.
+                                    # We need to give it enough time.
+                                    self.logger.info(
+                                        "[Trinity]    Timeline: VM create ~60s + boot ~30s + startup ~10s = ~100s total"
+                                    )
+                                    
                                     _golden_wait_start = time.time()
+                                    _last_gcp_status = ""
                                     while time.time() - _golden_wait_start < _max_golden_wait:
                                         await asyncio.sleep(_poll_interval)
                                         invincible_ready = getattr(self, '_invincible_node_ready', False)
@@ -62903,14 +62917,24 @@ class JarvisSystemKernel:
                                             )
                                             break
                                         
-                                        # Update dashboard with wait progress
+                                        # v229.1: Show GCP progress detail so user knows what's happening
                                         _wait_elapsed = time.time() - _golden_wait_start
-                                        _wait_pct = min(95, int((_wait_elapsed / _max_golden_wait) * 100))
                                         try:
-                                            dashboard.add_log(
-                                                f"Waiting for golden image VM... ({_wait_elapsed:.0f}s/{_max_golden_wait}s)",
-                                                "DEBUG"
-                                            )
+                                            _gcp = dashboard._gcp_state
+                                            _gcp_checkpoint = _gcp.get("checkpoint", "")
+                                            _gcp_pct = _gcp.get("progress", 0)
+                                            _status_msg = f"GCP: {_gcp_pct:.0f}% - {_gcp_checkpoint}" if _gcp_checkpoint else f"GCP: {_gcp_pct:.0f}%"
+                                            if _status_msg != _last_gcp_status:
+                                                dashboard.add_log(
+                                                    f"Waiting for golden image VM ({_wait_elapsed:.0f}s/{_max_golden_wait}s) — {_status_msg}",
+                                                    "DEBUG"
+                                                )
+                                                _last_gcp_status = _status_msg
+                                            else:
+                                                dashboard.add_log(
+                                                    f"Waiting for golden image VM... ({_wait_elapsed:.0f}s/{_max_golden_wait}s)",
+                                                    "DEBUG"
+                                                )
                                         except Exception:
                                             pass
                                     
@@ -62920,6 +62944,17 @@ class JarvisSystemKernel:
                                             f"[Trinity] ⚠️ Golden image VM not ready after {_total_waited:.0f}s. "
                                             f"Falling back to local Prime."
                                         )
+                                        # v229.1: Log GCP VM status for diagnostics
+                                        try:
+                                            _gcp_final = dashboard._gcp_state
+                                            self.logger.warning(
+                                                f"[Trinity]    GCP state: phase={_gcp_final.get('phase_name')}, "
+                                                f"progress={_gcp_final.get('progress'):.0f}%, "
+                                                f"checkpoint={_gcp_final.get('checkpoint')}, "
+                                                f"deploy_mode={_gcp_final.get('deployment_mode')}"
+                                            )
+                                        except Exception:
+                                            pass
                                 
                                 # v219.0: If ready and URL not yet propagated, do it now
                                 if invincible_ready and invincible_ip:

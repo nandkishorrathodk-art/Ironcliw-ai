@@ -5848,12 +5848,36 @@ fi
                 progress_pct = apars.get("total_progress", 0)
                 phase_name = apars.get("phase_name", "unknown")
                 eta = apars.get("eta_seconds", 0)
-                detail = f"{phase_name} ({progress_pct}%, ETA {eta}s)"
-                last_status = f"phase={phase_name}, progress={progress_pct}%, eta={eta}s"
+                deploy_mode = apars.get("deployment_mode", "")
+                mode_tag = f" [{deploy_mode}]" if deploy_mode else ""
+                detail = f"{phase_name}{mode_tag} ({progress_pct}%, ETA {eta}s)"
+                last_status = f"phase={phase_name}, progress={progress_pct}%, eta={eta}s, mode={deploy_mode}"
                 logger.debug(f"☁️ [InvincibleNode] Health poll: {last_status}")
+            elif health_data.get("status") == "starting":
+                # VM is responding but not ready yet — show what we know
+                mode = health_data.get("mode", "unknown")
+                phase = health_data.get("phase", "starting")
+                detail = f"VM booting: {phase} (mode={mode}, {int(elapsed)}s)"
+                progress_pct = min(80, int((elapsed / timeout) * 70) + 10)
+                phase_name = phase
+                last_status = f"booting: phase={phase}, mode={mode}"
             elif "error" in health_data:
                 last_status = f"error={health_data['error']}"
                 detail = health_data.get("error", "Unknown error")[:40]
+            elif not health_data:
+                # v229.1: No response at all — provide diagnostic transparency
+                # This typically means VM is still booting (startup script not yet running)
+                progress_pct = min(50, int((elapsed / timeout) * 40) + 5)
+                if elapsed < 30:
+                    detail = f"VM booting, no response yet ({int(elapsed)}s)"
+                    phase_name = "booting"
+                elif elapsed < 90:
+                    detail = f"Startup script running ({int(elapsed)}s)"
+                    phase_name = "startup_script"
+                else:
+                    detail = f"Waiting for health endpoint ({int(elapsed)}s)"
+                    phase_name = "waiting_health"
+                last_status = f"no_response, elapsed={int(elapsed)}s"
             else:
                 # Estimate progress based on elapsed time
                 progress_pct = min(90, int((elapsed / timeout) * 90) + 20)
