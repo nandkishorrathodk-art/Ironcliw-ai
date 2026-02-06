@@ -774,7 +774,35 @@ class GoldenImageInfo:
     def is_stale(self, max_age_days: int) -> bool:
         """Check if image is stale (older than max_age_days)."""
         return self.age_days > max_age_days
-    
+
+    def is_model_mismatched(self, expected_model: Optional[str] = None) -> bool:
+        """v233.0: Check if golden image model differs from expected.
+
+        Uses aggressive normalization to handle format variants like
+        meta-llama/Llama-2-7b vs llama-2-7b-chat.
+
+        Args:
+            expected_model: Expected model name. If None, reads from
+                           JARVIS_GCP_GOLDEN_IMAGE_MODEL env var.
+
+        Returns:
+            True if mismatch detected, False if match or cannot determine.
+        """
+        if expected_model is None:
+            expected_model = os.getenv("JARVIS_GCP_GOLDEN_IMAGE_MODEL", "").strip()
+        if not expected_model or self.model_name == "unknown":
+            return False  # Can't validate — safe default
+        is_mismatch = (
+            _normalize_model_name(expected_model) != _normalize_model_name(self.model_name)
+        )
+        if is_mismatch:
+            logger.warning(
+                f"[GoldenImageInfo] v233.0: Model mismatch — "
+                f"image '{self.name}' has '{self.model_name}', "
+                f"expected '{expected_model}'"
+            )
+        return is_mismatch
+
     @classmethod
     def from_gcp_image(cls, image: Any, project: str) -> "GoldenImageInfo":
         """
@@ -813,6 +841,99 @@ class GoldenImageInfo:
             status=image.status or "READY",
             source_vm_name=labels.get("source-vm", None),
         )
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# v233.0: Golden Image Diagnostic Types
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def _normalize_model_name(name: str) -> str:
+    """v233.0: Aggressive normalization for model name comparison.
+
+    Handles variants like:
+    - meta-llama/Llama-2-7b → llama27b
+    - llama-2-7b-chat → llama27bchat
+    - Mistral_7B_Instruct_v0.2 → mistral7binstructv02
+    """
+    import re
+    name = name.lower()
+    name = name.split("/")[-1]  # Strip HuggingFace repo prefix
+    name = re.sub(r"[^a-z0-9]", "", name)  # Only alphanumeric
+    return name
+
+
+class GoldenImageFailureType(str, Enum):
+    """v233.0: Classification of golden image failure modes.
+
+    Used by _diagnose_golden_image_stall() to categorize serial console
+    output patterns into actionable failure types for corruption detection.
+    """
+    CORRUPTED_MODEL_CACHE = "corrupted_model_cache"
+    DEPENDENCY_DRIFT = "dependency_drift"
+    SERVICE_NEVER_STARTED = "service_never_started"
+    PERMISSION_ERROR = "permission_error"
+    DISK_FULL = "disk_full"
+    HEALTH_ENDPOINT_CRASH = "health_endpoint_crash"
+    OUT_OF_MEMORY = "out_of_memory"
+    MODEL_LOAD_HANG = "model_load_hang"
+    NETWORK_TIMEOUT = "network_timeout"
+    UNKNOWN = "unknown"
+
+
+# Types that indicate IMAGE-LEVEL corruption (not transient GCP issues).
+# These trigger immediate suspect flagging on first stall.
+_CRITICAL_FAILURE_TYPES = frozenset({
+    GoldenImageFailureType.CORRUPTED_MODEL_CACHE,
+    GoldenImageFailureType.SERVICE_NEVER_STARTED,
+    GoldenImageFailureType.DEPENDENCY_DRIFT,
+})
+
+# Types that can be caused by transient GCP issues.
+# These require 2+ occurrences before flagging suspect.
+_TRANSIENT_FAILURE_TYPES = frozenset({
+    GoldenImageFailureType.NETWORK_TIMEOUT,
+    GoldenImageFailureType.OUT_OF_MEMORY,
+})
+
+
+@dataclass
+class GoldenImageDiagnostic:
+    """v233.0: Diagnostic result from golden image stall analysis.
+
+    Captures serial console output and pattern-matches against known
+    failure modes to enable intelligent corruption detection and recovery.
+    """
+    failure_type: GoldenImageFailureType
+    serial_output_tail: str
+    confidence: float  # 0.0-1.0
+    detected_patterns: List[str]
+    vm_name: str
+    stall_progress: float
+    timestamp: float = field(default_factory=time.time)
+
+    @property
+    def is_critical_failure(self) -> bool:
+        """Whether this failure indicates image-level corruption (not transient).
+
+        Critical failures trigger immediate suspect flagging (threshold=1).
+        Transient types (NETWORK_TIMEOUT, OUT_OF_MEMORY) require 2+ occurrences.
+        """
+        return (
+            self.failure_type in _CRITICAL_FAILURE_TYPES
+            and self.confidence >= 0.8
+        )
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Serialize for logging and inclusion in recovery result dict."""
+        return {
+            "failure_type": self.failure_type.value,
+            "confidence": round(self.confidence, 2),
+            "detected_patterns": self.detected_patterns,
+            "vm_name": self.vm_name,
+            "stall_progress": round(self.stall_progress, 1),
+            "is_critical": self.is_critical_failure,
+            "serial_tail_lines": len(self.serial_output_tail.split('\n')),
+        }
 
 
 class GoldenImageBuilder:
@@ -1976,6 +2097,11 @@ class GCPVMManager:
             os.environ.get("JARVIS_GOLDEN_IMAGE_STALL_TOLERANCE_PCT", "5.0")
         )
 
+        # v233.0: Diagnostic signature tracking for enhanced corruption detection
+        self._golden_image_diagnostic_history: Dict[str, List[Dict[str, Any]]] = {}
+        # v233.0: Prevent concurrent golden image rebuilds
+        self._golden_rebuild_in_progress: bool = False
+
         # Monitoring
         self.monitoring_task: Optional[asyncio.Task] = None
         self.is_monitoring = False
@@ -2574,6 +2700,209 @@ class GCPVMManager:
         )
 
         return diagnosis
+
+    async def _diagnose_golden_image_stall(
+        self,
+        vm_name: str,
+        stall_progress: float,
+        max_serial_lines: int = 200,
+    ) -> GoldenImageDiagnostic:
+        """v233.0: Diagnose why a golden image VM stalled during startup.
+
+        Analyzes serial console output to identify specific failure patterns
+        that indicate golden image corruption vs. transient failures.
+
+        This enables:
+        1. Immediate corruption flagging for known-bad patterns
+        2. Better logging for troubleshooting
+        3. Intelligent recovery strategies
+
+        Args:
+            vm_name: Name of the stalled VM
+            stall_progress: Progress % at which the stall occurred
+            max_serial_lines: Number of serial console lines to retrieve
+
+        Returns:
+            GoldenImageDiagnostic with failure type, confidence, and evidence
+        """
+        import re as _re
+
+        # Fetch serial console output using existing method (line 2455)
+        serial_output = await self._get_vm_serial_console_output(
+            vm_name=vm_name, lines=max_serial_lines
+        )
+
+        if not serial_output:
+            logger.warning(
+                f"[GoldenDiagnostic] No serial output for {vm_name} — "
+                f"cannot diagnose stall at {stall_progress:.0f}%"
+            )
+            return GoldenImageDiagnostic(
+                failure_type=GoldenImageFailureType.UNKNOWN,
+                serial_output_tail="[Serial console unavailable]",
+                confidence=0.0,
+                detected_patterns=[],
+                vm_name=vm_name,
+                stall_progress=stall_progress,
+            )
+
+        serial_lower = serial_output.lower()
+        detected_patterns: List[str] = []
+        failure_scores: Dict[GoldenImageFailureType, float] = {}
+
+        # ── Pattern Group 1: Corrupted Model Cache ────────────────────────
+        _model_patterns = [
+            ("model validation failed", 0.95),
+            ("model integrity check failed", 0.95),
+            ("corrupted model file", 0.90),
+            ("model checkpoint corrupted", 0.90),
+            ("invalid model format", 0.85),
+            ("gguf.*corrupt", 0.90),
+            ("safetensors.*corrupt", 0.85),
+            ("model file.*truncated", 0.85),
+        ]
+        for pattern, conf in _model_patterns:
+            if ".*" in pattern:
+                if _re.search(pattern, serial_lower):
+                    detected_patterns.append(pattern)
+                    failure_scores[GoldenImageFailureType.CORRUPTED_MODEL_CACHE] = max(
+                        failure_scores.get(GoldenImageFailureType.CORRUPTED_MODEL_CACHE, 0), conf
+                    )
+            elif pattern in serial_lower:
+                detected_patterns.append(pattern)
+                failure_scores[GoldenImageFailureType.CORRUPTED_MODEL_CACHE] = max(
+                    failure_scores.get(GoldenImageFailureType.CORRUPTED_MODEL_CACHE, 0), conf
+                )
+
+        # ── Pattern Group 2: Dependency Drift ─────────────────────────────
+        _dep_patterns = [
+            ("modulenotfounderror", 0.90),
+            ("importerror", 0.85),
+            ("no module named", 0.85),
+            ("package.*not found", 0.75),
+        ]
+        for pattern, conf in _dep_patterns:
+            if pattern in serial_lower:
+                detected_patterns.append(pattern)
+                failure_scores[GoldenImageFailureType.DEPENDENCY_DRIFT] = max(
+                    failure_scores.get(GoldenImageFailureType.DEPENDENCY_DRIFT, 0), conf
+                )
+
+        # ── Pattern Group 3: Service Never Started ────────────────────────
+        _startup_markers = [
+            "starting jarvis", "jarvis service started",
+            "apars health endpoint", "uvicorn running",
+        ]
+        has_startup_marker = any(m in serial_lower for m in _startup_markers)
+        if not has_startup_marker and stall_progress > 10:
+            detected_patterns.append("no_service_startup_marker")
+            failure_scores[GoldenImageFailureType.SERVICE_NEVER_STARTED] = 0.90
+
+        # ── Pattern Group 4: Permission Error ─────────────────────────────
+        _perm_patterns = [
+            ("permission denied", 0.95),
+            ("operation not permitted", 0.90),
+            ("access denied", 0.90),
+        ]
+        for pattern, conf in _perm_patterns:
+            if pattern in serial_lower:
+                detected_patterns.append(pattern)
+                failure_scores[GoldenImageFailureType.PERMISSION_ERROR] = max(
+                    failure_scores.get(GoldenImageFailureType.PERMISSION_ERROR, 0), conf
+                )
+
+        # ── Pattern Group 5: Disk Full ────────────────────────────────────
+        _disk_patterns = [
+            ("no space left on device", 0.95),
+            ("enospc", 0.95),
+        ]
+        for pattern, conf in _disk_patterns:
+            if pattern in serial_lower:
+                detected_patterns.append(pattern)
+                failure_scores[GoldenImageFailureType.DISK_FULL] = max(
+                    failure_scores.get(GoldenImageFailureType.DISK_FULL, 0), conf
+                )
+
+        # ── Pattern Group 6: Out of Memory ────────────────────────────────
+        _oom_patterns = [
+            ("out of memory", 0.95),
+            ("oom killer", 0.95),
+            ("killed process", 0.80),
+            ("cannot allocate memory", 0.90),
+        ]
+        for pattern, conf in _oom_patterns:
+            if pattern in serial_lower:
+                detected_patterns.append(pattern)
+                failure_scores[GoldenImageFailureType.OUT_OF_MEMORY] = max(
+                    failure_scores.get(GoldenImageFailureType.OUT_OF_MEMORY, 0), conf
+                )
+
+        # ── Pattern Group 7: Health Endpoint Crash ────────────────────────
+        _health_patterns = [
+            ("health endpoint.*failed", 0.85),
+            ("apars.*crash", 0.90),
+        ]
+        for pattern, conf in _health_patterns:
+            if _re.search(pattern, serial_lower):
+                detected_patterns.append(pattern)
+                failure_scores[GoldenImageFailureType.HEALTH_ENDPOINT_CRASH] = max(
+                    failure_scores.get(GoldenImageFailureType.HEALTH_ENDPOINT_CRASH, 0), conf
+                )
+
+        # ── Pattern Group 8: Model Load Hang ──────────────────────────────
+        if "loading model" in serial_lower and stall_progress > 40:
+            last_idx = serial_lower.rfind("loading model")
+            if last_idx > 0:
+                after_loading = serial_output[last_idx:]
+                if len(after_loading.strip().split('\n')) < 5:
+                    detected_patterns.append("model_load_no_progress_after_start")
+                    failure_scores[GoldenImageFailureType.MODEL_LOAD_HANG] = 0.85
+
+        # ── Pattern Group 9: Network Timeout ──────────────────────────────
+        _net_patterns = [
+            ("connection timeout", 0.80),
+            ("network unreachable", 0.85),
+            ("timeout.*download", 0.75),
+        ]
+        for pattern, conf in _net_patterns:
+            if pattern in serial_lower:
+                detected_patterns.append(pattern)
+                failure_scores[GoldenImageFailureType.NETWORK_TIMEOUT] = max(
+                    failure_scores.get(GoldenImageFailureType.NETWORK_TIMEOUT, 0), conf
+                )
+
+        # ── Determine primary failure type ────────────────────────────────
+        if failure_scores:
+            primary_type, confidence = max(failure_scores.items(), key=lambda x: x[1])
+        else:
+            primary_type = GoldenImageFailureType.UNKNOWN
+            confidence = 0.0
+            detected_patterns.append("no_known_patterns_matched")
+
+        diagnostic = GoldenImageDiagnostic(
+            failure_type=primary_type,
+            serial_output_tail=serial_output,
+            confidence=confidence,
+            detected_patterns=detected_patterns,
+            vm_name=vm_name,
+            stall_progress=stall_progress,
+        )
+
+        # Log prominently
+        logger.error(
+            f"[GoldenDiagnostic] Stall analysis for {vm_name}:\n"
+            f"    Progress: {stall_progress:.0f}%\n"
+            f"    Failure Type: {primary_type.value}\n"
+            f"    Confidence: {confidence:.0%}\n"
+            f"    Patterns: {detected_patterns[:5]}\n"
+            f"    Critical: {'YES — likely image corruption' if diagnostic.is_critical_failure else 'No — may be transient'}\n"
+            f"    Serial tail (last 10 lines):\n"
+            f"    {'='*60}\n"
+            f"    {chr(10).join(serial_output.split(chr(10))[-10:])}\n"
+            f"    {'='*60}"
+        )
+
+        return diagnostic
 
     async def _sync_managed_vms_with_gcp(self):
         """
@@ -3786,30 +4115,35 @@ class GCPVMManager:
                 golden_image = self._golden_image_cache
                 golden_project = self.config.golden_image_project or self.config.project_id
                 
-                # Check if image is not stale
-                if not golden_image.is_stale(self.config.golden_image_max_age_days):
-                    # v232.0: Skip suspect (corrupted) golden images
-                    if self.is_golden_image_suspect(golden_image.name):
-                        logger.warning(
-                            f"⚠️ [GCP] Golden image '{golden_image.name}' flagged as SUSPECT "
-                            f"by corruption detector — falling back"
-                        )
-                        if self.config.golden_image_fallback:
-                            logger.info("   Falling back to container/script deployment")
-                    else:
-                        use_golden_image_mode = True
-                        # Use specific image name (not family) for deterministic behavior
-                        golden_image_source = f"projects/{golden_project}/global/images/{golden_image.name}"
-                        golden_image_disk_size_gb = golden_image.disk_size_gb  # Track for disk sizing
-                        logger.info(f"🌟 [GCP] Using cached golden image: {golden_image.name}")
-                        logger.info(f"   Age: {golden_image.age_days:.1f} days, Disk: {golden_image_disk_size_gb}GB")
-                else:
+                # v233.0: Multi-criteria golden image validation
+                _skip_reasons: List[str] = []
+                if golden_image.is_stale(self.config.golden_image_max_age_days):
+                    _skip_reasons.append(
+                        f"stale ({golden_image.age_days:.0f}d > {self.config.golden_image_max_age_days}d)"
+                    )
+                if self.is_golden_image_suspect(golden_image.name):
+                    _skip_reasons.append("flagged SUSPECT by corruption detector")
+                if golden_image.is_model_mismatched(self.config.golden_image_model):
+                    _skip_reasons.append(
+                        f"model mismatch (has '{golden_image.model_name}')"
+                    )
+
+                if _skip_reasons:
                     logger.warning(
-                        f"⚠️ [GCP] Golden image is stale ({golden_image.age_days:.1f} days old). "
-                        f"Consider rebuilding with --create-golden-image"
+                        f"⚠️ [GCP] Skipping golden image '{golden_image.name}': "
+                        f"{', '.join(_skip_reasons)}"
                     )
                     if self.config.golden_image_fallback:
                         logger.info("   Falling back to container/script deployment")
+                else:
+                    use_golden_image_mode = True
+                    golden_image_source = f"projects/{golden_project}/global/images/{golden_image.name}"
+                    golden_image_disk_size_gb = golden_image.disk_size_gb
+                    logger.info(
+                        f"🌟 [GCP] Using cached golden image: {golden_image.name} "
+                        f"(age: {golden_image.age_days:.1f}d, model: {golden_image.model_name}, "
+                        f"disk: {golden_image_disk_size_gb}GB)"
+                    )
             else:
                 # No cached image, but golden image is enabled
                 # We'll try to use the image family (GCP auto-selects latest)
@@ -4300,25 +4634,93 @@ class GCPVMManager:
             "fallback_enabled": self.config.golden_image_fallback,
         }
 
-    def record_golden_image_stall(self, image_name: str, stall_progress: float) -> bool:
-        """
-        v232.0: Record a stall event for a golden image and detect corruption.
+    def record_golden_image_stall(
+        self,
+        image_name: str,
+        stall_progress: float,
+        diagnostic: Optional[GoldenImageDiagnostic] = None,
+    ) -> bool:
+        """v233.0: Record a stall event and detect corruption with three-tier logic.
 
-        Tracks the progress % at which VMs stall when using a specific golden image.
-        If the last N stalls (N = corruption_threshold) all cluster within a tight
-        tolerance band around their median, the image is flagged as suspect.
+        Detection tiers (checked in order):
+        1. IMMEDIATE — critical diagnostic failures flag suspect on first stall
+           (CORRUPTED_MODEL_CACHE, SERVICE_NEVER_STARTED, DEPENDENCY_DRIFT)
+           NOT for transient types (NETWORK_TIMEOUT, OUT_OF_MEMORY) which need 2+
+        2. DIAGNOSTIC CLUSTERING — 2+ diagnostics with same failure_type → suspect
+        3. PROGRESS CLUSTERING — N stalls at same % (existing v232.0 median logic)
 
         Args:
             image_name: Name of the golden image that was used
             stall_progress: Progress percentage at which the VM stalled
+            diagnostic: Optional diagnostic from serial console analysis
 
         Returns:
             True if this stall caused the image to be flagged as suspect
         """
+        from collections import Counter
+
+        # ── Track progress history ────────────────────────────────────────
         history = self._golden_image_stall_history.setdefault(image_name, [])
         history.append(stall_progress)
 
+        # ── Track diagnostic history ─────────────────────────────────────
+        diag_history = self._golden_image_diagnostic_history.setdefault(image_name, [])
+        if diagnostic:
+            diag_history.append({
+                "failure_type": diagnostic.failure_type.value,
+                "confidence": diagnostic.confidence,
+                "stall_progress": stall_progress,
+                "timestamp": diagnostic.timestamp,
+                "patterns": diagnostic.detected_patterns[:3],
+            })
+
         threshold = self._golden_image_corruption_threshold
+
+        # ══════════════════════════════════════════════════════════════════
+        # Tier 1: IMMEDIATE flagging for critical image-level failures
+        # ══════════════════════════════════════════════════════════════════
+        if diagnostic and diagnostic.is_critical_failure:
+            was_new = image_name not in self._golden_image_suspect_set
+            self._golden_image_suspect_set.add(image_name)
+            if was_new:
+                logger.error(
+                    f"[CorruptionDetect] Golden image '{image_name}' flagged SUSPECT "
+                    f"on FIRST stall — critical failure:\n"
+                    f"    Type: {diagnostic.failure_type.value}\n"
+                    f"    Confidence: {diagnostic.confidence:.0%}\n"
+                    f"    Patterns: {diagnostic.detected_patterns[:5]}\n"
+                    f"    Progress: {stall_progress:.0f}%"
+                )
+                self._maybe_trigger_rebuild(image_name, diagnostic)
+            return was_new
+
+        # ══════════════════════════════════════════════════════════════════
+        # Tier 2: DIAGNOSTIC CLUSTERING — same failure type recurring
+        # ══════════════════════════════════════════════════════════════════
+        if len(diag_history) >= 2:
+            recent_diags = diag_history[-threshold:] if len(diag_history) >= threshold else diag_history
+            failure_types = [d["failure_type"] for d in recent_diags]
+            type_counts = Counter(failure_types)
+            if type_counts:
+                most_common_type, most_common_count = type_counts.most_common(1)[0]
+                # Unknown doesn't count for clustering
+                if (
+                    most_common_type != GoldenImageFailureType.UNKNOWN.value
+                    and most_common_count >= 2
+                ):
+                    was_new = image_name not in self._golden_image_suspect_set
+                    self._golden_image_suspect_set.add(image_name)
+                    if was_new:
+                        logger.error(
+                            f"[CorruptionDetect] Golden image '{image_name}' flagged SUSPECT — "
+                            f"diagnostic clustering: {most_common_count}x '{most_common_type}'"
+                        )
+                        self._maybe_trigger_rebuild(image_name, diagnostic)
+                    return was_new
+
+        # ══════════════════════════════════════════════════════════════════
+        # Tier 3: PROGRESS CLUSTERING — N stalls at same % (v232.0 logic)
+        # ══════════════════════════════════════════════════════════════════
         if len(history) < threshold:
             return False
 
@@ -4340,28 +4742,95 @@ class GCPVMManager:
             self._golden_image_suspect_set.add(image_name)
             if was_new:
                 logger.error(
-                    f"[CorruptionDetect] Golden image '{image_name}' flagged as SUSPECT — "
+                    f"[CorruptionDetect] Golden image '{image_name}' flagged SUSPECT — "
                     f"last {threshold} VMs all stalled near {median:.0f}% "
                     f"(stalls: {[f'{p:.0f}%' for p in recent]})"
                 )
+                self._maybe_trigger_rebuild(image_name, diagnostic)
             return was_new
         return False
+
+    def _maybe_trigger_rebuild(
+        self,
+        image_name: str,
+        diagnostic: Optional[GoldenImageDiagnostic] = None,
+    ) -> None:
+        """v233.0: Conditionally trigger background golden image rebuild."""
+        if not self.config.golden_image_auto_rebuild:
+            return
+        reason = (
+            f"corruption detected: {diagnostic.failure_type.value}"
+            if diagnostic else "repeated stalls"
+        )
+        try:
+            asyncio.create_task(
+                self._trigger_golden_image_rebuild(image_name, reason)
+            )
+            logger.info(
+                f"[CorruptionDetect] Auto-rebuild triggered for '{image_name}' "
+                f"(JARVIS_GCP_GOLDEN_IMAGE_AUTO_REBUILD=true)"
+            )
+        except RuntimeError:
+            # No event loop running (unlikely in async context)
+            logger.warning("[CorruptionDetect] Cannot trigger rebuild — no event loop")
 
     def is_golden_image_suspect(self, image_name: str) -> bool:
         """v232.0: Check if a golden image has been flagged as suspect."""
         return image_name in self._golden_image_suspect_set
 
     def get_golden_image_corruption_status(self) -> Dict[str, Any]:
-        """v232.0: Get diagnostic info about golden image corruption detection."""
+        """v233.0: Get diagnostic info about golden image corruption detection."""
         return {
             "suspect_images": list(self._golden_image_suspect_set),
             "stall_history": {
-                name: [round(p, 1) for p in history]
-                for name, history in self._golden_image_stall_history.items()
+                name: [round(p, 1) for p in hist]
+                for name, hist in self._golden_image_stall_history.items()
+            },
+            "diagnostic_history": {
+                name: diag_list[-5:]
+                for name, diag_list in self._golden_image_diagnostic_history.items()
             },
             "corruption_threshold": self._golden_image_corruption_threshold,
             "stall_tolerance_pct": self._golden_image_stall_tolerance_pct,
+            "rebuild_in_progress": self._golden_rebuild_in_progress,
         }
+
+    async def _trigger_golden_image_rebuild(
+        self, image_name: str, reason: str,
+    ) -> None:
+        """v233.0: Fire-and-forget background rebuild of golden image.
+
+        Protected by _golden_rebuild_in_progress mutex to prevent concurrent
+        rebuilds when multiple stalls trigger in quick succession.
+        """
+        if self._golden_rebuild_in_progress:
+            logger.info(
+                f"[AutoRebuild] Already in progress, skipping duplicate for '{image_name}'"
+            )
+            return
+        self._golden_rebuild_in_progress = True
+        try:
+            logger.info(
+                f"[AutoRebuild] Starting background rebuild "
+                f"(replacing '{image_name}', reason: {reason})..."
+            )
+            builder = self.get_golden_image_builder()
+            result = await builder.build_golden_image()
+            if result:
+                logger.info(
+                    f"[AutoRebuild] New golden image built: {result.name}\n"
+                    f"    Model: {result.model_name}\n"
+                    f"    Old suspect '{image_name}' cleared from suspect set"
+                )
+                self._golden_image_suspect_set.discard(image_name)
+            else:
+                logger.error(
+                    f"[AutoRebuild] Build failed for replacement of '{image_name}'"
+                )
+        except Exception as e:
+            logger.error(f"[AutoRebuild] Background rebuild error: {e}")
+        finally:
+            self._golden_rebuild_in_progress = False
 
     async def _wait_for_operation(self, operation, timeout: int = 300):
         """
@@ -4709,6 +5178,18 @@ class GCPVMManager:
         except Exception as _e:
             logger.debug(f"[Recovery] Could not extract golden image metadata: {_e}")
 
+        # ── Step 0b (v233.0): Run diagnostic BEFORE terminating VM ─────
+        _stall_diagnostic: Optional["GoldenImageDiagnostic"] = None
+        try:
+            _stall_diagnostic = await self._diagnose_golden_image_stall(
+                vm_name, stall_progress,
+            )
+            result["diagnostic"] = _stall_diagnostic.to_dict()
+        except Exception as _diag_err:
+            logger.warning(
+                f"[Recovery] Diagnostic failed (non-fatal): {_diag_err}"
+            )
+
         # ── Step 1: Terminate the stuck VM ──────────────────────────────
         logger.warning(
             f"[Recovery] Terminating stalled VM '{vm_name}' "
@@ -4727,10 +5208,11 @@ class GCPVMManager:
                 return result
             logger.info(f"[Recovery] Stalled VM '{vm_name}' terminated successfully")
 
-            # v232.0: Record stall for corruption detection
+            # v232.0 + v233.0: Record stall for corruption detection (with diagnostic)
             if _stall_golden_image_name:
                 is_suspect = self.record_golden_image_stall(
-                    _stall_golden_image_name, stall_progress
+                    _stall_golden_image_name, stall_progress,
+                    diagnostic=_stall_diagnostic,
                 )
                 if is_suspect:
                     logger.warning(
@@ -6079,12 +6561,24 @@ fi
                     builder = self.get_golden_image_builder()
                     latest_golden = await builder.get_latest_golden_image()
                     
-                    if latest_golden and not latest_golden.is_stale(self.config.golden_image_max_age_days):
-                        # v232.0: Skip suspect (corrupted) golden images
+                    if latest_golden:
+                        # v233.0: Multi-criteria golden image validation
+                        _skip_reasons: List[str] = []
+                        if latest_golden.is_stale(self.config.golden_image_max_age_days):
+                            _skip_reasons.append(
+                                f"stale ({latest_golden.age_days:.0f}d > {self.config.golden_image_max_age_days}d)"
+                            )
                         if self.is_golden_image_suspect(latest_golden.name):
+                            _skip_reasons.append("flagged SUSPECT by corruption detector")
+                        if latest_golden.is_model_mismatched(self.config.golden_image_model):
+                            _skip_reasons.append(
+                                f"model mismatch (has '{latest_golden.model_name}')"
+                            )
+
+                        if _skip_reasons:
                             logger.warning(
-                                f"⚠️ [InvincibleNode] Golden image '{latest_golden.name}' flagged as "
-                                f"SUSPECT by corruption detector — falling back to standard image"
+                                f"⚠️ [InvincibleNode] Skipping golden image '{latest_golden.name}': "
+                                f"{', '.join(_skip_reasons)} — falling back to standard image"
                             )
                         else:
                             golden_project = self.config.golden_image_project or self.config.project_id
@@ -6096,9 +6590,10 @@ fi
                                 effective_disk_size_gb = max(effective_disk_size_gb, latest_golden.disk_size_gb)
                             logger.info(
                                 f"🌟 [InvincibleNode] Using golden image: {latest_golden.name} "
-                                f"(age: {latest_golden.age_days:.1f}d, disk: {effective_disk_size_gb}GB)"
+                                f"(age: {latest_golden.age_days:.1f}d, model: {latest_golden.model_name}, "
+                                f"disk: {effective_disk_size_gb}GB)"
                             )
-                    elif latest_golden:
+                    elif latest_golden is None:
                         logger.warning(
                             f"⚠️ [InvincibleNode] Golden image '{latest_golden.name}' is stale "
                             f"({latest_golden.age_days:.1f}d old). Falling back."

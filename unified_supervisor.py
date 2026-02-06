@@ -63856,9 +63856,124 @@ class JarvisSystemKernel:
                                                 )
                                                 continue  # Re-enter wait loop for next stall-triggered retry
 
-                                            # All retries exhausted — give up on GCP
+                                            # All retries exhausted — golden is done
                                             self.logger.warning(
-                                                f"[Trinity] GCP marked unavailable after {_gw_stall_count} stalls. "
+                                                f"[Trinity] Golden image exhausted after {_gw_stall_count} stalls."
+                                            )
+
+                                            # ── v233.0: Three-tier fallback — try standard GCP before local ──
+                                            _try_standard = os.environ.get(
+                                                "JARVIS_GCP_TRY_STANDARD_ON_GOLDEN_FAIL", "true"
+                                            ).lower() == "true"
+                                            _standard_attempted = False
+
+                                            if _try_standard and _local_is_hedge:
+                                                # Check if local Prime is >70% — if so, skip standard (local finishes first)
+                                                _local_prog = 0.0
+                                                try:
+                                                    _lip = getattr(self, '_prime_init_progress', None)
+                                                    if _lip and isinstance(_lip, dict):
+                                                        _lc = _lip.get("completed_phases", 0)
+                                                        _lt = _lip.get("total_phases", 9)
+                                                        if _lt > 0:
+                                                            _local_prog = (_lc / _lt) * 100.0
+                                                except Exception:
+                                                    pass
+
+                                                if _local_prog > 70:
+                                                    self.logger.info(
+                                                        f"[Trinity] Local Prime at {_local_prog:.0f}% — "
+                                                        f"skipping standard GCP (local will finish first)"
+                                                    )
+                                                else:
+                                                    _standard_timeout = float(os.environ.get(
+                                                        "JARVIS_GCP_STANDARD_FALLBACK_TIMEOUT", "900"
+                                                    ))
+                                                    self.logger.info(
+                                                        f"[Trinity] ☁️ Attempting standard GCP image as fallback "
+                                                        f"(timeout={_standard_timeout:.0f}s)..."
+                                                    )
+                                                    _standard_attempted = True
+
+                                                    try:
+                                                        from backend.core.gcp_vm_manager import get_gcp_vm_manager_safe
+                                                        _std_mgr = await get_gcp_vm_manager_safe()
+                                                        if _std_mgr:
+                                                            # Terminate any leftover stuck VM first
+                                                            _std_vm_name = getattr(
+                                                                self.config, 'invincible_node_instance_name',
+                                                                os.environ.get("GCP_VM_INSTANCE_NAME", "jarvis-prime-node")
+                                                            )
+                                                            try:
+                                                                await _std_mgr.terminate_vm(
+                                                                    vm_name=_std_vm_name,
+                                                                    reason="Clearing for standard image fallback",
+                                                                )
+                                                            except Exception:
+                                                                pass
+
+                                                            # Temporarily disable golden image so _create_static_vm uses standard
+                                                            _orig_golden = os.environ.get("JARVIS_GCP_USE_GOLDEN_IMAGE")
+                                                            try:
+                                                                os.environ["JARVIS_GCP_USE_GOLDEN_IMAGE"] = "false"
+
+                                                                try:
+                                                                    update_dashboard_gcp_progress(
+                                                                        checkpoint="Standard GCP install (fallback)",
+                                                                        status="running",
+                                                                        progress=5,
+                                                                        deployment_mode="standard",
+                                                                    )
+                                                                except Exception:
+                                                                    pass
+
+                                                                _std_success, _std_ip, _std_msg = await asyncio.wait_for(
+                                                                    _std_mgr.ensure_static_vm_ready(),
+                                                                    timeout=_standard_timeout,
+                                                                )
+
+                                                                if _std_success and _std_ip:
+                                                                    self.logger.info(
+                                                                        f"[Trinity] ✅ Standard GCP fallback succeeded! "
+                                                                        f"VM ready at {_std_ip}"
+                                                                    )
+                                                                    invincible_ready = True
+                                                                    invincible_ip = _std_ip
+                                                                    self._invincible_node_ready = True
+                                                                    self._invincible_node_ip = _std_ip
+                                                                else:
+                                                                    self.logger.warning(
+                                                                        f"[Trinity] Standard GCP fallback did not produce "
+                                                                        f"a ready VM: {_std_msg}"
+                                                                    )
+                                                            finally:
+                                                                # Restore golden image env var
+                                                                if _orig_golden is not None:
+                                                                    os.environ["JARVIS_GCP_USE_GOLDEN_IMAGE"] = _orig_golden
+                                                                else:
+                                                                    os.environ.pop("JARVIS_GCP_USE_GOLDEN_IMAGE", None)
+                                                        else:
+                                                            self.logger.warning(
+                                                                "[Trinity] VM manager not available for standard fallback"
+                                                            )
+                                                    except asyncio.TimeoutError:
+                                                        self.logger.warning(
+                                                            f"[Trinity] Standard GCP fallback timed out after "
+                                                            f"{_standard_timeout:.0f}s — falling back to local"
+                                                        )
+                                                    except Exception as _std_err:
+                                                        self.logger.error(
+                                                            f"[Trinity] Standard GCP fallback error: {_std_err}"
+                                                        )
+
+                                            if invincible_ready:
+                                                # Standard fallback succeeded — break out of wait loop
+                                                break
+
+                                            # Final fallback: local Prime
+                                            self.logger.warning(
+                                                f"[Trinity] GCP marked unavailable after {_gw_stall_count} stalls"
+                                                f"{' + standard fallback failed' if _standard_attempted else ''}. "
                                                 f"Falling back to local Prime."
                                             )
                                             # v231.0: Clear GCP dashboard state so UI reflects reality
@@ -63909,14 +64024,9 @@ class JarvisSystemKernel:
                                     
                                     if not invincible_ready:
                                         _total_waited = time.time() - _golden_wait_start
-                                        _gw_fallback_msg = (
-                                            "Continuing with local Prime (already loading in parallel)"
-                                            if _local_is_hedge
-                                            else "Falling back to local Prime."
-                                        )
                                         self.logger.warning(
                                             f"[Trinity] ⚠️ Golden image VM not ready after "
-                                            f"{_total_waited:.0f}s. {_gw_fallback_msg}"
+                                            f"{_total_waited:.0f}s."
                                         )
                                         # Log final GCP state for diagnostics
                                         try:
@@ -63935,13 +64045,127 @@ class JarvisSystemKernel:
                                                 f"peak progress: {_gw_last_progress:.0f}%"
                                             )
 
-                                        # v232.2: Notify DMS of fallback to local mode
-                                        if self._startup_watchdog:
-                                            self._startup_watchdog.notify_mode_change(
-                                                "local_prime",
-                                                is_fallback=True,
-                                                fallback_reason="GCP golden image VM not ready in time",
+                                        # ── v233.0: Three-tier fallback — try standard GCP before local ──
+                                        _try_standard_timeout = os.environ.get(
+                                            "JARVIS_GCP_TRY_STANDARD_ON_GOLDEN_FAIL", "true"
+                                        ).lower() == "true"
+                                        _standard_timeout_attempted = False
+
+                                        if _try_standard_timeout and _local_is_hedge:
+                                            # Check local Prime progress — skip standard if >70%
+                                            _local_prog_t = 0.0
+                                            try:
+                                                _lip_t = getattr(self, '_prime_init_progress', None)
+                                                if _lip_t and isinstance(_lip_t, dict):
+                                                    _lc_t = _lip_t.get("completed_phases", 0)
+                                                    _lt_t = _lip_t.get("total_phases", 9)
+                                                    if _lt_t > 0:
+                                                        _local_prog_t = (_lc_t / _lt_t) * 100.0
+                                            except Exception:
+                                                pass
+
+                                            if _local_prog_t > 70:
+                                                self.logger.info(
+                                                    f"[Trinity] Local Prime at {_local_prog_t:.0f}% — "
+                                                    f"skipping standard GCP (local will finish first)"
+                                                )
+                                            else:
+                                                _std_fb_timeout = float(os.environ.get(
+                                                    "JARVIS_GCP_STANDARD_FALLBACK_TIMEOUT", "900"
+                                                ))
+                                                self.logger.info(
+                                                    f"[Trinity] ☁️ Attempting standard GCP image as fallback "
+                                                    f"(timeout={_std_fb_timeout:.0f}s)..."
+                                                )
+                                                _standard_timeout_attempted = True
+
+                                                try:
+                                                    from backend.core.gcp_vm_manager import get_gcp_vm_manager_safe
+                                                    _std_mgr_t = await get_gcp_vm_manager_safe()
+                                                    if _std_mgr_t:
+                                                        # Terminate any leftover stuck VM first
+                                                        _std_vm_t = getattr(
+                                                            self.config, 'invincible_node_instance_name',
+                                                            os.environ.get("GCP_VM_INSTANCE_NAME", "jarvis-prime-node")
+                                                        )
+                                                        try:
+                                                            await _std_mgr_t.terminate_vm(
+                                                                vm_name=_std_vm_t,
+                                                                reason="Clearing for standard image fallback (timeout)",
+                                                            )
+                                                        except Exception:
+                                                            pass
+
+                                                        _orig_golden_t = os.environ.get("JARVIS_GCP_USE_GOLDEN_IMAGE")
+                                                        try:
+                                                            os.environ["JARVIS_GCP_USE_GOLDEN_IMAGE"] = "false"
+
+                                                            try:
+                                                                update_dashboard_gcp_progress(
+                                                                    checkpoint="Standard GCP install (timeout fallback)",
+                                                                    status="running",
+                                                                    progress=5,
+                                                                    deployment_mode="standard",
+                                                                )
+                                                            except Exception:
+                                                                pass
+
+                                                            _std_ok, _std_ip_t, _std_msg_t = await asyncio.wait_for(
+                                                                _std_mgr_t.ensure_static_vm_ready(),
+                                                                timeout=_std_fb_timeout,
+                                                            )
+
+                                                            if _std_ok and _std_ip_t:
+                                                                self.logger.info(
+                                                                    f"[Trinity] ✅ Standard GCP fallback succeeded! "
+                                                                    f"VM ready at {_std_ip_t}"
+                                                                )
+                                                                invincible_ready = True
+                                                                invincible_ip = _std_ip_t
+                                                                self._invincible_node_ready = True
+                                                                self._invincible_node_ip = _std_ip_t
+                                                            else:
+                                                                self.logger.warning(
+                                                                    f"[Trinity] Standard GCP fallback did not produce "
+                                                                    f"a ready VM: {_std_msg_t}"
+                                                                )
+                                                        finally:
+                                                            if _orig_golden_t is not None:
+                                                                os.environ["JARVIS_GCP_USE_GOLDEN_IMAGE"] = _orig_golden_t
+                                                            else:
+                                                                os.environ.pop("JARVIS_GCP_USE_GOLDEN_IMAGE", None)
+                                                    else:
+                                                        self.logger.warning(
+                                                            "[Trinity] VM manager not available for standard fallback"
+                                                        )
+                                                except asyncio.TimeoutError:
+                                                    self.logger.warning(
+                                                        f"[Trinity] Standard GCP fallback timed out after "
+                                                        f"{_std_fb_timeout:.0f}s — falling back to local"
+                                                    )
+                                                except Exception as _std_err_t:
+                                                    self.logger.error(
+                                                        f"[Trinity] Standard GCP fallback error: {_std_err_t}"
+                                                    )
+
+                                        if not invincible_ready:
+                                            _gw_fallback_msg = (
+                                                "Continuing with local Prime (already loading in parallel)"
+                                                if _local_is_hedge
+                                                else "Falling back to local Prime."
                                             )
+                                            self.logger.warning(
+                                                f"[Trinity] {_gw_fallback_msg}"
+                                                + (f" (standard GCP also failed)" if _standard_timeout_attempted else "")
+                                            )
+
+                                            # v232.2: Notify DMS of fallback to local mode
+                                            if self._startup_watchdog:
+                                                self._startup_watchdog.notify_mode_change(
+                                                    "local_prime",
+                                                    is_fallback=True,
+                                                    fallback_reason="GCP golden image VM not ready in time",
+                                                )
 
                                 # v219.0: If ready and URL not yet propagated, do it now
                                 if invincible_ready and invincible_ip:
