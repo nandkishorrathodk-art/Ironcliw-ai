@@ -1966,6 +1966,16 @@ class GCPVMManager:
             ),
         }
 
+        # v232.0: Golden image corruption detection
+        self._golden_image_stall_history: Dict[str, List[float]] = {}
+        self._golden_image_suspect_set: set = set()
+        self._golden_image_corruption_threshold = int(
+            os.environ.get("JARVIS_GOLDEN_IMAGE_CORRUPTION_THRESHOLD", "3")
+        )
+        self._golden_image_stall_tolerance_pct = float(
+            os.environ.get("JARVIS_GOLDEN_IMAGE_STALL_TOLERANCE_PCT", "5.0")
+        )
+
         # Monitoring
         self.monitoring_task: Optional[asyncio.Task] = None
         self.is_monitoring = False
@@ -3778,12 +3788,21 @@ class GCPVMManager:
                 
                 # Check if image is not stale
                 if not golden_image.is_stale(self.config.golden_image_max_age_days):
-                    use_golden_image_mode = True
-                    # Use specific image name (not family) for deterministic behavior
-                    golden_image_source = f"projects/{golden_project}/global/images/{golden_image.name}"
-                    golden_image_disk_size_gb = golden_image.disk_size_gb  # Track for disk sizing
-                    logger.info(f"🌟 [GCP] Using cached golden image: {golden_image.name}")
-                    logger.info(f"   Age: {golden_image.age_days:.1f} days, Disk: {golden_image_disk_size_gb}GB")
+                    # v232.0: Skip suspect (corrupted) golden images
+                    if self.is_golden_image_suspect(golden_image.name):
+                        logger.warning(
+                            f"⚠️ [GCP] Golden image '{golden_image.name}' flagged as SUSPECT "
+                            f"by corruption detector — falling back"
+                        )
+                        if self.config.golden_image_fallback:
+                            logger.info("   Falling back to container/script deployment")
+                    else:
+                        use_golden_image_mode = True
+                        # Use specific image name (not family) for deterministic behavior
+                        golden_image_source = f"projects/{golden_project}/global/images/{golden_image.name}"
+                        golden_image_disk_size_gb = golden_image.disk_size_gb  # Track for disk sizing
+                        logger.info(f"🌟 [GCP] Using cached golden image: {golden_image.name}")
+                        logger.info(f"   Age: {golden_image.age_days:.1f} days, Disk: {golden_image_disk_size_gb}GB")
                 else:
                     logger.warning(
                         f"⚠️ [GCP] Golden image is stale ({golden_image.age_days:.1f} days old). "
@@ -4281,6 +4300,69 @@ class GCPVMManager:
             "fallback_enabled": self.config.golden_image_fallback,
         }
 
+    def record_golden_image_stall(self, image_name: str, stall_progress: float) -> bool:
+        """
+        v232.0: Record a stall event for a golden image and detect corruption.
+
+        Tracks the progress % at which VMs stall when using a specific golden image.
+        If the last N stalls (N = corruption_threshold) all cluster within a tight
+        tolerance band around their median, the image is flagged as suspect.
+
+        Args:
+            image_name: Name of the golden image that was used
+            stall_progress: Progress percentage at which the VM stalled
+
+        Returns:
+            True if this stall caused the image to be flagged as suspect
+        """
+        history = self._golden_image_stall_history.setdefault(image_name, [])
+        history.append(stall_progress)
+
+        threshold = self._golden_image_corruption_threshold
+        if len(history) < threshold:
+            return False
+
+        recent = history[-threshold:]
+        sorted_recent = sorted(recent)
+        median = sorted_recent[len(sorted_recent) // 2]
+
+        if median == 0:
+            return False
+
+        tolerance = self._golden_image_stall_tolerance_pct
+        all_similar = all(
+            abs(p - median) <= (tolerance / 100.0) * median
+            for p in recent
+        )
+
+        if all_similar:
+            was_new = image_name not in self._golden_image_suspect_set
+            self._golden_image_suspect_set.add(image_name)
+            if was_new:
+                logger.error(
+                    f"[CorruptionDetect] Golden image '{image_name}' flagged as SUSPECT — "
+                    f"last {threshold} VMs all stalled near {median:.0f}% "
+                    f"(stalls: {[f'{p:.0f}%' for p in recent]})"
+                )
+            return was_new
+        return False
+
+    def is_golden_image_suspect(self, image_name: str) -> bool:
+        """v232.0: Check if a golden image has been flagged as suspect."""
+        return image_name in self._golden_image_suspect_set
+
+    def get_golden_image_corruption_status(self) -> Dict[str, Any]:
+        """v232.0: Get diagnostic info about golden image corruption detection."""
+        return {
+            "suspect_images": list(self._golden_image_suspect_set),
+            "stall_history": {
+                name: [round(p, 1) for p in history]
+                for name, history in self._golden_image_stall_history.items()
+            },
+            "corruption_threshold": self._golden_image_corruption_threshold,
+            "stall_tolerance_pct": self._golden_image_stall_tolerance_pct,
+        }
+
     async def _wait_for_operation(self, operation, timeout: int = 300):
         """
         Wait for a GCP zone operation to complete.
@@ -4613,6 +4695,18 @@ class GCPVMManager:
             "status_message": "",
         }
 
+        # ── Step 0 (v232.0): Extract golden image metadata BEFORE termination ──
+        _stall_golden_image_name: Optional[str] = None
+        try:
+            _status, _meta, _err = await self._describe_instance_full(vm_name)
+            if _meta:
+                _golden_src = _meta.get("jarvis-golden-image-source", "")
+                if _golden_src:
+                    # Extract image name from "projects/.../images/IMAGE_NAME"
+                    _stall_golden_image_name = _golden_src.rstrip("/").split("/")[-1]
+        except Exception as _e:
+            logger.debug(f"[Recovery] Could not extract golden image metadata: {_e}")
+
         # ── Step 1: Terminate the stuck VM ──────────────────────────────
         logger.warning(
             f"[Recovery] Terminating stalled VM '{vm_name}' "
@@ -4630,6 +4724,17 @@ class GCPVMManager:
                 logger.error(f"[Recovery] {result['error']}")
                 return result
             logger.info(f"[Recovery] Stalled VM '{vm_name}' terminated successfully")
+
+            # v232.0: Record stall for corruption detection
+            if _stall_golden_image_name:
+                is_suspect = self.record_golden_image_stall(
+                    _stall_golden_image_name, stall_progress
+                )
+                if is_suspect:
+                    logger.warning(
+                        f"[Recovery] Golden image '{_stall_golden_image_name}' now flagged "
+                        f"as SUSPECT — will be skipped in future VM creation"
+                    )
         except Exception as e:
             result["error"] = f"Exception terminating stalled VM: {e}"
             result["status_message"] = result["error"]
@@ -5973,17 +6078,24 @@ fi
                     latest_golden = await builder.get_latest_golden_image()
                     
                     if latest_golden and not latest_golden.is_stale(self.config.golden_image_max_age_days):
-                        golden_project = self.config.golden_image_project or self.config.project_id
-                        golden_image_source = f"projects/{golden_project}/global/images/{latest_golden.name}"
-                        source_image = golden_image_source
-                        deployment_mode = "golden-image"
-                        # Ensure disk is large enough for the golden image
-                        if latest_golden.disk_size_gb:
-                            effective_disk_size_gb = max(effective_disk_size_gb, latest_golden.disk_size_gb)
-                        logger.info(
-                            f"🌟 [InvincibleNode] Using golden image: {latest_golden.name} "
-                            f"(age: {latest_golden.age_days:.1f}d, disk: {effective_disk_size_gb}GB)"
-                        )
+                        # v232.0: Skip suspect (corrupted) golden images
+                        if self.is_golden_image_suspect(latest_golden.name):
+                            logger.warning(
+                                f"⚠️ [InvincibleNode] Golden image '{latest_golden.name}' flagged as "
+                                f"SUSPECT by corruption detector — falling back to standard image"
+                            )
+                        else:
+                            golden_project = self.config.golden_image_project or self.config.project_id
+                            golden_image_source = f"projects/{golden_project}/global/images/{latest_golden.name}"
+                            source_image = golden_image_source
+                            deployment_mode = "golden-image"
+                            # Ensure disk is large enough for the golden image
+                            if latest_golden.disk_size_gb:
+                                effective_disk_size_gb = max(effective_disk_size_gb, latest_golden.disk_size_gb)
+                            logger.info(
+                                f"🌟 [InvincibleNode] Using golden image: {latest_golden.name} "
+                                f"(age: {latest_golden.age_days:.1f}d, disk: {effective_disk_size_gb}GB)"
+                            )
                     elif latest_golden:
                         logger.warning(
                             f"⚠️ [InvincibleNode] Golden image '{latest_golden.name}' is stale "

@@ -62641,6 +62641,9 @@ class JarvisSystemKernel:
             f"[{integrator_name}] v222.0 Progress-aware startup: "
             f"base={base_timeout:.0f}s, max={max_timeout:.0f}s, poll={poll_interval:.0f}s"
         )
+        self.logger.info(
+            f"[{integrator_name}] v232.0: Stall budget: {_budget_init_reason}"
+        )
         
         # Start the component startup as a task
         startup_task = create_safe_task(start_coro, name=f"{integrator_name.lower()}-startup")
@@ -62976,6 +62979,16 @@ class JarvisSystemKernel:
                             # v231.0: Without this stall budget, a model stalled at
                             # 93% (or 100% from init) gets infinite extensions.
                             _ml_stall_time = now - last_progress_time
+                            # v232.0: Re-evaluate memory pressure periodically
+                            if (now - _ml_stall_last_mem_check) >= _ml_stall_mem_check_interval:
+                                _ml_stall_last_mem_check = now
+                                _new_budget, _budget_reason = _compute_ram_scaled_stall_budget()
+                                if _new_budget != _ml_stall_budget:
+                                    self.logger.info(
+                                        f"[{integrator_name}] v232.0: Stall budget adjusted: "
+                                        f"{_ml_stall_budget:.0f}s -> {_new_budget:.0f}s ({_budget_reason})"
+                                    )
+                                    _ml_stall_budget = _new_budget
                             if _ml_stall_time < _ml_stall_budget:
                                 should_extend = True
                                 extension_reason = (
