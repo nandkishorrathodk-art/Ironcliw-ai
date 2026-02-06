@@ -1208,14 +1208,17 @@ class CostTracker:
         }
 
         try:
-            # List all jarvis VMs from GCP
+            # v229.0: List ALL jarvis VMs from GCP — not just a specific pattern.
+            # Previous bug: filter was 'jarvis-auto-.*' but VMs are named
+            # 'jarvis-backend-*', 'jarvis-golden-builder-*', etc.
+            # Fix: match all jarvis-prefixed VMs to catch all orphan types.
             cmd = [
                 "gcloud",
                 "compute",
                 "instances",
                 "list",
                 f"--project={self.config.gcp_project_id}",
-                "--filter=name~'jarvis-auto-.*'",
+                "--filter=name~'^jarvis-'",
                 "--format=json",
             ]
 
@@ -1254,6 +1257,22 @@ class CostTracker:
                     }
                 )
 
+                # v229.0: Protect persistent VMs from orphan cleanup
+                # Invincible Node (jarvis-prime-node) and custom static VMs are
+                # designed to persist across sessions. Only clean up ephemeral VMs
+                # (jarvis-backend-*, jarvis-golden-builder-*) that exceed max age.
+                _is_persistent = (
+                    instance_id.startswith("jarvis-prime-node")
+                    or vm.get("labels", {}).get("vm-class") == "invincible"
+                )
+                
+                if _is_persistent:
+                    logger.debug(
+                        f"[Cleanup] Skipping persistent VM: {instance_id} "
+                        f"(age: {age_hours:.1f}h, class: invincible)"
+                    )
+                    continue
+                
                 if age_hours >= self.config.orphaned_vm_max_age_hours:
                     results["orphaned_vms_found"] += 1
 

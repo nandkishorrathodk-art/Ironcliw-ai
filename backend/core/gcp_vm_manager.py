@@ -2655,6 +2655,172 @@ class GCPVMManager:
         else:
             logger.info("[VMSync] All tracked VMs verified in GCP")
 
+    async def _count_active_gcp_instances(self) -> int:
+        """
+        v229.0: Count all JARVIS VM instances actually running in GCP.
+        
+        This queries the GCP API directly instead of relying on local tracking,
+        which can become stale after crashes, re-execs, or orphaned sessions.
+        
+        Returns:
+            Number of running JARVIS VM instances in GCP
+        """
+        if not self.instances_client:
+            return 0
+        
+        try:
+            count = 0
+            prefix = self.config.vm_name_prefix  # "jarvis-backend"
+            
+            # Use GCP aggregated list with filter for efficiency
+            request = compute_v1.ListInstancesRequest(
+                project=self.config.project_id,
+                zone=self.config.zone,
+                filter=f"name:{prefix}-* AND status=RUNNING",
+            )
+            
+            for instance in await asyncio.to_thread(
+                lambda: list(self.instances_client.list(request=request))
+            ):
+                count += 1
+            
+            # Also count golden builder VMs (they use significant resources)
+            try:
+                builder_request = compute_v1.ListInstancesRequest(
+                    project=self.config.project_id,
+                    zone=self.config.zone,
+                    filter="name:jarvis-golden-builder-* AND status=RUNNING",
+                )
+                for _ in await asyncio.to_thread(
+                    lambda: list(self.instances_client.list(request=builder_request))
+                ):
+                    count += 1
+            except Exception:
+                pass  # Non-critical
+            
+            logger.debug(f"[VMGuard] GCP running JARVIS instances: {count}")
+            return count
+            
+        except Exception as e:
+            logger.debug(f"[VMGuard] GCP instance count failed: {e}")
+            return 0
+
+    async def cleanup_orphaned_gcp_instances(self, max_age_hours: float = 3.0) -> Dict[str, Any]:
+        """
+        v229.0: Scan GCP for orphaned JARVIS VMs and delete them.
+        
+        Orphan detection logic:
+        - VMs named 'jarvis-backend-*' older than max_age_hours → DELETE
+        - VMs named 'jarvis-golden-builder-*' older than 1 hour → DELETE  
+        - VMs named 'jarvis-prime-node' or with label 'vm-class=invincible' → SKIP (persistent)
+        
+        This runs at startup (Clean Slate phase) to prevent quota exhaustion
+        and cost accumulation from crashed/orphaned sessions.
+        
+        Returns:
+            Dict with cleanup results
+        """
+        results = {
+            "scanned": 0,
+            "deleted": 0,
+            "protected": 0,
+            "errors": [],
+            "details": [],
+        }
+        
+        if not self.instances_client:
+            logger.warning("[OrphanCleanup] GCP client not initialized")
+            return results
+        
+        try:
+            # List ALL jarvis-prefixed VMs
+            request = compute_v1.ListInstancesRequest(
+                project=self.config.project_id,
+                zone=self.config.zone,
+                filter="name:jarvis-*",
+            )
+            
+            instances = await asyncio.to_thread(
+                lambda: list(self.instances_client.list(request=request))
+            )
+            
+            for instance in instances:
+                results["scanned"] += 1
+                name = instance.name
+                status = instance.status
+                labels = dict(instance.labels) if instance.labels else {}
+                
+                # Parse creation time
+                age_hours = 0.0
+                if instance.creation_timestamp:
+                    try:
+                        created = datetime.fromisoformat(
+                            instance.creation_timestamp.replace('Z', '+00:00')
+                        ).replace(tzinfo=None)
+                        age_hours = (datetime.now() - created).total_seconds() / 3600
+                    except Exception:
+                        pass
+                
+                # PROTECT persistent VMs
+                is_persistent = (
+                    name.startswith("jarvis-prime-node")
+                    or labels.get("vm-class") == "invincible"
+                )
+                
+                if is_persistent:
+                    results["protected"] += 1
+                    results["details"].append(
+                        f"  PROTECTED: {name} ({status}, {age_hours:.1f}h, class=invincible)"
+                    )
+                    continue
+                
+                # Determine max age based on VM type
+                is_builder = "golden-builder" in name
+                effective_max_age = 1.0 if is_builder else max_age_hours  # Builders: 1h max
+                
+                if age_hours >= effective_max_age:
+                    logger.info(
+                        f"🗑️ [OrphanCleanup] Deleting orphaned VM: {name} "
+                        f"(status={status}, age={age_hours:.1f}h, max={effective_max_age}h)"
+                    )
+                    try:
+                        operation = await asyncio.to_thread(
+                            self.instances_client.delete,
+                            project=self.config.project_id,
+                            zone=self.config.zone,
+                            instance=name,
+                        )
+                        await self._wait_for_operation(operation, timeout=60)
+                        results["deleted"] += 1
+                        results["details"].append(
+                            f"  DELETED: {name} ({status}, {age_hours:.1f}h)"
+                        )
+                    except Exception as e:
+                        error_msg = f"Failed to delete {name}: {e}"
+                        results["errors"].append(error_msg)
+                        results["details"].append(f"  ERROR: {error_msg}")
+                else:
+                    results["details"].append(
+                        f"  OK: {name} ({status}, {age_hours:.1f}h < {effective_max_age}h)"
+                    )
+            
+            if results["deleted"] > 0:
+                logger.info(
+                    f"✅ [OrphanCleanup] Cleaned {results['deleted']} orphaned VMs "
+                    f"(scanned: {results['scanned']}, protected: {results['protected']})"
+                )
+            else:
+                logger.debug(
+                    f"[OrphanCleanup] No orphans found "
+                    f"(scanned: {results['scanned']}, protected: {results['protected']})"
+                )
+            
+        except Exception as e:
+            logger.error(f"[OrphanCleanup] Scan failed: {e}")
+            results["errors"].append(str(e))
+        
+        return results
+
     async def get_active_vm(self) -> Optional[VMInstance]:
         """
         Get the currently active (RUNNING) VM instance.
@@ -3068,12 +3234,31 @@ class GCPVMManager:
             except Exception as e:
                 logger.warning(f"⚠️ Budget check failed (allowing VM): {e}")
 
-        # Check concurrent VM limits
+        # v229.0: Check concurrent VM limits using REAL GCP instance count
+        # Previous bug: only checked tracked VMs (self.managed_vms), but untracked
+        # VMs (from crashed sessions, pre-warm tasks, orphans) weren't counted.
+        # This led to 7 VMs running simultaneously, exhausting CPU quota.
+        # Fix: Query GCP API for actual running JARVIS instances.
         active_vms = len([vm for vm in self.managed_vms.values() if vm.state == VMState.RUNNING])
+        
+        # Also count untracked VMs via GCP API (async-safe)
+        try:
+            gcp_vm_count = await self._count_active_gcp_instances()
+            if gcp_vm_count > active_vms:
+                logger.warning(
+                    f"⚠️ [VMGuard] GCP has {gcp_vm_count} running JARVIS VMs "
+                    f"but only {active_vms} are tracked locally. "
+                    f"Orphan cleanup recommended."
+                )
+                active_vms = gcp_vm_count  # Use the higher (real) count
+        except Exception as e:
+            logger.debug(f"[VMGuard] GCP instance count check failed: {e}")
+        
         if active_vms >= self.config.max_concurrent_vms:
             return (
                 False,
-                f"Max concurrent VMs reached: {active_vms} / {self.config.max_concurrent_vms}",
+                f"Max concurrent VMs reached: {active_vms} / {self.config.max_concurrent_vms} "
+                f"(run orphan cleanup to free slots)",
                 0.0,
             )
 

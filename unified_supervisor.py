@@ -64067,6 +64067,58 @@ class JarvisSystemKernel:
         except Exception as e:
             self.logger.warning(f"[Clean Slate] Recovery phase error (non-fatal): {e}")
 
+        # =====================================================================
+        # v229.0: GCP ORPHAN CLEANUP — Prevent quota exhaustion and cost runaway
+        # =====================================================================
+        # On startup, scan GCP for orphaned VMs from previous sessions that
+        # weren't properly cleaned up (crash, force-quit, preemption).
+        # This prevents:
+        #   - CPU quota exhaustion (max 32 CPUs) blocking new VM creation
+        #   - Silent cost accumulation ($0.029/hr per VM × multiple orphans)
+        #   - The exact scenario where 7 VMs ran simultaneously
+        # Protected: jarvis-prime-node (Invincible Node) is never deleted.
+        # =====================================================================
+        try:
+            _gcp_enabled = any([
+                os.getenv("GCP_ENABLED", "false").lower() == "true",
+                os.getenv("GCP_VM_ENABLED", "false").lower() == "true",
+                os.getenv("JARVIS_SPOT_VM_ENABLED", "false").lower() == "true",
+            ])
+            
+            if _gcp_enabled:
+                self.logger.info("[Clean Slate] 🧹 Scanning GCP for orphaned VMs...")
+                
+                try:
+                    from backend.core.gcp_vm_manager import get_gcp_vm_manager
+                    _gcp_mgr = await get_gcp_vm_manager()
+                    
+                    if _gcp_mgr and _gcp_mgr.initialized:
+                        _orphan_results = await asyncio.wait_for(
+                            _gcp_mgr.cleanup_orphaned_gcp_instances(max_age_hours=3.0),
+                            timeout=60.0,  # Don't let cleanup block startup > 60s
+                        )
+                        
+                        if _orphan_results.get("deleted", 0) > 0:
+                            self.logger.info(
+                                f"[Clean Slate] ✅ Cleaned {_orphan_results['deleted']} orphaned GCP VMs "
+                                f"(freed ~{_orphan_results['deleted'] * 4} CPU cores)"
+                            )
+                            for detail in _orphan_results.get("details", []):
+                                self.logger.info(f"[Clean Slate] {detail}")
+                        else:
+                            self.logger.debug("[Clean Slate] No orphaned GCP VMs found")
+                    else:
+                        self.logger.debug("[Clean Slate] GCP manager not yet initialized — orphan cleanup deferred")
+                        
+                except asyncio.TimeoutError:
+                    self.logger.warning("[Clean Slate] GCP orphan scan timed out (60s) — will retry later")
+                except ImportError:
+                    self.logger.debug("[Clean Slate] GCP module not available — skipping orphan cleanup")
+                except Exception as gcp_cleanup_err:
+                    self.logger.debug(f"[Clean Slate] GCP orphan cleanup error (non-fatal): {gcp_cleanup_err}")
+        except Exception:
+            pass  # Never let cleanup block startup
+
         return True
 
     # =========================================================================
