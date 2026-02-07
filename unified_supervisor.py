@@ -62660,7 +62660,7 @@ class JarvisSystemKernel:
                     from backend.intelligence.unified_model_serving import (
                         get_model_serving,
                         PrimeLocalClient,
-                        PRIME_DEFAULT_MODEL,
+                        PRIME_MODELS_DIR,
                         ModelProvider,
                     )
                     self._model_serving = await asyncio.wait_for(
@@ -62676,18 +62676,33 @@ class JarvisSystemKernel:
                         self._readiness_manager.mark_component_ready(
                             "model_serving", True
                         )
-                    # v234.0: Log warning if Tier 2 has no GGUF model
+                    # v234.2: Check for ANY model from QUANT_CATALOG
                     _local = self._model_serving._clients.get(
                         ModelProvider.PRIME_LOCAL
                     )
                     if _local and isinstance(_local, PrimeLocalClient):
-                        _found = _local._discover_model(PRIME_DEFAULT_MODEL)
-                        if _found is None:
+                        _any_found = False
+                        for _cat_entry in PrimeLocalClient.QUANT_CATALOG:
+                            if _local._discover_model(
+                                _cat_entry["filename"]
+                            ) is not None:
+                                _any_found = True
+                                self.logger.info(
+                                    f"[Kernel] v234.2: Tier 2 model "
+                                    f"available: {_cat_entry['name']} "
+                                    f"({_cat_entry['filename']})"
+                                )
+                                break
+                        if not _any_found:
+                            _auto = os.getenv(
+                                "JARVIS_PRIME_AUTO_DOWNLOAD", "false"
+                            )
                             self.logger.warning(
-                                "[Kernel] v234.0: Tier 2 local inference "
+                                "[Kernel] v234.2: Tier 2 local inference "
                                 "unavailable — no GGUF model found. "
+                                f"Auto-download: {_auto}. "
                                 "Set JARVIS_PRIME_AUTO_DOWNLOAD=true or "
-                                "place a model in ~/models/"
+                                f"place a model in {PRIME_MODELS_DIR}"
                             )
                 except asyncio.TimeoutError:
                     self.logger.warning(

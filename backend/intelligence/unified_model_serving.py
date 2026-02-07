@@ -261,23 +261,68 @@ class PrimeLocalClient(ModelClient):
         Path("/opt/jarvis/models"),
     ]
 
-    # Model name aliases for flexible discovery
+    # v234.2: Quantization-aware model catalog
+    # Sorted by quality_rank (best quality first). Dynamic selection
+    # iterates this list and picks the best model that fits available RAM.
+    QUANT_CATALOG: List[Dict[str, Any]] = [
+        {
+            "name": "mistral-7b-q8",
+            "filename": "mistral-7b-instruct-v0.2.Q8_0.gguf",
+            "repo_id": "TheBloke/Mistral-7B-Instruct-v0.2-GGUF",
+            "size_mb": 7700,
+            "min_ram_gb": 12,
+            "context_length": 32768,
+            "quality_rank": 1,
+        },
+        {
+            "name": "llama-3-8b-q4",
+            "filename": "Meta-Llama-3-8B-Instruct.Q4_K_M.gguf",
+            "repo_id": "MaziyarPanahi/Meta-Llama-3-8B-Instruct-GGUF",
+            "size_mb": 4900,
+            "min_ram_gb": 10,
+            "context_length": 8192,
+            "quality_rank": 2,
+        },
+        {
+            "name": "mistral-7b-q4",
+            "filename": "mistral-7b-instruct-v0.2.Q4_K_M.gguf",
+            "repo_id": "TheBloke/Mistral-7B-Instruct-v0.2-GGUF",
+            "size_mb": 4370,
+            "min_ram_gb": 8,
+            "context_length": 32768,
+            "quality_rank": 3,
+        },
+        {
+            "name": "phi-3-mini-q4",
+            "filename": "Phi-3-mini-4k-instruct-q4.gguf",
+            "repo_id": "microsoft/Phi-3-mini-4k-instruct-gguf",
+            "size_mb": 2500,
+            "min_ram_gb": 6,
+            "context_length": 4096,
+            "quality_rank": 4,
+        },
+        {
+            "name": "phi-2-q4",
+            "filename": "phi-2.Q4_K_M.gguf",
+            "repo_id": "TheBloke/phi-2-GGUF",
+            "size_mb": 1800,
+            "min_ram_gb": 4,
+            "context_length": 2048,
+            "quality_rank": 5,
+        },
+    ]
+
+    # Model name aliases — discovers ANY model from the catalog
     MODEL_ALIASES = {
         "prime-7b-chat-v1.Q4_K_M.gguf": [
-            "prime-7b-chat-v1.Q4_K_M.gguf",
-            "prime-7b-chat.Q4_K_M.gguf",
-            "mistral-7b-instruct-v0.2.Q4_K_M.gguf",
-            "mistral-7b-instruct.Q4_K_M.gguf",
-            "llama-2-7b-chat.Q4_K_M.gguf",
-            "dolphin-2.6-mistral-7b.Q4_K_M.gguf",
-            "openhermes-2.5-mistral-7b.Q4_K_M.gguf",
+            entry["filename"] for entry in QUANT_CATALOG
         ],
     }
 
-    # Hugging Face repo mappings for auto-download
+    # HuggingFace repo mappings — built from QUANT_CATALOG
     HF_MODEL_REPOS = {
-        "mistral-7b-instruct-v0.2.Q4_K_M.gguf": "TheBloke/Mistral-7B-Instruct-v0.2-GGUF",
-        "llama-2-7b-chat.Q4_K_M.gguf": "TheBloke/Llama-2-7B-Chat-GGUF",
+        entry["filename"]: entry["repo_id"]
+        for entry in QUANT_CATALOG
     }
 
     def __init__(self):
@@ -348,8 +393,9 @@ class PrimeLocalClient(ModelClient):
             if search_dir.is_dir():
                 gguf_files = list(search_dir.glob("*.gguf"))
                 if gguf_files:
-                    # Prefer larger files (likely better quality)
-                    gguf_files.sort(key=lambda p: p.stat().st_size, reverse=True)
+                    # v234.2: Prefer smaller files in fallback (safer for RAM)
+                    # Dynamic quality selection happens in _select_best_model()
+                    gguf_files.sort(key=lambda p: p.stat().st_size)
                     self.logger.info(f"Using fallback GGUF model: {gguf_files[0].name}")
                     return gguf_files[0]
 
@@ -416,86 +462,183 @@ class PrimeLocalClient(ModelClient):
             self.logger.warning(f"Auto-download failed: {e}")
             return None
 
-    async def load_model(self, model_name: Optional[str] = None) -> bool:
+    async def _select_best_model(
+        self, available_gb: float
+    ) -> Optional[Tuple[Dict[str, Any], Path]]:
         """
-        Load a Prime model with intelligent discovery.
+        v234.2: Select the best quantization level that fits available RAM.
+
+        Iterates QUANT_CATALOG by quality_rank (best first), checks if
+        min_ram_gb fits, then looks for the model on disk. If no on-disk
+        model fits, attempts auto-download of the best candidate.
 
         Args:
-            model_name: Optional model name to load
+            available_gb: Available system RAM in GB
+
+        Returns:
+            Tuple of (catalog_entry, model_path) or None
+        """
+        download_candidate = None
+
+        for entry in self.QUANT_CATALOG:
+            if entry["min_ram_gb"] > available_gb:
+                self.logger.debug(
+                    f"[v234.2] Skipping {entry['name']}: "
+                    f"needs {entry['min_ram_gb']}GB, "
+                    f"have {available_gb:.1f}GB"
+                )
+                continue
+
+            # Check if this model exists on disk
+            model_path = self._discover_model(entry["filename"])
+            if model_path is not None:
+                self.logger.info(
+                    f"[v234.2] Selected {entry['name']} "
+                    f"(quality_rank={entry['quality_rank']}, "
+                    f"needs {entry['min_ram_gb']}GB, "
+                    f"have {available_gb:.1f}GB)"
+                )
+                return (entry, model_path)
+
+            # Track best downloadable candidate
+            if download_candidate is None:
+                download_candidate = entry
+
+        # No on-disk model fits — try auto-download
+        if download_candidate and not self._discovery_attempted:
+            self._discovery_attempted = True
+            self.logger.info(
+                f"[v234.2] No suitable model on disk. "
+                f"Attempting download: {download_candidate['name']}"
+            )
+            model_path = await self._auto_download_model(
+                download_candidate["filename"]
+            )
+            if model_path is not None:
+                return (download_candidate, model_path)
+
+        return None
+
+    async def load_model(self, model_name: Optional[str] = None) -> bool:
+        """
+        Load a Prime model with intelligent, memory-aware discovery.
+
+        v234.2: Uses QUANT_CATALOG to dynamically select the best
+        quantization level for available RAM. Falls through the quality
+        ladder (Q8 -> Q4 -> Phi-3 -> Phi-2) until a model fits.
+
+        Args:
+            model_name: Optional specific model filename to load
+                       (bypasses dynamic selection)
 
         Returns:
             True if model loaded successfully
         """
-        if model_name is None:
-            model_name = PRIME_DEFAULT_MODEL
-
-        # Try to discover the model
-        model_path = self._discover_model(model_name)
-
-        # If not found, try auto-download
-        if model_path is None and not self._discovery_attempted:
-            self._discovery_attempted = True
-            model_path = await self._auto_download_model(model_name)
-
-        if model_path is None:
-            # Only warn once to avoid log spam
-            if not PrimeLocalClient._warned_missing_model:
-                PrimeLocalClient._warned_missing_model = True
-                self.logger.warning(
-                    f"Model not found: {model_name}. "
-                    f"Searched: {[str(p) for p in self.MODEL_SEARCH_PATHS if p.exists()]}. "
-                    f"Set JARVIS_PRIME_AUTO_DOWNLOAD=true to enable auto-download, "
-                    f"or manually download a GGUF model to {PRIME_MODELS_DIR}"
-                )
-            return False
-
         async with self._lock:
+            # If already loaded, skip
+            if self._loaded and self._model is not None:
+                return True
+
             try:
-                # v234.0: Check available RAM before loading
-                _model_size_gb = model_path.stat().st_size / (1024 ** 3)
+                # Step 1: Get available RAM
+                available_gb = None
                 try:
                     from backend.core.memory_quantizer import (
                         get_memory_quantizer,
                     )
                     _mq = await get_memory_quantizer()
                     _metrics = _mq.get_current_metrics()
-                    _avail = _metrics.system_memory_available_gb
-                    # Need model size + 1GB headroom
-                    if _model_size_gb + 1.0 > _avail:
-                        self.logger.warning(
-                            f"[v234.0] Insufficient RAM for {model_path.name}: "
-                            f"need {_model_size_gb + 1.0:.1f}GB, "
-                            f"available {_avail:.1f}GB"
-                        )
-                        return False
+                    available_gb = _metrics.system_memory_available_gb
                     self.logger.info(
-                        f"[v234.0] RAM check passed: {_avail:.1f}GB available, "
-                        f"model needs {_model_size_gb:.1f}GB"
+                        f"[v234.2] Available RAM: {available_gb:.1f}GB"
                     )
                 except Exception as e:
-                    self.logger.debug(f"[v234.0] RAM check skipped: {e}")
+                    self.logger.debug(
+                        f"[v234.2] MemoryQuantizer unavailable: {e}"
+                    )
 
-                # Try to import llama-cpp-python
+                # Step 2: Select best model for available RAM
+                selected_entry = None
+                model_path = None
+
+                if model_name is not None:
+                    # Explicit model requested — use it directly
+                    model_path = self._discover_model(model_name)
+                    if model_path is None and not self._discovery_attempted:
+                        self._discovery_attempted = True
+                        model_path = await self._auto_download_model(
+                            model_name
+                        )
+                elif available_gb is not None:
+                    # Dynamic selection from QUANT_CATALOG
+                    result = await self._select_best_model(available_gb)
+                    if result is not None:
+                        selected_entry, model_path = result
+                else:
+                    # Fallback: no memory info, try default model
+                    model_path = self._discover_model(PRIME_DEFAULT_MODEL)
+                    if model_path is None and not self._discovery_attempted:
+                        self._discovery_attempted = True
+                        model_path = await self._auto_download_model(
+                            PRIME_DEFAULT_MODEL
+                        )
+
+                if model_path is None:
+                    if not PrimeLocalClient._warned_missing_model:
+                        PrimeLocalClient._warned_missing_model = True
+                        self.logger.warning(
+                            f"No suitable GGUF model found. "
+                            f"Available RAM: {available_gb or 'unknown'}GB. "
+                            f"Set JARVIS_PRIME_AUTO_DOWNLOAD=true to enable "
+                            f"auto-download, or place a model in "
+                            f"{PRIME_MODELS_DIR}"
+                        )
+                    return False
+
+                # Step 3: Final RAM check (actual file size + headroom)
+                _model_size_gb = model_path.stat().st_size / (1024 ** 3)
+                if available_gb is not None:
+                    if _model_size_gb + 1.0 > available_gb:
+                        self.logger.warning(
+                            f"[v234.2] Insufficient RAM for "
+                            f"{model_path.name}: need "
+                            f"{_model_size_gb + 1.0:.1f}GB, "
+                            f"available {available_gb:.1f}GB"
+                        )
+                        return False
+
+                # Step 4: Load via llama-cpp-python
                 from llama_cpp import Llama
 
-                # v234.0: Detect Apple Silicon for Metal GPU offload
                 _n_gpu = int(os.getenv("JARVIS_N_GPU_LAYERS", "-1"))
                 import platform
                 if platform.machine() != "arm64":
-                    _n_gpu = 0  # No Metal on Intel
+                    _n_gpu = 0
+
+                # Use context_length from catalog if available
+                _ctx = PRIME_CONTEXT_LENGTH
+                if selected_entry and "context_length" in selected_entry:
+                    _ctx = selected_entry["context_length"]
 
                 self._model = Llama(
                     model_path=str(model_path),
-                    n_ctx=PRIME_CONTEXT_LENGTH,
+                    n_ctx=_ctx,
                     n_threads=os.cpu_count() or 4,
                     n_gpu_layers=_n_gpu,
                     verbose=False,
                 )
                 self._model_path = model_path
                 self._loaded = True
+                _name = (
+                    selected_entry["name"]
+                    if selected_entry
+                    else model_path.name
+                )
                 self.logger.info(
-                    f"Loaded Prime model: {model_path.name} "
-                    f"(GPU layers: {_n_gpu}, size: {_model_size_gb:.1f}GB)"
+                    f"[v234.2] Loaded: {_name} "
+                    f"(GPU layers: {_n_gpu}, "
+                    f"size: {_model_size_gb:.1f}GB, "
+                    f"ctx: {_ctx})"
                 )
                 return True
 
@@ -508,7 +651,7 @@ class PrimeLocalClient(ModelClient):
                     )
                 return False
             except Exception as e:
-                self.logger.error(f"Failed to load model {model_path}: {e}")
+                self.logger.error(f"Failed to load model: {e}")
                 return False
 
     async def generate(self, request: ModelRequest) -> ModelResponse:
