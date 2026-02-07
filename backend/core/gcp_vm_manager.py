@@ -7128,8 +7128,10 @@ for attempt in $(seq 1 15); do
 import sys, json
 try:
     d = json.load(sys.stdin)
-    # Accept: ready_for_inference=true OR model_loaded=true OR status=healthy
-    if d.get('ready_for_inference') or d.get('model_loaded') or d.get('status') == 'healthy':
+    # v235.3: Only accept definitive readiness signals
+    # model_loaded alone is NOT sufficient — J-Prime sets it during loading_tensors
+    # before inference is actually possible
+    if d.get('ready_for_inference') or d.get('status') == 'healthy':
         sys.exit(0)
     # Also check APARS payload (enrichment middleware may have injected it)
     apars = d.get('apars', {})
