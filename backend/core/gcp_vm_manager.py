@@ -5998,7 +5998,11 @@ class GCPVMManager:
                         f"(reason: {lineage_reason})"
                     )
                     if progress_callback:
-                        progress_callback(35, "gcp", f"Upgrading VM to golden image ({lineage_reason})")
+                        # v235.0: Use low pct (0-5) so dashboard maps to 40-43%.
+                        # The callback maps pct → 40+pct*0.6. Values >5 map above
+                        # where APARS data starts (~43%), causing visible progress
+                        # regression when real APARS data arrives and overrides.
+                        progress_callback(0, "gcp", f"Recreating VM from golden image ({lineage_reason})")
                     
                     # Delete the old VM
                     del_success, del_error = await self._delete_instance(instance_name)
@@ -6020,7 +6024,8 @@ class GCPVMManager:
                             return False, static_ip, f"RECREATE_FAILED: {create_error}"
                         
                         if progress_callback:
-                            progress_callback(50, "gcp", "Golden image VM created, waiting for health")
+                            # v235.0: Low pct avoids regression when APARS data arrives
+                            progress_callback(5, "gcp", "Golden image VM created, booting")
                 else:
                     # VM matches golden image — fast restart path
                     logger.info(
@@ -6052,9 +6057,10 @@ class GCPVMManager:
                         f"Recycling with updated script."
                     )
                     if progress_callback:
+                        # v235.0: Low pct avoids regression when APARS data arrives
                         progress_callback(
-                            30, "gcp",
-                            f"Upgrading VM startup script "
+                            0, "gcp",
+                            f"Recycling VM: startup script "
                             f"({vm_script_version or 'pre-v235'} → {_STARTUP_SCRIPT_VERSION})"
                         )
 
@@ -6067,9 +6073,10 @@ class GCPVMManager:
                         if not create_success:
                             return False, static_ip, f"SCRIPT_UPGRADE_FAILED: {create_error}"
                         if progress_callback:
+                            # v235.0: Low pct avoids regression when APARS data arrives
                             progress_callback(
-                                50, "gcp",
-                                f"VM recreated with v{_STARTUP_SCRIPT_VERSION} startup script"
+                                5, "gcp",
+                                f"VM recreated with v{_STARTUP_SCRIPT_VERSION} script, booting"
                             )
                     else:
                         logger.warning(
@@ -7172,15 +7179,25 @@ fi
                 last_status = f"phase={phase_name}, progress={progress_pct}%, eta={eta}s, mode={deploy_mode}"
                 logger.debug(f"☁️ [InvincibleNode] Health poll: {last_status}")
             elif health_data.get("status") == "starting":
-                has_real_data = True  # v235.0: VM is responding (legacy format)
-                consecutive_errors = 0  # v235.0: VM is responding
-                # VM is responding but not ready yet — show what we know
+                # v235.0: VM is responding but WITHOUT APARS data (legacy format).
+                # Do NOT set has_real_data — this is a pre-APARS response that
+                # carries no real progress info (just "I'm alive, not ready").
+                # If we mark it as real data, the supervisor callback sets
+                # source="apars" → refreshes _last_real_gcp_progress_update
+                # every 5s → permanently defers synthetic generator → dashboard
+                # stuck at whatever synthetic % was reached before first response.
+                # Let synthetic handle progress for non-APARS VMs.
+                consecutive_errors = 0  # VM IS responding (reset error counter)
                 mode = health_data.get("mode", "unknown")
                 phase = health_data.get("phase", "starting")
                 detail = f"VM booting: {phase} (mode={mode}, {int(elapsed)}s)"
                 progress_pct = min(80, int((elapsed / timeout) * 70) + 10)
                 phase_name = phase
                 last_status = f"booting: phase={phase}, mode={mode}"
+                logger.debug(
+                    f"☁️ [InvincibleNode] Legacy health response (no APARS): "
+                    f"phase={phase}, mode={mode}, elapsed={int(elapsed)}s"
+                )
             elif "error" in health_data:
                 last_status = f"error={health_data['error']}"
                 detail = health_data.get("error", "Unknown error")[:40]
@@ -7252,11 +7269,14 @@ fi
                 progress_pct = min(90, int((elapsed / timeout) * 90) + 20)
                 detail = f"Polling health ({int(elapsed)}s elapsed)"
 
-            # v235.0: Only call progress callback for real VM data (APARS or
-            # legacy status). Error/no-response cases let the supervisor's
-            # synthetic progress generator run freely — prevents the callback
-            # from falsely marking synthetic estimates as "apars" source,
-            # which prematurely triggers deferral and creates yo-yo progress.
+            # v235.0: Only call progress callback for real APARS data.
+            # Legacy "status=starting" (no APARS key), errors, and no-response
+            # cases do NOT trigger the callback. This prevents the supervisor
+            # from setting source="apars" for non-APARS responses, which would
+            # permanently defer the synthetic progress generator (the callback
+            # refreshes _last_real_gcp_progress_update every 5s, creating an
+            # infinite deferral loop → dashboard stuck at whatever synthetic
+            # % was reached before the first legacy response arrived).
             if progress_callback and has_real_data:
                 try:
                     progress_callback(progress_pct, phase_name, detail)

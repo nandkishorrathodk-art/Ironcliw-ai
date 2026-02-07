@@ -60224,9 +60224,10 @@ class JarvisSystemKernel:
                     )
 
                     # Progress callback — identical to Phase 2's
-                    # v235.0: Only marks as "apars" source. Since _poll_health_until_ready
-                    # now only calls this for real APARS/status responses (not errors/empty),
-                    # the source label is accurate. Synthetic generator defers correctly.
+                    # v235.0: Only marks as "apars" source. _poll_health_until_ready only
+                    # calls this for responses with actual APARS data (has "apars" key).
+                    # Legacy "status=starting" responses (no APARS) do NOT trigger the
+                    # callback, so source="apars" here is always truthful.
                     def _gcp_progress_cb(pct, phase, detail):
                         dashboard_pct = 40 + int(pct * 0.6)
                         _mode = ""
