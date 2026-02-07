@@ -97,12 +97,18 @@ class ComponentTimeoutProfile:
     @property
     def effective_dead_threshold(self) -> float:
         """
-        Effective dead threshold accounting for startup grace.
+        Effective dead threshold for post-startup crash detection.
 
-        Critical fix: Dead threshold must ALWAYS be >= startup_timeout
-        to prevent components being marked dead while still initializing.
+        v153.1: Startup protection is handled separately by
+        is_in_startup_grace_period() in HeartbeatValidator (line 558-559).
+        During startup grace, components are marked STALE (not DEAD).
+        After startup, this threshold determines crash detection speed.
+
+        Previous logic: max(heartbeat_dead, startup_timeout * 1.5)
+        caused reactor-core's 300s dead threshold to balloon to 1350s,
+        making genuine post-startup crashes take 22.5 min to detect.
         """
-        return max(self.heartbeat_dead, self.startup_timeout * 1.5)
+        return self.heartbeat_dead
 
 
 # =============================================================================
@@ -311,14 +317,17 @@ class TrinityOrchestrationConfig:
         """
         Validate configuration consistency.
 
-        Critical validation: heartbeat_dead >= startup_timeout for all components
+        v153.1: heartbeat_dead can be shorter than startup_timeout because
+        startup protection is handled by startup_grace_period separately.
+        We warn only if startup_grace_period < startup_timeout (actual problem).
         """
         for comp_type, profile in self.profiles.items():
-            if profile.heartbeat_dead < profile.startup_timeout:
+            if profile.startup_grace_period < profile.startup_timeout:
                 logger.warning(
-                    f"[Config] {comp_type.value}: heartbeat_dead ({profile.heartbeat_dead}s) "
-                    f"< startup_timeout ({profile.startup_timeout}s). "
-                    f"Using effective threshold: {profile.effective_dead_threshold}s"
+                    f"[Config] {comp_type.value}: startup_grace_period "
+                    f"({profile.startup_grace_period}s) < startup_timeout "
+                    f"({profile.startup_timeout}s). Component may be marked "
+                    f"dead before startup completes."
                 )
 
             if profile.heartbeat_stale < profile.health_check_timeout * 2:

@@ -1131,6 +1131,24 @@ class GCPReconciler:
                     continue
 
                 # ═══════════════════════════════════════════════════════════════════
+                # v2.2: CHECK 1b - Invincible/persistent VMs are NEVER orphans.
+                # jarvis-prime-node persists across sessions by design — its
+                # creating session's lock will be gone, but that's expected.
+                # This matches GCPVMManager (line 3200) and CostTracker protection.
+                # ═══════════════════════════════════════════════════════════════════
+                vm_class = labels.get("vm-class", "spot")
+                is_persistent = (
+                    vm_class == "invincible"
+                    or vm_name.startswith("jarvis-prime-node")
+                )
+                if is_persistent:
+                    logger.debug(
+                        f"[GCPReconciler] VM {vm_name} is persistent "
+                        f"(class={vm_class}) — skipping orphan check"
+                    )
+                    continue
+
+                # ═══════════════════════════════════════════════════════════════════
                 # v2.1: CHECK 2 - Recently created VMs get a grace period
                 # This prevents race conditions where VM is created but session
                 # lock hasn't been written yet.
@@ -1313,6 +1331,16 @@ class GCPReconciler:
 
     async def _delete_vm(self, vm_name: str, zone: str) -> bool:
         """Delete a GCP VM."""
+        # v2.2: Safety net — NEVER delete invincible VMs regardless of caller.
+        # This is a belt-and-suspenders check in case _find_orphaned_vms
+        # somehow lets an invincible VM through.
+        if vm_name.startswith("jarvis-prime-node"):
+            logger.warning(
+                f"[GCPReconciler] BLOCKED deletion of persistent VM: {vm_name} — "
+                f"jarvis-prime-node is invincible and should never be deleted by reconciler"
+            )
+            return False
+
         try:
             cmd = [
                 "gcloud", "compute", "instances", "delete", vm_name,

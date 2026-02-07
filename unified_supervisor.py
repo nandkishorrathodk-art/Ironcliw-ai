@@ -1545,7 +1545,9 @@ KERNEL_SOCKET_PATH = LOCKS_DIR / "kernel.sock"
 LEGACY_SOCKET_PATH = LOCKS_DIR / "supervisor.sock"
 
 # Port ranges (for dynamic allocation)
-BACKEND_PORT_RANGE = (8000, 8100)
+# v233.1: Start at 8010 to match backend/main.py and frontend defaults.
+# Previous 8000 start caused port mismatch — frontend always checks 8010 first.
+BACKEND_PORT_RANGE = (8010, 8100)
 WEBSOCKET_PORT_RANGE = (8765, 8800)
 LOADING_SERVER_PORT_RANGE = (8080, 8090)
 
@@ -8419,9 +8421,12 @@ class DynamicPortManager(ResourceManagerBase):
         super().__init__("DynamicPortManager", config)
 
         # Configuration from environment
-        self.primary_port = int(os.getenv("JARVIS_PORT", "8000"))
+        # v233.1: Harmonize port default with backend/main.py and frontend (8010).
+        # Previous default (8000) caused DynamicPortManager to select 8000 before
+        # assign_all_ports() could apply DEFAULT_BACKEND_PORT = 8010.
+        self.primary_port = int(os.getenv("JARVIS_PORT", os.getenv("BACKEND_PORT", os.getenv("JARVIS_BACKEND_PORT", "8010"))))
 
-        fallback_str = os.getenv("JARVIS_FALLBACK_PORTS", "8001,8002,8003")
+        fallback_str = os.getenv("JARVIS_FALLBACK_PORTS", "8000,8011,8012")
         self.fallback_ports = [int(p.strip()) for p in fallback_str.split(",") if p.strip()]
 
         self.websocket_port = int(os.getenv("JARVIS_WEBSOCKET_PORT", "8765"))
