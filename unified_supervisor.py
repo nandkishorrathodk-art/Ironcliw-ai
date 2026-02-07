@@ -1463,6 +1463,18 @@ def _register_early_shutdown_handlers() -> bool:
 # Execute immediately at module load
 _register_early_shutdown_handlers()
 
+# v233.0: Clean up backend_port.json on exit to prevent stale port state
+import atexit as _atexit
+def _cleanup_port_state_file():
+    """Remove backend_port.json so stale port info doesn't mislead next startup."""
+    try:
+        _port_state = Path.home() / ".jarvis" / "backend_port.json"
+        if _port_state.exists():
+            _port_state.unlink(missing_ok=True)
+    except Exception:
+        pass  # Best-effort cleanup
+_atexit.register(_cleanup_port_state_file)
+
 # Intelligent Startup Narrator - phase-aware voice narration
 # Note: Import as BackendStartupPhase to avoid conflict with local StartupPhase enum
 try:
@@ -8784,7 +8796,10 @@ async def assign_all_ports(
     import socket
 
     # Default base ports
-    DEFAULT_BACKEND_PORT = 8000
+    # v233.0: Harmonize with backend/main.py and frontend DynamicConfigService
+    # Both default to 8010 via BACKEND_PORT env var. Previous mismatch (8000 vs 8010)
+    # caused frontend connection failures when Docker occupied 8010.
+    DEFAULT_BACKEND_PORT = int(os.getenv("BACKEND_PORT", os.getenv("JARVIS_BACKEND_PORT", "8010")))
     DEFAULT_WEBSOCKET_PORT = 8765
     DEFAULT_LOADING_PORT = 3000
     DEFAULT_FRONTEND_PORT = 3001
@@ -54118,11 +54133,22 @@ class StartupWatchdog:
 
         # Phase change
         if phase_key != self._current_phase:
+            old_phase = self._current_phase
             self._current_phase = phase_key
             self._phase_start_time = now
+            # v232.3: Reset progress tracking for new phase to prevent false regression.
+            # Without this, the first update in a new phase (e.g., 71%) gets compared
+            # against the last entry of the OLD phase (e.g., 100%) in _progress_history,
+            # triggering "Progress regression: 100% → 71% — possible reporter corruption".
+            # Clearing _progress_history is sufficient — the check at line ~54146 gates on
+            # non-empty history, so the first update won't trigger any comparison at all.
+            self._progress_history.clear()
             # v232.1: Reset escalation cooldown for new phase
             self._last_timeout_action_time.pop(phase_key, None)
-            self._logger.debug(f"[DMS] Phase entered: {phase_key}")
+            self._logger.debug(
+                f"[DMS] Phase transition: {old_phase} → {phase_key} "
+                f"(progress history reset)"
+            )
 
         # v188.0: ALWAYS update progress time as heartbeat
         # This prevents false stall detection when callbacks report same progress
@@ -62467,6 +62493,23 @@ class JarvisSystemKernel:
                 success = await self._start_backend_subprocess()
 
             if success:
+                # v233.0: Write allocated backend port to well-known state file
+                # Allows frontend/loading-page to discover the ACTUAL port without scanning
+                try:
+                    _port_state = Path.home() / ".jarvis" / "backend_port.json"
+                    _port_state.parent.mkdir(parents=True, exist_ok=True)
+                    _port_state.write_text(json.dumps({
+                        "port": self.config.backend_port,
+                        "pid": os.getpid(),
+                        "timestamp": time.time(),
+                    }))
+                    self.logger.info(
+                        f"[Startup] Backend port {self.config.backend_port} "
+                        f"written to {_port_state}"
+                    )
+                except Exception as _e:
+                    self.logger.debug(f"[Startup] Could not write port state: {_e}")
+
                 # v211.0: CRITICAL FIX - Update "backend" component status to "complete"
                 # This was the root cause of "System not ready: blocking (backend)"
                 # The readiness predicate evaluates _component_status["backend"], not jarvis_body

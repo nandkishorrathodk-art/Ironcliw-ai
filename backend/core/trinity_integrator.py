@@ -11491,8 +11491,16 @@ class TrinityUnifiedOrchestrator:
         Uses IntelligentRepoDiscovery for multi-strategy path discovery
         and ResourceAwareLauncher for robust process launching.
         v86.0: Enhanced progress logging
+        v153.0: Added orphan cleanup on non-primary ports before launch
         """
         logger.info("   🚀 [v86.0] Launching Reactor-Core process...")
+
+        # v153.0: Kill orphaned reactor-core instances on non-primary ports.
+        # Prevents accumulation from previous crash recovery attempts.
+        reactor_port = int(os.getenv("REACTOR_CORE_PORT", "8090"))
+        for fallback_port in [8091, 8092, 8093]:
+            if fallback_port != reactor_port:
+                await self._kill_process_on_port(fallback_port, "reactor_core orphan")
 
         try:
             launcher = await get_resource_aware_launcher()
@@ -11785,7 +11793,18 @@ class TrinityUnifiedOrchestrator:
                         if name == "jarvis_prime":
                             success = await self._launch_jprime_process()
                         elif name == "reactor_core":
-                            success = await self._launch_reactor_process()
+                            # v153.0: Before restarting, verify existing process is actually dead.
+                            # Reactor-Core ML model loading takes 10-15 min — don't spawn
+                            # duplicates on fallback ports while it's still starting.
+                            reactor_port = int(os.getenv("REACTOR_CORE_PORT", "8090"))
+                            if await self._is_component_still_loading(name, reactor_port):
+                                logger.info(
+                                    f"[Supervisor] reactor_core still alive on port {reactor_port} "
+                                    f"(likely loading ML models) — skipping restart"
+                                )
+                                success = True
+                            else:
+                                success = await self._launch_reactor_process()
                         else:
                             success = False
 
@@ -11859,6 +11878,109 @@ class TrinityUnifiedOrchestrator:
 
         except Exception as e:
             logger.debug(f"[Supervisor] Heartbeat verification error: {e}")
+            return False
+
+    # =========================================================================
+    # v153.0: Component Lifecycle Helpers
+    # =========================================================================
+
+    async def _is_component_still_loading(self, name: str, port: int) -> bool:
+        """
+        v153.0: Multi-signal check if a component is still alive and loading.
+
+        Checks three signals to avoid fragile socket-only detection:
+        1. Port is listening (TCP connect test)
+        2. PID from managed_processes is still running (os.kill signal 0)
+        3. Process is consuming CPU (not fully hung)
+
+        Returns True only if the process is genuinely alive and working.
+        """
+        import socket
+
+        # Signal 1: Port listening
+        port_alive = False
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.settimeout(2.0)
+                port_alive = s.connect_ex(("127.0.0.1", port)) == 0
+        except Exception:
+            pass
+
+        if not port_alive:
+            return False
+
+        # Signal 2: PID still running
+        info = self._managed_processes.get(name, {})
+        proc = info.get("process")
+        if proc and hasattr(proc, 'pid') and proc.pid:
+            try:
+                os.kill(proc.pid, 0)  # Check if process exists (signal 0 = no-op)
+            except ProcessLookupError:
+                return False  # PID is gone
+            except PermissionError:
+                pass  # Process exists but we can't signal it — still alive
+
+        # Signal 3: Check CPU usage (optional — prevents treating hung processes as alive)
+        try:
+            import psutil
+            if proc and hasattr(proc, 'pid') and proc.pid:
+                p = psutil.Process(proc.pid)
+                cpu = p.cpu_percent(interval=0.5)
+                if cpu < 0.1:
+                    logger.warning(
+                        f"[Supervisor] {name} PID {proc.pid} on port {port}: "
+                        f"alive but 0% CPU — may be hung"
+                    )
+                    # Still return True — give benefit of the doubt during startup
+                    # (ML model loading can have CPU gaps during I/O)
+        except Exception:
+            pass  # psutil not available or process gone — fall through
+
+        return True
+
+    async def _kill_process_on_port(self, port: int, label: str = "") -> bool:
+        """
+        v153.0: Kill any process listening on the given port.
+        Uses psutil if available, falls back to lsof+kill subprocess.
+        """
+        try:
+            import psutil
+            for conn in psutil.net_connections(kind='inet'):
+                if conn.laddr.port == port and conn.status == 'LISTEN':
+                    try:
+                        proc = psutil.Process(conn.pid)
+                        logger.info(
+                            f"[Supervisor] Killing {label} PID {conn.pid} on port {port}"
+                        )
+                        proc.terminate()
+                        try:
+                            proc.wait(timeout=5)
+                        except psutil.TimeoutExpired:
+                            proc.kill()
+                        return True
+                    except (psutil.NoSuchProcess, psutil.AccessDenied):
+                        pass
+            return False
+        except ImportError:
+            # Fallback: use lsof + kill (works on macOS/Linux without psutil)
+            try:
+                result = await asyncio.create_subprocess_exec(
+                    "lsof", "-ti", f":{port}",
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.DEVNULL,
+                )
+                stdout, _ = await result.communicate()
+                if stdout:
+                    pids = stdout.decode().strip().split('\n')
+                    for pid_str in pids:
+                        pid = int(pid_str.strip())
+                        logger.info(
+                            f"[Supervisor] Killing {label} PID {pid} on port {port} (via lsof)"
+                        )
+                        os.kill(pid, signal.SIGTERM)
+                    return True
+            except Exception as e:
+                logger.debug(f"[Supervisor] lsof fallback failed for port {port}: {e}")
             return False
 
     # =========================================================================

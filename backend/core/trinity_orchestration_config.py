@@ -132,11 +132,16 @@ DEFAULT_PROFILES: Dict[ComponentType, ComponentTimeoutProfile] = {
         retry_delay=_env_float("JARVIS_PRIME_RETRY_DELAY", 5.0),
     ),
     ComponentType.REACTOR_CORE: ComponentTimeoutProfile(
-        startup_timeout=_env_float("REACTOR_CORE_STARTUP_TIMEOUT", 120.0),
+        # v153.0: ML model loading takes 10-15 min. Previous 120s startup_timeout
+        # caused premature UNHEALTHY marking and duplicate process spawning on
+        # fallback ports (8091, 8092). Strategy: long startup_grace_period (16 min)
+        # for initial loading, but shorter heartbeat_dead (300s) for detecting
+        # genuine crashes after startup completes.
+        startup_timeout=_env_float("REACTOR_CORE_STARTUP_TIMEOUT", 900.0),
         health_check_timeout=_env_float("REACTOR_CORE_HEALTH_TIMEOUT", 10.0),
-        heartbeat_stale=_env_float("REACTOR_CORE_HEARTBEAT_STALE", 60.0),
-        heartbeat_dead=_env_float("REACTOR_CORE_HEARTBEAT_DEAD", 180.0),
-        startup_grace_period=_env_float("REACTOR_CORE_STARTUP_GRACE", 180.0),
+        heartbeat_stale=_env_float("REACTOR_CORE_HEARTBEAT_STALE", 120.0),
+        heartbeat_dead=_env_float("REACTOR_CORE_HEARTBEAT_DEAD", 300.0),
+        startup_grace_period=_env_float("REACTOR_CORE_STARTUP_GRACE", 960.0),
         retry_attempts=_env_int("REACTOR_CORE_RETRY_ATTEMPTS", 3),
         retry_delay=_env_float("REACTOR_CORE_RETRY_DELAY", 3.0),
     ),

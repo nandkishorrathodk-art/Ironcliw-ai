@@ -801,7 +801,9 @@ class JarvisConnectionService {
     }
 
     // Strategy 2: Try REST API (/api/command) — synchronous fallback
-    if (this.backendUrl && this._restAvailable !== false) {
+    // v3.1: Try REST if available OR if cooldown expired (fast recovery path)
+    const restCooldownExpired = this._lastRestFailure && (Date.now() - this._lastRestFailure > 2000);
+    if (this.backendUrl && (this._restAvailable !== false || restCooldownExpired)) {
       try {
         const result = await this._sendViaREST(command, options);
         return result;
@@ -867,8 +869,10 @@ class JarvisConnectionService {
       };
     } catch (error) {
       this._restAvailable = false;
-      // Re-enable REST check after 10 seconds (it might have been a transient failure)
-      setTimeout(() => { this._restAvailable = true; }, 10000);
+      this._lastRestFailure = Date.now();
+      // v3.1: Reduced cooldown from 10s to 2s. Previous 10s was too aggressive —
+      // caused commands to be queued even when backend recovered quickly.
+      setTimeout(() => { this._restAvailable = true; }, 2000);
       throw error;
     }
   }
