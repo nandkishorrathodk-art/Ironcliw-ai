@@ -112,9 +112,9 @@ body:HEAL | prime:STAR | reactorc:STAR | gcpvm:STAR | trinity:STAR
 
 ---
 
-## GCP Golden Image — Cloud Inference Architecture (v224.0+)
+## GCP Golden Image — Cloud Inference Architecture (v224.0+, v235.4)
 
-JARVIS uses a **pre-baked GCP VM image** (golden image) to deliver cloud-based LLM inference with ~30-60 second cold starts instead of 10-15 minutes. As of v233.2, this is the **only** inference pathway — local LLM loading on 16GB Mac is off-limits due to memory pressure and swap thrashing. The fallback chain is: GCP Golden Image → GCP Standard VM → Claude API (emergency).
+JARVIS uses a **pre-baked GCP VM image** (golden image) to deliver cloud-based LLM inference with ~30-60 second cold starts instead of 10-15 minutes. As of v233.2, this is the **only** inference pathway — local LLM loading on 16GB Mac is off-limits due to memory pressure and swap thrashing. The fallback chain is: GCP Golden Image → GCP Standard VM → Claude API (emergency). As of v235.4, the frontend→backend→GCP command routing is fully resilient with automatic WebSocket→REST→queue failover.
 
 ### Three-Tier Inference Architecture (v234.0)
 
@@ -570,6 +570,245 @@ After deploying v233.2 and rebaking the golden image, a cold boot test confirmed
 5. **Startup script ordering matters.** A single line reorder (port read before health endpoint) was the difference between 87-second success and permanent hang.
 
 6. **Rebake after script changes.** Golden images bake the startup script at image creation time. Code changes to `_generate_golden_startup_script()` have zero effect until the image is rebuilt.
+
+### Frontend Connection Failure & End-to-End Inference Fix (v235.4)
+
+#### The Problem: "Not connected to JARVIS"
+
+After the v233.2 golden image fix successfully booted JARVIS Prime on GCP in 87 seconds, a new failure emerged: the frontend UI showed "SYSTEM READY" with a green orb, but typing any command returned `❌ Not connected to JARVIS`. The entire backend was healthy (all components showing HEAL status), the GCP VM was ready at `34.45.154.209:8000` with `ready_for_inference=True`, yet the user could not interact with the system.
+
+**Observed symptoms:**
+
+```
+┌─────────────────────────┬─────────────────────────────────┐
+│ JARVIS Dashboard        │ All green — body, prime,        │
+│                         │ reactorc, gcpvm: HEAL           │
+├─────────────────────────┼─────────────────────────────────┤
+│ GCP VM                  │ 100% ready at 34.45.154.209     │
+├─────────────────────────┼─────────────────────────────────┤
+│ Frontend UI             │ "SYSTEM READY" (green orb)      │
+├─────────────────────────┼─────────────────────────────────┤
+│ User sends "what is     │ ❌ Not connected to JARVIS      │
+│ 2+2?"                   │                                 │
+└─────────────────────────┴─────────────────────────────────┘
+```
+
+The system appeared fully operational but was completely unable to process user commands — a silent failure where every indicator said "healthy" while the command path was broken.
+
+#### Root Cause Analysis: 7 Interacting Failures (Frontend → Backend → GCP)
+
+A deep investigation across the frontend (`JarvisVoice.js`, `JarvisConnectionService.js`, `DynamicWebSocketClient.js`), backend (`main.py`, `unified_websocket.py`, `prime_client.py`), and cross-repo integration revealed 7 root causes spanning all three layers:
+
+**RC1: `dynamic-config.json` pointed to wrong port (8000 instead of 8010)**
+
+The static configuration file `frontend/public/dynamic-config.json` had:
+
+```json
+{
+  "backend": {
+    "url": "http://localhost:8000",
+    "wsUrl": "ws://localhost:8000"
+  }
+}
+```
+
+Port 8000 is JARVIS Prime's port (running on GCP, not locally). The backend runs on port **8010**. Any frontend component that read this config file would attempt to connect to a non-existent local service.
+
+**RC2: Silent WebSocket failure + false ONLINE state**
+
+`JarvisConnectionService._initializeWebSocket()` caught WebSocket connection failures silently:
+
+```javascript
+// BROKEN (pre-v235.4):
+try {
+  await this.wsClient.connect(`${this.wsUrl}/ws`);
+} catch (error) {
+  console.warn('WebSocket connection failed:', error.message);
+  // Don't throw — silently swallowed!
+}
+```
+
+After this silent failure, `_connectToBackend()` still set the connection state to `ONLINE` because the HTTP health check had passed. The service reported "connected" while no WebSocket existed.
+
+**RC3: `handleTextCommandSubmit` had zero fallback**
+
+The text command submission handler directly checked `wsRef.current`:
+
+```javascript
+// BROKEN (pre-v235.4):
+if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+  wsRef.current.send(JSON.stringify({type: 'command', text: textCommand}));
+} else {
+  setResponse('❌ Not connected to JARVIS');  // Dead end — no recovery
+}
+```
+
+No REST API fallback, no retry, no reconnection attempt. The backend's `/api/command` REST endpoint was fully functional but the frontend never tried it.
+
+**RC4: `sendTextCommand` (voice command fallback) also had zero fallback**
+
+The supposed "fallback" function for voice commands had the exact same pattern — check `wsRef.current`, show error if null. Both code paths terminated at the same dead end.
+
+**RC5: `wsRef.current` sync was a one-shot race condition**
+
+The WebSocket reference was only synced when the `stateChange` event fired with `ONLINE`:
+
+```javascript
+if (newState === ConnectionState.ONLINE) {
+  const ws = connectionService.getWebSocket();
+  if (ws) { wsRef.current = ws; }  // One chance — miss it and wsRef stays null forever
+}
+```
+
+If the WebSocket connected slightly after the state transition (common with async operations), `getWebSocket()` returned null and `wsRef.current` was never updated. No periodic re-sync existed.
+
+**RC6: No REST API fallback anywhere in the frontend**
+
+The backend exposes `POST /api/command` as a REST endpoint that processes commands identically to the WebSocket path. The frontend never called this endpoint — it was entirely dependent on WebSocket connectivity. When WebSocket failed, the entire command path was severed despite the HTTP layer being perfectly functional.
+
+**RC7: `PrimeClientConfig` didn't read `JARVIS_PRIME_URL` (cross-repo routing gap)**
+
+The `PrimeClient` in `backend/core/prime_client.py` read from:
+- `JARVIS_PRIME_HOST` (default: `"localhost"`)
+- `JARVIS_PRIME_PORT` (default: `8000`)
+
+But the supervisor's `_propagate_invincible_node_url()` set different env vars:
+- `JARVIS_PRIME_URL=http://34.45.154.209:8000`
+- `JARVIS_INVINCIBLE_NODE_IP=34.45.154.209`
+- `JARVIS_INVINCIBLE_NODE_PORT=8000`
+
+Any fresh `PrimeClient` instance (created by the `/api/command` REST endpoint) would default to `localhost:8000` — a non-existent local service — instead of the GCP VM. The hot-swap via `update_endpoint()` only applied to the singleton instance used by the WebSocket path.
+
+#### The v235.4 Fix: All 7 Root Causes Resolved
+
+| Fix | Root Cause | Solution | File |
+|-----|-----------|----------|------|
+| **1** | Wrong port in config | Changed port from `8000` to `8010` | `frontend/public/dynamic-config.json` |
+| **2** | Silent WebSocket failure | `_initializeWebSocket()` returns `boolean` success/failure. `_connectToBackend()` tracks WebSocket status separately, starts background retry if WS failed. | `JarvisConnectionService.js` |
+| **3** | No REST fallback in text commands | Rewrote `handleTextCommandSubmit` to use `connectionService.sendCommand()` with 3-tier routing: WebSocket → REST API → queue | `JarvisVoice.js` |
+| **4** | No REST fallback in voice commands | Rewrote `sendTextCommand` with same `connectionService.sendCommand()` fallback chain | `JarvisVoice.js` |
+| **5** | One-shot wsRef sync | Added periodic sync (5s interval), `wsReconnected` event handler, and dynamic `activeWs` resolution before send | `JarvisVoice.js` |
+| **6** | No REST API integration | Added `_sendViaREST()` method calling `POST /api/command`, integrated into `sendCommand()` Strategy 2. Response emitted as message event for consistent UI handling. | `JarvisConnectionService.js` |
+| **7** | PrimeClient env var mismatch | Added `_resolve_prime_host()` / `_resolve_prime_port()` with priority: `JARVIS_PRIME_URL` → `JARVIS_INVINCIBLE_NODE_IP/PORT` → `JARVIS_PRIME_HOST/PORT` → default | `prime_client.py` |
+
+#### New Command Routing Architecture (v235.4)
+
+After v235.4, every command has three independent paths to reach JARVIS Prime, with automatic fallback:
+
+```
+User types "what's 2+2?"
+  │
+  ├── Strategy 1: WebSocket ──→ ws://localhost:8010/ws
+  │     └── unified_websocket.py → jarvis_api → PrimeRouter → PrimeClient
+  │           └── HTTP POST http://34.45.154.209:8000/v1/chat/completions
+  │                 └── Mistral-7B-Instruct-v0.2 (Q4_K_M) → response
+  │
+  ├── Strategy 2: REST API ──→ POST http://localhost:8010/api/command
+  │     └── UnifiedCommandProcessor → query_handler → PrimeRouter → PrimeClient
+  │           └── HTTP POST http://34.45.154.209:8000/v1/chat/completions
+  │                 └── Same model, same response
+  │
+  └── Strategy 3: Queue + retry ──→ stored for retry when connection restores
+        └── Triggers automatic reconnection
+```
+
+Both WebSocket and REST converge on the same `PrimeRouter → PrimeClient → GCP VM` path, so the inference result is identical regardless of which transport delivered the command.
+
+#### Self-Hosted LLM Inference: The Full Stack
+
+JARVIS uses its own self-hosted LLM — **not** OpenAI, Claude, or any third-party API for primary inference. The complete inference stack:
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                        macOS (16GB RAM)                              │
+│                                                                      │
+│  Frontend (React, port 3000)                                        │
+│    └── JarvisConnectionService → WebSocket or REST                  │
+│                                                                      │
+│  Backend (FastAPI, port 8010)                                       │
+│    └── PrimeRouter → PrimeClient                                    │
+│          └── HTTP POST to GCP VM                                    │
+│                                                                      │
+│  NO LOCAL LLM — Mac runs orchestration only                         │
+└──────────────────────────────┬──────────────────────────────────────┘
+                               │ inference request
+                               ↓
+┌─────────────────────────────────────────────────────────────────────┐
+│              GCP Invincible Node (34.45.154.209:8000)                │
+│                                                                      │
+│  Golden Image: jarvis-prime-golden-20260207-042923                  │
+│  Model: Mistral-7B-Instruct-v0.2 (Q4_K_M, ~4.5GB)                 │
+│  Engine: llama-cpp-python                                           │
+│  Endpoint: /v1/chat/completions (OpenAI-compatible)                 │
+│  Latency: ~8.6s per request (CPU inference)                         │
+│  Status: ready_for_inference=True, model_load_progress=100%         │
+│                                                                      │
+│  InvincibleGuard: Active (4 blocked termination attempts)           │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+**Why self-hosted matters:**
+- No per-token costs for primary inference
+- Full control over model selection and fine-tuning
+- No data leaves the infrastructure (privacy)
+- Reactor-Core can collect experience data and fine-tune the model
+- Claude API is only used as emergency fallback (Tier 3)
+
+#### v235.4 Additional Fixes (GCP VM Side)
+
+During the same session, 5 additional fixes were applied to the JARVIS Prime codebase running on the GCP VM:
+
+| # | Fix | File | Impact |
+|---|-----|------|--------|
+| 13 | J-Prime native health format | `gcp_vm_manager.py` | Supervisor recognizes VM as ready |
+| 14 | `GCP_PRIME` routing case added | `prime_router.py` | No longer falls to "degraded" mode |
+| 15 | GCP inference timeout increased to 120s | `prime_router.py` | CPU inference doesn't timeout |
+| 16 | Model auto-detection in HF snapshot dirs | `llama_cpp_executor.py` | Finds `Q4_K_M` in HuggingFace snapshot directories |
+| 17 | New golden image baked | GCP | All fixes persist across VM recreation |
+
+These were baked into the new golden image `jarvis-prime-golden-20260207-042923`, ensuring they survive VM restarts, preemptions, and recreation.
+
+#### End-to-End Verification
+
+After deploying v235.4, the complete system was verified:
+
+```
+┌───────────────────────────┬──────────────────────────────────────────────┐
+│ Component                 │ Status                                       │
+├───────────────────────────┼──────────────────────────────────────────────┤
+│ Backend (localhost:8010)  │ Healthy                                      │
+│ J-Prime GCP VM            │ Healthy, ready (Mistral-7B loaded at 100%)   │
+│ Frontend (localhost:3000) │ HTTP 200, React app serving                  │
+│ Golden Image              │ jarvis-prime-golden-20260207-042923           │
+│ InvincibleGuard           │ Active (4 blocked termination attempts)      │
+│ E2E Routing               │ gcp_prime → jarvis-prime (8.6s latency)     │
+│ Inference                 │ Self-hosted Mistral-7B, no third-party API  │
+└───────────────────────────┴──────────────────────────────────────────────┘
+```
+
+#### Configuration (v235.4 Environment Variables)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `JARVIS_PRIME_URL` | (none) | Full URL to JARVIS Prime — highest priority for endpoint resolution |
+| `JARVIS_INVINCIBLE_NODE_IP` | (none) | GCP VM IP — second priority for endpoint resolution |
+| `JARVIS_INVINCIBLE_NODE_PORT` | (none) | GCP VM port — second priority for endpoint resolution |
+| `JARVIS_PRIME_HOST` | `localhost` | Explicit host override — third priority |
+| `JARVIS_PRIME_PORT` | `8000` | Explicit port override — third priority |
+
+#### Lessons Learned (v235.4)
+
+1. **A working backend is useless without a working frontend connection.** All backend systems were healthy, but the user couldn't send a single command. The connection layer is as critical as the inference layer.
+
+2. **Silent error swallowing is the root of all evil.** `_initializeWebSocket()` catching errors silently, then the caller setting state to ONLINE regardless, created an invisible failure. Errors should propagate or be tracked — never silently discarded.
+
+3. **Every command path needs a fallback.** WebSocket-only command sending is a single point of failure. The REST API existed but was never used by the frontend. Dual-path (WebSocket + REST) makes the system resilient to transport failures.
+
+4. **Environment variable naming must be consistent across repos.** The supervisor set `JARVIS_PRIME_URL`, but the client read `JARVIS_PRIME_HOST`. A one-line naming mismatch broke the entire cross-repo routing chain. New client code now reads all known env var names with clear priority ordering.
+
+5. **Static config files are landmines.** `dynamic-config.json` with a hardcoded port 8000 silently misdirected traffic. Config files that don't match runtime reality cause the worst kind of bugs — everything looks correct but nothing works.
+
+6. **Golden images must include both server and client fixes.** The v235.4 golden image baked in model auto-detection, health format compatibility, routing cases, and timeout adjustments — ensuring the VM works correctly from the moment it boots.
 
 ---
 
