@@ -5190,6 +5190,8 @@ class GCPVMManager:
     async def terminate_vm(self, vm_name: str, reason: str = "Manual termination") -> bool:
         """
         v134.0: Terminate a VM instance with existence verification and circuit breaker protection.
+        v153.0: Added invincible VM protection — persistent VMs cannot be terminated by
+                automated systems (cost-cutting, idle detection, memory pressure, max lifetime).
 
         ROOT CAUSE FIX for 404 NotFound errors:
         This method now verifies VM existence in GCP before attempting delete operations.
@@ -5206,6 +5208,27 @@ class GCPVMManager:
         Returns:
             True if terminated successfully (or VM doesn't exist), False otherwise
         """
+        # v153.0: INVINCIBLE VM PROTECTION — central guard for ALL termination paths.
+        # This prevents the monitoring loop's cost-cutting, idle detection, memory
+        # pressure, and max lifetime checks from deleting persistent VMs.
+        is_invincible = vm_name.startswith("jarvis-prime-node")
+
+        # Also check metadata if VM is tracked
+        if not is_invincible and vm_name in self.managed_vms:
+            vm_meta = self.managed_vms[vm_name].metadata or {}
+            is_invincible = (
+                vm_meta.get("vm_class") == "invincible"
+                or vm_meta.get("labels", {}).get("vm-class") == "invincible"
+            )
+
+        if is_invincible:
+            logger.warning(
+                f"🛡️ [InvincibleGuard] BLOCKED termination of persistent VM '{vm_name}' "
+                f"(reason: {reason}). Invincible VMs cannot be terminated by automated systems. "
+                f"Use GCP Console or gcloud CLI for manual override."
+            )
+            return False
+
         async with self._vm_lock:
             if vm_name not in self.managed_vms:
                 logger.warning(f"⚠️  VM not found in managed VMs: {vm_name}")
@@ -5389,10 +5412,19 @@ class GCPVMManager:
     async def _force_delete_vm(self, vm_name: str, reason: str) -> bool:
         """
         v134.0: Force delete a VM that may exist in GCP but not in our tracking.
+        v153.0: Added invincible VM protection.
 
         ROOT CAUSE FIX: Now checks if VM exists before attempting delete to
         prevent 404 NotFound errors from cluttering logs and circuit breaker.
         """
+        # v153.0: Invincible VM protection — same guard as terminate_vm()
+        if vm_name.startswith("jarvis-prime-node"):
+            logger.warning(
+                f"🛡️ [InvincibleGuard] BLOCKED force-deletion of persistent VM '{vm_name}' "
+                f"(reason: {reason}). Use GCP Console or gcloud CLI for manual override."
+            )
+            return False
+
         # v134.0: Check if VM actually exists in GCP first
         exists, status = await self._check_vm_exists_in_gcp(vm_name)
 
