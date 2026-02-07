@@ -60215,6 +60215,15 @@ class JarvisSystemKernel:
                         _early_wake_inner(),
                         timeout=_early_gcp_timeout,
                     )
+                except asyncio.CancelledError:
+                    # v236.0: CancelledError is a BaseException (Python 3.9+).
+                    # Clean up env var before re-raising so orchestrator doesn't
+                    # think we're still booting.
+                    os.environ.pop("JARVIS_INVINCIBLE_NODE_BOOTING", None)
+                    self.logger.info(
+                        "[EarlyGCP] Task cancelled (non-fatal)"
+                    )
+                    raise  # Re-raise so asyncio properly marks the task as cancelled
                 except asyncio.TimeoutError:
                     os.environ.pop("JARVIS_INVINCIBLE_NODE_BOOTING", None)  # v235.1
                     self.logger.warning(
@@ -61965,8 +61974,13 @@ class JarvisSystemKernel:
                         progress=30
                     )
                     
+                    # v236.0: asyncio.shield() prevents wait_for from CANCELLING
+                    # the underlying task when the quick check times out. Previously,
+                    # the task was cancelled after 15s → background monitor awaited
+                    # the same cancelled task → CancelledError → _invincible_node_ready
+                    # never set → Trinity waited 240s+ (9-minute cold boot stall).
                     node_success, node_ip, node_status = await asyncio.wait_for(
-                        invincible_node_task,
+                        asyncio.shield(invincible_node_task),
                         timeout=quick_check_timeout
                     )
                     if node_success:
@@ -62153,8 +62167,11 @@ class JarvisSystemKernel:
                             progress_task = create_safe_task(_update_gcp_progress_periodically())
                             
                             try:
+                                # v236.0: asyncio.shield() — same fix as quick check.
+                                # Protects the underlying task from cancellation if
+                                # background_timeout fires (unlikely at 600s but safe).
                                 node_success, node_ip, node_status = await asyncio.wait_for(
-                                    invincible_node_task,
+                                    asyncio.shield(invincible_node_task),
                                     timeout=background_timeout
                                 )
                             finally:
