@@ -6149,7 +6149,10 @@ class GCPVMManager:
                 static_ip, target_port, timeout=10.0
             )
 
-            if is_healthy and health_status.get("ready_for_inference", False):
+            # v235.4: _ping_health_endpoint already checks all readiness signals
+            # (ready_for_inference, model_loaded+healthy, APARS, native phase/stage).
+            # No need to re-check ready_for_inference here.
+            if is_healthy:
                 logger.info(f"✅ [InvincibleNode] VM already ready: {static_ip}")
                 return True, static_ip, "ALREADY_READY"
 
@@ -6443,6 +6446,17 @@ class GCPVMManager:
                         if not is_ready:
                             apars = data.get("apars", {})
                             if isinstance(apars, dict) and apars.get("total_progress", 0) >= 100:
+                                is_ready = True
+                        # v235.4: Accept J-Prime NATIVE health format (without APARS).
+                        # J-Prime's /health returns {status:"healthy", phase:"ready",
+                        # model_load_progress_pct:100, model_loading_in_progress:false}
+                        # when model is loaded and serving. This is equivalent to
+                        # ready_for_inference=true but uses J-Prime's own schema.
+                        if not is_ready and data.get("status") == "healthy":
+                            if data.get("phase") == "ready" or data.get("stage") == "ready":
+                                is_ready = True
+                            elif (data.get("model_load_progress_pct", 0) >= 100
+                                  and not data.get("model_loading_in_progress", True)):
                                 is_ready = True
                         return is_ready, data
                     return False, {"status": resp.status}

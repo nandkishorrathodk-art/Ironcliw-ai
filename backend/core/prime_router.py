@@ -122,6 +122,9 @@ class PrimeRouterConfig:
     # Performance thresholds
     local_timeout: float = field(default_factory=lambda: _get_env_float("PRIME_LOCAL_TIMEOUT", 30.0))
     cloud_timeout: float = field(default_factory=lambda: _get_env_float("PRIME_CLOUD_TIMEOUT", 60.0))
+    # v235.4: GCP VM uses CPU inference (~25-35s). 30s local_timeout always times out.
+    # Separate timeout for GCP-routed requests to accommodate slower CPU inference.
+    gcp_timeout: float = field(default_factory=lambda: _get_env_float("PRIME_GCP_TIMEOUT", 120.0))
 
     # Health thresholds
     min_local_health: float = field(default_factory=lambda: _get_env_float("PRIME_MIN_LOCAL_HEALTH", 0.5))
@@ -420,11 +423,13 @@ class PrimeRouter:
 
         try:
             if routing == RoutingDecision.HYBRID:
-                # Try local first, then cloud
+                # Try local/GCP first, then cloud
                 response = await self._generate_hybrid(
                     prompt, system_prompt, context, max_tokens, temperature, **kwargs
                 )
-            elif routing == RoutingDecision.LOCAL_PRIME:
+            elif routing in (RoutingDecision.LOCAL_PRIME, RoutingDecision.GCP_PRIME):
+                # v235.4: GCP_PRIME uses same PrimeClient (URL already points to GCP VM).
+                # Both route through _generate_local — the client handles endpoint resolution.
                 response = await self._generate_local(
                     prompt, system_prompt, context, max_tokens, temperature, **kwargs
                 )
@@ -476,11 +481,20 @@ class PrimeRouter:
     ) -> RouterResponse:
         """Try local Prime first, fall back to cloud on failure."""
         try:
+            # v235.4: Use GCP timeout when routed to GCP VM (CPU inference ~25-35s).
+            # Default local_timeout (30s) always times out for CPU-based models.
+            # Check both _gcp_promoted flag AND env var (handles dual-module aliasing
+            # where the promoted instance differs from the request-handling instance).
+            is_gcp = self._gcp_promoted or bool(os.environ.get("JARVIS_INVINCIBLE_NODE_IP"))
+            timeout = (
+                self._config.gcp_timeout if is_gcp
+                else self._config.local_timeout
+            )
             response = await asyncio.wait_for(
                 self._generate_local(
                     prompt, system_prompt, context, max_tokens, temperature, **kwargs
                 ),
-                timeout=self._config.local_timeout,
+                timeout=timeout,
             )
             return response
         except Exception as e:
@@ -520,7 +534,9 @@ class PrimeRouter:
 
         return RouterResponse(
             content=response.content,
-            source="local_prime",
+            # v235.4: Distinguish GCP from local for metrics/logging.
+            # Check env var too (handles dual-module aliasing).
+            source="gcp_prime" if (self._gcp_promoted or bool(os.environ.get("JARVIS_INVINCIBLE_NODE_IP"))) else "local_prime",
             latency_ms=response.latency_ms,
             model=response.model,
             tokens_used=response.tokens_used,
