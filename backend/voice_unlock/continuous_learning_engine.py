@@ -235,6 +235,9 @@ class VoiceBiometricLearner:
                 if ADVANCED_FEATURES_AVAILABLE and self.anomaly_detector:
                     await self.anomaly_detector.initialize()
 
+        except asyncio.CancelledError:
+            # v236.0: Handle cancellation from outer timeout without crashing
+            logger.warning("Voice biometric learner initialization cancelled")
         except Exception as e:
             logger.error(f"Failed to initialize voice biometric learner: {e}", exc_info=True)
 

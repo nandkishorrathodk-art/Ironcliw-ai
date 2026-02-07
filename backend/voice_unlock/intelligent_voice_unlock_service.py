@@ -743,6 +743,7 @@ class IntelligentVoiceUnlockService:
 
     def __init__(self):
         self.initialized = False
+        self._init_attempted = False  # v236.0: Prevents re-entry after degraded init
 
         # Hybrid STT Router
         self.stt_router = None
@@ -815,8 +816,9 @@ class IntelligentVoiceUnlockService:
         IMPORTANT: On first startup, model loading takes 15-30s total.
         Subsequent initializations (or if prewarmed at startup) are <1s.
         """
-        if self.initialized:
+        if self._init_attempted:
             return
+        self._init_attempted = True
 
         # Check if models were already prewarmed at system startup
         try:
@@ -846,6 +848,9 @@ class IntelligentVoiceUnlockService:
                 logger.debug(f"  ✓ {name} initialized")
             except asyncio.TimeoutError:
                 logger.warning(f"  ⏱️ {name} initialization timed out after {timeout}s (continuing without)")
+            except asyncio.CancelledError:
+                # v236.0: Prevent cancellation from propagating up to gather()
+                logger.warning(f"  ⏱️ {name} cancelled (continuing without)")
             except Exception as e:
                 logger.warning(f"  ⚠️ {name} initialization failed: {e} (continuing without)")
 
@@ -967,10 +972,26 @@ class IntelligentVoiceUnlockService:
             )
 
         try:
-            # Python 3.9 compatible: use wait_for instead of asyncio.timeout
-            await asyncio.wait_for(_run_initialization(), timeout=TOTAL_INIT_TIMEOUT)
+            # v236.0: asyncio.shield() prevents outer CancelledError from
+            # cascading into _run_initialization(), so all 11 component tasks
+            # run to completion (each has its own per-component timeout).
+            await asyncio.wait_for(
+                asyncio.shield(_run_initialization()),
+                timeout=TOTAL_INIT_TIMEOUT,
+            )
         except asyncio.TimeoutError:
-            logger.error(f"⏱️ Total initialization exceeded {TOTAL_INIT_TIMEOUT}s - service starting in degraded mode")
+            logger.error(
+                f"⏱️ Total initialization exceeded {TOTAL_INIT_TIMEOUT}s "
+                f"- service starting in degraded mode"
+            )
+        except asyncio.CancelledError:
+            # v236.0: Caller cancelled us (e.g., outer wait_for timeout).
+            # Shield prevented cascading into _run_initialization.
+            # Mark as initialized in degraded mode so unlock can proceed.
+            logger.warning(
+                "⏱️ Initialization cancelled by caller — "
+                "marking degraded mode"
+            )
 
         init_time = (datetime.now() - init_start).total_seconds() * 1000
         self.initialized = True

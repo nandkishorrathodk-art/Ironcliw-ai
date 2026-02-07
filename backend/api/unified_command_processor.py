@@ -1086,6 +1086,44 @@ class UnifiedCommandProcessor:
             # Mark as initialized
             self._resolvers_initialized = True
 
+            # v236.0: Late-bind implicit_resolver to all managers/handlers
+            # that were initialized before warmup completed. During tier-based
+            # parallel init, self.implicit_resolver is None because it depends
+            # on context_graph which initializes in a later tier. Now that
+            # warmup has set it, propagate to all 12+ managers that hold
+            # stale None snapshots.
+            if self.implicit_resolver:
+                _rewire_targets = [
+                    self.query_complexity_manager,
+                    self.context_aware_manager,
+                    self.multi_monitor_manager,
+                    self.change_detection_manager,
+                    self.proactive_suggestion_manager,
+                    self.multi_space_handler,
+                    self.multi_monitor_query_handler,
+                    self.proactive_monitoring_manager,
+                    self.temporal_handler,
+                    self.display_reference_handler,
+                    getattr(self, 'medium_complexity_handler', None),
+                    getattr(self, 'complex_complexity_handler', None),
+                ]
+                _rewired = 0
+                for _target in _rewire_targets:
+                    if _target is None:
+                        continue
+                    if hasattr(_target, 'set_implicit_resolver'):
+                        _target.set_implicit_resolver(self.implicit_resolver)
+                        _rewired += 1
+                    elif hasattr(_target, 'implicit_resolver'):
+                        if not _target.implicit_resolver:
+                            _target.implicit_resolver = self.implicit_resolver
+                            _rewired += 1
+                if _rewired > 0:
+                    logger.info(
+                        f"[UNIFIED] v236.0: Late-bound implicit_resolver "
+                        f"to {_rewired} component(s)"
+                    )
+
             logger.info(
                 f"[UNIFIED] ✅ Component warmup complete! "
                 f"{report['ready_count']}/{report['total_count']} components ready "

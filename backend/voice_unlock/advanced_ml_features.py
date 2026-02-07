@@ -48,6 +48,7 @@ class FailurePredictor:
     def __init__(self, model_path: str):
         self.model_path = Path(model_path)
         self.model = None
+        self._train_lock = asyncio.Lock()  # v236.0: Prevent concurrent fit() calls
         self.feature_names = [
             'char_position',
             'char_type_encoded',  # 0=letter, 1=digit, 2=special
@@ -109,44 +110,48 @@ class FailurePredictor:
         - Time of day
         - Historical failure count
         """
-        if not self.model or len(char_metrics) < 50:
+        # v236.0: Use 'is None' instead of 'not self.model' — sklearn's
+        # BaseEnsemble.__len__ requires estimators_ (only set after fit())
+        if self.model is None or len(char_metrics) < 50:
             logger.debug("Not enough data to train Random Forest (need 50+ samples)")
             return
 
-        try:
-            X = []
-            y = []
+        async with self._train_lock:
+            try:
+                X = []
+                y = []
 
-            for metric in char_metrics:
-                features = [
-                    metric.get('char_position', 0),
-                    self._encode_char_type(metric.get('char_type', 'letter')),
-                    1 if metric.get('requires_shift') else 0,
-                    metric.get('system_load_at_char', 0) or 0,
-                    datetime.fromisoformat(metric.get('timestamp', datetime.now().isoformat())).hour,
-                    datetime.fromisoformat(metric.get('timestamp', datetime.now().isoformat())).weekday(),
-                    metric.get('historical_failures', 0),
-                    metric.get('avg_duration_at_pos', 50)
-                ]
+                for metric in char_metrics:
+                    features = [
+                        metric.get('char_position', 0),
+                        self._encode_char_type(metric.get('char_type', 'letter')),
+                        1 if metric.get('requires_shift') else 0,
+                        metric.get('system_load_at_char', 0) or 0,
+                        datetime.fromisoformat(metric.get('timestamp', datetime.now().isoformat())).hour,
+                        datetime.fromisoformat(metric.get('timestamp', datetime.now().isoformat())).weekday(),
+                        metric.get('historical_failures', 0),
+                        metric.get('avg_duration_at_pos', 50)
+                    ]
 
-                X.append(features)
-                y.append(0 if metric.get('success') else 1)  # 1 = failure
+                    X.append(features)
+                    y.append(0 if metric.get('success') else 1)  # 1 = failure
 
-            X = np.array(X)
-            y = np.array(y)
+                X = np.array(X)
+                y = np.array(y)
 
-            # Train model
-            self.model.fit(X, y)
+                # v236.0: Run CPU-bound fit() off the event loop
+                loop = asyncio.get_event_loop()
+                await loop.run_in_executor(None, self.model.fit, X, y)
 
-            # Save model
-            self.model_path.parent.mkdir(parents=True, exist_ok=True)
-            with open(self.model_path, 'wb') as f:
-                pickle.dump(self.model, f)
+                # Save model
+                self.model_path.parent.mkdir(parents=True, exist_ok=True)
+                with open(self.model_path, 'wb') as f:
+                    pickle.dump(self.model, f)
 
-            logger.info(f"✅ Random Forest trained on {len(X)} samples")
+                logger.info(f"✅ Random Forest trained on {len(X)} samples")
 
-        except Exception as e:
-            logger.error(f"Failed to train Random Forest: {e}", exc_info=True)
+            except Exception as e:
+                logger.error(f"Failed to train Random Forest: {e}", exc_info=True)
 
     def _encode_char_type(self, char_type: str) -> int:
         """Encode character type as integer"""
@@ -166,7 +171,8 @@ class FailurePredictor:
 
         Returns: float between 0.0 (won't fail) and 1.0 (likely to fail)
         """
-        if not self.model:
+        # v236.0: Use 'is None' — sklearn truthiness calls __len__ on unfitted models
+        if self.model is None:
             return 0.0
 
         try:
@@ -459,6 +465,7 @@ class AnomalyDetector:
     def __init__(self, model_path: str):
         self.model_path = Path(model_path)
         self.model = None
+        self._train_lock = asyncio.Lock()  # v236.0: Prevent concurrent fit() calls
 
         try:
             from sklearn.ensemble import IsolationForest
@@ -496,34 +503,40 @@ class AnomalyDetector:
 
     async def train(self, historical_attempts: List[Dict[str, Any]]):
         """Train on normal authentication patterns"""
-        if not self.model or len(historical_attempts) < 30:
+        # v236.0: Use 'is None' — sklearn's BaseEnsemble.__len__ requires
+        # estimators_ which only exists after fit(), causing AttributeError
+        if self.model is None or len(historical_attempts) < 30:
             return
 
-        try:
-            # Extract features
-            X = []
-            for attempt in historical_attempts:
-                features = [
-                    attempt.get('speaker_confidence', 0),
-                    attempt.get('stt_confidence', 0),
-                    attempt.get('audio_duration_ms', 0),
-                    attempt.get('processing_time_ms', 0),
-                    datetime.fromisoformat(attempt.get('timestamp', datetime.now().isoformat())).hour
-                ]
-                X.append(features)
+        async with self._train_lock:
+            try:
+                # Extract features
+                X = []
+                for attempt in historical_attempts:
+                    features = [
+                        attempt.get('speaker_confidence', 0),
+                        attempt.get('stt_confidence', 0),
+                        attempt.get('audio_duration_ms', 0),
+                        attempt.get('processing_time_ms', 0),
+                        datetime.fromisoformat(attempt.get('timestamp', datetime.now().isoformat())).hour
+                    ]
+                    X.append(features)
 
-            X = np.array(X)
-            self.model.fit(X)
+                X = np.array(X)
 
-            # Save model
-            self.model_path.parent.mkdir(parents=True, exist_ok=True)
-            with open(self.model_path, 'wb') as f:
-                pickle.dump(self.model, f)
+                # v236.0: Run CPU-bound fit() off the event loop
+                loop = asyncio.get_event_loop()
+                await loop.run_in_executor(None, self.model.fit, X)
 
-            logger.info(f"✅ Anomaly detector trained on {len(X)} samples")
+                # Save model
+                self.model_path.parent.mkdir(parents=True, exist_ok=True)
+                with open(self.model_path, 'wb') as f:
+                    pickle.dump(self.model, f)
 
-        except Exception as e:
-            logger.error(f"Anomaly detection training failed: {e}", exc_info=True)
+                logger.info(f"✅ Anomaly detector trained on {len(X)} samples")
+
+            except Exception as e:
+                logger.error(f"Anomaly detection training failed: {e}", exc_info=True)
 
     async def detect_anomaly(
         self,
@@ -537,7 +550,8 @@ class AnomalyDetector:
 
         Returns: (is_anomaly, anomaly_score)
         """
-        if not self.model:
+        # v236.0: Use 'is None' — sklearn truthiness calls __len__ on unfitted models
+        if self.model is None:
             return False, 0.0
 
         try:

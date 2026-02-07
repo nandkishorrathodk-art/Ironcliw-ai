@@ -1036,7 +1036,9 @@ class CrossRepoStateInitializer:
                     await asyncio.sleep(self.config.heartbeat_interval_seconds)
                     continue
 
-                async with self._lock_manager.acquire("heartbeat", timeout=5.0, ttl=10.0) as acquired:
+                # v236.0: Env-var configurable heartbeat lock timeout
+                _hb_timeout = float(os.environ.get("JARVIS_HEARTBEAT_LOCK_TIMEOUT", "5.0"))
+                async with self._lock_manager.acquire("heartbeat", timeout=_hb_timeout, ttl=10.0) as acquired:
                     if not acquired:
                         logger.debug("Could not acquire heartbeat lock, skipping update")
                         continue

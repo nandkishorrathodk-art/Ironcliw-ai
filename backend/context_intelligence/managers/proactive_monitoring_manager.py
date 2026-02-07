@@ -136,6 +136,17 @@ class ProactiveMonitoringManager:
         logger.info(f"  Implicit Resolver: {'✅' if implicit_resolver else '❌'}")
         logger.info(f"  Conversation Tracker: {'✅' if conversation_tracker else '❌'}")
 
+    def set_implicit_resolver(self, resolver) -> None:
+        """v236.0: Late-bind implicit resolver (may not be available at init time).
+
+        Follows the same pattern as TemporalQueryHandler.set_implicit_resolver().
+        """
+        self.implicit_resolver = resolver
+        logger.info(
+            f"[PROACTIVE-MONITOR] Implicit Resolver: "
+            f"{'✅' if resolver else '❌'} (late-bound)"
+        )
+
     async def start_monitoring(self):
         """Start the autonomous monitoring loop"""
         if self._running:

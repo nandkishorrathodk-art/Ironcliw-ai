@@ -1814,9 +1814,12 @@ class AdvancedAsyncPipeline:
                 
                 unlock_service = get_intelligent_unlock_service()
                 
-                # Initialize if needed
+                # Initialize if needed — let the service own its timeout
+                # v236.0: Removed outer 5s timeout that was killing the service's
+                # 45s cold-start initialization. The service handles its own
+                # graceful degradation internally.
                 if not unlock_service.initialized:
-                    await asyncio.wait_for(unlock_service.initialize(), timeout=5.0)
+                    await unlock_service.initialize()
                 
                 # Prepare verified context - VBI already verified the speaker!
                 context_analysis = {
@@ -2963,17 +2966,19 @@ class AdvancedAsyncPipeline:
 
                         unlock_service = get_intelligent_unlock_service()
 
-                        # Initialize if needed (with timeout)
+                        # Initialize if needed — let the service own its timeout
+                        # v236.0: Removed outer 5s timeout that was cancelling the
+                        # service's 45s cold-start initialization via CancelledError,
+                        # bypassing its graceful degradation path. The service manages
+                        # its own TOTAL_INIT_TIMEOUT (45s cold / 15s prewarmed) with
+                        # per-component timeouts and asyncio.shield().
                         if not unlock_service.initialized:
                             logger.info("🔓 [LOCK-UNLOCK-INIT] Initializing unlock service...")
                             try:
-                                await asyncio.wait_for(
-                                    unlock_service.initialize(),
-                                    timeout=5.0  # 5 second max for initialization
-                                )
-                            except asyncio.TimeoutError:
-                                logger.error("⏱️ [LOCK-UNLOCK-INIT] Service initialization timed out")
-                                raise Exception("Unlock service initialization timed out")
+                                await unlock_service.initialize()
+                            except Exception as e:
+                                logger.error(f"⏱️ [LOCK-UNLOCK-INIT] Service initialization failed: {e}")
+                                raise
 
                         # Process unlock with audio data and context
                         context = {
