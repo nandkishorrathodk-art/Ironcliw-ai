@@ -1736,7 +1736,15 @@ class HybridDatabaseSync:
                             """)
                             return False, latest_update
 
-                    mismatch, latest_update = await asyncio.wait_for(check_cloud_sql_ops(), timeout=5.0)
+                    # v236.2: Env-var configurable staleness timeout — 10s default
+                    # covers cold CloudSQL (pool acquire + 2 queries = 2-7s) with 3s buffer,
+                    # and leaves 5s gap before the 15s outer timeout.
+                    _staleness_timeout = float(os.environ.get(
+                        "JARVIS_CLOUDSQL_STALENESS_TIMEOUT", "10.0"
+                    ))
+                    mismatch, latest_update = await asyncio.wait_for(
+                        check_cloud_sql_ops(), timeout=_staleness_timeout
+                    )
 
                     if mismatch:
                         return True

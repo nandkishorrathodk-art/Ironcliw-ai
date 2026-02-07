@@ -74607,12 +74607,27 @@ async def async_main(args: argparse.Namespace) -> int:
         message = context.get('message', 'Unknown error')
         task = context.get('task')
         task_name = task.get_name() if task and hasattr(task, 'get_name') else 'unknown'
-        
+
         if exception:
-            kernel.logger.warning(
-                f"[GlobalExceptionHandler] Unhandled task exception in '{task_name}': "
-                f"{type(exception).__name__}: {exception}"
-            )
+            # v236.2: Classify transient errors by type to reduce noise.
+            # ConnectionError, ConnectionResetError, BrokenPipeError, and
+            # TimeoutError from background tasks are expected during startup
+            # and reconnection — pool/keepalive handles actual recovery.
+            _is_transient = isinstance(exception, (
+                ConnectionError,       # Includes ConnectionResetError, BrokenPipeError
+                asyncio.TimeoutError,  # Background health checks, keepalive extensions
+            ))
+
+            if _is_transient:
+                kernel.logger.info(
+                    f"[GlobalExceptionHandler] Transient error in '{task_name}': "
+                    f"{type(exception).__name__}: {exception}"
+                )
+            else:
+                kernel.logger.warning(
+                    f"[GlobalExceptionHandler] Unhandled task exception in '{task_name}': "
+                    f"{type(exception).__name__}: {exception}"
+                )
         else:
             kernel.logger.warning(
                 f"[GlobalExceptionHandler] Async error in '{task_name}': {message}"

@@ -1038,7 +1038,10 @@ class CrossRepoStateInitializer:
 
                 # v236.0: Env-var configurable heartbeat lock timeout
                 _hb_timeout = float(os.environ.get("JARVIS_HEARTBEAT_LOCK_TIMEOUT", "5.0"))
-                async with self._lock_manager.acquire("heartbeat", timeout=_hb_timeout, ttl=10.0) as acquired:
+                # v236.2: Env-var configurable TTL — 20s default gives 17s stall tolerance
+                # with 3s keepalive interval, while keeping crash recovery under 20s.
+                _cr_ttl = float(os.environ.get("JARVIS_CROSS_REPO_LOCK_TTL", "20.0"))
+                async with self._lock_manager.acquire("heartbeat", timeout=_hb_timeout, ttl=_cr_ttl) as acquired:
                     if not acquired:
                         logger.debug("Could not acquire heartbeat lock, skipping update")
                         continue
@@ -1385,7 +1388,8 @@ class CrossRepoStateInitializer:
             await self._write_json_file(prime_file, prime_state)
             return
         # v6.4: Use distributed lock
-        async with self._lock_manager.acquire("prime_state", timeout=5.0, ttl=10.0) as acquired:
+        _cr_ttl = float(os.environ.get("JARVIS_CROSS_REPO_LOCK_TTL", "20.0"))
+        async with self._lock_manager.acquire("prime_state", timeout=5.0, ttl=_cr_ttl) as acquired:
             if not acquired:
                 logger.warning("Could not acquire prime_state lock")
                 return
@@ -1406,7 +1410,8 @@ class CrossRepoStateInitializer:
             await self._write_json_file(reactor_file, reactor_state)
             return
         # v6.4: Use distributed lock
-        async with self._lock_manager.acquire("reactor_state", timeout=5.0, ttl=10.0) as acquired:
+        _cr_ttl = float(os.environ.get("JARVIS_CROSS_REPO_LOCK_TTL", "20.0"))
+        async with self._lock_manager.acquire("reactor_state", timeout=5.0, ttl=_cr_ttl) as acquired:
             if not acquired:
                 logger.warning("Could not acquire reactor_state lock")
                 return

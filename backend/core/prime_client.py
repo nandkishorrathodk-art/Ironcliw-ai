@@ -524,7 +524,8 @@ class PrimeClient:
 
             # Start background health monitor
             self._health_check_task = asyncio.create_task(
-                self._health_monitor_loop()
+                self._health_monitor_loop(),
+                name="prime_health_monitor"
             )
 
             self._initialized = True
@@ -680,7 +681,7 @@ class PrimeClient:
                 # Add timeout protection for health check
                 await asyncio.wait_for(
                     self._check_health(),
-                    timeout=TimeoutConfig.HEALTH_CHECK
+                    timeout=self._config.health_check_timeout
                 )
 
                 # v232.0: Auto-demote GCP endpoint after consecutive failures
@@ -725,7 +726,7 @@ class PrimeClient:
                     await self.demote_to_fallback()
 
             except asyncio.TimeoutError:
-                logger.warning(f"[PrimeClient] Health check timed out after {TimeoutConfig.HEALTH_CHECK}s")
+                logger.warning(f"[PrimeClient] Health check timed out after {self._config.health_check_timeout}s")
             except asyncio.CancelledError:
                 logger.info("[PrimeClient] Health monitor cancelled")
                 break
