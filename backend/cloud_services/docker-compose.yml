@@ -11,8 +11,8 @@
 #   docker compose logs -f ecapa   # Follow logs
 #
 # Test:
-#   curl http://localhost:8010/health
-#   curl http://localhost:8010/status
+#   curl http://localhost:8015/health
+#   curl http://localhost:8015/status
 #
 # v18.3.0 - Updated for robust entrypoint script
 
@@ -24,7 +24,9 @@ services:
     image: ecapa-local:latest
     container_name: jarvis-ecapa-cloud
     ports:
-      - "8010:8010"
+      # v18.4.0: Remap host port to 8015 to avoid conflict with JARVIS backend on 8010.
+      # Container-internal port stays 8010 (ECAPA service listens there inside Docker).
+      - "${JARVIS_ECAPA_PORT:-8015}:8010"
     environment:
       # Model configuration
       - ECAPA_MODEL_PATH=speechbrain/spkrec-ecapa-voxceleb
@@ -60,7 +62,7 @@ services:
       - ecapa-runtime-cache:/tmp/ecapa_cache
 
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8010/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8010/health"]  # Internal container port (always 8010)
       interval: 30s
       timeout: 15s
       retries: 3

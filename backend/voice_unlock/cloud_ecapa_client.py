@@ -331,7 +331,8 @@ class CloudECAPAClientConfig:
 
         # Add localhost for development
         if os.getenv("JARVIS_DEV_MODE", "false").lower() == "true":
-            localhost = "http://localhost:8010/api/ml"
+            ecapa_port = int(os.getenv("JARVIS_ECAPA_PORT", "8015"))
+            localhost = f"http://localhost:{ecapa_port}/api/ml"
             if localhost not in endpoints:
                 endpoints.insert(0, localhost)  # Prefer local in dev mode
 
@@ -619,9 +620,11 @@ class SpotVMBackend:
                 self._active_vm = vm
                 # Construct endpoint URL from VM IP
                 if vm.ip_address:
-                    self._vm_endpoint = f"http://{vm.ip_address}:8010/api/ml"
+                    vm_ecapa_port = int(os.getenv("JARVIS_ECAPA_PORT", "8015"))
+                    self._vm_endpoint = f"http://{vm.ip_address}:{vm_ecapa_port}/api/ml"
                 elif vm.internal_ip:
-                    self._vm_endpoint = f"http://{vm.internal_ip}:8010/api/ml"
+                    vm_ecapa_port = int(os.getenv("JARVIS_ECAPA_PORT", "8015"))
+                    self._vm_endpoint = f"http://{vm.internal_ip}:{vm_ecapa_port}/api/ml"
                 else:
                     self._vm_endpoint = None
                     logger.warning("VM created but no IP address available yet")

@@ -68994,7 +68994,8 @@ class JarvisSystemKernel:
                     if container_name in stdout.decode():
                         # Container running — health check endpoint
                         import aiohttp
-                        ecapa_port = int(os.environ.get("JARVIS_ECAPA_PORT", "8010"))
+                        # v233.1: ECAPA moved to port 8015 to avoid conflict with JARVIS backend (8010)
+                        ecapa_port = int(os.environ.get("JARVIS_ECAPA_PORT", "8015"))
                         t0 = asyncio.get_running_loop().time()
                         async with aiohttp.ClientSession() as sess:
                             async with sess.get(

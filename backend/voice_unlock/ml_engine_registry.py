@@ -1861,7 +1861,8 @@ class MLEngineRegistry:
                         result = await startup_manager.activate_cloud_ml_backend()
                         if result.get("success") and result.get("ip"):
                             # Note: No /api/ml suffix - service routes are at root level
-                            self._cloud_endpoint = f"http://{result.get('ip')}:8010"
+                            _ecapa_port = int(os.getenv("JARVIS_ECAPA_PORT", "8015"))
+                            self._cloud_endpoint = f"http://{result.get('ip')}:{_ecapa_port}"
                             logger.info(f"   Cloud backend activated: {self._cloud_endpoint}")
             except ImportError:
                 logger.debug("MemoryAwareStartup not available")
