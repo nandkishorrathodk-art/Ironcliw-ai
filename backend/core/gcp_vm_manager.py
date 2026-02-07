@@ -122,6 +122,11 @@ logger = logging.getLogger(__name__)
 # Type variable for generic retry decorator
 T = TypeVar('T')
 
+# v235.0: Startup script version tag — bumped on every significant script change.
+# Embedded in VM metadata at creation. Running VMs with a stale version are
+# automatically recycled (deleted + recreated) to pick up the latest script.
+_STARTUP_SCRIPT_VERSION = "235.0"
+
 
 # ============================================================================
 # v109.4: SHUTDOWN DETECTION TO PREVENT INITIALIZATION DURING ATEXIT
@@ -4432,6 +4437,7 @@ class GCPVMManager:
             compute_v1.Items(key="jarvis-trigger", value=trigger_reason),
             compute_v1.Items(key="jarvis-created-at", value=datetime.now().isoformat()),
             compute_v1.Items(key="jarvis-port", value=jarvis_port),  # v147.0: Port for health checks
+            compute_v1.Items(key="jarvis-startup-script-version", value=_STARTUP_SCRIPT_VERSION),  # v235.0
         ]
         
         # v228.0: Always pass repo URL to VM metadata (critical for code availability)
@@ -6031,7 +6037,50 @@ class GCPVMManager:
 
             elif instance_status == "RUNNING":
                 # VM is running but health check failed
-                logger.info(f"☁️ [InvincibleNode] VM running but not healthy yet")
+                # v235.0: Check startup script version — a running VM with a stale
+                # startup script will never reach ready_for_inference. Detect and
+                # recycle early instead of polling until timeout.
+                vm_script_version = (
+                    vm_metadata.get("jarvis-startup-script-version", "")
+                    if vm_metadata else ""
+                )
+                if vm_script_version != _STARTUP_SCRIPT_VERSION:
+                    logger.info(
+                        f"🔄 [InvincibleNode] Running VM has stale startup script "
+                        f"(vm={vm_script_version or 'pre-v235'}, "
+                        f"current={_STARTUP_SCRIPT_VERSION}). "
+                        f"Recycling with updated script."
+                    )
+                    if progress_callback:
+                        progress_callback(
+                            30, "gcp",
+                            f"Upgrading VM startup script "
+                            f"({vm_script_version or 'pre-v235'} → {_STARTUP_SCRIPT_VERSION})"
+                        )
+
+                    # Delete the running VM (GCP API handles running → deleted)
+                    del_success, del_error = await self._delete_instance(instance_name)
+                    if del_success:
+                        create_success, create_error = await self._create_static_vm(
+                            instance_name, static_ip_name, target_port
+                        )
+                        if not create_success:
+                            return False, static_ip, f"SCRIPT_UPGRADE_FAILED: {create_error}"
+                        if progress_callback:
+                            progress_callback(
+                                50, "gcp",
+                                f"VM recreated with v{_STARTUP_SCRIPT_VERSION} startup script"
+                            )
+                    else:
+                        logger.warning(
+                            f"⚠️ [InvincibleNode] Delete failed ({del_error}), "
+                            f"proceeding with stale VM (will likely timeout)"
+                        )
+                else:
+                    logger.info(
+                        f"☁️ [InvincibleNode] VM running "
+                        f"(script v{vm_script_version}) but not healthy yet"
+                    )
 
             elif instance_status == "ERROR":
                 return False, static_ip, f"GCP_API_ERROR: {gcp_error}"
@@ -6997,6 +7046,7 @@ fi
                 compute_v1.Items(key="jarvis-trigger", value="invincible_node_v229"),
                 compute_v1.Items(key="jarvis-created-at", value=datetime.now().isoformat()),
                 compute_v1.Items(key="jarvis-deployment-mode", value=deployment_mode),
+                compute_v1.Items(key="jarvis-startup-script-version", value=_STARTUP_SCRIPT_VERSION),  # v235.0
             ]
             
             # Pass repo URL to VM metadata
