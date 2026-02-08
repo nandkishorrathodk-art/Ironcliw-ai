@@ -5824,24 +5824,54 @@ const JarvisVoice = () => {
     try {
       console.log('[JARVIS Audio] Setting speaking state to true');
       console.log('[JARVIS Audio] Text to speak (exact):', text);
+
+      // v237.0: Sanitize text for ALL TTS paths — not just browser fallback.
+      // Previously sanitizeForSpeech only ran inside the catch block (browser fallback),
+      // leaving "..." unsanitized for the primary backend TTS path.
+      const sanitizeForSpeech = (rawText) => {
+        let cleaned = rawText;
+        cleaned = cleaned.replace(/\.{2,}/g, ' ');        // "..." → " "
+        cleaned = cleaned.replace(/^[\s.!?,;:]+$/g, '');   // Pure punctuation → empty
+        cleaned = cleaned.replace(/\.\s*$/g, '');          // trailing "." → ""
+        try {
+          cleaned = cleaned.replace(/\p{Extended_Pictographic}/gu, '');
+          cleaned = cleaned.replace(/\u200D/g, '');
+          cleaned = cleaned.replace(/[\uFE00-\uFE0F]/g, '');
+        } catch (_e) {
+          cleaned = cleaned.replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE00}-\u{FE0F}]/gu, '');
+        }
+        cleaned = cleaned.replace(/[*_~`#]/g, '');
+        cleaned = cleaned.replace(/\s{2,}/g, ' ').trim();
+        return cleaned;
+      };
+
+      const sanitizedText = sanitizeForSpeech(text);
+
+      // v237.0: Guard against empty/whitespace-only text — prevents "full stop"
+      // TTS artifacts from processing acks and stripped messages
+      if (!sanitizedText || sanitizedText.length === 0) {
+        console.log('[JARVIS Audio] Skipping TTS: empty text after sanitization');
+        return;
+      }
+
       setIsJarvisSpeaking(true);
       isSpeakingRef.current = true;
 
       // 🔇 SELF-VOICE SUPPRESSION v2: PAUSE recognition and record text
-      pauseRecognitionForSpeech(text);
-      recordSpokenText(text);
+      pauseRecognitionForSpeech(sanitizedText);
+      recordSpokenText(sanitizedText);
 
       // Use backend TTS endpoint for consistent voice quality
       // Use POST for any text with special characters or newlines to avoid URL encoding issues
-      const hasSpecialChars = /[^\w\s.,!?-]/.test(text);
-      const usePost = text.length > 500 || text.includes('\n') || hasSpecialChars;
+      const hasSpecialChars = /[^\w\s.,!?-]/.test(sanitizedText);
+      const usePost = sanitizedText.length > 500 || sanitizedText.includes('\n') || hasSpecialChars;
       console.log('[JARVIS Audio] Text length:', text.length);
       console.log('[JARVIS Audio] Using POST method:', usePost);
 
       if (!usePost) {
         // Short text: Use GET method with URL
         const apiUrl = API_URL || configService.getApiUrl() || inferUrls().API_BASE_URL;
-        const audioUrl = `${apiUrl}/audio/speak/${encodeURIComponent(text)}`;
+        const audioUrl = `${apiUrl}/audio/speak/${encodeURIComponent(sanitizedText)}`;
         console.log('[JARVIS Audio] Using GET method:', audioUrl);
 
         const audio = new Audio();
@@ -5885,7 +5915,7 @@ const JarvisVoice = () => {
           }
           console.log('[JARVIS Audio] Falling back to POST method');
           // Fallback to POST method with callback
-          await playAudioUsingPost(text, onStartCallback);
+          await playAudioUsingPost(sanitizedText, onStartCallback);
         };
 
         // Set source and properties
@@ -5900,7 +5930,7 @@ const JarvisVoice = () => {
       } else {
         // Long text: Use POST method directly with callback
         console.log('[JARVIS Audio] Using POST method for long text');
-        await playAudioUsingPost(text, onStartCallback);
+        await playAudioUsingPost(sanitizedText, onStartCallback);
       }
     } catch (error) {
       console.error('[JARVIS Audio] Playback failed:', error);
@@ -5944,7 +5974,7 @@ const JarvisVoice = () => {
           return cleaned;
         };
 
-        const utterance = new SpeechSynthesisUtterance(sanitizeForSpeech(text));
+        const utterance = new SpeechSynthesisUtterance(sanitizedText);
         utterance.rate = 0.7;   // Even slower rate for smooth, non-rushed speech
         utterance.pitch = 0.95; // Slightly lower pitch for more authoritative tone
         utterance.volume = 0.9; // Slightly lower volume for more natural sound

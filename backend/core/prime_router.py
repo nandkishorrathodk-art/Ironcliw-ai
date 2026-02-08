@@ -580,13 +580,19 @@ class PrimeRouter:
 
         start_time = time.time()
 
+        # v237.0: Pass stop sequences to Anthropic API
+        create_kwargs = {
+            "model": os.getenv("CLAUDE_MODEL", "claude-sonnet-4-20250514"),
+            "max_tokens": max_tokens,
+            "system": system_prompt or "You are JARVIS, an intelligent AI assistant.",
+            "messages": messages,
+        }
+        stop_seqs = kwargs.get("stop")
+        if stop_seqs:
+            create_kwargs["stop_sequences"] = stop_seqs
+
         response = await asyncio.wait_for(
-            client.messages.create(
-                model=os.getenv("CLAUDE_MODEL", "claude-sonnet-4-20250514"),
-                max_tokens=max_tokens,
-                system=system_prompt or "You are JARVIS, an intelligent AI assistant.",
-                messages=messages,
-            ),
+            client.messages.create(**create_kwargs),
             timeout=self._config.cloud_timeout,
         )
 
@@ -645,16 +651,23 @@ class PrimeRouter:
         if self._config.enable_cloud_fallback:
             client = await self._get_cloud_client()
             if client:
-                messages = context or []
+                # v237.0: Copy context to avoid mutating caller's list
+                messages = list(context or [])
                 messages.append({"role": "user", "content": prompt})
 
-                async with client.messages.stream(
-                    model=os.getenv("CLAUDE_MODEL", "claude-sonnet-4-20250514"),
-                    max_tokens=kwargs.get("max_tokens", 4096),
-                    temperature=kwargs.get("temperature", 0.7),
-                    system=system_prompt or "You are JARVIS.",
-                    messages=messages,
-                ) as stream:
+                # v237.0: Pass stop sequences to Anthropic streaming API
+                stream_kwargs = {
+                    "model": os.getenv("CLAUDE_MODEL", "claude-sonnet-4-20250514"),
+                    "max_tokens": kwargs.get("max_tokens", 4096),
+                    "temperature": kwargs.get("temperature", 0.7),
+                    "system": system_prompt or "You are JARVIS.",
+                    "messages": messages,
+                }
+                stop_seqs = kwargs.get("stop")
+                if stop_seqs:
+                    stream_kwargs["stop_sequences"] = stop_seqs
+
+                async with client.messages.stream(**stream_kwargs) as stream:
                     async for text in stream.text_stream:
                         yield text
                 return

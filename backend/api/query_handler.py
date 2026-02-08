@@ -30,7 +30,7 @@ v236.0: Adaptive Prompt System
 import logging
 import os
 from dataclasses import dataclass
-from typing import Dict, Any, Optional
+from typing import Dict, Any, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +46,7 @@ class AdaptivePromptParams:
     max_tokens: int
     temperature: float
     complexity_level: str
+    stop_sequences: Optional[List[str]] = None  # v237.0: Stop sequences for generation
 
 
 class AdaptivePromptBuilder:
@@ -65,7 +66,7 @@ class AdaptivePromptBuilder:
 
     # SIMPLE: No identity prefix — avoids 7B model conflict between
     # "You are JARVIS" (conversational) and "ONLY the number" (terse).
-    # Includes few-shot examples to ground the model.
+    # Uses inline prose example to avoid Q:/A: pattern completion.
     _BEHAVIOR = {
         "SIMPLE": (
             "Reply with ONLY the direct answer. No preamble, no explanation, "
@@ -73,10 +74,7 @@ class AdaptivePromptBuilder:
             "For math: return ONLY the number.\n"
             "For yes/no: return ONLY yes or no.\n"
             "For definitions: ONE sentence maximum.\n\n"
-            "Examples:\n"
-            "Q: 5+5\nA: 10\n"
-            "Q: Capital of France?\nA: Paris\n"
-            "Q: Define gravity\nA: The force that attracts objects with mass toward each other."
+            "Example: if asked '5+5', reply '10' — nothing else."
         ),
         "MODERATE": (
             "Be concise. 2-3 sentences maximum. "
@@ -97,7 +95,7 @@ class AdaptivePromptBuilder:
     }
 
     _MAX_TOKENS = {
-        "SIMPLE": 64,
+        "SIMPLE": 48,
         "MODERATE": 512,
         "COMPLEX": 2048,
         "ADVANCED": 4096,
@@ -111,6 +109,18 @@ class AdaptivePromptBuilder:
         "COMPLEX": 0.5,
         "ADVANCED": 0.7,
         "EXPERT": 0.7,
+    }
+
+    # v237.0: Stop sequences per complexity level.
+    # SIMPLE uses stop sequences to catch any residual pattern completion.
+    # Note: bare "Q:" omitted — could match inside legitimate content.
+    # Only newline-prefixed patterns are safe.
+    _STOP_SEQUENCES: Dict[str, Optional[List[str]]] = {
+        "SIMPLE": ["\nQ:", "\nQ ", "\n\n"],
+        "MODERATE": None,
+        "COMPLEX": None,
+        "ADVANCED": None,
+        "EXPERT": None,
     }
 
     @classmethod
@@ -142,11 +152,14 @@ class AdaptivePromptBuilder:
         else:
             system_prompt = f"{cls._JARVIS_IDENTITY}\n{behavior}"
 
+        stop_seqs = cls._STOP_SEQUENCES.get(level_name)
+
         params = AdaptivePromptParams(
             system_prompt=system_prompt,
             max_tokens=cls._MAX_TOKENS.get(level_name, 2048),
             temperature=cls._TEMPERATURE.get(level_name, 0.5),
             complexity_level=level_name,
+            stop_sequences=stop_seqs,
         )
 
         logger.info(
@@ -218,19 +231,40 @@ async def handle_query(
             # v236.0: Adaptive prompt based on query complexity
             params = AdaptivePromptBuilder.build(classified_query)
 
+            # v237.0: Build kwargs with stop sequences if present
+            gen_kwargs = {}
+            if params.stop_sequences:
+                gen_kwargs["stop"] = params.stop_sequences
+
             response = await router.generate(
                 prompt=command,
                 system_prompt=params.system_prompt,
                 max_tokens=params.max_tokens,
                 temperature=params.temperature,
                 context=conversation_context if conversation_context else None,
+                **gen_kwargs,
             )
 
             logger.info(f"[QUERY] Response from {response.source} (latency: {response.latency_ms:.1f}ms)")
 
+            # v237.0: Defensive strip of leaked few-shot patterns.
+            # J-Prime handles stop sequences server-side, but cloud fallback
+            # and older J-Prime versions may not — strip client-side too.
+            content = response.content
+            if params.stop_sequences and content:
+                for seq in params.stop_sequences:
+                    idx = content.find(seq)
+                    if idx >= 0:
+                        content = content[:idx].rstrip()
+                        logger.debug(
+                            f"[QUERY] Stripped leaked content at '{seq}' "
+                            f"(original len={len(response.content)}, trimmed={len(content)})"
+                        )
+                        break
+
             return {
                 "success": True,
-                "response": response.content,
+                "response": content,
                 "source": response.source,
                 "model": response.model,
                 "latency_ms": response.latency_ms,
@@ -378,11 +412,17 @@ async def handle_query_stream(
         # v236.0: Adaptive prompt for streaming
         params = AdaptivePromptBuilder.build(classified_query)
 
+        # v237.0: Build kwargs with stop sequences if present
+        gen_kwargs = {}
+        if params.stop_sequences:
+            gen_kwargs["stop"] = params.stop_sequences
+
         async for chunk in router.generate_stream(
             prompt=command,
             system_prompt=params.system_prompt,
             max_tokens=params.max_tokens,
             temperature=params.temperature,
+            **gen_kwargs,
         ):
             yield chunk
 

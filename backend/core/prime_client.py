@@ -259,6 +259,7 @@ class PrimeRequest:
     max_tokens: int = 4096
     temperature: float = 0.7
     stream: bool = False
+    stop: Optional[List[str]] = None  # v237.0: Stop sequences for generation
     metadata: Dict[str, Any] = field(default_factory=dict)
     request_id: Optional[str] = None
 
@@ -792,12 +793,18 @@ class PrimeClient:
         Returns:
             PrimeResponse with the generated content
         """
+        # v237.0: Extract stop sequences from kwargs before they go to metadata.
+        # Without this, stop silently becomes metadata={"stop": [...]} which
+        # J-Prime ignores (it expects stop as a top-level payload field).
+        stop = kwargs.pop("stop", None)
+
         request = PrimeRequest(
             prompt=prompt,
             system_prompt=system_prompt,
             context=context,
             max_tokens=max_tokens,
             temperature=temperature,
+            stop=stop,
             metadata=kwargs,
         )
 
@@ -855,6 +862,8 @@ class PrimeClient:
         # v236.0: Extract adaptive params from kwargs before dumping rest to metadata.
         # Without this, max_tokens/temperature from AdaptivePromptBuilder end up in
         # metadata (ignored by llama-cpp-python) instead of PrimeRequest fields.
+        # v237.0: Also extract stop sequences (same as generate()).
+        stop = kwargs.pop("stop", None)
         request = PrimeRequest(
             prompt=prompt,
             system_prompt=system_prompt,
@@ -862,6 +871,7 @@ class PrimeClient:
             stream=True,
             max_tokens=kwargs.pop("max_tokens", 4096),
             temperature=kwargs.pop("temperature", 0.7),
+            stop=stop,
             metadata=kwargs,
         )
 
@@ -1087,6 +1097,10 @@ class PrimeClient:
 
         if request.metadata:
             payload["metadata"] = request.metadata
+
+        # v237.0: Stop sequences for generation control
+        if request.stop:
+            payload["stop"] = request.stop
 
         return payload
 
