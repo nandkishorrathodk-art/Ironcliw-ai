@@ -6,9 +6,9 @@
       "avg_duration": 8.064258
     },
     "open_app_search": {
-      "success": 3,
+      "success": 5,
       "failure": 0,
-      "avg_duration": 7.0526930000000005
+      "avg_duration": 9.774395000000002
     }
   },
   "preferences": {},
@@ -18,13 +18,13 @@
       "total": 1
     },
     "search": {
-      "success": 4,
-      "total": 4
+      "success": 6,
+      "total": 6
     },
     "open_app": {
-      "success": 3,
-      "total": 3
+      "success": 5,
+      "total": 5
     }
   },
-  "last_updated": "2025-10-04T16:42:42.536486"
+  "last_updated": "2026-02-07T19:23:57.215483"
 }
