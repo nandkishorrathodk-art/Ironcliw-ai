@@ -435,7 +435,7 @@ class VMManagerConfig:
 
     # Disk Configuration
     boot_disk_size_gb: int = field(
-        default_factory=lambda: int(os.getenv("GCP_BOOT_DISK_SIZE_GB", "50"))
+        default_factory=lambda: int(os.getenv("GCP_BOOT_DISK_SIZE_GB", "80"))  # v241.0: 80 GB for multi-model golden image (~27 GB models + OS + deps)
     )
     boot_disk_type: str = field(
         default_factory=lambda: os.getenv("GCP_BOOT_DISK_TYPE", "pd-standard")
@@ -1688,59 +1688,143 @@ pip install \\
     2>&1 | tee -a "$LOG_FILE"
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Phase 5: Download and Cache Model (with Verification)
+# Phase 5: v241.0 — Download Multi-Model Inventory (with Verification & Manifest)
 # ─────────────────────────────────────────────────────────────────────────────
 
-update_status "downloading" 50 "Downloading LLM model: $MODEL_NAME..."
-log "Phase 5: Downloading LLM model: $MODEL_NAME"
+update_status "downloading" 50 "Downloading multi-model inventory..."
+log "Phase 5: v241.0 — Downloading 8 models for task-type routing"
 
 mkdir -p "$MODEL_CACHE"
 
 python3 << EOFMODEL
 import os
 import sys
-from huggingface_hub import snapshot_download
+import json
+from datetime import datetime
 
-model_name = "{model_name}"
-cache_dir = "/opt/jarvis-prime/models"
+# v241.0: Multi-model inventory for GCP task-type routing
+# Each model is downloaded individually as a specific GGUF file.
+MODELS = {{
+    "mistral-7b": {{
+        "repo": "TheBloke/Mistral-7B-Instruct-v0.2-GGUF",
+        "filename": "mistral-7b-instruct-v0.2.Q4_K_M.gguf",
+        "size_gb": 4.4,
+        "routable": True,
+        "config_overrides": {{"n_ctx": 8192, "chat_template": "mistral", "n_gpu_layers": 0, "flash_attn": False}},
+    }},
+    "qwen-2.5-7b": {{
+        "repo": "Qwen/Qwen2.5-7B-Instruct-GGUF",
+        "filename": "qwen2.5-7b-instruct-q4_k_m.gguf",
+        "size_gb": 4.4,
+        "routable": True,
+        "config_overrides": {{"n_ctx": 32768, "chat_template": "chatml", "n_gpu_layers": 0, "flash_attn": False}},
+    }},
+    "qwen-2.5-coder-7b": {{
+        "repo": "Qwen/Qwen2.5-Coder-7B-Instruct-GGUF",
+        "filename": "qwen2.5-coder-7b-instruct-q4_k_m.gguf",
+        "size_gb": 4.4,
+        "routable": True,
+        "config_overrides": {{"n_ctx": 32768, "chat_template": "chatml", "n_gpu_layers": 0, "flash_attn": False}},
+    }},
+    "llava-v1.6-mistral-7b": {{
+        "repo": "cjpais/llava-v1.6-mistral-7b-gguf",
+        "filename": "llava-v1.6-mistral-7b.Q4_K_M.gguf",
+        "size_gb": 4.9,
+        "routable": False,
+    }},
+    "phi-3.5-mini": {{
+        "repo": "bartowski/Phi-3.5-mini-instruct-GGUF",
+        "filename": "Phi-3.5-mini-instruct-Q4_K_M.gguf",
+        "size_gb": 2.2,
+        "routable": True,
+        "config_overrides": {{"n_ctx": 4096, "chat_template": "phi3", "n_gpu_layers": 0, "flash_attn": False}},
+    }},
+    "llama-3.1-8b": {{
+        "repo": "bartowski/Meta-Llama-3.1-8B-Instruct-GGUF",
+        "filename": "Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf",
+        "size_gb": 4.9,
+        "routable": True,
+        "config_overrides": {{"n_ctx": 8192, "chat_template": "llama3", "n_gpu_layers": 0, "flash_attn": False}},
+    }},
+    "tinyllama-1.1b": {{
+        "repo": "TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF",
+        "filename": "tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf",
+        "size_gb": 0.67,
+        "routable": False,
+    }},
+    "bge-large-en": {{
+        "repo": "TaylorAI/bge-large-en-v1.5-gguf",
+        "filename": "bge-large-en-v1.5-q4_k_m.gguf",
+        "size_gb": 0.17,
+        "routable": False,
+    }},
+}}
 
-print(f"Downloading model: {{model_name}}")
-print(f"Cache directory: {{cache_dir}}")
+models_dir = "/opt/jarvis-prime/models"
+os.makedirs(models_dir, exist_ok=True)
 
-try:
-    path = snapshot_download(
-        repo_id=model_name if "/" in model_name else f"TheBloke/{{model_name}}-GGUF",
-        cache_dir=cache_dir,
-        local_dir_use_symlinks=False,
-    )
-    print(f"✅ Model downloaded to: {{path}}")
-    
-    # Verify model files exist
-    total_size = 0
-    file_count = 0
-    for root, dirs, files in os.walk(cache_dir):
-        for f in files:
-            fpath = os.path.join(root, f)
-            total_size += os.path.getsize(fpath)
-            file_count += 1
-    
-    print(f"✅ Model cache: {{file_count}} files, {{total_size / (1024*1024):.1f}} MB")
-    
-    if total_size < 1_000_000:  # Less than 1MB — something went wrong
-        print("⚠️  WARNING: Model cache suspiciously small. Model may be incomplete.")
-        sys.exit(1)
-        
-except Exception as e:
-    print(f"❌ Model download failed: {{e}}")
-    print("❌ The golden image will NOT have pre-cached models.")
+from huggingface_hub import hf_hub_download
+
+manifest = {{"models": {{}}, "build_timestamp": datetime.utcnow().isoformat(), "version": "v241.0"}}
+total = len(MODELS)
+success_count = 0
+fail_count = 0
+
+for i, (model_id, spec) in enumerate(MODELS.items()):
+    target_path = os.path.join(models_dir, spec["filename"])
+    pct = int(((i + 1) / total) * 100)
+    print(f"[{{i+1}}/{{total}}] Downloading {{model_id}} ({{spec['size_gb']}} GB)...")
+
+    if os.path.exists(target_path) and os.path.getsize(target_path) > 1_000_000:
+        print(f"  Already exists: {{target_path}} ({{os.path.getsize(target_path) / (1024**3):.2f}} GB)")
+        success_count += 1
+    else:
+        try:
+            hf_hub_download(
+                repo_id=spec["repo"],
+                filename=spec["filename"],
+                local_dir=models_dir,
+                local_dir_use_symlinks=False,
+            )
+            if os.path.exists(target_path):
+                print(f"  Downloaded: {{os.path.getsize(target_path) / (1024**3):.2f}} GB")
+                success_count += 1
+            else:
+                print(f"  WARNING: File not found after download: {{target_path}}")
+                fail_count += 1
+                continue
+        except Exception as e:
+            print(f"  FAILED: {{e}}")
+            fail_count += 1
+            continue
+
+    manifest["models"][model_id] = {{
+        "file": spec["filename"],
+        "size_gb": spec["size_gb"],
+        "path": target_path,
+        "routable": spec.get("routable", True),
+        "config_overrides": spec.get("config_overrides", {{}}),
+    }}
+
+# Write manifest (primary inventory source at runtime)
+manifest_path = os.path.join(models_dir, "manifest.json")
+with open(manifest_path, "w") as f:
+    json.dump(manifest, f, indent=2)
+print(f"Manifest written: {{manifest_path}}")
+
+print(f"Results: {{success_count}}/{{total}} models downloaded, {{fail_count}} failed")
+if fail_count > 0:
+    print("WARNING: Some models failed to download but image creation continues")
+if success_count == 0:
+    print("CRITICAL: No models downloaded!")
     sys.exit(1)
 EOFMODEL
 
 if [ $? -ne 0 ]; then
-    log "   ⚠️  Model download failed or verification failed"
+    log "   ⚠️  Multi-model download had failures"
     BUILD_ERRORS=$((BUILD_ERRORS + 1))
 else
-    log "   ✅ Model downloaded and verified"
+    log "   ✅ Multi-model inventory downloaded and manifest written"
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1760,6 +1844,8 @@ JARVIS_DEPS_PREBAKED=true
 JARVIS_SKIP_ML_DEPS_INSTALL=true
 JARVIS_GCP_INFERENCE=true
 JARVIS_MODEL_CACHE=$MODEL_CACHE
+GCP_MODELS_DIR=$MODEL_CACHE
+GCP_MULTI_MODEL_ENABLED=true
 JARVIS_PRIME_DIR=$JARVIS_DIR
 JARVIS_PRIME_VENV=$JARVIS_DIR/venv
 JARVIS_PRIME_REPO_URL=$REPO_URL

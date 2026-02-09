@@ -217,6 +217,94 @@ def _try_math_solve(command: str) -> Optional[Dict[str, Any]]:
 
 
 # =============================================================================
+# v241.0: TASK TYPE INFERENCE — J-Prime model routing hints
+# Architecture note: J-Prime's TaskClassifier (dynamic_model_registry.py) has
+# a more comprehensive classifier, but it runs AFTER the model is loaded. This
+# lightweight classifier runs BEFORE the request reaches J-Prime so the GCP
+# model swap coordinator can pre-load the right model. Keep in sync with
+# GCP_TASK_MODEL_MAPPING in dynamic_model_registry.py.
+# =============================================================================
+
+# Programming languages (unambiguous)
+_LANG_NAMES = re.compile(
+    r'\b(?:python|javascript|typescript|rust|golang|go\s+lang'
+    r'|c\+\+|cpp|java(?!script)|ruby|swift|kotlin|scala|haskell'
+    r'|elixir|clojure|sql)\b',
+    re.IGNORECASE,
+)
+
+# Strong code indicators (unambiguous even standalone)
+_CODE_STRONG = re.compile(
+    r'\b(?:function|def\s+\w|implement|debug|refactor'
+    r'|compile|syntax|algorithm|regex|api\s+endpoint'
+    r'|pull\s+request|git\s+(?:commit|push|merge))\b'
+    r'|```',  # Code fence is always code
+    re.IGNORECASE,
+)
+
+# Weak code indicators (ambiguous alone — "import the data", "class action")
+# R2-2: class\s+\w moved here from _CODE_STRONG to avoid "class action" false positive
+_CODE_WEAK = re.compile(
+    r'\b(?:import|export|return|async|await|variable|loop|array|object|class\s+\w)\b',
+    re.IGNORECASE,
+)
+
+_TASK_MATH_KEYWORDS = re.compile(
+    r'\b(?:calculate|compute|math|equation|formula|solve|proof|integral'
+    r'|derivative|matrix|statistics|probability|percent)\b',
+    re.IGNORECASE,
+)
+
+
+def _infer_task_type(command: str, complexity_level: str) -> str:
+    """
+    v241.0: Infer J-Prime TaskType from query content + complexity.
+
+    Code detection requires 2+ indicators to avoid false positives on
+    phrases like "import the data" or "what class should I take" (Issue #5).
+
+    Returns one of the string values from J-Prime's TaskType enum.
+    """
+    # Math detection (aligns with v240 math solver patterns)
+    if _TASK_MATH_KEYWORDS.search(command) or re.search(
+        r'\d+\s*[a-zA-Z]\s*[\+\-\*/\^]', command
+    ):
+        return (
+            "math_complex"
+            if complexity_level in ("COMPLEX", "ADVANCED", "EXPERT")
+            else "math_simple"
+        )
+
+    # Code detection — tightened (Issue #5, R2-2)
+    has_lang = bool(_LANG_NAMES.search(command))
+    has_strong = bool(_CODE_STRONG.search(command))
+    has_weak = bool(_CODE_WEAK.search(command))
+    code_signals = sum([has_lang, has_strong, has_weak])
+
+    is_code = (
+        has_strong                    # Strong indicator alone is enough
+        or (has_lang and has_weak)    # Language + weak = code ("import in Python")
+        or (code_signals >= 2)        # Any 2+ signals
+    )
+    if is_code:
+        return (
+            "code_complex"
+            if complexity_level in ("COMPLEX", "ADVANCED", "EXPERT")
+            else "code_simple"
+        )
+
+    # Simple greetings/voice
+    if complexity_level == "SIMPLE":
+        return "simple_chat"
+
+    # Map complexity to general types
+    if complexity_level in ("ADVANCED", "EXPERT"):
+        return "reason_complex"
+
+    return "general_chat"
+
+
+# =============================================================================
 # QUERY HANDLERS
 # =============================================================================
 
@@ -286,6 +374,12 @@ async def handle_query(
             gen_kwargs = {}
             if params.stop_sequences:
                 gen_kwargs["stop"] = params.stop_sequences
+
+            # v241.0: Task type hint for J-Prime model routing
+            if classified_query:
+                _task_type = _infer_task_type(command, params.complexity_level)
+                gen_kwargs["task_type"] = _task_type
+                gen_kwargs["complexity_level"] = params.complexity_level
 
             response = await router.generate(
                 prompt=command,
@@ -519,6 +613,12 @@ async def handle_query_stream(
         gen_kwargs = {}
         if params.stop_sequences:
             gen_kwargs["stop"] = params.stop_sequences
+
+        # v241.0: Task type hint for J-Prime model routing
+        if classified_query:
+            _task_type = _infer_task_type(command, params.complexity_level)
+            gen_kwargs["task_type"] = _task_type
+            gen_kwargs["complexity_level"] = params.complexity_level
 
         async for chunk in router.generate_stream(
             prompt=command,
