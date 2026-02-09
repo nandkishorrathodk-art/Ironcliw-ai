@@ -1149,11 +1149,11 @@ async def _try_keychain_unlock(context: Dict[str, Any]) -> Tuple[bool, str]:
         verified_speaker = await _get_owner_name()
         context["verified_speaker_name"] = verified_speaker
 
-    # Use enhanced Keychain integration for actual unlock
+    # Use enhanced Keychain integration for actual unlock (singleton for cache benefits)
     try:
-        from macos_keychain_unlock import MacOSKeychainUnlock
+        from macos_keychain_unlock import get_keychain_unlock_service
 
-        unlock_service = MacOSKeychainUnlock()
+        unlock_service = await get_keychain_unlock_service()
         # Get verified speaker name from context, or fall back to database owner
         verified_speaker = context.get("verified_speaker_name")
         if not verified_speaker:

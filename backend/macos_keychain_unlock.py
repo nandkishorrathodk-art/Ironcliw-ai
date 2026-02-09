@@ -679,16 +679,18 @@ class MacOSKeychainUnlock:
 
     async def _applescript_fallback(self, password: str) -> None:
         """AppleScript fallback for password typing"""
-        wake_script = """
-        tell application "System Events"
-            key code 49  -- Space key to wake
-        end tell
-        """
-        await asyncio.create_subprocess_exec(
-            "osascript", "-e", wake_script,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE
-        )
+        # Wake display via caffeinate -u (does NOT inject key events).
+        # Using key code 49 (space) would type a space into the password
+        # field if the lock screen is already visible, corrupting the password.
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "caffeinate", "-u", "-t", "1",
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.DEVNULL,
+            )
+            await asyncio.wait_for(proc.wait(), timeout=3.0)
+        except Exception:
+            pass
         await asyncio.sleep(0.5)
 
         type_script = """

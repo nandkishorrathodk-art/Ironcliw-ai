@@ -650,37 +650,28 @@ class SecurePasswordTyper:
                 metrics.finalize()
 
     async def _wake_screen(self):
-        """Wake the screen with a non-intrusive key"""
+        """Wake the screen using caffeinate -u (no key events injected).
+
+        CRITICAL: Do NOT use spacebar or any keyboard event to wake the screen.
+        If the lock screen is already visible (display on, screen locked), a
+        keyboard event would type into the password field, prepending a
+        character to the password and causing authentication failure.
+
+        caffeinate -u asserts user activity to wake the display without
+        injecting any HID key events.
+        """
         try:
-            # Press and release spacebar to wake
-            keycode = KEYCODE_MAP.get(' ', 0x31)
-
-            # Key down
-            event = CoreGraphics.CGEventCreateKeyboardEvent(
-                self.event_source,
-                keycode,
-                True  # key down
+            proc = await asyncio.create_subprocess_exec(
+                "caffeinate", "-u", "-t", "1",
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.DEVNULL,
             )
-            if event:
-                CoreGraphics.CGEventPost(0, event)  # 0 = kCGHIDEventTap
-                CoreGraphics.CFRelease(event)
-
-            await asyncio.sleep(0.05)
-
-            # Key up
-            event = CoreGraphics.CGEventCreateKeyboardEvent(
-                self.event_source,
-                keycode,
-                False  # key up
-            )
-            if event:
-                CoreGraphics.CGEventPost(0, event)
-                CoreGraphics.CFRelease(event)
-
-            logger.debug("🔐 [SECURE-TYPE] Screen woken")
-
+            await asyncio.wait_for(proc.wait(), timeout=3.0)
+            logger.debug("🔐 [SECURE-TYPE] Screen woken via caffeinate -u")
+        except asyncio.TimeoutError:
+            logger.warning("⚠️ caffeinate -u timed out, continuing anyway")
         except Exception as e:
-            logger.warning(f"⚠️ Failed to wake screen: {e}")
+            logger.warning(f"⚠️ Failed to wake screen via caffeinate: {e}")
     
     async def _wake_screen_adaptive(self, config: TypingConfig, system_load: float):
         """Wake screen with adaptive timing based on system load"""
@@ -892,19 +883,18 @@ class SecurePasswordTyper:
             logger.info("🔄 Using AppleScript fallback for password typing")
             metrics.fallback_used = True
             
-            # Wake screen first
-            wake_script = """
-            tell application "System Events"
-                key code 49
-            end tell
-            """
-            
-            proc = await asyncio.create_subprocess_exec(
-                "osascript", "-e", wake_script,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
-            )
-            await proc.communicate()
+            # Wake screen via caffeinate -u (no key events injected).
+            # key code 49 (space) would type into the password field if
+            # the lock screen is already visible, corrupting the password.
+            try:
+                proc = await asyncio.create_subprocess_exec(
+                    "caffeinate", "-u", "-t", "1",
+                    stdout=asyncio.subprocess.DEVNULL,
+                    stderr=asyncio.subprocess.DEVNULL,
+                )
+                await asyncio.wait_for(proc.wait(), timeout=3.0)
+            except Exception:
+                pass
             await asyncio.sleep(0.5)
             
             # Type password using AppleScript with environment variable for security
@@ -1553,19 +1543,18 @@ async def _type_password_applescript_sai(
     try:
         logger.info(f"🔐 [APPLESCRIPT-SAI] Starting secure input (strategy: AppleScript)")
 
-        # Wake screen with SAI-recommended delay
-        wake_script = """
-        tell application "System Events"
-            key code 49
-        end tell
-        """
-
-        proc = await asyncio.create_subprocess_exec(
-            "osascript", "-e", wake_script,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE
-        )
-        await proc.communicate()
+        # Wake screen via caffeinate -u (no key events injected).
+        # key code 49 (space) would type into the password field if
+        # the lock screen is already visible, corrupting the password.
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "caffeinate", "-u", "-t", "1",
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.DEVNULL,
+            )
+            await asyncio.wait_for(proc.wait(), timeout=3.0)
+        except Exception:
+            pass
 
         # SAI-recommended wake delay (longer for TV)
         await asyncio.sleep(config.wake_delay_ms / 1000.0)

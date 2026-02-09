@@ -1670,14 +1670,12 @@ class JARVISVoiceAPI:
             from voice_unlock.intelligent_voice_unlock_service import process_voice_unlock_robust
 
             audio_data = getattr(command, 'audio_data', None)
-            speaker_name = getattr(command, 'speaker_name', None)
 
             result = await process_voice_unlock_robust(
                 command="unlock my screen",
                 audio_data=audio_data,
                 sample_rate=16000,
                 mime_type="audio/webm",
-                speaker_name=speaker_name,
             )
 
             return {
