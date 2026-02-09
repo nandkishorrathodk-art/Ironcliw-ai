@@ -588,6 +588,12 @@ class DistributedLockManager:
         self._expired_locks: set = set()
         self._lock_events: Dict[str, asyncio.Event] = {}
 
+        # v3.4: Keepalive stopping flag — set synchronously BEFORE any yield in
+        # the finally block of acquire_unified(). The keepalive loop checks this
+        # flag before writing metadata, preventing stale token writes during the
+        # window between cancellation signal and actual task termination.
+        self._keepalive_stopping: set = set()
+
         logger.info(
             f"Distributed Lock Manager v3.2 initialized "
             f"(owner: {self._owner_id}, backend: {self.config.backend.value})"
@@ -894,6 +900,7 @@ class DistributedLockManager:
         # v3.3: Clear expiration tracking state
         self._expired_locks.clear()
         self._lock_events.clear()
+        self._keepalive_stopping.clear()
 
         logger.info("Distributed Lock Manager shut down")
 
@@ -1072,14 +1079,25 @@ class DistributedLockManager:
                 # We own this lock, remove it
                 await self._remove_lock_file(lock_file)
             else:
-                # v2.1.0: Someone else owns the lock - this IS concerning
-                # It indicates a potential race condition or TTL issue
-                # where our lock expired and someone else acquired it
-                logger.warning(
-                    f"Cannot release lock - owned by different token: {lock_file.name} "
-                    f"(our token: {token[:8]}..., current owner: {current_lock.token[:8]}..., "
-                    f"time remaining: {current_lock.time_remaining():.1f}s)"
-                )
+                # v3.4: Someone else owns the lock. This is expected during rapid
+                # acquire/release cycles (e.g., heartbeat loops) where the next
+                # iteration acquires a new token before the previous finally block
+                # completes. Only warn if this is genuinely unexpected.
+                lock_name = lock_file.stem.replace(self.config.lock_extension.lstrip('.'), '').rstrip('.')
+                if lock_name in self._keepalive_stopping:
+                    # Expected: we're in the finally block releasing, and another
+                    # iteration already acquired. This is normal — downgrade to DEBUG.
+                    logger.debug(
+                        f"Lock superseded during release: {lock_file.name} "
+                        f"(our token: {token[:8]}..., new owner: {current_lock.token[:8]}..., "
+                        f"time remaining: {current_lock.time_remaining():.1f}s)"
+                    )
+                else:
+                    logger.warning(
+                        f"Cannot release lock - owned by different token: {lock_file.name} "
+                        f"(our token: {token[:8]}..., current owner: {current_lock.token[:8]}..., "
+                        f"time remaining: {current_lock.time_remaining():.1f}s)"
+                    )
         except Exception as e:
             logger.error(f"Error releasing lock {lock_file.name}: {e}")
 
@@ -1976,10 +1994,16 @@ class DistributedLockManager:
             yield acquired, metadata
 
         finally:
+            # v3.4: Signal keepalive to stop BEFORE any yield. This is synchronous
+            # (no await), so no other coroutine can run between the flag set and
+            # the keepalive's next check. Prevents stale token writes during the
+            # race window between cancellation and actual task termination.
+            self._keepalive_stopping.add(lock_name)
+
             if keepalive_task and not keepalive_task.done():
                 keepalive_task.cancel()
                 try:
-                    await asyncio.wait_for(keepalive_task, timeout=1.0)
+                    await asyncio.wait_for(keepalive_task, timeout=3.0)
                 except (asyncio.CancelledError, asyncio.TimeoutError):
                     pass
 
@@ -2006,6 +2030,9 @@ class DistributedLockManager:
                             await _rel_result
                     except Exception:
                         pass
+
+            # v3.4: Clean up stopping flag after release
+            self._keepalive_stopping.discard(lock_name)
 
     async def _keepalive_loop(
         self,
@@ -2055,9 +2082,26 @@ class DistributedLockManager:
                         )
                         break
                 else:
+                    # v3.4: Check stopping flag before reading/writing metadata.
+                    # If the parent context manager's finally block has signaled us
+                    # to stop, bail out immediately — writing would overwrite a
+                    # newer token that may have been acquired during our yield.
+                    if lock_name in self._keepalive_stopping:
+                        logger.debug(
+                            f"[v3.4] Keepalive for '{lock_name}' stopping (flag set) — exiting"
+                        )
+                        break
+
                     lock_file = self.config.lock_dir / f"{lock_name}{self.config.lock_extension}"
                     metadata = await self._read_lock_metadata(lock_file)
                     if metadata and metadata.token == token:
+                        # v3.4: Re-check stopping flag after async read — the flag
+                        # could have been set while we awaited the file read.
+                        if lock_name in self._keepalive_stopping:
+                            logger.debug(
+                                f"[v3.4] Keepalive for '{lock_name}' stopping after read — skipping write"
+                            )
+                            break
                         metadata.expires_at = time.time() + ttl
                         metadata.extensions += 1
                         await self._write_lock_metadata(lock_file, metadata)

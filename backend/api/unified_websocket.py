@@ -355,15 +355,21 @@ class UnifiedWebSocketManager:
         except Exception as e:
             error_msg = str(e)
 
-            # Detect specific close-related errors
-            is_close_error = any(phrase in error_msg.lower() for phrase in [
-                "close message",
-                "connection closed",
-                "websocket is closed",
-                "websocket disconnected",
-                "connection reset",
-                "broken pipe",
-            ])
+            # Detect specific close-related errors.
+            # v3.4: Also treat empty error messages as close errors — Starlette/ASGI
+            # sometimes raises RuntimeError('') when the ASGI connection is already
+            # torn down, which doesn't match any phrase but IS a disconnection.
+            is_close_error = (
+                not error_msg.strip()  # Empty = ASGI connection gone
+                or any(phrase in error_msg.lower() for phrase in [
+                    "close message",
+                    "connection closed",
+                    "websocket is closed",
+                    "websocket disconnected",
+                    "connection reset",
+                    "broken pipe",
+                ])
+            )
 
             if health:
                 health.consecutive_send_failures += 1
@@ -382,8 +388,11 @@ class UnifiedWebSocketManager:
                         f"[UNIFIED-WS] Connection {client_id} marked as closed: {error_msg}"
                     )
                 else:
-                    # Log other errors at error level
-                    logger.error(
+                    # v3.4: Downgraded from ERROR to WARNING — client is properly
+                    # marked for removal and will be cleaned up. This is a known
+                    # race window between _is_connection_open() check and send_json(),
+                    # not a critical failure.
+                    logger.warning(
                         f"[UNIFIED-WS] Send failed to {client_id}: {error_msg}"
                     )
 

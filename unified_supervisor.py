@@ -54454,6 +54454,8 @@ class TrinityComponent:
     health_url: Optional[str] = None
     last_health_check: Optional[float] = None
     restart_count: int = 0
+    # v3.4: Track when component was last started to enforce grace period
+    start_time: float = 0.0
 
     @property
     def is_running(self) -> bool:
@@ -55832,6 +55834,7 @@ class TrinityIntegrator:
             healthy = await self._wait_for_health(component, timeout=component_timeout)
             if healthy:
                 component.state = "healthy"
+                component.start_time = time.time()
                 self.logger.success(f"[Trinity] ✓ {component.name} RUNNING (PID: {component.pid}, Port: {component.port})")
                 
                 # v197.1: Update live dashboard
@@ -56777,7 +56780,19 @@ class TrinityIntegrator:
         )
 
     async def _health_monitor_loop(self) -> None:
-        """Monitor component health and auto-restart if needed."""
+        """Monitor component health and auto-restart if needed.
+
+        v3.4: Respects startup grace period — reactor-core takes 10-15 min
+        to load ML models, so health checks that fail during this window
+        are NOT treated as unhealthy (prevents premature restart loops that
+        kill in-progress model loading).
+        """
+        # v3.4: Grace periods per component (env-var configurable)
+        _grace_periods = {
+            "reactor-core": float(os.getenv("TRINITY_REACTOR_GRACE_PERIOD", "960")),
+            "jarvis-prime": float(os.getenv("TRINITY_JPRIME_GRACE_PERIOD", "300")),
+        }
+
         while not self._shutdown_event.is_set():
             try:
                 await asyncio.sleep(self._health_check_interval)
@@ -56786,6 +56801,19 @@ class TrinityIntegrator:
                     if component and component.state == "healthy":
                         healthy = await self._check_health(component)
                         if not healthy:
+                            # v3.4: Check startup grace period before marking unhealthy.
+                            # Components like reactor-core take 10-15 min to load ML models.
+                            # During this window, failed health checks are expected (training_ready=False).
+                            grace = _grace_periods.get(component.name, 120.0)
+                            if component.start_time > 0:
+                                elapsed = time.time() - component.start_time
+                                if elapsed < grace:
+                                    self.logger.debug(
+                                        f"[Trinity] {component.name} health check failed but within "
+                                        f"startup grace period ({elapsed:.0f}s / {grace:.0f}s) — not marking unhealthy"
+                                    )
+                                    continue
+
                             self.logger.warning(f"[Trinity] {component.name} became unhealthy")
                             component.state = "unhealthy"
 
