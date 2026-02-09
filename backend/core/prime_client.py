@@ -896,6 +896,9 @@ class PrimeClient:
                 # Use OpenAI-compatible chat completions endpoint
                 url = f"{self._config.base_url}/chat/completions"
 
+                # v242.0: Extract X-Model-Id header from J-Prime response
+                response_headers = {}
+
                 # aiohttp.ClientSession - use context manager for response
                 try:
                     async with session.post(url, json=payload) as resp:
@@ -903,12 +906,14 @@ class PrimeClient:
                             text = await resp.text()
                             raise RuntimeError(f"Prime returned {resp.status}: {text}")
                         data = await resp.json()
+                        response_headers = dict(resp.headers)
                 except TypeError:
                     # Fallback for httpx style (no context manager on response)
                     resp = await session.post(url, json=payload)
                     if resp.status_code != 200:
                         raise RuntimeError(f"Prime returned {resp.status_code}: {resp.text}")
                     data = resp.json()
+                    response_headers = dict(resp.headers)
 
             latency_ms = (time.time() - start_time) * 1000
 
@@ -930,14 +935,20 @@ class PrimeClient:
             usage = data.get("usage", {})
             tokens_used = usage.get("total_tokens", 0)
 
+            # v242.0: Extract model_id from X-Model-Id header (set by GCPModelSwapCoordinator)
+            model_id = response_headers.get("X-Model-Id") or data.get("model", "jarvis-prime")
+
+            resp_metadata = data.get("metadata", {})
+            resp_metadata["model_id"] = model_id
+
             return PrimeResponse(
                 content=content,
                 request_id=request.request_id,
-                model=data.get("model", "jarvis-prime"),
+                model=model_id,
                 source="local_prime",
                 latency_ms=latency_ms,
                 tokens_used=tokens_used,
-                metadata=data.get("metadata", {}),
+                metadata=resp_metadata,
             )
 
         except Exception as e:

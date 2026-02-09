@@ -82,6 +82,17 @@ from typing import Any, Dict, List, Optional, Callable, Awaitable
 
 from backend.core.async_safety import LazyAsyncLock
 
+# v242.0: Canonical experience schema for cross-repo compatibility
+try:
+    import sys as _sys
+    if str(Path.home() / ".jarvis") not in _sys.path:
+        _sys.path.insert(0, str(Path.home() / ".jarvis"))
+    from schemas.experience_schema import ExperienceEvent, from_telemetry_emitter_format, SCHEMA_VERSION
+    _HAS_CANONICAL_SCHEMA = True
+except ImportError:
+    _HAS_CANONICAL_SCHEMA = False
+    SCHEMA_VERSION = "1.0"
+
 logger = logging.getLogger(__name__)
 
 
@@ -134,6 +145,15 @@ class TelemetryConfig:
         "TELEMETRY_QUEUE_DIR",
         os.path.join(os.path.expanduser("~"), ".jarvis", "telemetry_queue")
     ))
+
+    # v242.0: JSONL output directory (also read by Reactor Core's TelemetryIngestor)
+    telemetry_dir: str = field(default_factory=lambda: os.getenv(
+        "TELEMETRY_OUTPUT_DIR",
+        os.path.join(os.path.expanduser("~"), ".jarvis", "telemetry")
+    ))
+
+    # v242.0: Maximum disk queue size (prevents unbounded growth)
+    max_queue_size: int = field(default_factory=lambda: _get_env_int("TELEMETRY_MAX_QUEUE_SIZE", 10000))
 
     # Compression
     enable_compression: bool = field(default_factory=lambda: _get_env_bool("TELEMETRY_COMPRESSION", True))
@@ -311,9 +331,17 @@ class DiskBackedQueue:
         self._queue_dir.mkdir(parents=True, exist_ok=True)
         self._lock = asyncio.Lock()
 
-    async def push(self, event: TelemetryEvent) -> None:
-        """Push event to disk queue."""
+    async def push(self, event: TelemetryEvent, max_size: int = 10000) -> None:
+        """Push event to disk queue with size limit."""
         async with self._lock:
+            # v242.0: Prevent unbounded queue growth
+            current_size = len(list(self._queue_dir.glob("*.json")))
+            if current_size >= max_size:
+                logger.warning(f"[Telemetry] Disk queue at capacity ({current_size}/{max_size}), dropping oldest")
+                oldest = sorted(self._queue_dir.glob("*.json"))[:1]
+                for f in oldest:
+                    f.unlink(missing_ok=True)
+
             file_path = self._queue_dir / f"{event.event_id}.json"
             data = json.dumps(event.to_dict())
 
@@ -432,6 +460,8 @@ class TelemetryEmitter:
         latency_ms: float = 0.0,
         source: str = "unknown",
         metadata: Optional[Dict[str, Any]] = None,
+        model_id: Optional[str] = None,
+        task_type: Optional[str] = None,
     ) -> None:
         """
         Emit an interaction event for training.
@@ -448,6 +478,12 @@ class TelemetryEmitter:
         if not self._initialized:
             await self.initialize()
 
+        _meta = dict(metadata or {})
+        if model_id:
+            _meta["model_id"] = model_id
+        if task_type:
+            _meta["task_type"] = task_type
+
         event = TelemetryEvent(
             event_id=str(uuid.uuid4()),
             event_type=TelemetryType.INTERACTION,
@@ -455,12 +491,16 @@ class TelemetryEmitter:
             data={
                 "user_input": user_input,
                 "response": response,
+                "assistant_output": response,  # v242.0: canonical field name
                 "success": success,
                 "confidence": confidence,
                 "latency_ms": latency_ms,
                 "source": source,
-                "metadata": metadata or {},
+                "model_id": model_id,
+                "task_type": task_type,
+                "metadata": _meta,
                 "datetime": datetime.now().isoformat(),
+                "schema_version": SCHEMA_VERSION,
             },
         )
 
@@ -560,6 +600,34 @@ class TelemetryEmitter:
             # Flush if batch is full
             if len(self._memory_queue) >= self._config.batch_size:
                 asyncio.create_task(self._flush_queue())
+
+        # v242.0: Also write to JSONL for Reactor Core's TelemetryIngestor
+        await self._write_jsonl(event)
+
+    async def _write_jsonl(self, event: TelemetryEvent) -> None:
+        """Write event as JSONL line to ~/.jarvis/telemetry/ for file-based ingestion."""
+        try:
+            telemetry_dir = Path(self._config.telemetry_dir)
+            telemetry_dir.mkdir(parents=True, exist_ok=True)
+
+            # v242.0: Convert to canonical format for file-based ingestion
+            if _HAS_CANONICAL_SCHEMA:
+                canonical = from_telemetry_emitter_format(event.to_dict())
+                line_data = canonical.to_reactor_core_format()
+            else:
+                line_data = event.to_dict()
+                line_data["schema_version"] = SCHEMA_VERSION
+
+            # Date-partitioned JSONL file
+            date_str = datetime.now().strftime("%Y%m%d")
+            jsonl_path = telemetry_dir / f"interactions_{date_str}.jsonl"
+
+            line = json.dumps(line_data) + "\n"
+            # Append atomically
+            with open(jsonl_path, "a") as f:
+                f.write(line)
+        except Exception as e:
+            logger.debug(f"[Telemetry] JSONL write failed: {e}")
 
     async def _flush_loop(self) -> None:
         """Background loop to flush queue periodically."""
@@ -684,69 +752,84 @@ class TelemetryEmitter:
         url: str,
         events: List[Dict[str, Any]],
     ) -> EmissionResult:
-        """Emit events to a specific endpoint."""
+        """Emit events to a specific endpoint.
+
+        v242.0: Sends each event individually as ExperienceStreamRequest.
+        Reactor Core expects: {"experience": {...}, "source": "...", "timestamp": "..."}
+        """
         if not self._http_client:
             return EmissionResult(success=False, error="No HTTP client")
 
-        payload = {
-            "events": events,
-            "source": "jarvis_agent",
-            "timestamp": time.time(),
-        }
+        success_count = 0
+        fail_count = 0
+        start_time = time.time()
 
-        # Compress if needed
-        data = json.dumps(payload)
-        headers = {"Content-Type": "application/json"}
+        for event_dict in events:
+            # v242.0: Convert to canonical format
+            if _HAS_CANONICAL_SCHEMA:
+                canonical = from_telemetry_emitter_format(event_dict)
+                experience_data = canonical.to_reactor_core_format()
+            else:
+                experience_data = dict(event_dict.get("data", {}))
+                experience_data["event_id"] = event_dict.get("event_id")
+                experience_data["event_type"] = event_dict.get("event_type")
+                experience_data["schema_version"] = SCHEMA_VERSION
 
-        if self._config.enable_compression and len(data) > self._config.compression_threshold:
-            data = gzip.compress(data.encode())
-            headers["Content-Encoding"] = "gzip"
+            payload = json.dumps({
+                "experience": experience_data,
+                "source": event_dict.get("source", "jarvis_agent"),
+                "timestamp": experience_data.get("timestamp") or datetime.now().isoformat(),
+            })
 
-        # Retry loop
-        for attempt in range(self._config.max_retries):
-            try:
-                # v239.0: Fixed client type detection. The previous check
-                # hasattr(self._http_client.post, '__aenter__') was always
-                # False for both libraries, causing aiohttp to receive httpx's
-                # 'content=' parameter, which crashes with:
-                #   _request() got an unexpected keyword argument 'content'
-                _is_aiohttp = type(self._http_client).__name__ == 'ClientSession'
-                if _is_aiohttp:
-                    # aiohttp: uses context manager, 'data=' parameter
-                    async with self._http_client.post(url, data=data, headers=headers) as resp:
-                        if resp.status == 200:
-                            await self._circuit.record_success()
-                            return EmissionResult(success=True, events_sent=len(events))
-                        else:
-                            text = await resp.text()
-                            logger.warning(f"[Telemetry] Reactor-Core returned {resp.status}: {text}")
-                else:
-                    # httpx
-                    resp = await self._http_client.post(url, content=data, headers=headers)
-                    if resp.status_code == 200:
-                        await self._circuit.record_success()
-                        return EmissionResult(success=True, events_sent=len(events))
+            headers = {"Content-Type": "application/json"}
+            if self._config.enable_compression and len(payload) > self._config.compression_threshold:
+                payload = gzip.compress(payload.encode())
+                headers["Content-Encoding"] = "gzip"
+
+            sent = False
+            for attempt in range(self._config.max_retries):
+                try:
+                    _is_aiohttp = type(self._http_client).__name__ == 'ClientSession'
+                    if _is_aiohttp:
+                        async with self._http_client.post(url, data=payload, headers=headers) as resp:
+                            if resp.status == 200:
+                                sent = True
+                                break
+                            else:
+                                text = await resp.text()
+                                logger.warning(f"[Telemetry] Reactor-Core returned {resp.status}: {text[:200]}")
                     else:
-                        logger.warning(f"[Telemetry] Reactor-Core returned {resp.status_code}")
+                        resp = await self._http_client.post(url, content=payload, headers=headers)
+                        if resp.status_code == 200:
+                            sent = True
+                            break
+                        else:
+                            logger.warning(f"[Telemetry] Reactor-Core returned {resp.status_code}")
+                except Exception as e:
+                    logger.warning(f"[Telemetry] Emission attempt {attempt + 1} failed: {e}")
 
-            except Exception as e:
-                logger.warning(f"[Telemetry] Emission attempt {attempt + 1} failed: {e}")
+                if attempt < self._config.max_retries - 1:
+                    delay = min(
+                        self._config.retry_base_delay * (2 ** attempt),
+                        self._config.retry_max_delay,
+                    )
+                    delay *= (0.5 + random.random())
+                    await asyncio.sleep(delay)
 
-            # Exponential backoff with jitter
-            if attempt < self._config.max_retries - 1:
-                delay = min(
-                    self._config.retry_base_delay * (2 ** attempt),
-                    self._config.retry_max_delay,
-                )
-                delay *= (0.5 + random.random())
-                await asyncio.sleep(delay)
+            if sent:
+                success_count += 1
+                await self._circuit.record_success()
+            else:
+                fail_count += 1
+                await self._circuit.record_failure()
 
-        # All retries failed
-        await self._circuit.record_failure()
+        latency_ms = (time.time() - start_time) * 1000
         return EmissionResult(
-            success=False,
-            events_failed=len(events),
-            error="All retries failed",
+            success=fail_count == 0,
+            events_sent=success_count,
+            events_failed=fail_count,
+            latency_ms=latency_ms,
+            error=f"{fail_count} events failed" if fail_count else None,
         )
 
     def get_metrics(self) -> Dict[str, Any]:

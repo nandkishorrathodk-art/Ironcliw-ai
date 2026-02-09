@@ -2159,8 +2159,12 @@ class UnifiedCommandProcessor:
             # Calculate processing time if we tracked it
             processing_time_ms = result_dict.get("latency_ms", 0.0)
 
-            # Emit the interaction asynchronously (fire and forget)
-            asyncio.create_task(
+            # v242.0: Extract model_id from Prime response metadata
+            _resp_meta = result_dict.get("metadata", {})
+            _model_id = _resp_meta.get("model_id") if isinstance(_resp_meta, dict) else None
+            _task_type = result_dict.get("task_type")
+
+            _telemetry_task = asyncio.create_task(
                 emitter.emit_interaction(
                     user_input=command_text,
                     response=result_dict.get("response", ""),
@@ -2173,12 +2177,20 @@ class UnifiedCommandProcessor:
                         "speaker_verified": speaker_verification_result is not None,
                         "context_aware": True,
                     },
-                )
+                    model_id=_model_id,
+                    task_type=_task_type,
+                ),
+                name="telemetry_emit_interaction",
+            )
+            # v242.0: Log errors instead of silently swallowing them
+            _telemetry_task.add_done_callback(
+                lambda t: logger.warning(f"[UNIFIED] Telemetry emission failed: {t.exception()}")
+                if not t.cancelled() and t.exception() else None
             )
         except ImportError:
             pass  # Telemetry not available
         except Exception as e:
-            logger.debug(f"[UNIFIED] Telemetry emission skipped: {e}")
+            logger.warning(f"[UNIFIED] Telemetry emission setup failed: {e}")
 
         return result_dict
 
