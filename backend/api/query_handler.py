@@ -250,32 +250,102 @@ _CODE_WEAK = re.compile(
 )
 
 _TASK_MATH_KEYWORDS = re.compile(
-    r'\b(?:calculate|compute|math|equation|formula|solve|proof|integral'
-    r'|derivative|matrix|statistics|probability|percent)\b',
+    r'\b(?:calculate|compute|math|equation|formula|solve|prove|proof|integral'
+    r'|derivative|differentiate|integrate|matrix|statistics|probability|percent'
+    r'|calculus|algebra|trigonometry|geometry|theorem)\b',
+    re.IGNORECASE,
+)
+
+# Math word-problem indicators — numbers + question phrasing (no explicit math verb)
+_MATH_WORD_PROBLEM = re.compile(
+    r'\b(?:how\s+many|how\s+much|how\s+long|how\s+far|how\s+fast)\b',
+    re.IGNORECASE,
+)
+_HAS_NUMBERS = re.compile(r'\d+')
+
+# Creative / writing indicators
+_CREATIVE_KEYWORDS = re.compile(
+    r'\b(?:write\s+(?:me\s+)?(?:a|an|the)\s+'
+    r'|story|poem|essay|fiction|novel|lyrics|haiku|sonnet'
+    r'|brainstorm|creative|imagine|fantasy'
+    r'|come\s+up\s+with|generate\s+(?:ideas?|names?|titles?)'
+    r'|write\s+about)\b',
+    re.IGNORECASE,
+)
+
+# Summarization indicators
+_SUMMARIZE_KEYWORDS = re.compile(
+    r'\b(?:summarize|summary|tldr|tl;dr|condense|shorten|brief|recap)\b',
+    re.IGNORECASE,
+)
+
+# Translation indicators
+_TRANSLATE_KEYWORDS = re.compile(
+    r'\b(?:translate|translation|how\s+(?:do\s+you\s+)?say\s+.+\s+in)\b',
+    re.IGNORECASE,
+)
+
+# Greeting patterns — short, non-substantive
+_GREETING_PATTERNS = re.compile(
+    r'^\s*(?:h(?:ello|i|ey)|good\s+(?:morning|afternoon|evening|night)'
+    r'|what\'?s?\s+up|howdy|yo|sup|greetings'
+    r'|hi+\s+(?:how\s+are\s+you|there|jarvis)'
+    r'|how\s+are\s+you|how\'?s?\s+it\s+going'
+    r'|thanks?|thank\s+you)\s*[?!.]*\s*$',
+    re.IGNORECASE,
+)
+
+# Advanced math indicators — content that signals math_complex regardless of
+# what the (space-oriented) complexity classifier says. These topics exceed
+# what Qwen2.5-7B handles well and need the Qwen2.5-Math-7B specialist.
+_MATH_ADVANCED_CONTENT = re.compile(
+    r'\b(?:prove|proof|theorem|lemma|corollary'
+    r'|derivative|differentiate|integral|integrate|calculus'
+    r'|limit|convergence|divergence|series|sequence'
+    r'|eigenvalue|eigenvector|determinant'
+    r'|differential\s+equation|partial\s+derivative'
+    r'|fourier|laplace|taylor\s+(?:series|expansion))\b',
     re.IGNORECASE,
 )
 
 
 def _infer_task_type(command: str, complexity_level: str) -> str:
     """
-    v241.0: Infer J-Prime TaskType from query content + complexity.
+    v241.1: Infer J-Prime TaskType from query content + complexity.
 
-    Code detection requires 2+ indicators to avoid false positives on
-    phrases like "import the data" or "what class should I take" (Issue #5).
+    Detection priority:
+      1. Greeting (short, pattern-matched — Phi-3.5-mini fast path)
+      2. Math (keywords + variable-equation regex + word problems)
+      3. Code (2+ indicators to avoid false positives — Issue #5)
+      4. Creative (story/brainstorm/poem keywords — Llama-3.1)
+      5. Summarize (summarize/tldr keywords — Llama-3.1)
+      6. Translate (translate/say-in keywords — Mistral)
+      7. Complexity-based fallback (ADVANCED/EXPERT → reason_complex)
 
-    Returns one of the string values from J-Prime's TaskType enum.
+    Returns one of the string values from GCP_TASK_MODEL_MAPPING.
     """
-    # Math detection (aligns with v240 math solver patterns)
-    if _TASK_MATH_KEYWORDS.search(command) or re.search(
-        r'\d+\s*[a-zA-Z]\s*[\+\-\*/\^]', command
-    ):
-        return (
-            "math_complex"
-            if complexity_level in ("COMPLEX", "ADVANCED", "EXPERT")
-            else "math_simple"
-        )
+    cmd_stripped = command.strip()
+    word_count = len(cmd_stripped.split())
 
-    # Code detection — tightened (Issue #5, R2-2)
+    # 1. Greeting detection — must be short and match greeting pattern
+    if word_count <= 6 and _GREETING_PATTERNS.search(cmd_stripped):
+        return "greeting"
+
+    # 2. Math detection (aligns with v240 math solver patterns)
+    has_math_keyword = bool(_TASK_MATH_KEYWORDS.search(command))
+    has_variable_eq = bool(re.search(r'\d+\s*[a-zA-Z]\s*[\+\-\*/\^]', command))
+    has_word_problem = bool(_MATH_WORD_PROBLEM.search(command)) and bool(_HAS_NUMBERS.search(command))
+
+    if has_math_keyword or has_variable_eq or has_word_problem:
+        # Content-based complexity: advanced math topics always route to specialist
+        # regardless of what the (space-oriented) complexity classifier says.
+        # This catches "calculate the derivative" which the classifier may mark SIMPLE.
+        is_advanced_math = bool(_MATH_ADVANCED_CONTENT.search(command))
+        if is_advanced_math or has_word_problem or complexity_level in ("COMPLEX", "ADVANCED", "EXPERT"):
+            return "math_complex"
+        return "math_simple"
+
+    # 3. Code detection — tightened (Issue #5, R2-2)
     has_lang = bool(_LANG_NAMES.search(command))
     has_strong = bool(_CODE_STRONG.search(command))
     has_weak = bool(_CODE_WEAK.search(command))
@@ -293,11 +363,24 @@ def _infer_task_type(command: str, complexity_level: str) -> str:
             else "code_simple"
         )
 
-    # Simple greetings/voice
+    # 4. Creative / writing detection
+    if _CREATIVE_KEYWORDS.search(command):
+        return "creative_brainstorm" if re.search(
+            r'\b(?:brainstorm|ideas?|names?|titles?|come\s+up|generate)\b', command, re.I
+        ) else "creative_write"
+
+    # 5. Summarization detection
+    if _SUMMARIZE_KEYWORDS.search(command):
+        return "summarize"
+
+    # 6. Translation detection
+    if _TRANSLATE_KEYWORDS.search(command):
+        return "translate"
+
+    # 7. Complexity-based fallback
     if complexity_level == "SIMPLE":
         return "simple_chat"
 
-    # Map complexity to general types
     if complexity_level in ("ADVANCED", "EXPERT"):
         return "reason_complex"
 
