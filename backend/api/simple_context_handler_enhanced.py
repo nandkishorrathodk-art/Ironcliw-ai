@@ -334,12 +334,9 @@ class EnhancedSimpleContextHandler:
         Authorization rules:
             1. speaker_name matches owner → ALLOW
             2. speaker_name is identified but NOT owner → DENY
-            3. speaker_name is None (not identified) → ALLOW with warning
-               (fail-open: don't lock the user out due to noisy mic)
-               Set env JARVIS_STRICT_SPEAKER_CHECK=1 to fail-closed.
+            3. speaker_name is None (not identified) → DENY (fail-closed)
         """
         owner_name = await _get_owner_name()
-        strict_mode = os.getenv("JARVIS_STRICT_SPEAKER_CHECK", "0") == "1"
 
         if speaker_name:
             # Case-insensitive partial match (e.g., "Derek J. Russell" matches "Derek")
@@ -362,22 +359,26 @@ class EnhancedSimpleContextHandler:
                 )
                 return False, deny_msg
         else:
-            # Speaker not identified
-            if strict_mode:
-                deny_msg = (
-                    "I couldn't identify your voice. "
-                    "Please speak clearly and try again."
-                )
-                logger.warning(
-                    "[ENHANCED CONTEXT] No speaker ID and strict mode — DENIED"
-                )
-                return False, deny_msg
-
-            # Fail-open: proceed with warning
-            logger.warning(
-                "[ENHANCED CONTEXT] No speaker ID — proceeding with caution (fail-open)"
+            # v3.5: Speaker not identified — ALWAYS deny for screen unlock.
+            #
+            # Changed from fail-open to fail-closed. The previous fail-open
+            # mode allowed ANY unidentified voice to trigger screen unlock,
+            # which caused:
+            #   1. Security gap: Unknown speakers could unlock the screen
+            #   2. Unnecessary unlock attempts when STT couldn't ID the speaker
+            #   3. Keychain operations and TTS responses for unverified requests
+            #
+            # The user can retry — the next attempt may succeed if the mic
+            # picks up their voice more clearly. This is safer than unlocking
+            # for an unidentified speaker.
+            deny_msg = (
+                "I need to verify your voice before I can unlock the screen. "
+                "Could you speak a bit louder or closer to the microphone?"
             )
-            return True, None
+            logger.warning(
+                "[ENHANCED CONTEXT] No speaker ID — DENIED (fail-closed for unlock)"
+            )
+            return False, deny_msg
 
     # ─────────────────────────────────────────────────────────────────────────
     # SCREEN DETECTION & UNLOCK

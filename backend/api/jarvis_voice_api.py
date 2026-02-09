@@ -1744,10 +1744,31 @@ class JARVISVoiceAPI:
         # =====================================================================
         # 🔒 PROACTIVE CAI (Context Awareness Intelligence) - SCREEN LOCK CHECK
         # =====================================================================
-        # Detect locked screen and handle transparent unlock BEFORE processing
-        # This enables: "search for dogs" → detect lock → verify voice → unlock → search
+        # v3.5: DISABLED when enhanced context handler is active.
+        #
+        # The EnhancedSimpleContextHandler (simple_context_handler_enhanced.py)
+        # supersedes this CAI proactive unlock. It provides:
+        #   - Speaker verification before unlock (fail-closed)
+        #   - Serialized unlock via module-level _unlock_lock
+        #   - Step-by-step WebSocket feedback (no duplicate TTS)
+        #
+        # When BOTH are active, they race: dual concurrent keychain access,
+        # vbia_state lock contention, multiple TTS voices, and double timeouts.
+        # The context handler is the authoritative unlock path for voice commands.
+        #
+        # CAI proactive unlock is kept for REST API callers (no context handler).
         # =====================================================================
-        if not getattr(command, '_screen_just_unlocked', False):
+        _context_handler_active = True  # Default: context handler supersedes CAI
+        try:
+            from main import USE_ENHANCED_CONTEXT
+            _context_handler_active = USE_ENHANCED_CONTEXT
+        except ImportError:
+            pass  # Default True — context handler assumed active
+
+        if (
+            not _context_handler_active
+            and not getattr(command, '_screen_just_unlocked', False)
+        ):
             try:
                 proactive_result = await self._handle_proactive_screen_unlock(command)
                 if proactive_result is not None:

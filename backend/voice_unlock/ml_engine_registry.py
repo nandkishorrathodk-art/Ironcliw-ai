@@ -402,6 +402,16 @@ class CloudEmbeddingCircuitBreaker:
     """
     Lightweight circuit breaker for cloud embedding/verification requests.
 
+    v3.5: Exponential backoff on recovery timeout. When the cloud service is
+    persistently broken (returns 500 every probe), the fixed 30s recovery
+    caused infinite OPEN → HALF_OPEN → probe fails → OPEN oscillation,
+    generating ERROR + WARNING log pairs every 30 seconds forever.
+
+    Now: each consecutive HALF_OPEN → OPEN transition doubles the effective
+    recovery timeout (30s → 60s → 120s → ... → max). A single success
+    resets the backoff to base. This naturally quiets log noise for
+    persistently broken services while still allowing eventual recovery.
+
     Configuration driven by environment variables - no hardcoding.
     """
     failure_threshold: int = field(
@@ -413,6 +423,9 @@ class CloudEmbeddingCircuitBreaker:
     success_threshold: int = field(
         default_factory=lambda: int(os.getenv("JARVIS_CLOUD_CB_SUCCESS", "2"))
     )
+    max_recovery_timeout: float = field(
+        default_factory=lambda: float(os.getenv("JARVIS_CLOUD_CB_MAX_RECOVERY", "600.0"))
+    )
 
     state: str = "CLOSED"
     failure_count: int = 0
@@ -420,6 +433,12 @@ class CloudEmbeddingCircuitBreaker:
     half_open_success: int = 0
     last_failure_time: Optional[float] = None
     last_error: Optional[str] = None
+    # v3.5: Exponential backoff state
+    _consecutive_open_trips: int = 0
+    _effective_recovery_timeout: float = 0.0  # Set in __post_init__
+
+    def __post_init__(self):
+        self._effective_recovery_timeout = self.recovery_timeout
 
     def record_success(self) -> None:
         """Record a successful cloud request."""
@@ -430,7 +449,10 @@ class CloudEmbeddingCircuitBreaker:
             if self.half_open_success >= self.success_threshold:
                 self.state = "CLOSED"
                 self.half_open_success = 0
-                logger.info("[CloudCB] Circuit CLOSED (recovered)")
+                # v3.5: Reset backoff on full recovery
+                self._consecutive_open_trips = 0
+                self._effective_recovery_timeout = self.recovery_timeout
+                logger.info("[CloudCB] Circuit CLOSED (recovered, backoff reset)")
 
     def record_failure(self, error: str = "") -> None:
         """Record a failed cloud request."""
@@ -441,11 +463,26 @@ class CloudEmbeddingCircuitBreaker:
         if self.state == "HALF_OPEN":
             self.state = "OPEN"
             self.half_open_success = 0
-            logger.warning(f"[CloudCB] Circuit OPEN (half-open test failed: {error})")
-        elif self.failure_count >= self.failure_threshold:
-            self.state = "OPEN"
+            # v3.5: Exponential backoff — double the recovery timeout each
+            # time a HALF_OPEN probe fails (service is persistently broken).
+            # Capped at max_recovery_timeout to allow eventual recovery.
+            self._consecutive_open_trips += 1
+            self._effective_recovery_timeout = min(
+                self.recovery_timeout * (2 ** self._consecutive_open_trips),
+                self.max_recovery_timeout,
+            )
             logger.warning(
-                f"[CloudCB] Circuit OPEN ({self.failure_count} consecutive failures)"
+                f"[CloudCB] Circuit OPEN (half-open probe failed: {error}). "
+                f"Next probe in {self._effective_recovery_timeout:.0f}s "
+                f"(backoff level {self._consecutive_open_trips})"
+            )
+        elif self.state != "OPEN" and self.failure_count >= self.failure_threshold:
+            self.state = "OPEN"
+            self._consecutive_open_trips = 1
+            self._effective_recovery_timeout = self.recovery_timeout
+            logger.warning(
+                f"[CloudCB] Circuit OPEN ({self.failure_count} consecutive failures, "
+                f"probe in {self._effective_recovery_timeout:.0f}s)"
             )
 
     def can_execute(self) -> Tuple[bool, str]:
@@ -455,13 +492,16 @@ class CloudEmbeddingCircuitBreaker:
         if self.state == "OPEN":
             if (
                 self.last_failure_time
-                and (time.time() - self.last_failure_time) >= self.recovery_timeout
+                and (time.time() - self.last_failure_time) >= self._effective_recovery_timeout
             ):
                 self.state = "HALF_OPEN"
                 self.half_open_success = 0
-                logger.info("[CloudCB] Circuit HALF_OPEN (testing recovery)")
+                logger.info(
+                    f"[CloudCB] Circuit HALF_OPEN (probing after "
+                    f"{self._effective_recovery_timeout:.0f}s backoff)"
+                )
                 return True, "half_open"
-            remaining = self.recovery_timeout - (
+            remaining = self._effective_recovery_timeout - (
                 time.time() - (self.last_failure_time or 0)
             )
             return False, (
@@ -476,7 +516,10 @@ class CloudEmbeddingCircuitBreaker:
             "state": self.state,
             "failure_count": self.failure_count,
             "failure_threshold": self.failure_threshold,
-            "recovery_timeout": self.recovery_timeout,
+            "recovery_timeout_base": self.recovery_timeout,
+            "recovery_timeout_effective": self._effective_recovery_timeout,
+            "max_recovery_timeout": self.max_recovery_timeout,
+            "consecutive_open_trips": self._consecutive_open_trips,
             "last_error": self.last_error,
             "last_failure_time": self.last_failure_time,
         }
@@ -2741,6 +2784,12 @@ class MLEngineRegistry:
                         self._cloud_embedding_cb.record_failure(
                             f"HTTP {response.status}: {error_text[:100]}"
                         )
+                        # v3.5: Invalidate readiness cache on server errors
+                        # (health says "ready" but API returns 500).
+                        # Forces re-verification via _check_cloud_readiness()
+                        # before the next circuit breaker probe attempt.
+                        if response.status >= 500:
+                            self._cloud_verified = False
                         return None
 
         except ImportError:
@@ -2856,6 +2905,9 @@ class MLEngineRegistry:
                         self._cloud_embedding_cb.record_failure(
                             f"HTTP {response.status}: {error_text[:100]}"
                         )
+                        # v3.5: Invalidate readiness cache on server errors
+                        if response.status >= 500:
+                            self._cloud_verified = False
                         return None
 
         except ImportError:
