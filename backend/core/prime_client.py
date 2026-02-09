@@ -508,6 +508,8 @@ class PrimeClient:
         self._fallback_host: Optional[str] = None
         self._fallback_port: Optional[int] = None
         self._consecutive_gcp_failures: int = 0
+        # v242.1: Model ID from last streaming response (extracted from X-Model-Id header)
+        self._last_stream_model_id: str = "jarvis-prime"
 
     async def initialize(self) -> None:
         """Initialize the client and start health monitoring."""
@@ -981,6 +983,11 @@ class PrimeClient:
                             text = await resp.text()
                             raise RuntimeError(f"Prime returned {resp.status}: {text}")
 
+                        # v242.1: Extract X-Model-Id from streaming response headers
+                        self._last_stream_model_id = dict(resp.headers).get(
+                            "X-Model-Id", "jarvis-prime"
+                        )
+
                         async for line in resp.content:
                             if line:
                                 decoded = line.decode('utf-8').strip()
@@ -993,6 +1000,11 @@ class PrimeClient:
                     async with session.stream('POST', url, json=payload) as resp:
                         if resp.status != 200:
                             raise RuntimeError(f"Prime returned {resp.status}")
+
+                        # v242.1: Extract X-Model-Id from streaming response headers
+                        self._last_stream_model_id = dict(resp.headers).get(
+                            "X-Model-Id", "jarvis-prime"
+                        )
 
                         async for line in resp.aiter_lines():
                             if line.startswith("data: "):

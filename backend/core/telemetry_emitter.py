@@ -141,6 +141,7 @@ class TelemetryConfig:
 
     # Disk queue
     enable_disk_queue: bool = field(default_factory=lambda: _get_env_bool("TELEMETRY_DISK_QUEUE", True))
+    disk_queue_max_size: int = field(default_factory=lambda: _get_env_int("TELEMETRY_DISK_QUEUE_MAX_SIZE", 10000))
     queue_dir: str = field(default_factory=lambda: os.getenv(
         "TELEMETRY_QUEUE_DIR",
         os.path.join(os.path.expanduser("~"), ".jarvis", "telemetry_queue")
@@ -326,17 +327,18 @@ class TelemetryCircuitBreaker:
 class DiskBackedQueue:
     """Persistent queue for telemetry events (survives restarts)."""
 
-    def __init__(self, queue_dir: str):
+    def __init__(self, queue_dir: str, max_size: int = 10000):
         self._queue_dir = Path(queue_dir)
         self._queue_dir.mkdir(parents=True, exist_ok=True)
         self._lock = asyncio.Lock()
+        self._max_size = max_size
 
-    async def push(self, event: TelemetryEvent, max_size: int = 10000) -> None:
+    async def push(self, event: TelemetryEvent) -> None:
         """Push event to disk queue with size limit."""
         async with self._lock:
             # v242.0: Prevent unbounded queue growth
             current_size = len(list(self._queue_dir.glob("*.json")))
-            if current_size >= max_size:
+            if current_size >= self._max_size:
                 logger.warning(f"[Telemetry] Disk queue at capacity ({current_size}/{max_size}), dropping oldest")
                 oldest = sorted(self._queue_dir.glob("*.json"))[:1]
                 for f in oldest:
@@ -403,7 +405,7 @@ class TelemetryEmitter:
 
         # Initialize disk queue
         if self._config.enable_disk_queue:
-            self._disk_queue = DiskBackedQueue(self._config.queue_dir)
+            self._disk_queue = DiskBackedQueue(self._config.queue_dir, max_size=self._config.disk_queue_max_size)
             # Load persisted events
             disk_size = await self._disk_queue.size()
             if disk_size > 0:
@@ -623,11 +625,18 @@ class TelemetryEmitter:
             jsonl_path = telemetry_dir / f"interactions_{date_str}.jsonl"
 
             line = json.dumps(line_data) + "\n"
-            # Append atomically
+            # v242.1: Atomic append with file locking to prevent interleaved
+            # writes from multiple processes (JARVIS Body + J-Prime both write here)
+            import fcntl
             with open(jsonl_path, "a") as f:
-                f.write(line)
+                fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+                try:
+                    f.write(line)
+                    f.flush()
+                finally:
+                    fcntl.flock(f.fileno(), fcntl.LOCK_UN)
         except Exception as e:
-            logger.debug(f"[Telemetry] JSONL write failed: {e}")
+            logger.warning(f"[Telemetry] JSONL write failed: {e}")
 
     async def _flush_loop(self) -> None:
         """Background loop to flush queue periodically."""
