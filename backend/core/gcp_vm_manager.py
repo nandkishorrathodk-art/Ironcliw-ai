@@ -1758,6 +1758,28 @@ MODELS = {{
         "size_gb": 0.17,
         "routable": False,
     }},
+    # v241.1: Advanced reasoning & specialist models
+    "deepseek-r1-qwen-7b": {{
+        "repo": "bartowski/DeepSeek-R1-Distill-Qwen-7B-GGUF",
+        "filename": "DeepSeek-R1-Distill-Qwen-7B-Q4_K_M.gguf",
+        "size_gb": 4.4,
+        "routable": True,
+        "config_overrides": {{"n_ctx": 32768, "chat_template": "chatml", "n_gpu_layers": 0, "flash_attn": False}},
+    }},
+    "gemma-2-9b": {{
+        "repo": "bartowski/gemma-2-9b-it-GGUF",
+        "filename": "gemma-2-9b-it-Q4_K_M.gguf",
+        "size_gb": 5.5,
+        "routable": True,
+        "config_overrides": {{"n_ctx": 8192, "chat_template": "gemma", "n_gpu_layers": 0, "flash_attn": False}},
+    }},
+    "qwen-2.5-math-7b": {{
+        "repo": "Qwen/Qwen2.5-Math-7B-Instruct-GGUF",
+        "filename": "qwen2.5-math-7b-instruct-q4_k_m.gguf",
+        "size_gb": 4.4,
+        "routable": True,
+        "config_overrides": {{"n_ctx": 4096, "chat_template": "chatml", "n_gpu_layers": 0, "flash_attn": False}},
+    }},
 }}
 
 models_dir = "/opt/jarvis-prime/models"
@@ -1765,7 +1787,7 @@ os.makedirs(models_dir, exist_ok=True)
 
 from huggingface_hub import hf_hub_download
 
-manifest = {{"models": {{}}, "build_timestamp": datetime.utcnow().isoformat(), "version": "v241.0"}}
+manifest = {{"models": {{}}, "build_timestamp": datetime.utcnow().isoformat(), "version": "v241.1"}}
 total = len(MODELS)
 success_count = 0
 fail_count = 0
