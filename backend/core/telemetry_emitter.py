@@ -246,6 +246,7 @@ class TelemetryMetrics:
     failed_emissions: int = 0
     retried_events: int = 0
     disk_queue_size: int = 0
+    disk_queue_dropped: int = 0
     circuit_state: CircuitState = CircuitState.CLOSED
     last_emission: float = 0.0
     avg_latency_ms: float = 0.0
@@ -332,6 +333,12 @@ class DiskBackedQueue:
         self._queue_dir.mkdir(parents=True, exist_ok=True)
         self._lock = asyncio.Lock()
         self._max_size = max_size
+        self._dropped_count: int = 0
+
+    @property
+    def dropped_count(self) -> int:
+        """Number of events dropped due to queue capacity since startup."""
+        return self._dropped_count
 
     async def push(self, event: TelemetryEvent) -> None:
         """Push event to disk queue with size limit."""
@@ -339,10 +346,11 @@ class DiskBackedQueue:
             # v242.0: Prevent unbounded queue growth
             current_size = len(list(self._queue_dir.glob("*.json")))
             if current_size >= self._max_size:
-                logger.warning(f"[Telemetry] Disk queue at capacity ({current_size}/{max_size}), dropping oldest")
+                logger.warning(f"[Telemetry] Disk queue at capacity ({current_size}/{self._max_size}), dropping oldest")
                 oldest = sorted(self._queue_dir.glob("*.json"))[:1]
                 for f in oldest:
                     f.unlink(missing_ok=True)
+                self._dropped_count += len(oldest)
 
             file_path = self._queue_dir / f"{event.event_id}.json"
             data = json.dumps(event.to_dict())
@@ -848,6 +856,7 @@ class TelemetryEmitter:
             "successful_emissions": self._metrics.successful_emissions,
             "failed_emissions": self._metrics.failed_emissions,
             "memory_queue_size": len(self._memory_queue),
+            "disk_queue_dropped": self._disk_queue.dropped_count if self._disk_queue else 0,
             "circuit_state": self._circuit.state.value,
             "last_emission": self._metrics.last_emission,
             "avg_latency_ms": round(self._metrics.avg_latency_ms, 2),
