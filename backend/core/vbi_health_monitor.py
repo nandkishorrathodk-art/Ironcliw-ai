@@ -47,6 +47,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import time
 import uuid
 from abc import ABC, abstractmethod
@@ -71,6 +72,25 @@ from weakref import WeakSet
 
 # v116.0: Use fixed logger name to avoid duplicate loggers from different import paths
 logger = logging.getLogger("jarvis.vbi_health_monitor")
+
+
+# =============================================================================
+# Env-var configurable constants (v2.1.0)
+# =============================================================================
+
+def _env_float(key: str, default: float) -> float:
+    """Get float from environment variable with fallback."""
+    try:
+        return float(os.environ.get(key, str(default)))
+    except (ValueError, TypeError):
+        return default
+
+
+# v2.1.0: Startup grace period for component health assessment.
+# During this window, initialization failures (network not ready, model loading, etc.)
+# are capped at DEGRADED instead of escalating to UNHEALTHY/CRITICAL.
+VBI_COMPONENT_GRACE_PERIOD = _env_float("VBI_COMPONENT_GRACE_PERIOD", 60.0)
+
 
 # Type variables for generic components
 T = TypeVar("T")
@@ -248,7 +268,15 @@ class Heartbeat:
 
 @dataclass
 class ComponentHealthState:
-    """Health state of a VBI component."""
+    """Health state of a VBI component.
+
+    v2.1.0: Added startup grace period. During the grace window, initialization
+    failures (network not ready, model loading, DB connection establishing) are
+    capped at DEGRADED instead of escalating to UNHEALTHY/CRITICAL. When grace
+    expires, if the component demonstrated functionality (at least one success),
+    consecutive_failures are reset so startup failures don't cascade into normal
+    operation health assessment.
+    """
     component: ComponentType
     health_level: HealthLevel = HealthLevel.UNKNOWN
     last_heartbeat: Optional[Heartbeat] = None
@@ -263,9 +291,54 @@ class ComponentHealthState:
     error_history: deque = field(default_factory=lambda: deque(maxlen=50))
     circuit_state: CircuitState = CircuitState.CLOSED
     last_state_change: float = field(default_factory=time.time)
+    # v2.1.0: Startup grace period support
+    created_at: float = field(default_factory=time.time)
+    grace_period_seconds: float = 60.0
+    _grace_expired_handled: bool = field(default=False, repr=False)
+    _had_success_during_grace: bool = field(default=False, repr=False)
+
+    @property
+    def in_grace_period(self) -> bool:
+        """Check if component is still in startup grace period."""
+        if self.grace_period_seconds <= 0:
+            return False
+        return (time.time() - self.created_at) < self.grace_period_seconds
+
+    def _maybe_handle_grace_expiry(self) -> None:
+        """One-time transition when grace period ends.
+
+        If the component demonstrated functionality during grace (at least one
+        success), reset consecutive_failures so startup init failures don't
+        cascade into normal operation health assessment.
+        """
+        if self._grace_expired_handled or self.in_grace_period:
+            return
+        if self.grace_period_seconds <= 0:
+            return
+
+        self._grace_expired_handled = True
+
+        if self._had_success_during_grace and self.consecutive_failures > 0:
+            logger.info(
+                f"[ComponentHealth:{self.component.value}] Grace period expired — "
+                f"resetting {self.consecutive_failures} startup failures "
+                f"(component demonstrated functionality during grace)"
+            )
+            self.consecutive_failures = 0
+        elif self.consecutive_failures > 0:
+            logger.warning(
+                f"[ComponentHealth:{self.component.value}] Grace period expired — "
+                f"{self.consecutive_failures} consecutive failures persist "
+                f"(component never succeeded during grace)"
+            )
 
     def record_success(self, latency_ms: float) -> None:
         """Record a successful operation."""
+        # v2.1.0: Track that component works during grace
+        if self.in_grace_period:
+            self._had_success_during_grace = True
+        # v2.1.0: Handle grace expiry BEFORE counting — resets startup failures
+        self._maybe_handle_grace_expiry()
         self.consecutive_successes += 1
         self.consecutive_failures = 0
         self.total_operations += 1
@@ -275,6 +348,8 @@ class ComponentHealthState:
 
     def record_failure(self, error: str) -> None:
         """Record a failed operation."""
+        # v2.1.0: Handle grace expiry BEFORE counting — resets startup failures
+        self._maybe_handle_grace_expiry()
         self.consecutive_failures += 1
         self.consecutive_successes = 0
         self.total_operations += 1
@@ -287,6 +362,8 @@ class ComponentHealthState:
 
     def record_timeout(self) -> None:
         """Record a timed out operation."""
+        # v2.1.0: Handle grace expiry BEFORE counting — resets startup failures
+        self._maybe_handle_grace_expiry()
         self.consecutive_failures += 1
         self.consecutive_successes = 0
         self.total_operations += 1
@@ -309,7 +386,28 @@ class ComponentHealthState:
             self.p95_latency_ms = max(latencies) if latencies else 0
 
     def _update_health_level(self) -> None:
-        """Update health level based on metrics."""
+        """Update health level based on metrics.
+
+        v2.1.0: During startup grace period, health is capped at DEGRADED.
+        Initialization failures (network not ready, model loading, etc.) should
+        not trigger UNHEALTHY/CRITICAL during the expected startup window.
+        After grace expires, normal thresholds apply.
+        """
+        previous = self.health_level
+
+        # v2.1.0: During grace period, use relaxed thresholds — cap at DEGRADED
+        if self.in_grace_period:
+            if self.consecutive_failures >= 1:
+                self.health_level = HealthLevel.DEGRADED  # Cap — never UNHEALTHY/CRITICAL
+            elif self.consecutive_successes >= 3:
+                self.health_level = HealthLevel.OPTIMAL
+            elif self.consecutive_successes >= 1:
+                self.health_level = HealthLevel.HEALTHY
+            if self.health_level != previous:
+                self.last_state_change = time.time()
+            return
+
+        # Normal operation thresholds (post-grace)
         if self.consecutive_failures >= 5:
             self.health_level = HealthLevel.CRITICAL
         elif self.consecutive_failures >= 3:
@@ -321,12 +419,24 @@ class ComponentHealthState:
         elif self.consecutive_successes >= 1:
             self.health_level = HealthLevel.HEALTHY
 
+        if self.health_level != previous:
+            self.last_state_change = time.time()
+
     @property
     def success_rate(self) -> float:
         """Calculate success rate."""
         if self.total_operations == 0:
             return 1.0
         return (self.total_operations - self.failed_operations - self.timeout_operations) / self.total_operations
+
+    @property
+    def is_active(self) -> bool:
+        """Check if component has been exercised (has operations or heartbeats).
+
+        v2.1.0: Dormant components that haven't recorded any operations or
+        heartbeats should not drag down overall system health.
+        """
+        return self.total_operations > 0 or self.last_heartbeat is not None
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary."""
@@ -344,6 +454,8 @@ class ComponentHealthState:
             "p95_latency_ms": round(self.p95_latency_ms, 2),
             "circuit_state": self.circuit_state.value,
             "recent_errors": list(self.error_history)[-5:],
+            "in_grace_period": self.in_grace_period,
+            "is_active": self.is_active,
         }
 
 
@@ -1211,8 +1323,12 @@ class VBIHealthMonitor:
         }
 
         # Component health states
+        # v2.1.0: Set grace period from env var so startup failures don't escalate
         self._component_health: Dict[ComponentType, ComponentHealthState] = {
-            ct: ComponentHealthState(component=ct)
+            ct: ComponentHealthState(
+                component=ct,
+                grace_period_seconds=VBI_COMPONENT_GRACE_PERIOD,
+            )
             for ct in ComponentType
         }
 
@@ -1310,62 +1426,65 @@ class VBIHealthMonitor:
 
     async def _health_broadcast_loop(self) -> None:
         """Periodically broadcast health status.
-        
-        v2.0.0: Added startup grace period to suppress spurious "unhealthy" warnings
-        during system initialization when components haven't finished starting.
-        
-        Only logs health changes to avoid spam. Tracks last logged state
-        to detect state transitions.
+
+        v2.1.0: The startup grace period is now handled at the ComponentHealthState
+        level — each component caps its health at DEGRADED during its grace window.
+        This loop no longer needs to suppress state transitions itself. Instead, it
+        always tracks `last_logged_health` accurately and logs genuine transitions.
+
+        The per-component grace ensures that during startup:
+        - Individual component health never exceeds DEGRADED (not UNHEALTHY/CRITICAL)
+        - System overall stays at DEGRADED at worst (since no component is UNHEALTHY)
+        - After grace expires, failures reset if component demonstrated functionality
+        - The log accurately reflects the real state at all times
         """
         last_logged_health: Optional[str] = None
-        
-        # v2.0.0: Startup grace period - suppress health warnings during initial startup
-        # Components need time to initialize, so early "unhealthy" states are expected
-        STARTUP_GRACE_PERIOD = 60.0  # 60 seconds grace for startup
-        startup_time = time.time()
-        in_grace_period = True
-        grace_period_warning_logged = False
-        
+
+        # v2.1.0: Brief broadcast-level settling period — give components a few seconds
+        # to register their first heartbeats before logging UNKNOWN as initial state
+        broadcast_start = time.time()
+        BROADCAST_SETTLE_SECONDS = _env_float("VBI_BROADCAST_SETTLE_SECONDS", 15.0)
+
         while self._running:
             try:
                 await asyncio.sleep(10.0)
 
                 health = await self.get_system_health()
 
-                # Emit health event (silently) - always emit events for listeners
+                # Emit health event (silently) — always emit events for listeners
                 await self._emit_event("health_update", health)
 
-                # v2.0.0: Check if we're still in startup grace period
-                elapsed = time.time() - startup_time
-                if in_grace_period and elapsed > STARTUP_GRACE_PERIOD:
-                    in_grace_period = False
-                    logger.debug(f"[VBIHealthMonitor] Startup grace period ended after {elapsed:.0f}s")
-
-                # Only log if health state CHANGED (not every check)
                 overall = health.get("overall_health", HealthLevel.UNKNOWN.value)
+
+                # v2.1.0: Brief settling — don't log UNKNOWN in first few seconds
+                # while components haven't yet registered their first operations
+                if (time.time() - broadcast_start) < BROADCAST_SETTLE_SECONDS:
+                    if overall == HealthLevel.UNKNOWN.value:
+                        continue  # Skip logging UNKNOWN during settling
+                    # But DO log if we immediately got a real state
+
+                # Only log if health state actually changed
                 if overall != last_logged_health:
-                    # Health state changed
-                    
-                    # v2.0.0: During grace period, only log if transitioning FROM a bad state
-                    # (recovery is always good to log), but suppress initial "unknown → unhealthy"
-                    if in_grace_period:
-                        if overall in (HealthLevel.OPTIMAL.value, HealthLevel.HEALTHY.value):
-                            # Recovery during startup is noteworthy
-                            if last_logged_health in (HealthLevel.DEGRADED.value, HealthLevel.UNHEALTHY.value, HealthLevel.CRITICAL.value):
-                                logger.info(f"[VBIHealthMonitor] System health recovered during startup: {last_logged_health} → {overall}")
-                        elif not grace_period_warning_logged and overall in (HealthLevel.UNHEALTHY.value, HealthLevel.CRITICAL.value):
-                            # Just note once that we're still initializing
-                            logger.debug(f"[VBIHealthMonitor] Health state during startup grace period: {overall} (components still initializing)")
-                            grace_period_warning_logged = True
-                        # Don't update last_logged_health during grace - we'll do a fresh check after
-                    else:
-                        # Normal operation - log health state changes
-                        if overall in (HealthLevel.DEGRADED.value, HealthLevel.UNHEALTHY.value, HealthLevel.CRITICAL.value):
-                            logger.warning(f"[VBIHealthMonitor] System health changed: {last_logged_health or 'stable'} → {overall}")
-                        elif overall in (HealthLevel.OPTIMAL.value, HealthLevel.HEALTHY.value):
-                            if last_logged_health in (HealthLevel.DEGRADED.value, HealthLevel.UNHEALTHY.value, HealthLevel.CRITICAL.value):
-                                logger.info(f"[VBIHealthMonitor] System health recovered: {last_logged_health} → {overall}")
-                        last_logged_health = overall
+                    if overall in (HealthLevel.DEGRADED.value, HealthLevel.UNHEALTHY.value, HealthLevel.CRITICAL.value):
+                        logger.warning(
+                            f"[VBIHealthMonitor] System health changed: "
+                            f"{last_logged_health or 'initial'} → {overall}"
+                        )
+                    elif overall in (HealthLevel.OPTIMAL.value, HealthLevel.HEALTHY.value):
+                        if last_logged_health in (HealthLevel.DEGRADED.value, HealthLevel.UNHEALTHY.value, HealthLevel.CRITICAL.value):
+                            logger.info(
+                                f"[VBIHealthMonitor] System health recovered: "
+                                f"{last_logged_health} → {overall}"
+                            )
+                        else:
+                            logger.info(
+                                f"[VBIHealthMonitor] System health: "
+                                f"{last_logged_health or 'initial'} → {overall}"
+                            )
+
+                    # v2.1.0: ALWAYS update last_logged_health to prevent
+                    # delayed false transitions (was the old grace period bug)
+                    last_logged_health = overall
 
             except asyncio.CancelledError:
                 break
@@ -1555,19 +1674,30 @@ class VBIHealthMonitor:
     # =========================================================================
 
     async def get_system_health(self) -> Dict[str, Any]:
-        """Get comprehensive system health status."""
-        # Determine overall health
-        health_levels = [h.health_level for h in self._component_health.values()]
+        """Get comprehensive system health status.
 
-        if HealthLevel.CRITICAL in health_levels:
+        v2.1.0: Only considers *active* components (those with operations or
+        heartbeats) for overall health assessment. Dormant components that
+        haven't been exercised yet don't drag down the system.
+        """
+        # v2.1.0: Only consider active components for overall health
+        active_health_levels = [
+            h.health_level for h in self._component_health.values()
+            if h.is_active
+        ]
+
+        # If no components are active yet (very early startup), report UNKNOWN
+        if not active_health_levels:
+            overall = HealthLevel.UNKNOWN
+        elif HealthLevel.CRITICAL in active_health_levels:
             overall = HealthLevel.CRITICAL
-        elif HealthLevel.UNHEALTHY in health_levels:
+        elif HealthLevel.UNHEALTHY in active_health_levels:
             overall = HealthLevel.UNHEALTHY
-        elif HealthLevel.DEGRADED in health_levels:
+        elif HealthLevel.DEGRADED in active_health_levels:
             overall = HealthLevel.DEGRADED
-        elif all(h == HealthLevel.OPTIMAL for h in health_levels):
+        elif all(h == HealthLevel.OPTIMAL for h in active_health_levels):
             overall = HealthLevel.OPTIMAL
-        elif all(h in (HealthLevel.OPTIMAL, HealthLevel.HEALTHY) for h in health_levels):
+        elif all(h in (HealthLevel.OPTIMAL, HealthLevel.HEALTHY) for h in active_health_levels):
             overall = HealthLevel.HEALTHY
         else:
             overall = HealthLevel.UNKNOWN

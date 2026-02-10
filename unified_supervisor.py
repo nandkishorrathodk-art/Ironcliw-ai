@@ -59032,15 +59032,58 @@ class JarvisSystemKernel:
 
         # v181.0: Write crash marker for next startup
         # v205.0: Use asyncio.to_thread to avoid blocking the event loop
+        # v242.5: Enriched with diagnostic context (JSON) for crash forensics
         try:
             crash_marker = LOCKS_DIR / "kernel_crash.marker"
 
             def _write_crash_marker() -> None:
-                """Sync helper for crash marker write."""
+                """Sync helper for crash marker write — captures diagnostic snapshot."""
                 crash_marker.parent.mkdir(parents=True, exist_ok=True)
-                crash_marker.write_text(
-                    f"Emergency shutdown at {time.strftime('%Y-%m-%d %H:%M:%S')}"
-                )
+                # v242.5: Capture diagnostic context for next-startup forensics
+                uptime = time.time() - self._started_at if self._started_at else 0.0
+                diag = {
+                    "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+                    "epoch": time.time(),
+                    "pid": os.getpid(),
+                    "kernel_state": self._state.value if self._state else "unknown",
+                    "uptime_seconds": round(uptime, 1),
+                    "component_status": {},
+                }
+                # Capture component status snapshot (what was running/failed)
+                try:
+                    for comp_name, comp_info in (self._component_status or {}).items():
+                        diag["component_status"][comp_name] = comp_info.get("status", "unknown")
+                except Exception:
+                    pass
+                # Capture Trinity component states
+                try:
+                    if self._trinity and hasattr(self._trinity, "_components"):
+                        trinity_states = {}
+                        for name, comp in self._trinity._components.items():
+                            trinity_states[name] = {
+                                "running": getattr(comp, "is_running", False),
+                                "pid": getattr(comp, "pid", None),
+                            }
+                        diag["trinity_components"] = trinity_states
+                except Exception:
+                    pass
+                # Capture memory info if psutil available
+                try:
+                    import psutil
+                    proc = psutil.Process(os.getpid())
+                    mem = proc.memory_info()
+                    diag["memory_rss_mb"] = round(mem.rss / (1024 * 1024), 1)
+                    diag["memory_vms_mb"] = round(mem.vms / (1024 * 1024), 1)
+                    diag["system_memory_pct"] = round(psutil.virtual_memory().percent, 1)
+                except Exception:
+                    pass
+                try:
+                    crash_marker.write_text(json.dumps(diag, indent=2))
+                except Exception:
+                    # Fallback to plain text if JSON serialization fails
+                    crash_marker.write_text(
+                        f"Emergency shutdown at {time.strftime('%Y-%m-%d %H:%M:%S')}"
+                    )
 
             await asyncio.to_thread(_write_crash_marker)
         except Exception:
@@ -66128,12 +66171,47 @@ class JarvisSystemKernel:
             # ─────────────────────────────────────────────────────────────────
 
             async def detect_crash_marker() -> tuple:
-                """Detect kernel crash marker (confidence: 1.0 - definitive crash signal)."""
+                """Detect kernel crash marker (confidence: 1.0 - definitive crash signal).
+
+                v242.5: Reads enriched JSON crash marker with diagnostic context.
+                Falls back to plain-text parsing for backward compatibility.
+                """
                 crash_marker = LOCKS_DIR / "kernel_crash.marker"
                 if crash_marker.exists():
                     try:
                         content = await asyncio.to_thread(crash_marker.read_text)
-                        return ("crash_marker", 1.0, True, crash_marker, content.strip())
+                        content = content.strip()
+                        # v242.5: Try JSON format first (enriched diagnostics)
+                        detail = content
+                        try:
+                            diag = json.loads(content)
+                            ts = diag.get("timestamp", "unknown")
+                            state = diag.get("kernel_state", "unknown")
+                            uptime = diag.get("uptime_seconds", 0)
+                            pid = diag.get("pid", "?")
+                            mem_rss = diag.get("memory_rss_mb", "?")
+                            sys_mem = diag.get("system_memory_pct", "?")
+                            detail = (
+                                f"Emergency shutdown at {ts} "
+                                f"(state={state}, uptime={uptime}s, pid={pid}, "
+                                f"rss={mem_rss}MB, sys_mem={sys_mem}%)"
+                            )
+                            # Log component status from crash for forensics
+                            comp_status = diag.get("component_status", {})
+                            if comp_status:
+                                failed = [k for k, v in comp_status.items() if v in ("error", "failed")]
+                                running = [k for k, v in comp_status.items() if v in ("running", "active")]
+                                if failed:
+                                    self.logger.info(
+                                        f"[Clean Slate] Crash forensics — failed components: {', '.join(failed)}"
+                                    )
+                                if running:
+                                    self.logger.debug(
+                                        f"[Clean Slate] Crash forensics — running at crash: {', '.join(running)}"
+                                    )
+                        except (json.JSONDecodeError, TypeError):
+                            pass  # Plain-text format (pre-v242.5 marker)
+                        return ("crash_marker", 1.0, True, crash_marker, detail)
                     except Exception:
                         return ("crash_marker", 0.8, True, crash_marker, "unreadable")
                 return ("crash_marker", 0.0, False, crash_marker, None)
@@ -66349,6 +66427,42 @@ class JarvisSystemKernel:
                         recovery_stats["actions_taken"].append(f"cleaned_{dlm_cleaned}_dlm_locks")
             except Exception as e:
                 self.logger.debug(f"[Clean Slate] DLM lock cleanup failed (non-fatal): {e}")
+
+            # =================================================================
+            # STEP 1c: Clean up stale state files from crashed runs (v242.5)
+            # =================================================================
+            # After a crash, several state files persist and mislead next startup:
+            # - backend_port.json: Stale port → frontend connects to wrong port
+            # - *.sock: Unix sockets → "address already in use" on restart
+            # Only clean these when crash was detected (don't touch on clean starts)
+            if crash_confidence >= 0.5:
+                stale_cleaned = 0
+                # backend_port.json — written by kernel, cleaned on graceful exit but
+                # persists after crash. Contains {"port": N, "timestamp": T}
+                try:
+                    _port_state = JARVIS_HOME / "backend_port.json"
+                    if _port_state.exists():
+                        await asyncio.to_thread(_port_state.unlink)
+                        stale_cleaned += 1
+                        self.logger.debug("[Clean Slate] Removed stale backend_port.json")
+                except Exception as e:
+                    self.logger.debug(f"[Clean Slate] backend_port.json cleanup: {e}")
+
+                # Socket files — kernel.sock, supervisor.sock
+                # These prevent IPC server from binding on restart
+                for sock_name in ("kernel.sock", "supervisor.sock"):
+                    try:
+                        sock_path = LOCKS_DIR / sock_name
+                        if sock_path.exists():
+                            await asyncio.to_thread(sock_path.unlink)
+                            stale_cleaned += 1
+                            self.logger.debug(f"[Clean Slate] Removed stale {sock_name}")
+                    except Exception as e:
+                        self.logger.debug(f"[Clean Slate] {sock_name} cleanup: {e}")
+
+                if stale_cleaned > 0:
+                    recovery_stats["actions_taken"].append(f"cleaned_{stale_cleaned}_stale_state_files")
+                    recovery_stats["files_cleared"] += stale_cleaned
 
             # =================================================================
             # STEP 2: Clean up orphaned semaphores
