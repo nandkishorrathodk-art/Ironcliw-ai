@@ -790,12 +790,14 @@ class JARVISVoiceAPI:
                 context=context,
             )
 
-            if interaction_id > 0:
+            # v242.5: Null-safety — interaction_id can be None if DB INSERT
+            # failed to return an ID (e.g., PostgreSQL without RETURNING clause).
+            if interaction_id is not None and interaction_id > 0:
                 logger.debug(
                     f"📝 Recorded interaction {interaction_id}: '{user_query[:30]}...' -> '{jarvis_response[:30]}...'"
                 )
 
-            return interaction_id
+            return interaction_id or -1
 
         except Exception as e:
             logger.error(f"Failed to record interaction: {e}")

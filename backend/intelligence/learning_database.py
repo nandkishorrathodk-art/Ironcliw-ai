@@ -3899,36 +3899,73 @@ class JARVISLearningDatabase:
 
             embedding_id = str(uuid.uuid4())
 
+            # v242.5: Detect database type for RETURNING clause.
+            # PostgreSQL's cursor.lastrowid is always None for plain INSERTs —
+            # must use RETURNING to get the auto-generated ID back.
+            is_cloud = isinstance(self.db, DatabaseConnectionWrapper) and self.db.is_cloud
+
             async with self.db.cursor() as cursor:
-                await cursor.execute(
-                    """
-                    INSERT INTO conversation_history
-                    (timestamp, session_id, user_query, jarvis_response, response_type,
-                     confidence_score, execution_time_ms, success, context_snapshot,
-                     active_apps, current_space, system_state, embedding_id)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                    (
-                        datetime.now(),
-                        session_id,
-                        user_query,
-                        jarvis_response,
-                        response_type,
-                        confidence_score,
-                        execution_time_ms,
-                        bool(success),  # v192.0: PostgreSQL requires actual boolean, not int
-                        json.dumps(context or {}),
-                        json.dumps(context.get("active_apps", []) if context else []),
-                        context.get("current_space") if context else None,
-                        json.dumps(context.get("system_state", {}) if context else {}),
-                        embedding_id,
-                    ),
-                )
+                if is_cloud:
+                    # PostgreSQL: use RETURNING to get the auto-generated interaction_id
+                    await cursor.execute(
+                        """
+                        INSERT INTO conversation_history
+                        (timestamp, session_id, user_query, jarvis_response, response_type,
+                         confidence_score, execution_time_ms, success, context_snapshot,
+                         active_apps, current_space, system_state, embedding_id)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        RETURNING interaction_id
+                    """,
+                        (
+                            datetime.now(),
+                            session_id,
+                            user_query,
+                            jarvis_response,
+                            response_type,
+                            confidence_score,
+                            execution_time_ms,
+                            bool(success),
+                            json.dumps(context or {}),
+                            json.dumps(context.get("active_apps", []) if context else []),
+                            context.get("current_space") if context else None,
+                            json.dumps(context.get("system_state", {}) if context else {}),
+                            embedding_id,
+                        ),
+                    )
+                    row = await cursor.fetchone()
+                    interaction_id = (
+                        row["interaction_id"] if isinstance(row, dict)
+                        else row[0] if row else None
+                    )
+                else:
+                    # SQLite: use lastrowid (RETURNING not reliably supported)
+                    await cursor.execute(
+                        """
+                        INSERT INTO conversation_history
+                        (timestamp, session_id, user_query, jarvis_response, response_type,
+                         confidence_score, execution_time_ms, success, context_snapshot,
+                         active_apps, current_space, system_state, embedding_id)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                        (
+                            datetime.now(),
+                            session_id,
+                            user_query,
+                            jarvis_response,
+                            response_type,
+                            confidence_score,
+                            execution_time_ms,
+                            bool(success),
+                            json.dumps(context or {}),
+                            json.dumps(context.get("active_apps", []) if context else []),
+                            context.get("current_space") if context else None,
+                            json.dumps(context.get("system_state", {}) if context else {}),
+                            embedding_id,
+                        ),
+                    )
+                    interaction_id = cursor.lastrowid
 
                 await self.db.commit()
-
-                # Get the interaction_id
-                interaction_id = cursor.lastrowid
 
                 # Generate embeddings asynchronously (non-blocking)
                 if self.enable_ml:
@@ -4146,9 +4183,18 @@ class JARVISLearningDatabase:
             return False
 
     async def _generate_conversation_embeddings(
-        self, interaction_id: int, embedding_id: str, query: str, response: str
+        self, interaction_id: Optional[int], embedding_id: str, query: str, response: str
     ):
         """Generate semantic embeddings for conversation search (async background task)"""
+        # v242.5: Guard against None interaction_id (PostgreSQL lastrowid bug).
+        # conversation_embeddings.interaction_id is NOT NULL — inserting None crashes.
+        if interaction_id is None:
+            logger.warning(
+                "[Embeddings] Skipping — interaction_id is None "
+                "(record_interaction may have failed to retrieve the ID)"
+            )
+            return
+
         try:
             # Import embedding model (lazy load)
             from sentence_transformers import SentenceTransformer
