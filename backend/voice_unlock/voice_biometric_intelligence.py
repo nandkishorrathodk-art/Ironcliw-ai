@@ -486,6 +486,21 @@ class VBIConfig:
             return env_val.lower() in ('true', '1', 'yes', 'on')
         return default
 
+    def get(self, key: str, default=None):
+        """
+        v242.5: Dictionary-style .get() for VBIConfig compatibility.
+
+        Code like `self._config.get('enable_multi_factor_fusion', True)` was hitting
+        __getattr__('get') → None, then None('key', default) → TypeError.
+
+        Uses __dict__ lookup (not getattr) to avoid leaking __getattr__'s
+        pattern-matching defaults into .get() results. Only returns values
+        that were explicitly set in __init__ or later assignment.
+        """
+        if key in self.__dict__:
+            return self.__dict__[key]
+        return default
+
     def __getattr__(self, name: str):
         """Fallback for missing config attributes - provides sensible defaults."""
         # Default values for common config patterns
