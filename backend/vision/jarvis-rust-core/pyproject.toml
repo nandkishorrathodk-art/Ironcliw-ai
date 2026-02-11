@@ -1,0 +1,14 @@
+[build-system]
+requires = ["maturin>=1.4,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "jarvis-rust-core"
+version = "0.1.0"
+description = "JARVIS Rust core Python bindings"
+requires-python = ">=3.8"
+
+[tool.maturin]
+module-name = "jarvis_rust_core"
+bindings = "pyo3"
+features = ["python-bindings", "simd"]

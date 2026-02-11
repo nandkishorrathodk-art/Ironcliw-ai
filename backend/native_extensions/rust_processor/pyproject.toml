@@ -1,0 +1,13 @@
+[build-system]
+requires = ["maturin>=1.4,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "rust-processor"
+version = "0.1.0"
+description = "Rust processor Python bindings"
+requires-python = ">=3.8"
+
+[tool.maturin]
+module-name = "rust_processor"
+bindings = "pyo3"

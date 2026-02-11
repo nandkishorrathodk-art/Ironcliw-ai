@@ -11,6 +11,7 @@ import logging
 import json
 import shutil
 import multiprocessing
+import importlib
 from pathlib import Path
 from typing import Dict, List, Optional, Any, Tuple
 from datetime import datetime, timedelta
@@ -43,6 +44,7 @@ class RustIssueType(Enum):
     NOT_BUILT = "not_built"
     BUILD_FAILED = "build_failed"
     MISSING_DEPENDENCIES = "missing_dependencies"
+    MISSING_PYPROJECT = "missing_pyproject"
     INCOMPATIBLE_VERSION = "incompatible_version"
     CORRUPTED_BINARY = "corrupted_binary"
     MISSING_RUSTUP = "missing_rustup"
@@ -82,7 +84,9 @@ class RustSelfHealer:
         self.vision_dir = Path(__file__).parent
         self.rust_core_dir = self.vision_dir / "jarvis-rust-core"
         self.backend_dir = self.vision_dir.parent
-        
+        self._rust_module_name = "jarvis_rust_core"
+        self._required_symbols = ("RustAdvancedMemoryPool", "RustImageProcessor")
+
         self._running = False
         self._check_task: Optional[asyncio.Task] = None
         self._fix_history: List[Dict[str, Any]] = []
@@ -102,6 +106,144 @@ class RustSelfHealer:
         # v95.12: Register executors for cleanup
         register_executor_for_cleanup(self._thread_pool, "rust_healer_thread_pool")
         register_executor_for_cleanup(self._process_pool, "rust_healer_process_pool", is_process_pool=True)
+
+    def _stub_module_file(self) -> Path:
+        return self.rust_core_dir / "jarvis_rust_core.py"
+
+    def _is_stub_module(self, module: Any) -> bool:
+        if module is None:
+            return False
+        if getattr(module, "__rust_available__", None) is False:
+            return True
+        origin = getattr(module, "__file__", None)
+        if origin is None:
+            return False
+        try:
+            return Path(origin).resolve() == self._stub_module_file().resolve()
+        except Exception:
+            return False
+
+    def _validate_module_symbols(self, module: Any) -> Tuple[bool, List[str]]:
+        missing = [symbol for symbol in self._required_symbols if not hasattr(module, symbol)]
+        return len(missing) == 0, missing
+
+    def _strip_stub_path(self) -> List[Tuple[int, str]]:
+        removed: List[Tuple[int, str]] = []
+        stub_dir = str(self.rust_core_dir.resolve())
+        for idx in range(len(sys.path) - 1, -1, -1):
+            candidate = sys.path[idx]
+            try:
+                resolved = str(Path(candidate).resolve())
+            except Exception:
+                resolved = candidate
+            if resolved == stub_dir:
+                removed.append((idx, sys.path.pop(idx)))
+        removed.reverse()
+        return removed
+
+    def _restore_sys_path(self, removed: List[Tuple[int, str]]) -> None:
+        for idx, value in removed:
+            if idx < 0 or idx > len(sys.path):
+                sys.path.append(value)
+            else:
+                sys.path.insert(idx, value)
+
+    def _import_real_rust_module(self) -> Tuple[Optional[Any], Optional[str]]:
+        existing = sys.modules.get(self._rust_module_name)
+        existing_is_stub = self._is_stub_module(existing)
+
+        if existing is not None and not existing_is_stub:
+            return existing, None
+
+        if existing_is_stub:
+            sys.modules.pop(self._rust_module_name, None)
+
+        removed = self._strip_stub_path()
+        try:
+            module = importlib.import_module(self._rust_module_name)
+            if self._is_stub_module(module):
+                module_path = getattr(module, "__file__", "<unknown>")
+                return None, f"stub module loaded from {module_path}"
+            return module, None
+        except ImportError as exc:
+            return None, str(exc)
+        finally:
+            self._restore_sys_path(removed)
+            if self._rust_module_name not in sys.modules and existing is not None:
+                sys.modules[self._rust_module_name] = existing
+
+    def _ensure_maturin_project(self) -> bool:
+        """
+        Ensure pyproject.toml exists for maturin-based installs.
+        """
+        pyproject_path = self.rust_core_dir / "pyproject.toml"
+        if pyproject_path.exists():
+            return True
+
+        cargo_toml_path = self.rust_core_dir / "Cargo.toml"
+        if not cargo_toml_path.exists():
+            logger.error("Cannot create pyproject.toml: missing %s", cargo_toml_path)
+            return False
+
+        package_name = "jarvis-rust-core"
+        package_version = "0.1.0"
+        module_name = "jarvis_rust_core"
+
+        try:
+            import tomllib
+            cargo_data = tomllib.loads(cargo_toml_path.read_text())
+            package_name = cargo_data.get("package", {}).get("name", package_name)
+            package_version = cargo_data.get("package", {}).get("version", package_version)
+            module_name = cargo_data.get("lib", {}).get("name", module_name)
+        except Exception as exc:
+            logger.warning("Failed to parse Cargo.toml for pyproject synthesis: %s", exc)
+
+        pyproject_content = (
+            "[build-system]\n"
+            "requires = [\"maturin>=1.4,<2.0\"]\n"
+            "build-backend = \"maturin\"\n\n"
+            "[project]\n"
+            f"name = \"{package_name}\"\n"
+            f"version = \"{package_version}\"\n"
+            "description = \"JARVIS Rust core Python bindings\"\n"
+            "requires-python = \">=3.8\"\n\n"
+            "[tool.maturin]\n"
+            f"module-name = \"{module_name}\"\n"
+            "bindings = \"pyo3\"\n"
+            "features = [\"python-bindings\", \"simd\"]\n"
+        )
+
+        try:
+            pyproject_path.write_text(pyproject_content)
+            logger.info("Created missing pyproject.toml at %s", pyproject_path)
+            return True
+        except Exception as exc:
+            logger.error("Failed to create pyproject.toml at %s: %s", pyproject_path, exc)
+            return False
+
+    def _get_build_artifacts(self) -> List[Path]:
+        patterns = [
+            "jarvis_rust_core*.so",
+            "jarvis_rust_core*.pyd",
+            "jarvis_rust_core*.dylib",
+            "libjarvis_rust_core*.so",
+            "libjarvis_rust_core*.dylib",
+        ]
+
+        search_roots = [
+            self.rust_core_dir / "target" / "release",
+            self.rust_core_dir / "target" / "release" / "deps",
+            self.rust_core_dir,
+        ]
+
+        artifacts: List[Path] = []
+        for root in search_roots:
+            if not root.exists():
+                continue
+            for pattern in patterns:
+                artifacts.extend(root.glob(pattern))
+
+        return [artifact for artifact in artifacts if artifact.exists()]
         
     async def start(self):
         """Start the self-healing system."""
@@ -180,46 +322,51 @@ class RustSelfHealer:
                 
     async def _is_rust_working(self) -> bool:
         """Check if Rust components are currently working."""
-        try:
-            # First check if we have the Python stub
-            stub_path = self.rust_core_dir / "jarvis_rust_core.py"
-            if stub_path.exists():
-                import sys
-                if str(self.rust_core_dir) not in sys.path:
-                    sys.path.insert(0, str(self.rust_core_dir))
-                import jarvis_rust_core
-                # Check if it's the stub version
-                if hasattr(jarvis_rust_core, '__rust_available__') and not jarvis_rust_core.__rust_available__:
-                    # Only log once to avoid spam
-                    if not self._stub_logged:
-                        logger.info("Using Python stub for Rust components (build will continue in background)")
-                        self._stub_logged = True
-                    return True
-                # Try to access a component
-                if hasattr(jarvis_rust_core, 'RustAdvancedMemoryPool'):
-                    return True
-        except ImportError:
-            pass
-        return False
+        loop = asyncio.get_event_loop()
+        module, import_error = await loop.run_in_executor(
+            self._thread_pool,
+            self._import_real_rust_module,
+        )
+
+        if module is None:
+            if self._stub_module_file().exists() and not self._stub_logged:
+                logger.warning(
+                    "Rust extension not active (stub detected). Import error: %s",
+                    import_error or "unknown",
+                )
+                self._stub_logged = True
+            return False
+
+        valid, missing = self._validate_module_symbols(module)
+        if not valid:
+            logger.warning(
+                "Rust module imported but missing required symbols: %s",
+                ", ".join(missing),
+            )
+            return False
+
+        self._stub_logged = False
+        return True
         
     async def diagnose_and_fix(self) -> bool:
         """
         Diagnose issues and attempt to fix them.
         Returns True if fixed successfully.
         """
-        # Check if stub is available first
-        stub_path = self.rust_core_dir / "jarvis_rust_core.py"
-        if stub_path.exists():
-            # Only log once to avoid spam
-            if not self._stub_logged:
-                logger.info("Python stub available for Rust components - skipping build")
-                self._stub_logged = True
-            return True
+        # Optional escape hatch for explicitly running in stub-only mode.
+        if os.getenv("JARVIS_ALLOW_RUST_STUB_ONLY", "").lower() == "true":
+            if self._stub_module_file().exists():
+                logger.info("Stub-only mode enabled via JARVIS_ALLOW_RUST_STUB_ONLY=true")
+                return True
 
         logger.info("Diagnosing Rust component issues...")
 
         # Diagnose the issue
         issue_type, details = await self._diagnose_issue()
+
+        if details.get("status") == "rust_module_loaded":
+            logger.info("Rust module is already healthy; no fix required")
+            return True
         
         logger.info(f"Diagnosed issue: {issue_type.value} - {details}")
         
@@ -268,6 +415,23 @@ class RustSelfHealer:
         # Check if Rust is installed
         if not await self._is_rust_installed():
             return RustIssueType.MISSING_RUSTUP, {'error': 'Rust not installed'}
+
+        # Ensure maturin metadata exists for Python installation.
+        pyproject_path = self.rust_core_dir / "pyproject.toml"
+        if not pyproject_path.exists():
+            return RustIssueType.MISSING_PYPROJECT, {'error': 'Missing pyproject.toml for maturin'}
+
+        # Check if a working module is already importable.
+        loop = asyncio.get_event_loop()
+        module, import_error = await loop.run_in_executor(
+            self._thread_pool,
+            self._import_real_rust_module,
+        )
+        if module is not None:
+            valid, missing = self._validate_module_symbols(module)
+            if valid:
+                return RustIssueType.UNKNOWN, {'status': 'rust_module_loaded'}
+            return RustIssueType.INCOMPATIBLE_VERSION, {'missing_components': missing}
             
         # Check if target directory exists
         target_dir = self.rust_core_dir / "target"
@@ -276,7 +440,7 @@ class RustSelfHealer:
             
         # Check for library file
         lib_path = self._get_library_path()
-        if not lib_path or not lib_path.exists():
+        if not lib_path:
             # Check if there's a build log
             build_log = self.rust_core_dir / "build.log"
             if build_log.exists():
@@ -290,42 +454,15 @@ class RustSelfHealer:
                     
             return RustIssueType.NOT_BUILT, {'error': 'Library file missing'}
             
-        # Check if we can import it
-        try:
-            # Add to Python path temporarily
-            sys.path.insert(0, str(self.rust_core_dir / "target" / "release"))
-            import jarvis_rust_core
-            
-            # Check if it has expected components
-            expected_components = ['RustAdvancedMemoryPool', 'RustImageProcessor']
-            missing = [c for c in expected_components if not hasattr(jarvis_rust_core, c)]
-            
-            if missing:
-                return RustIssueType.INCOMPATIBLE_VERSION, {'missing_components': missing}
-                
-            # If we get here, it should be working
-            return RustIssueType.UNKNOWN, {'error': 'Components exist but not loading properly'}
-            
-        except ImportError as e:
-            error_msg = str(e)
-            
-            # Check for common import errors
-            if "symbol not found" in error_msg:
-                return RustIssueType.INCOMPATIBLE_VERSION, {'error': error_msg}
-            elif "Permission denied" in error_msg:
-                return RustIssueType.PERMISSION_ERROR, {'file': lib_path}
-            elif "image not found" in error_msg or "Library not loaded" in error_msg:
-                return RustIssueType.CORRUPTED_BINARY, {'error': error_msg}
-            else:
-                return RustIssueType.UNKNOWN, {'error': error_msg}
-                
-        except Exception as e:
-            return RustIssueType.UNKNOWN, {'error': str(e)}
-            
-        finally:
-            # Remove from path
-            if str(self.rust_core_dir / "target" / "release") in sys.path:
-                sys.path.remove(str(self.rust_core_dir / "target" / "release"))
+        # Import still failing despite artifacts; classify by import error.
+        error_msg = import_error or "Rust module exists but import failed"
+        if "symbol not found" in error_msg:
+            return RustIssueType.INCOMPATIBLE_VERSION, {'error': error_msg}
+        if "Permission denied" in error_msg:
+            return RustIssueType.PERMISSION_ERROR, {'file': lib_path}
+        if "image not found" in error_msg or "Library not loaded" in error_msg:
+            return RustIssueType.CORRUPTED_BINARY, {'error': error_msg}
+        return RustIssueType.UNKNOWN, {'error': error_msg}
                 
     def _determine_fix_strategy(self, issue: RustIssueType, details: Dict[str, Any]) -> FixStrategy:
         """Determine the best fix strategy for an issue."""
@@ -333,6 +470,7 @@ class RustSelfHealer:
             RustIssueType.NOT_BUILT: FixStrategy.BUILD,
             RustIssueType.BUILD_FAILED: FixStrategy.CLEAN_BUILD,
             RustIssueType.MISSING_DEPENDENCIES: FixStrategy.INSTALL_DEPS,
+            RustIssueType.MISSING_PYPROJECT: FixStrategy.BUILD,
             RustIssueType.INCOMPATIBLE_VERSION: FixStrategy.REBUILD,
             RustIssueType.CORRUPTED_BINARY: FixStrategy.CLEAN_BUILD,
             RustIssueType.MISSING_RUSTUP: FixStrategy.INSTALL_RUST,
@@ -471,6 +609,11 @@ class RustSelfHealer:
         if os.environ.get('JARVIS_SKIP_RUST_BUILD', '').lower() == 'true':
             logger.info("Skipping Rust build (JARVIS_SKIP_RUST_BUILD=true)")
             return False
+
+        # Ensure maturin metadata is present so `maturin develop` can succeed.
+        if not self._ensure_maturin_project():
+            logger.error("Cannot build Rust components without pyproject.toml")
+            return False
         
         # Check if a build is already running
         for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
@@ -508,37 +651,36 @@ class RustSelfHealer:
         try:
             # Create tasks for all strategies
             tasks = [asyncio.create_task(strategy) for strategy in build_strategies]
-            
-            # Wait for first successful build
-            done, pending = await asyncio.wait(
-                tasks,
-                return_when=asyncio.FIRST_COMPLETED
-            )
-            
-            # Cancel remaining tasks
-            for task in pending:
-                task.cancel()
+            build_succeeded = False
+
+            for completed in asyncio.as_completed(tasks):
                 try:
-                    await task
-                except asyncio.CancelledError:
-                    pass
-            
-            # Check if any succeeded
-            for task in done:
-                try:
-                    result = await task
-                    if result:
-                        logger.info("✅ Build successful with concurrent strategy!")
-                        self._last_successful_build = datetime.now()
-                        return True
+                    if await completed:
+                        build_succeeded = True
+                        break
                 except Exception as e:
                     logger.debug(f"Build strategy failed: {e}")
-            
+
+            if build_succeeded:
+                # Cancel stragglers once we have a success signal.
+                for task in tasks:
+                    if not task.done():
+                        task.cancel()
+                await asyncio.gather(*tasks, return_exceptions=True)
+
+                if await self._quick_validate_rust():
+                    logger.info("✅ Build successful with concurrent strategy!")
+                    self._last_successful_build = datetime.now()
+                    return True
+
+                logger.warning("Build reported success but module validation failed")
+            else:
+                await asyncio.gather(*tasks, return_exceptions=True)
+
             # If we get here, all strategies failed
             if retry_count < max_retries - 1:
-                # Try again with more aggressive strategies
                 logger.info(f"All strategies failed, retrying ({retry_count + 1}/{max_retries})...")
-                await asyncio.sleep(1)  # Brief pause before retry
+                await asyncio.sleep(1)
                 return await self._build_rust_components(retry_count + 1, max_retries)
             
         except Exception as e:
@@ -550,11 +692,6 @@ class RustSelfHealer:
     async def _quick_validate_rust(self) -> bool:
         """Quick validation to check if Rust is already working."""
         try:
-            # Check if library exists
-            lib_path = self._get_library_path()
-            if not lib_path or not lib_path.exists():
-                return False
-            
             # Try quick import test
             loop = asyncio.get_event_loop()
             result = await loop.run_in_executor(
@@ -567,42 +704,33 @@ class RustSelfHealer:
 
     def _test_rust_import(self) -> bool:
         """Test if we can import Rust components."""
-        try:
-            sys.path.insert(0, str(self.rust_core_dir / "target" / "release"))
-            import jarvis_rust_core
-            return hasattr(jarvis_rust_core, 'RustAdvancedMemoryPool')
-        except Exception:
+        module, _ = self._import_real_rust_module()
+        if module is None:
             return False
-        finally:
-            if str(self.rust_core_dir / "target" / "release") in sys.path:
-                sys.path.remove(str(self.rust_core_dir / "target" / "release"))
+        valid, _missing = self._validate_module_symbols(module)
+        return valid
     
     async def _try_cached_build(self) -> bool:
         """Try to use cached build if available."""
         logger.info("Strategy 1: Checking for cached build...")
         
-        target_dir = self.rust_core_dir / "target" / "release"
-        if not target_dir.exists():
-            return False
-        
         # Check if recent build exists
         lib_path = self._get_library_path()
-        if lib_path and lib_path.exists():
+        if lib_path:
             # Check modification time
             mtime = datetime.fromtimestamp(lib_path.stat().st_mtime)
             if datetime.now() - mtime < timedelta(hours=24):
                 logger.info("Found recent cached build")
                 
                 # Try maturin develop to ensure Python bindings
-                if (self.rust_core_dir / "pyproject.toml").exists():
-                    result = await self._run_command(
-                        ["maturin", "develop", "--skip-build"],
-                        cwd=str(self.rust_core_dir),
-                        timeout=30
-                    )
-                    if result.returncode == 0:
-                        logger.info("✅ Cached build validated")
-                        return True
+                result = await self._run_command(
+                    ["maturin", "develop", "--skip-build"],
+                    cwd=str(self.rust_core_dir),
+                    timeout=30
+                )
+                if result.returncode == 0 and await self._quick_validate_rust():
+                    logger.info("✅ Cached build validated")
+                    return True
         
         return False
     
@@ -652,15 +780,12 @@ class RustSelfHealer:
             asyncio.create_task(self._save_build_log(result.stdout + "\n" + result.stderr))
             
             # Run maturin
-            if (self.rust_core_dir / "pyproject.toml").exists():
-                maturin_result = await self._run_command(
-                    ["maturin", "develop", "--release"],
-                    cwd=str(self.rust_core_dir),
-                    timeout=120
-                )
-                return maturin_result.returncode == 0
-            
-            return True
+            maturin_result = await self._run_command(
+                ["maturin", "develop", "--release"],
+                cwd=str(self.rust_core_dir),
+                timeout=120
+            )
+            return maturin_result.returncode == 0 and await self._quick_validate_rust()
         
         return False
     
@@ -693,15 +818,12 @@ class RustSelfHealer:
             asyncio.create_task(self._save_build_log(result.stdout + "\n" + result.stderr))
             
             # Run maturin
-            if (self.rust_core_dir / "pyproject.toml").exists():
-                maturin_result = await self._run_command(
-                    ["maturin", "develop", "--release"],
-                    cwd=str(self.rust_core_dir),
-                    timeout=120
-                )
-                return maturin_result.returncode == 0
-            
-            return True
+            maturin_result = await self._run_command(
+                ["maturin", "develop", "--release"],
+                cwd=str(self.rust_core_dir),
+                timeout=120
+            )
+            return maturin_result.returncode == 0 and await self._quick_validate_rust()
         
         return False
     
@@ -837,26 +959,11 @@ class RustSelfHealer:
             await self._run_command(["sudo", "purge"], check=False)
             
     def _get_library_path(self) -> Optional[Path]:
-        """Get the expected library path."""
-        if sys.platform == "darwin":
-            lib_name = "libjarvis_rust_core.dylib"
-        elif sys.platform == "win32":
-            lib_name = "jarvis_rust_core.dll"
-        else:
-            lib_name = "libjarvis_rust_core.so"
-            
-        lib_path = self.rust_core_dir / "target" / "release" / lib_name
-        
-        if lib_path.exists():
-            return lib_path
-            
-        # Check for maturin output
-        for pattern in ["*.so", "*.dylib", "*.pyd"]:
-            for file in self.rust_core_dir.glob(pattern):
-                if "jarvis_rust_core" in file.name:
-                    return file
-                    
-        return None
+        """Get the newest known build artifact path."""
+        artifacts = self._get_build_artifacts()
+        if not artifacts:
+            return None
+        return max(artifacts, key=lambda p: p.stat().st_mtime)
         
     async def _run_command(self, cmd: List[str], **kwargs) -> subprocess.CompletedProcess:
         """Run a command asynchronously."""
@@ -874,7 +981,8 @@ class RustSelfHealer:
             *cmd,
             stdout=asyncio.subprocess.PIPE if kwargs.get('capture_output') else None,
             stderr=asyncio.subprocess.PIPE if kwargs.get('capture_output') else None,
-            cwd=kwargs.get('cwd')
+            cwd=kwargs.get('cwd'),
+            env=kwargs.get('env'),
         )
         
         try:
