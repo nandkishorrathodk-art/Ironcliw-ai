@@ -44,6 +44,7 @@ import hashlib
 import io
 import logging
 import os
+import time
 import weakref
 from abc import ABC, abstractmethod
 from collections import OrderedDict
@@ -1591,17 +1592,55 @@ class PermissionSystemBridge:
 
 class NeuralMeshBridge:
     """
-    Bridge between Neural Mesh agents and AGI OS events.
+    Bidirectional bridge between Neural Mesh AgentCommunicationBus and AGI OS ProactiveEventStream.
 
-    Allows agents to emit and subscribe to AGI OS events.
+    v237.2: Evolved from one-way emit helper into full duplex event bridge.
+
+    Forward (Bus → EventStream): Agent broadcasts → AGIEvents → IntelligentActionOrchestrator
+    Reverse (EventStream → Bus): Orchestrator decisions → Bus broadcasts → All agents
+
+    Features:
+    - Loop prevention via source tagging + metadata flags
+    - Per-MessageType rate limiting to prevent event floods
+    - Translation tables for type/priority mapping
+    - Stats tracking for observability
     """
+
+    # Forward translation: MessageType → (EventType, EventPriority, requires_narration, rate_limit_seconds)
+    _FORWARD_MAP: Dict[str, Tuple[str, str, bool, float]] = {
+        'error_detected':       ('error_detected',        'HIGH',   True,  2.0),
+        'alert_raised':         ('warning_detected',      'HIGH',   True,  2.0),
+        'task_failed':          ('action_failed',         'HIGH',   True,  2.0),
+        'task_completed':       ('action_completed',      'NORMAL', False, 1.0),
+        'knowledge_shared':     ('pattern_learned',       'LOW',    False, 5.0),
+        'agent_status_changed': ('health_check',          'LOW',    False, 10.0),
+        'notification':         ('notification_detected',  'NORMAL', True,  1.0),
+        'context_update':       ('content_changed',       'LOW',    False, 2.0),
+    }
+
+    # Reverse translation: EventType → (MessageType, broadcast?)
+    _REVERSE_MAP: Dict[str, Tuple[str, bool]] = {
+        'action_proposed':  ('announcement',     True),
+        'action_completed': ('announcement',     True),
+        'action_failed':    ('alert_raised',     True),
+        'pattern_learned':  ('knowledge_shared', True),
+        'user_command':     ('task_assigned',     False),  # targeted to coordinator
+    }
+
+    # CUSTOM message payload keys that indicate bridgeable intent
+    _CUSTOM_BRIDGE_KEYS = ('event_category', 'severity', 'agi_event_type')
 
     def __init__(self):
         """Initialize the bridge."""
         self._neural_mesh: Optional[Any] = None
         self._event_stream: Optional[Any] = None
         self._owner_identity: Optional[Any] = None
+        self._bus: Optional[Any] = None
         self._connected = False
+        self._forward_subscribed = False
+        self._reverse_sub_ids: List[str] = []
+        self._rate_limits: Dict[str, float] = {}  # MessageType.value → last_emit monotonic time
+        self._stats = {'forward': 0, 'reverse': 0, 'rate_limited': 0, 'loop_prevented': 0}
 
     async def connect(
         self,
@@ -1610,18 +1649,19 @@ class NeuralMeshBridge:
         owner_identity: Optional[Any] = None,
     ) -> None:
         """
-        Connect Neural Mesh to AGI OS.
+        Connect Neural Mesh to AGI OS with bidirectional event bridging.
 
         Args:
-            neural_mesh: NeuralMeshCoordinator
-            event_stream: ProactiveEventStream
-            owner_identity: OwnerIdentityService
+            neural_mesh: NeuralMeshCoordinator (has .bus property)
+            event_stream: ProactiveEventStream (optional, auto-resolved)
+            owner_identity: OwnerIdentityService (optional, auto-resolved)
         """
         if self._connected:
             return
 
         self._neural_mesh = neural_mesh
 
+        # Resolve event stream
         if event_stream:
             self._event_stream = event_stream
         else:
@@ -1632,6 +1672,7 @@ class NeuralMeshBridge:
                 logger.warning("Could not get event stream: %s", e)
                 return
 
+        # Resolve owner identity
         if owner_identity:
             self._owner_identity = owner_identity
         else:
@@ -1641,8 +1682,242 @@ class NeuralMeshBridge:
             except Exception as e:
                 logger.warning("Could not get owner identity: %s", e)
 
+        # Get bus from coordinator for bidirectional bridging
+        if neural_mesh and hasattr(neural_mesh, 'bus'):
+            try:
+                self._bus = neural_mesh.bus
+            except RuntimeError:
+                logger.warning("Neural Mesh bus not initialized yet")
+                self._bus = None
+
+        # Subscribe forward: Bus → EventStream
+        if self._bus and not self._forward_subscribed:
+            await self._subscribe_forward()
+
+        # Subscribe reverse: EventStream → Bus
+        if self._event_stream and self._bus:
+            self._subscribe_reverse()
+
         self._connected = True
-        logger.info("Neural Mesh connected to AGI OS")
+        logger.info(
+            "Neural Mesh ↔ Event Stream bridge connected (forward=%s, reverse_subs=%d)",
+            self._forward_subscribed, len(self._reverse_sub_ids)
+        )
+
+    async def _subscribe_forward(self) -> None:
+        """Subscribe to bus broadcasts for forward bridging (Bus → EventStream)."""
+        from neural_mesh.data_models import MessageType
+
+        forward_types = set()
+        for msg_type_val in self._FORWARD_MAP:
+            try:
+                forward_types.add(MessageType(msg_type_val))
+            except ValueError:
+                pass
+
+        # Also subscribe to CUSTOM for selective bridging
+        forward_types.add(MessageType.CUSTOM)
+
+        for msg_type in forward_types:
+            try:
+                await self._bus.subscribe_broadcast(msg_type, self._forward_handler)
+            except Exception as e:
+                logger.warning("Failed to subscribe forward for %s: %s", msg_type.value, e)
+
+        self._forward_subscribed = True
+        logger.debug("Forward subscriptions: %d message types", len(forward_types))
+
+    def _subscribe_reverse(self) -> None:
+        """Subscribe to event stream for reverse bridging (EventStream → Bus)."""
+        from .proactive_event_stream import EventType
+
+        reverse_types = []
+        for evt_type_val in self._REVERSE_MAP:
+            try:
+                reverse_types.append(EventType(evt_type_val))
+            except ValueError:
+                pass
+
+        if reverse_types:
+            sub_id = self._event_stream.subscribe(
+                event_types=reverse_types,
+                handler=self._reverse_handler,
+            )
+            self._reverse_sub_ids.append(sub_id)
+            logger.debug("Reverse subscription: %s for %d event types", sub_id, len(reverse_types))
+
+    # ---- Forward Bridge: Bus → EventStream ----
+
+    async def _forward_handler(self, message: Any) -> None:
+        """Handle bus broadcast → translate → emit to EventStream."""
+        try:
+            # Loop prevention: skip messages originating from reverse bridge
+            from_agent = getattr(message, 'from_agent', '')
+            if from_agent == 'agi_os_bridge':
+                self._stats['loop_prevented'] += 1
+                return
+
+            metadata = getattr(message, 'metadata', {}) or {}
+            if metadata.get('bridged'):
+                self._stats['loop_prevented'] += 1
+                return
+
+            msg_type = getattr(message, 'message_type', None)
+            if msg_type is None:
+                return
+
+            msg_type_val = msg_type.value if hasattr(msg_type, 'value') else str(msg_type)
+
+            # Rate limit per MessageType
+            rate_limit = self._get_forward_rate_limit(msg_type_val)
+            now = time.monotonic()
+            if msg_type_val in self._rate_limits and (now - self._rate_limits[msg_type_val]) < rate_limit:
+                self._stats['rate_limited'] += 1
+                return
+            self._rate_limits[msg_type_val] = now
+
+            # Translate and emit
+            agi_event = self._translate_to_agi_event(message, msg_type_val)
+            if agi_event and self._event_stream:
+                await self._event_stream.emit(agi_event)
+                self._stats['forward'] += 1
+
+        except Exception as e:
+            logger.warning("Forward bridge error: %s", e, exc_info=True)
+
+    def _get_forward_rate_limit(self, msg_type_val: str) -> float:
+        """Get rate limit in seconds for a MessageType value."""
+        mapping = self._FORWARD_MAP.get(msg_type_val)
+        if mapping:
+            return mapping[3]
+        return 2.0  # default for CUSTOM / unmapped
+
+    def _translate_to_agi_event(self, message: Any, msg_type_val: str) -> Optional[Any]:
+        """Translate a bus AgentMessage to an AGIEvent."""
+        from .proactive_event_stream import AGIEvent, EventType, EventPriority
+
+        mapping = self._FORWARD_MAP.get(msg_type_val)
+        payload = getattr(message, 'payload', {}) or {}
+        from_agent = getattr(message, 'from_agent', 'unknown')
+
+        if mapping:
+            evt_type_val, priority_name, narrate, _ = mapping
+            try:
+                event_type = EventType(evt_type_val)
+            except ValueError:
+                return None
+            priority = getattr(EventPriority, priority_name, EventPriority.NORMAL)
+        elif msg_type_val == 'custom':
+            # Only bridge CUSTOM messages that explicitly declare intent
+            event_type = self._resolve_custom_event_type(payload)
+            if event_type is None:
+                return None
+            priority = self._resolve_custom_priority(payload)
+            narrate = payload.get('requires_narration', False)
+        else:
+            return None
+
+        return AGIEvent(
+            event_type=event_type,
+            source=f"neural_mesh_bridge.{from_agent}",
+            data=payload,
+            priority=priority,
+            requires_narration=narrate,
+            correlation_id=getattr(message, 'correlation_id', None),
+            metadata={'bridged': True, 'original_msg_type': msg_type_val},
+        )
+
+    def _resolve_custom_event_type(self, payload: Dict[str, Any]) -> Optional[Any]:
+        """Resolve EventType from CUSTOM message payload keys."""
+        from .proactive_event_stream import EventType
+
+        # Check for explicit event type declaration
+        agi_type = payload.get('agi_event_type') or payload.get('event_category')
+        if agi_type:
+            try:
+                return EventType(agi_type)
+            except ValueError:
+                pass
+
+        # Map severity to detection events
+        severity = payload.get('severity', '').lower()
+        severity_map = {
+            'error': EventType.ERROR_DETECTED,
+            'critical': EventType.ERROR_DETECTED,
+            'warning': EventType.WARNING_DETECTED,
+            'security': EventType.SECURITY_CONCERN,
+        }
+        return severity_map.get(severity)
+
+    def _resolve_custom_priority(self, payload: Dict[str, Any]) -> Any:
+        """Resolve EventPriority from CUSTOM message payload."""
+        from .proactive_event_stream import EventPriority
+
+        severity = payload.get('severity', '').lower()
+        priority_map = {
+            'critical': EventPriority.CRITICAL,
+            'error': EventPriority.HIGH,
+            'warning': EventPriority.HIGH,
+            'security': EventPriority.URGENT,
+        }
+        return priority_map.get(severity, EventPriority.NORMAL)
+
+    # ---- Reverse Bridge: EventStream → Bus ----
+
+    async def _reverse_handler(self, event: Any) -> None:
+        """Handle EventStream event → translate → broadcast to bus."""
+        try:
+            # Loop prevention: skip events originating from forward bridge
+            source = getattr(event, 'source', '')
+            if source.startswith('neural_mesh_bridge.'):
+                self._stats['loop_prevented'] += 1
+                return
+
+            metadata = getattr(event, 'metadata', {}) or {}
+            if metadata.get('bridged'):
+                self._stats['loop_prevented'] += 1
+                return
+
+            if not self._bus:
+                return
+
+            event_type = getattr(event, 'event_type', None)
+            if event_type is None:
+                return
+
+            evt_type_val = event_type.value if hasattr(event_type, 'value') else str(event_type)
+            mapping = self._REVERSE_MAP.get(evt_type_val)
+            if not mapping:
+                return
+
+            msg_type_val, is_broadcast = mapping
+
+            from neural_mesh.data_models import MessageType
+            try:
+                msg_type = MessageType(msg_type_val)
+            except ValueError:
+                return
+
+            payload = getattr(event, 'data', {}) or {}
+            payload_with_meta = {
+                **payload,
+                'bridged': True,
+                'agi_event_type': evt_type_val,
+                'agi_event_id': getattr(event, 'event_id', ''),
+                'agi_source': source,
+            }
+
+            await self._bus.broadcast(
+                from_agent='agi_os_bridge',
+                message_type=msg_type,
+                payload=payload_with_meta,
+            )
+            self._stats['reverse'] += 1
+
+        except Exception as e:
+            logger.warning("Reverse bridge error: %s", e, exc_info=True)
+
+    # ---- Public API (backward compatible) ----
 
     async def emit_agent_event(
         self,
@@ -1651,11 +1926,11 @@ class NeuralMeshBridge:
         data: Dict[str, Any]
     ) -> Optional[str]:
         """
-        Emit an event from a Neural Mesh agent.
+        Emit an event from a Neural Mesh agent (legacy one-shot API).
 
         Args:
             agent_name: Name of the agent
-            event_type: Type of event
+            event_type: Type of event ('error', 'warning', 'action_proposed', etc.)
             data: Event data
 
         Returns:
@@ -1666,7 +1941,6 @@ class NeuralMeshBridge:
 
         from .proactive_event_stream import AGIEvent, EventType, EventPriority
 
-        # Map event type string to enum
         event_type_map = {
             'error': EventType.ERROR_DETECTED,
             'warning': EventType.WARNING_DETECTED,
@@ -1677,7 +1951,6 @@ class NeuralMeshBridge:
 
         agi_event_type = event_type_map.get(event_type, EventType.CONTENT_CHANGED)
 
-        # Add owner context
         owner_name = "sir"
         if self._owner_identity:
             try:
@@ -1694,6 +1967,38 @@ class NeuralMeshBridge:
 
         await self._event_stream.emit(event)
         return event.event_id
+
+    async def stop(self) -> None:
+        """Stop the bridge: unsubscribe from event stream, clear state."""
+        # Unsubscribe reverse (event stream subscriptions)
+        if self._event_stream:
+            for sub_id in self._reverse_sub_ids:
+                try:
+                    self._event_stream.unsubscribe(sub_id)
+                except Exception:
+                    pass
+        self._reverse_sub_ids.clear()
+
+        # Note: bus broadcast subscriptions don't have an unsubscribe API,
+        # but the bus itself will be stopped by the coordinator shortly after.
+        self._forward_subscribed = False
+        self._connected = False
+        self._rate_limits.clear()
+
+        logger.info(
+            "Neural Mesh bridge stopped (fwd=%d, rev=%d, rate_limited=%d, loops=%d)",
+            self._stats['forward'], self._stats['reverse'],
+            self._stats['rate_limited'], self._stats['loop_prevented'],
+        )
+
+    def get_stats(self) -> Dict[str, Any]:
+        """Get bridge statistics for observability."""
+        return {
+            **self._stats,
+            'connected': self._connected,
+            'forward_subscribed': self._forward_subscribed,
+            'reverse_subscriptions': len(self._reverse_sub_ids),
+        }
 
 
 # ============== Singleton Instances ==============
@@ -1814,6 +2119,11 @@ async def connect_neural_mesh(neural_mesh: Any) -> NeuralMeshBridge:
         _mesh_bridge = NeuralMeshBridge()
 
     await _mesh_bridge.connect(neural_mesh)
+    return _mesh_bridge
+
+
+async def get_event_bridge() -> Optional[NeuralMeshBridge]:
+    """Get the current event bridge instance (v237.2)."""
     return _mesh_bridge
 
 

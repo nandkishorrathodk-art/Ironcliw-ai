@@ -159,6 +159,8 @@ class AGIOSCoordinator:
         # Neural Mesh
         self._neural_mesh: Optional[Any] = None
         self._jarvis_bridge: Optional[Any] = None  # v237.0: JARVISNeuralMeshBridge
+        self._event_bridge: Optional[Any] = None  # v237.2: NeuralMesh ↔ EventStream bridge
+        self._notification_monitor: Optional[Any] = None  # v237.2: macOS notification listener
 
         # Hybrid Orchestrator
         self._hybrid_orchestrator: Optional[Any] = None
@@ -288,12 +290,27 @@ class AGIOSCoordinator:
             except asyncio.CancelledError:
                 pass
 
+        # v237.2: Stop event bridge first (unsubscribes from bus + event stream)
+        if self._event_bridge:
+            try:
+                await self._event_bridge.stop()
+            except Exception as e:
+                logger.warning("Error stopping event bridge: %s", e)
+
+        # v237.2: Stop notification monitor
+        if self._notification_monitor:
+            try:
+                from macos_helper.notification_monitor import stop_notification_monitor
+                await stop_notification_monitor()
+            except Exception as e:
+                logger.warning("Error stopping NotificationMonitor: %s", e)
+
         # Stop components in reverse order
         await stop_action_orchestrator()
         await stop_event_stream()
         await stop_voice_communicator()
 
-        # v237.0: Stop JARVIS Bridge first (stops adapter agents, cancels startup tasks)
+        # v237.0: Stop JARVIS Bridge (stops adapter agents, cancels startup tasks)
         if self._jarvis_bridge:
             try:
                 await self._jarvis_bridge.stop()
@@ -399,6 +416,23 @@ class AGIOSCoordinator:
                     healthy=False,
                     error=str(e)
                 )
+
+        # v237.2: Start macOS notification monitor
+        try:
+            from macos_helper.notification_monitor import get_notification_monitor
+            self._notification_monitor = await get_notification_monitor(auto_start=True)
+            self._component_status['notification_monitor'] = ComponentStatus(
+                name='notification_monitor',
+                available=True
+            )
+            logger.info("NotificationMonitor started")
+        except Exception as e:
+            logger.warning("NotificationMonitor not available: %s", e)
+            self._component_status['notification_monitor'] = ComponentStatus(
+                name='notification_monitor',
+                available=False,
+                error=str(e)
+            )
 
     async def _init_intelligence_systems(self) -> None:
         """Initialize intelligence systems (UAE, SAI, CAI)."""
@@ -619,6 +653,15 @@ class AGIOSCoordinator:
                 )
 
             self._approval_manager.on_approval(on_approval)
+
+        # v237.2: Wire Neural Mesh ↔ ProactiveEventStream bidirectional bridge
+        if self._neural_mesh and self._event_stream:
+            try:
+                from .jarvis_integration import connect_neural_mesh
+                self._event_bridge = await connect_neural_mesh(self._neural_mesh)
+                logger.info("Neural Mesh ↔ Event Stream bridge connected")
+            except Exception as e:
+                logger.warning("Event bridge not available: %s", e)
 
         logger.debug("Components connected")
 
