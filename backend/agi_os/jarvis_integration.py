@@ -1774,11 +1774,12 @@ class NeuralMeshBridge:
             if msg_type_val in self._rate_limits and (now - self._rate_limits[msg_type_val]) < rate_limit:
                 self._stats['rate_limited'] += 1
                 return
-            self._rate_limits[msg_type_val] = now
 
-            # Translate and emit
+            # Translate and emit (record rate limit ONLY on successful emission,
+            # so failed translations like CUSTOM without intent don't consume it)
             agi_event = self._translate_to_agi_event(message, msg_type_val)
             if agi_event and self._event_stream:
+                self._rate_limits[msg_type_val] = now
                 await self._event_stream.emit(agi_event)
                 self._stats['forward'] += 1
 
