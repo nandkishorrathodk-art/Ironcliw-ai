@@ -9,8 +9,9 @@ observable via `RUST_AVAILABLE`/`RUST_REASON`.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 import importlib
+import importlib.util
 import logging
 import sys
 
@@ -102,6 +103,89 @@ def _load_real_module() -> Tuple[Optional[Any], Optional[str]]:
             sys.modules["jarvis_rust_core"] = existing
 
 
+def _discover_build_artifacts() -> List[Path]:
+    """Search well-known build directories for a compiled Rust extension."""
+    rust_crate = _STUB_DIR  # jarvis-rust-core/
+    extensions = (".abi3.so", ".so", ".dylib", ".pyd")
+    candidates: List[Path] = []
+    search_dirs = [
+        rust_crate / "target" / "maturin",
+        rust_crate / "target" / "release",
+        rust_crate / "target" / "release" / "deps",
+        rust_crate / "target" / "wheels",
+    ]
+    for directory in search_dirs:
+        if not directory.is_dir():
+            continue
+        for child in directory.iterdir():
+            name = child.name.lower()
+            if not child.is_file():
+                continue
+            # Match native extension files (e.g. jarvis_rust_core.abi3.so, libjarvis_rust_core.dylib)
+            if "jarvis_rust_core" in name and any(name.endswith(ext) for ext in extensions):
+                candidates.append(child)
+            # Match wheel files that can be pip-installed
+            if name.startswith("jarvis_rust_core") and name.endswith(".whl"):
+                candidates.append(child)
+    # Sort by modification time (newest first) so we pick the freshest build
+    candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+    return candidates
+
+
+def _load_from_build_artifact() -> Tuple[Optional[Any], Optional[str]]:
+    """
+    Attempt to load the Rust module directly from a compiled build artifact.
+    This handles the case where ``maturin build`` succeeded but the wheel
+    was never installed to site-packages.
+    """
+    artifacts = _discover_build_artifacts()
+    if not artifacts:
+        return None, "no build artifacts found"
+
+    for artifact in artifacts:
+        name = artifact.name.lower()
+
+        # Wheel files: install on-the-fly via importlib
+        if name.endswith(".whl"):
+            try:
+                import subprocess
+                result = subprocess.run(
+                    [sys.executable, "-m", "pip", "install", "--force-reinstall", "--no-deps", str(artifact)],
+                    capture_output=True, text=True, timeout=60,
+                )
+                if result.returncode == 0:
+                    # Clear any cached stub from sys.modules
+                    sys.modules.pop("jarvis_rust_core", None)
+                    module = importlib.import_module("jarvis_rust_core")
+                    if not _is_stub_module(module):
+                        logger.info("Installed wheel and loaded Rust core from %s", artifact)
+                        return module, None
+            except Exception as exc:
+                logger.debug("Failed to install wheel %s: %s", artifact, exc)
+            continue
+
+        # Native shared library: load via importlib.util.spec_from_file_location
+        if any(name.endswith(ext) for ext in (".abi3.so", ".so", ".dylib", ".pyd")):
+            try:
+                spec = importlib.util.spec_from_file_location("jarvis_rust_core", str(artifact))
+                if spec is None or spec.loader is None:
+                    continue
+                module = importlib.util.module_from_spec(spec)
+                sys.modules["jarvis_rust_core"] = module
+                spec.loader.exec_module(module)
+                if not _is_stub_module(module) and _required_symbols_available(module):
+                    logger.info("Loaded Rust core directly from build artifact: %s", artifact)
+                    return module, None
+                # Loaded but incomplete — remove and try next
+                sys.modules.pop("jarvis_rust_core", None)
+            except Exception as exc:
+                sys.modules.pop("jarvis_rust_core", None)
+                logger.debug("Failed to load artifact %s: %s", artifact, exc)
+            continue
+
+    return None, f"tried {len(artifacts)} artifacts, none loaded successfully"
+
+
 def _load_stub_module() -> Tuple[Optional[Any], Optional[str]]:
     if not _STUB_FILE.exists():
         return None, "Stub file not found"
@@ -123,6 +207,7 @@ def _load_stub_module() -> Tuple[Optional[Any], Optional[str]]:
 
 
 def _load_module() -> Tuple[Optional[Any], bool, str, Dict[str, bool]]:
+    # Tier 1: Try the standard import (site-packages or sys.path)
     module, error = _load_real_module()
     if module is not None:
         capabilities = _compute_capabilities(module)
@@ -134,13 +219,27 @@ def _load_module() -> Tuple[Optional[Any], bool, str, Dict[str, bool]]:
         logger.warning("Rust module loaded but incompatible: %s", reason)
         return module, False, reason, capabilities
 
+    # Tier 2: Search build directories for compiled artifacts
+    artifact_module, artifact_error = _load_from_build_artifact()
+    if artifact_module is not None:
+        capabilities = _compute_capabilities(artifact_module)
+        if _required_symbols_available(artifact_module):
+            logger.info("Rust core loaded from build artifact: %s", _module_origin(artifact_module))
+            return artifact_module, True, "loaded_from_build_artifact", capabilities
+        missing = [symbol for symbol, present in capabilities.items() if symbol in _REQUIRED_SYMBOLS and not present]
+        reason = f"build artifact missing required symbols: {', '.join(missing)}"
+        logger.warning("Build artifact loaded but incompatible: %s", reason)
+        return artifact_module, False, reason, capabilities
+
+    # Tier 3: Fall back to Python stub
     stub_module, stub_error = _load_stub_module()
     if stub_module is not None:
         reason = "loaded_python_stub"
-        logger.warning("Rust extension unavailable (%s); using Python stub from %s", error or "unknown error", _module_origin(stub_module))
+        combined_error = error or artifact_error or "unknown error"
+        logger.warning("Rust extension unavailable (%s); using Python stub from %s", combined_error, _module_origin(stub_module))
         return stub_module, False, reason, _compute_capabilities(stub_module)
 
-    reason = f"rust_unavailable: {error or stub_error or 'unknown import error'}"
+    reason = f"rust_unavailable: {error or artifact_error or stub_error or 'unknown import error'}"
     logger.warning("Rust core not available: %s", reason)
     return None, False, reason, {}
 

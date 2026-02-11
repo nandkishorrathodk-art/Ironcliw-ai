@@ -139,7 +139,7 @@ class RustSelfHealer:
         self.rust_core_dir = self.vision_dir / "jarvis-rust-core"
         self.backend_dir = self.vision_dir.parent
         self._rust_module_name = "jarvis_rust_core"
-        self._required_symbols = ("RustAdvancedMemoryPool", "RustImageProcessor")
+        self._required_symbols = ("RustRuntimeManager", "RustAdvancedMemoryPool", "RustImageProcessor")
 
         self._running = False
         self._check_task: Optional[asyncio.Task] = None
@@ -285,6 +285,7 @@ class RustSelfHealer:
         ]
 
         search_roots = [
+            self.rust_core_dir / "target" / "maturin",
             self.rust_core_dir / "target" / "release",
             self.rust_core_dir / "target" / "release" / "deps",
             self.rust_core_dir,
