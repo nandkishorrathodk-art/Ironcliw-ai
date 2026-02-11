@@ -724,9 +724,9 @@ class RustSelfHealer:
                 
                 # Try maturin develop to ensure Python bindings
                 result = await self._run_command(
-                    ["maturin", "develop", "--skip-build"],
+                    ["maturin", "develop", "--release"],
                     cwd=str(self.rust_core_dir),
-                    timeout=30
+                    timeout=120
                 )
                 if result.returncode == 0 and await self._quick_validate_rust():
                     logger.info("✅ Cached build validated")

@@ -17,19 +17,30 @@ from typing import Optional, List, Dict, Any, Callable, Union
 from contextlib import contextmanager
 import psutil
 
-# Try to import the Rust core
-try:
-    import jarvis_rust_core
-
-    RUST_AVAILABLE = True
-except ImportError:
-    RUST_AVAILABLE = False
-    jarvis_rust_core = None  # Define as None to prevent NameError
-    logging.warning(
-        "Rust core not available. Run 'maturin develop' in backend/vision/jarvis-rust-core"
-    )
-
 logger = logging.getLogger(__name__)
+
+# Resolve Rust module via canonical loader first.
+jarvis_rust_core = None
+RUST_AVAILABLE = False
+
+try:
+    from . import jarvis_rust_core as rust_runtime
+
+    if getattr(rust_runtime, "RUST_AVAILABLE", False) and getattr(rust_runtime, "jrc", None) is not None:
+        jarvis_rust_core = rust_runtime.jrc
+        RUST_AVAILABLE = True
+except Exception:
+    # Fallback to direct import for standalone execution contexts.
+    try:
+        import jarvis_rust_core as _jarvis_rust_core
+
+        jarvis_rust_core = _jarvis_rust_core
+        RUST_AVAILABLE = True
+    except ImportError:
+        jarvis_rust_core = None  # Define as None to prevent NameError
+        logger.warning(
+            "Rust core not available. Run 'maturin develop' in backend/vision/jarvis-rust-core"
+        )
 
 
 class SharedMemoryBuffer:

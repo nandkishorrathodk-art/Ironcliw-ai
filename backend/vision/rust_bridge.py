@@ -18,41 +18,55 @@ logger = logging.getLogger(__name__)
 RUST_AVAILABLE = False
 rust_processor = None
 jarvis_rust_core = None  # Initialize to None
+rust_lib = None
 
-# Check if Rust library is built
-rust_lib_path = Path(__file__).parent / "jarvis-rust-core" / "target" / "release"
-if rust_lib_path.exists():
-    # Try loading the dynamic library
-    try:
-        if sys.platform == "darwin":
-            lib_file = rust_lib_path / "libjarvis_rust_core.dylib"
-        elif sys.platform == "linux":
-            lib_file = rust_lib_path / "libjarvis_rust_core.so"
-        else:
-            lib_file = rust_lib_path / "jarvis_rust_core.dll"
-        
-        if lib_file.exists():
-            rust_lib = ctypes.CDLL(str(lib_file))
-            RUST_AVAILABLE = True
-            logger.info(f"Loaded Rust library from {lib_file}")
-    except Exception as e:
-        logger.warning(f"Failed to load Rust library: {e}")
+# Prefer the canonical loader to avoid import-path drift.
+try:
+    from . import jarvis_rust_core as rust_runtime
 
-# Try PyO3 bindings as fallback
+    if getattr(rust_runtime, "RUST_AVAILABLE", False) and getattr(rust_runtime, "jrc", None) is not None:
+        jarvis_rust_core = rust_runtime.jrc
+        RUST_AVAILABLE = True
+        logger.info("Using Rust core from canonical runtime loader")
+except Exception:
+    pass
+
+# Optional ctypes fallback for direct shared-library loading.
+if not RUST_AVAILABLE:
+    rust_lib_path = Path(__file__).parent / "jarvis-rust-core" / "target" / "release"
+    if rust_lib_path.exists():
+        try:
+            if sys.platform == "darwin":
+                lib_file = rust_lib_path / "libjarvis_rust_core.dylib"
+            elif sys.platform == "linux":
+                lib_file = rust_lib_path / "libjarvis_rust_core.so"
+            else:
+                lib_file = rust_lib_path / "jarvis_rust_core.dll"
+
+            if lib_file.exists():
+                rust_lib = ctypes.CDLL(str(lib_file))
+                RUST_AVAILABLE = True
+                logger.info(f"Loaded Rust shared library via ctypes from {lib_file}")
+        except Exception as e:
+            logger.warning(f"Failed to load Rust library via ctypes: {e}")
+
+# Final fallback: direct Python extension import.
 if not RUST_AVAILABLE:
     try:
-        import jarvis_rust_core
+        import jarvis_rust_core as _jarvis_rust_core
+        jarvis_rust_core = _jarvis_rust_core
         RUST_AVAILABLE = True
         logger.info("Using PyO3 Rust bindings")
     except ImportError:
-        jarvis_rust_core = None  # Make sure it's defined
+        jarvis_rust_core = None
         logger.warning("Rust acceleration not available")
 
 class RustImageProcessor:
     """Wrapper for Rust image processing functions"""
     
     def __init__(self):
-        self.use_ctypes = hasattr(self, 'rust_lib')
+        self.use_ctypes = rust_lib is not None
+        self.rust_lib = rust_lib
         self._init_rust_functions()
     
     def _init_rust_functions(self):
