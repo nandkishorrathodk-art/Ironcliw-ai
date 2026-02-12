@@ -4257,9 +4257,12 @@ coreml_engine: Optional[CoreMLVoiceEngineBridge] = None
 
 if COREML_AVAILABLE:
     try:
-        # v117.0: Resolve model paths relative to project root, not CWD
-        # This fixes the "model is not found at URL" error when CWD != project directory
-        project_root = os.path.dirname(backend_dir)  # backend_dir is already defined above
+        # v250.0: Resolve model paths relative to backend_dir, not project root.
+        # backend_dir = .../backend/ and models live at backend/models/.
+        # Previously: os.path.dirname(backend_dir) went to repo root (.../JARVIS-AI-Agent/)
+        # which doesn't have a models/ directory — causing "CoreML models not found"
+        # despite the models existing at backend/models/.
+        project_root = backend_dir  # backend_dir = .../backend/ (contains models/)
 
         # Check environment variables first (for custom model locations)
         vad_model_path = os.environ.get(

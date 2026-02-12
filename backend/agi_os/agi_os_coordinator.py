@@ -243,6 +243,11 @@ class AGIOSCoordinator:
         self._started_at = datetime.now()
         logger.info("Starting AGI OS...")
 
+        # v250.1: Store callback as instance attr so sub-methods can report
+        # intra-phase progress. Without this, _init_agi_os_components() runs
+        # 90+ seconds with zero DMS heartbeats → stall → rollback.
+        self._progress_callback = progress_callback
+
         async def _report(step: str, detail: str) -> None:
             if progress_callback:
                 try:
@@ -415,6 +420,20 @@ class AGIOSCoordinator:
                 self._action_orchestrator.resume()
             logger.info("AGI OS resumed")
 
+    async def _report_init_progress(self, component: str, detail: str) -> None:
+        """v250.1: Report intra-phase progress during _init_agi_os_components().
+
+        Each sub-component init takes 5-20s. Without reporting after each one,
+        the entire 90+ second _init_agi_os_components() looks like a single
+        silent block to the DMS watchdog, which triggers stall → rollback.
+        """
+        cb = getattr(self, '_progress_callback', None)
+        if cb:
+            try:
+                await cb(f"init_{component}", detail)
+            except Exception as e:
+                logger.debug("Init progress callback error (non-fatal): %s", e)
+
     async def _init_agi_os_components(self) -> None:
         """Initialize core AGI OS components."""
         # Voice communicator
@@ -434,6 +453,7 @@ class AGIOSCoordinator:
                     healthy=False,
                     error=str(e)
                 )
+        await self._report_init_progress("voice", "Voice communicator done")
 
         # Approval manager
         try:
@@ -451,6 +471,7 @@ class AGIOSCoordinator:
                 healthy=False,
                 error=str(e)
             )
+        await self._report_init_progress("approval", "Approval manager done")
 
         # Event stream
         try:
@@ -468,6 +489,7 @@ class AGIOSCoordinator:
                 healthy=False,
                 error=str(e)
             )
+        await self._report_init_progress("events", "Event stream done")
 
         # Action orchestrator
         if self._config['enable_autonomous_actions']:
@@ -486,6 +508,7 @@ class AGIOSCoordinator:
                     healthy=False,
                     error=str(e)
                 )
+        await self._report_init_progress("orchestrator", "Action orchestrator done")
 
         # v237.2: Start macOS notification monitor
         try:
@@ -503,6 +526,7 @@ class AGIOSCoordinator:
                 available=False,
                 error=str(e)
             )
+        await self._report_init_progress("notification_monitor", "Notification monitor done")
 
         # v237.3: Start macOS system event monitor (app focus, idle, sleep/wake, spaces)
         try:
@@ -520,6 +544,7 @@ class AGIOSCoordinator:
                 available=False,
                 error=str(e)
             )
+        await self._report_init_progress("system_event_monitor", "System event monitor done")
 
         # v237.4: Start Ghost Hands orchestrator (background automation)
         try:
@@ -537,6 +562,7 @@ class AGIOSCoordinator:
                 available=False,
                 error=str(e)
             )
+        await self._report_init_progress("ghost_hands", "Ghost Hands done")
 
         # v237.4: Ghost Mode Display (virtual display management)
         try:
@@ -554,6 +580,7 @@ class AGIOSCoordinator:
                 available=False,
                 error=str(e)
             )
+        await self._report_init_progress("ghost_display", "Ghost Display done")
 
     async def _init_intelligence_systems(self) -> None:
         """Initialize intelligence systems (UAE, SAI, CAI)."""

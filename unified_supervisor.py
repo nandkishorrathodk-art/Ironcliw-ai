@@ -53316,6 +53316,15 @@ class StartupWatchdog:
         self._escalation_cooldown = float(
             os.environ.get("JARVIS_DMS_ESCALATION_COOLDOWN", "60")
         )
+        # v250.1: Stall handler also needs cooldown — same rapid-fire bug.
+        # Without this, stall handler escalates warn→diag→restart×3→rollback
+        # in 25 seconds (5s check interval × 5 escalation steps). With cooldown,
+        # each escalation step waits JARVIS_DMS_STALL_ESCALATION_COOLDOWN (default
+        # 15s) before the next, giving the init time to complete.
+        self._last_stall_action_time: Dict[str, float] = {}
+        self._stall_escalation_cooldown = float(
+            os.environ.get("JARVIS_DMS_STALL_ESCALATION_COOLDOWN", "15")
+        )
 
         # v232.2: Progress-aware watchdog — don't kill processes that are advancing
         self._progress_history: List[Tuple[float, int]] = []  # (timestamp, progress)
@@ -53640,6 +53649,11 @@ class StartupWatchdog:
             self._progress_history.clear()
             # v232.1: Reset escalation cooldown for new phase
             self._last_timeout_action_time.pop(phase_key, None)
+            # v250.1: Also reset stall escalation state for new phase
+            self._last_stall_action_time.pop(phase_key, None)
+            self._warnings_issued.pop(phase_key, None)
+            self._diagnostics_dumped.pop(phase_key, None)
+            self._restarts_attempted.pop(phase_key, None)
             self._logger.debug(
                 f"[DMS] Phase transition: {old_phase} → {phase_key} "
                 f"(progress history reset)"
@@ -53776,11 +53790,17 @@ class StartupWatchdog:
                 # Check for stall (no progress change)
                 progress_stale = now - self._last_progress_time if self._last_progress_time else 0
                 if progress_stale > self._stall_threshold:
-                    await self._handle_stall(
-                        self._current_phase,
-                        progress_stale,
-                        recovery_action
-                    )
+                    # v250.1: Enforce cooldown between stall escalation steps.
+                    # Without this, every 5s check escalates one step, reaching
+                    # rollback in 25s. Cooldown ensures minimum spacing.
+                    _last_stall_action = self._last_stall_action_time.get(self._current_phase, 0)
+                    if (now - _last_stall_action) >= self._stall_escalation_cooldown:
+                        self._last_stall_action_time[self._current_phase] = now
+                        await self._handle_stall(
+                            self._current_phase,
+                            progress_stale,
+                            recovery_action
+                        )
                 
             except asyncio.CancelledError:
                 self._logger.debug("[DMS] Watchdog loop cancelled")
