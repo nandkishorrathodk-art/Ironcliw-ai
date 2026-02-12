@@ -23,6 +23,21 @@ import os
 
 logger = logging.getLogger(__name__)
 
+try:
+    from backend.core.supervisor.unified_voice_orchestrator import (
+        get_voice_orchestrator,
+        VoicePriority,
+        VoiceSource,
+        SpeechTopic,
+    )
+    VOICE_ORCHESTRATOR_AVAILABLE = True
+except Exception:
+    VOICE_ORCHESTRATOR_AVAILABLE = False
+    get_voice_orchestrator = None
+    VoicePriority = None
+    VoiceSource = None
+    SpeechTopic = None
+
 
 class DisplayVoiceHandler:
     """
@@ -66,6 +81,7 @@ class DisplayVoiceHandler:
         self.voice_enabled = os.getenv('JARVIS_VOICE_ENABLED', 'true').lower() == 'true'
         self.voice_rate = float(os.getenv('JARVIS_VOICE_RATE', '1.0'))
         self.voice_name = os.getenv('JARVIS_VOICE_NAME', 'Daniel')  # British male voice
+        self._voice_orchestrator = get_voice_orchestrator() if VOICE_ORCHESTRATOR_AVAILABLE else None
 
         logger.info(f"[DISPLAY VOICE] Initialized (enabled={self.voice_enabled})")
 
@@ -91,8 +107,11 @@ class DisplayVoiceHandler:
 
         logger.info(f"[DISPLAY VOICE] Speaking: {message}")
 
-        # For display monitor, always use macOS say for immediate feedback
-        # This ensures the announcement is heard right when the TV is detected
+        # Prefer unified orchestrator to prevent overlapping voice pipelines.
+        if await self._speak_with_unified_orchestrator(message, priority):
+            return
+
+        # Fallback to direct macOS say when orchestrator path is unavailable.
         await self._speak_with_say(message)
 
     async def speak_async(self, message: str, priority: str = "normal") -> None:
@@ -195,6 +214,39 @@ class DisplayVoiceHandler:
             logger.error("[DISPLAY VOICE] say command not found (not on macOS?)")
         except Exception as e:
             logger.error(f"[DISPLAY VOICE] say command error: {e}")
+
+    async def _speak_with_unified_orchestrator(self, message: str, priority: str) -> bool:
+        """
+        Route display narration through the unified orchestrator when available.
+
+        This keeps display prompts in the same deduplicated queue as supervisor
+        narration and avoids overlapping `say` subprocesses.
+        """
+        if not self._voice_orchestrator or not VOICE_ORCHESTRATOR_AVAILABLE:
+            return False
+
+        priority_map = {
+            "low": VoicePriority.LOW,
+            "normal": VoicePriority.MEDIUM,
+            "high": VoicePriority.HIGH,
+            "urgent": VoicePriority.CRITICAL,
+        }
+        mapped_priority = priority_map.get(priority.lower(), VoicePriority.MEDIUM)
+
+        try:
+            accepted = await self._voice_orchestrator.speak(
+                text=message,
+                priority=mapped_priority,
+                source=VoiceSource.SYSTEM,
+                wait=False,
+                topic=SpeechTopic.GENERAL,
+            )
+            if accepted:
+                logger.debug("[DISPLAY VOICE] Routed through unified voice orchestrator")
+            return bool(accepted)
+        except Exception as e:
+            logger.debug(f"[DISPLAY VOICE] Unified orchestrator path failed: {e}")
+            return False
 
     def set_enabled(self, enabled: bool) -> None:
         """
