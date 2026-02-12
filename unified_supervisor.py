@@ -60464,6 +60464,8 @@ class JarvisSystemKernel:
             # - Tiered Command Router (intent classification)
             # - Wire execute_tier2 → AgenticTaskRunner
             # =====================================================================
+            self._current_startup_phase = "two_tier"
+            self._current_startup_progress = 56
             issue_collector.set_current_zone("Zone 4.5")
             two_tier_timeout = float(os.environ.get("JARVIS_TWO_TIER_TIMEOUT", "60.0"))
             if self._startup_watchdog:
@@ -60712,6 +60714,8 @@ class JarvisSystemKernel:
             )
 
             # Phase 6: Enterprise Services (Zone 6.4)
+            self._current_startup_phase = "enterprise"
+            self._current_startup_progress = 80
             issue_collector.set_current_phase("Phase 6: Enterprise Services")
             issue_collector.set_current_zone("Zone 6.4")
             # v192.0: Register enterprise operational timeout with DMS
@@ -60768,6 +60772,8 @@ class JarvisSystemKernel:
             # - VoiceApprovalManager (approval workflows)
             # - ProactiveEventStream (event-driven notifications)
             # =================================================================
+            self._current_startup_phase = "agi_os"
+            self._current_startup_progress = 85
             issue_collector.set_current_phase("Phase 6.5: AGI OS")
             issue_collector.set_current_zone("Zone 6.5")
             agi_os_timeout = float(os.environ.get("JARVIS_AGI_OS_TIMEOUT", "60.0"))
@@ -60813,6 +60819,8 @@ class JarvisSystemKernel:
             # Optional — continues without if BetterDisplay unavailable.
             # Includes crash recovery for stranded windows and health monitoring.
             # =================================================================
+            self._current_startup_phase = "ghost_display"
+            self._current_startup_progress = 88
             issue_collector.set_current_phase("Phase 6.7: Ghost Display")
             issue_collector.set_current_zone("Zone 6.7")
             ghost_display_timeout = _get_env_float("JARVIS_GHOST_DISPLAY_TIMEOUT", 30.0)
@@ -60863,6 +60871,8 @@ class JarvisSystemKernel:
             # Requires Ghost Display (Phase 6.7) — skips gracefully if absent.
             # Non-fatal: continues without if components unavailable.
             # =================================================================
+            self._current_startup_phase = "visual_pipeline"
+            self._current_startup_progress = 90
             issue_collector.set_current_phase("Phase 6.8: Visual Pipeline")
             issue_collector.set_current_zone("Zone 6.8")
             visual_pipeline_timeout = _get_env_float("JARVIS_VISUAL_PIPELINE_TIMEOUT", 45.0)
@@ -60913,6 +60923,8 @@ class JarvisSystemKernel:
             # Start the React frontend and transition browser from loading
             # page to the main JARVIS UI.
             # =================================================================
+            self._current_startup_phase = "frontend"
+            self._current_startup_progress = 93
             issue_collector.set_current_phase("Phase 7: Frontend Transition")
             issue_collector.set_current_zone("Zone 7")
             # v187.0: Update DMS at phase START to fix timeout tracking
@@ -63371,10 +63383,16 @@ class JarvisSystemKernel:
             return True
 
         self._update_component_status("agi_os", "running", "Initializing AGI OS...")
-        await self._broadcast_progress(85, "agi_os_init", "Initializing AGI Operating System...")
+        await self._broadcast_progress(85, "agi_os", "Initializing AGI Operating System...")
 
         with self.logger.section_start(LogSection.BOOT, "Zone 6.5 | AGI OS"):
             try:
+                agi_os_operational_timeout = _get_env_float("JARVIS_AGI_OS_TIMEOUT", 60.0)
+                agi_os_init_timeout = _get_env_float(
+                    "JARVIS_AGI_OS_INIT_TIMEOUT",
+                    agi_os_operational_timeout + 30.0,
+                )
+
                 # Voice announcement
                 if self._narrator and self.config.voice_enabled:
                     await self._narrator.speak(
@@ -63406,21 +63424,40 @@ class JarvisSystemKernel:
                     # Without this, the 60-75s gap between progress 86→87
                     # triggers the DMS 60s stall detector.
                     # =====================================================================
-                    await self._broadcast_progress(86, "agi_os_coordinator", "Starting AGI OS Coordinator...")
+                    await self._broadcast_progress(86, "agi_os", "Starting AGI OS Coordinator...")
 
                     # Sub-progress counter: 86.1 → 86.6 across coordinator phases
                     _agi_sub = {"n": 0}
+
                     async def _agi_os_progress(step: str, detail: str) -> None:
                         _agi_sub["n"] += 1
                         # Broadcast sub-progress to keep DMS watchdog alive
                         # Progress stays within 86-87 range (allocated for agi_os)
                         await self._broadcast_progress(
-                            86, f"agi_os_{step}", f"AGI OS: {detail}"
+                            86, "agi_os", f"AGI OS [{step}]: {detail}"
                         )
 
-                    self._agi_os = await start_agi_os(
-                        progress_callback=_agi_os_progress
-                    )
+                    try:
+                        self._agi_os = await asyncio.wait_for(
+                            start_agi_os(progress_callback=_agi_os_progress),
+                            timeout=agi_os_init_timeout,
+                        )
+                    except asyncio.TimeoutError:
+                        self._agi_os_status["status"] = "timeout"
+                        self._update_component_status(
+                            "agi_os",
+                            "error",
+                            f"Initialization timed out after {agi_os_init_timeout:.0f}s",
+                        )
+                        self.logger.warning(
+                            f"[AGI-OS] AGI OS initialization timed out after {agi_os_init_timeout:.1f}s"
+                        )
+                        try:
+                            cleanup_timeout = min(15.0, max(5.0, agi_os_init_timeout * 0.2))
+                            await asyncio.wait_for(stop_agi_os(), timeout=cleanup_timeout)
+                        except Exception as cleanup_err:
+                            self.logger.debug(f"[AGI-OS] Timeout cleanup warning: {cleanup_err}")
+                        return False
 
                     if self._agi_os:
                         self._agi_os_status["coordinator"] = True
@@ -63464,7 +63501,7 @@ class JarvisSystemKernel:
                     # =====================================================================
                     # STEP 5: Complete
                     # =====================================================================
-                    await self._broadcast_progress(87, "agi_os_ready", "AGI OS active")
+                    await self._broadcast_progress(87, "agi_os", "AGI OS active")
 
                     if self._agi_os_status["coordinator"]:
                         self._agi_os_status["status"] = "active"
@@ -68800,6 +68837,50 @@ class JarvisSystemKernel:
     # WebSocket-based progress broadcasting for real-time startup status.
     # =========================================================================
 
+    def _resolve_watchdog_stage(
+        self,
+        stage: str,
+        is_heartbeat: bool = False,
+    ) -> Optional[str]:
+        """
+        Resolve broadcast stage names to canonical DMS phase keys.
+
+        Control-plane progress (DMS and internal progress tracking) must remain
+        deterministic even when UI transport stages include sub-step identifiers
+        (e.g., ``agi_os_init_voice``) or heartbeat-only labels.
+        """
+        canonical = {
+            "loading": "loading_server",
+            "loading_server": "loading_server",
+            "preflight": "preflight",
+            "resources": "resources",
+            "backend": "backend",
+            "intelligence": "intelligence",
+            "two_tier": "two_tier",
+            "trinity": "trinity",
+            "enterprise": "enterprise",
+            "agi_os": "agi_os",
+            "ghost_display": "ghost_display",
+            "visual_pipeline": "visual_pipeline",
+            "frontend": "frontend",
+        }
+
+        if stage in canonical:
+            return canonical[stage]
+
+        if stage.startswith("agi_os"):
+            return "agi_os"
+        if stage.startswith("ghost_display"):
+            return "ghost_display"
+        if stage.startswith("visual_pipeline"):
+            return "visual_pipeline"
+
+        if is_heartbeat:
+            heartbeat_phase = getattr(self, "_current_startup_phase", "")
+            return canonical.get(heartbeat_phase)
+
+        return None
+
     async def _broadcast_startup_progress(
         self,
         stage: str,
@@ -68827,29 +68908,8 @@ class JarvisSystemKernel:
         Returns:
             True if broadcast succeeded, False otherwise (but never blocks startup)
         """
-        # Skip if no loading server configured or not running
-        if self.config.loading_server_port == 0:
-            return False
-
-        if not hasattr(self, '_loading_server_process') or not self._loading_server_process:
-            return False
-
-        # v210.0: Skip if loading server isn't confirmed ready (health check passed)
-        # This prevents broadcast attempts before the server is accepting connections
-        if not getattr(self, '_loading_server_ready', False):
-            return False
-
         # Single clamp point - enforce progress bounds
         progress = min(100, max(0, progress))
-
-        # Build progress data matching loading_server.py expected format
-        progress_data = {
-            "stage": stage,
-            "message": message,
-            "progress": progress,
-            "timestamp": datetime.now().isoformat(),
-            "metadata": metadata or {},
-        }
 
         # v183.0: Track current progress for heartbeat payloads
         # v227.1: Phase-aware monotonic guard — only startup phases update
@@ -68861,7 +68921,8 @@ class JarvisSystemKernel:
         # ProgressController into thinking startup is complete.
         _STARTUP_STAGES = {
             "loading", "preflight", "resources", "backend", "intelligence",
-            "two_tier", "trinity", "enterprise", "agi_os", "frontend",
+            "two_tier", "trinity", "enterprise", "agi_os", "ghost_display",
+            "visual_pipeline", "frontend",
         }
         current = getattr(self, '_current_progress', 0) or 0
         if stage in _STARTUP_STAGES or is_heartbeat:
@@ -68876,9 +68937,36 @@ class JarvisSystemKernel:
             self._current_progress = 100
         # else: runtime status (degraded, ready, invincible_node) — don't touch _current_progress
 
-        # v186.0: Update Dead Man's Switch with current phase/progress
+        # v251.0: Update DMS independently of loading-server transport.
+        # Control-plane heartbeats must not depend on UI availability.
         if self._startup_watchdog:
-            self._startup_watchdog.update_phase(stage, progress)
+            watchdog_stage = self._resolve_watchdog_stage(
+                stage=stage,
+                is_heartbeat=is_heartbeat,
+            )
+            if watchdog_stage:
+                self._startup_watchdog.update_phase(watchdog_stage, progress)
+
+        # Skip transport if no loading server configured or not running
+        if self.config.loading_server_port == 0:
+            return False
+
+        if not hasattr(self, '_loading_server_process') or not self._loading_server_process:
+            return False
+
+        # v210.0: Skip if loading server isn't confirmed ready (health check passed)
+        # This prevents broadcast attempts before the server is accepting connections
+        if not getattr(self, '_loading_server_ready', False):
+            return False
+
+        # Build progress data matching loading_server.py expected format
+        progress_data = {
+            "stage": stage,
+            "message": message,
+            "progress": progress,
+            "timestamp": datetime.now().isoformat(),
+            "metadata": metadata or {},
+        }
 
         # v205.0: Get timeout from StartupTimeouts if available, default 2.0s
         timeout = 2.0
@@ -69188,7 +69276,8 @@ class JarvisSystemKernel:
                         "components": components,
                         "heartbeat": True,
                         "is_heartbeat": True,  # Additional flag for downstream filtering
-                    }
+                    },
+                    is_heartbeat=True,
                 )
 
                 # Update tracking

@@ -68,12 +68,14 @@ Usage:
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import os
+import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum, auto
-from typing import Any, Dict, List, Optional
+from typing import Any, Awaitable, Callable, Dict, List, Optional
 
 from .realtime_voice_communicator import (
     RealTimeVoiceCommunicator,
@@ -111,6 +113,14 @@ def _env_bool(key: str, default: bool) -> bool:
     """Read a boolean from env vars. v241.0."""
     val = os.getenv(key, str(default)).lower()
     return val in ("true", "1", "yes")
+
+
+def _env_float(key: str, default: float) -> float:
+    """Read a float from env vars with safe fallback."""
+    try:
+        return float(os.getenv(key, str(default)))
+    except (TypeError, ValueError):
+        return default
 
 
 class AGIOSState(Enum):
@@ -434,6 +444,54 @@ class AGIOSCoordinator:
             except Exception as e:
                 logger.debug("Init progress callback error (non-fatal): %s", e)
 
+    async def _run_timed_init_step(
+        self,
+        step_name: str,
+        operation: Callable[[], Awaitable[Any]],
+        timeout_seconds: float,
+    ) -> Any:
+        """
+        Execute an init step with periodic progress heartbeats and hard timeout.
+
+        This prevents silent >60s gaps that trigger supervisor stall detection
+        while still enforcing deterministic upper bounds per subsystem.
+        """
+        heartbeat_seconds = max(1.0, _env_float("JARVIS_AGI_OS_STEP_HEARTBEAT", 10.0))
+        started = time.monotonic()
+        task = asyncio.create_task(operation(), name=f"agi_os_init_{step_name}")
+
+        try:
+            while True:
+                elapsed = time.monotonic() - started
+                remaining = timeout_seconds - elapsed
+                if remaining <= 0:
+                    task.cancel()
+                    with contextlib.suppress(asyncio.CancelledError, Exception):
+                        await task
+                    raise asyncio.TimeoutError(
+                        f"{step_name} initialization timed out after {timeout_seconds:.1f}s"
+                    )
+
+                wait_slice = min(heartbeat_seconds, remaining)
+                done, _ = await asyncio.wait(
+                    {task},
+                    timeout=wait_slice,
+                    return_when=asyncio.FIRST_COMPLETED,
+                )
+                if task in done:
+                    return task.result()
+
+                await self._report_init_progress(
+                    step_name,
+                    f"{step_name} initializing ({elapsed + wait_slice:.0f}s elapsed)",
+                )
+        except Exception:
+            if not task.done():
+                task.cancel()
+                with contextlib.suppress(asyncio.CancelledError, Exception):
+                    await task
+            raise
+
     async def _init_agi_os_components(self) -> None:
         """Initialize core AGI OS components."""
         # Voice communicator
@@ -601,6 +659,7 @@ class AGIOSCoordinator:
                 available=False,
                 error=str(e)
             )
+        await self._report_init_progress("uae", "UAE initialization complete")
 
         # SAI (Self-Aware Intelligence)
         try:
@@ -619,6 +678,7 @@ class AGIOSCoordinator:
                 available=False,
                 error=str(e)
             )
+        await self._report_init_progress("sai", "SAI initialization complete")
 
         # CAI (Context Awareness Intelligence)
         try:
@@ -637,11 +697,17 @@ class AGIOSCoordinator:
                 available=False,
                 error=str(e)
             )
+        await self._report_init_progress("cai", "CAI initialization complete")
 
         # Learning Database
         try:
             from core.hybrid_orchestrator import _get_learning_db
-            self._learning_db = await _get_learning_db()
+            learning_db_timeout = _env_float("JARVIS_AGI_OS_LEARNING_DB_TIMEOUT", 60.0)
+            self._learning_db = await self._run_timed_init_step(
+                "learning_db",
+                _get_learning_db,
+                timeout_seconds=learning_db_timeout,
+            )
             if self._learning_db:
                 self._component_status['learning_db'] = ComponentStatus(
                     name='learning_db',
@@ -655,14 +721,24 @@ class AGIOSCoordinator:
                 available=False,
                 error=str(e)
             )
+        await self._report_init_progress("learning_db", "Learning DB initialization complete")
 
         # Speaker Verification Service (for voice biometrics)
         # v236.1: Use singleton to avoid duplicate instances (double memory,
         # competing encoder loads, enrollment updates not shared).
         try:
             from voice.speaker_verification_service import get_speaker_verification_service
-            self._speaker_verification = await get_speaker_verification_service(
-                learning_db=self._learning_db
+            speaker_timeout = _env_float("JARVIS_AGI_OS_SPEAKER_TIMEOUT", 90.0)
+
+            async def _load_speaker_verification() -> Any:
+                return await get_speaker_verification_service(
+                    learning_db=self._learning_db
+                )
+
+            self._speaker_verification = await self._run_timed_init_step(
+                "speaker_verification",
+                _load_speaker_verification,
+                timeout_seconds=speaker_timeout,
             )
             self._component_status['speaker_verification'] = ComponentStatus(
                 name='speaker_verification',
@@ -676,22 +752,42 @@ class AGIOSCoordinator:
                 available=False,
                 error=str(e)
             )
+        await self._report_init_progress(
+            "speaker_verification",
+            "Speaker verification initialization complete",
+        )
 
         # Owner Identity Service (dynamic voice biometric identification)
         try:
-            self._owner_identity = await get_owner_identity(
-                speaker_verification=self._speaker_verification,
-                learning_db=self._learning_db
+            owner_identity_timeout = _env_float("JARVIS_AGI_OS_OWNER_ID_TIMEOUT", 45.0)
+
+            async def _load_owner_identity() -> tuple[Any, Any]:
+                service = await get_owner_identity(
+                    speaker_verification=self._speaker_verification,
+                    learning_db=self._learning_db
+                )
+                profile = await service.get_current_owner()
+                return service, profile
+
+            self._owner_identity, owner_profile = await self._run_timed_init_step(
+                "owner_identity",
+                _load_owner_identity,
+                timeout_seconds=owner_identity_timeout,
             )
-            owner_profile = await self._owner_identity.get_current_owner()
             self._component_status['owner_identity'] = ComponentStatus(
                 name='owner_identity',
                 available=True
             )
+            owner_name = getattr(owner_profile, "name", "unknown")
+            owner_confidence = getattr(
+                getattr(owner_profile, "identity_confidence", None),
+                "value",
+                "unknown",
+            )
             logger.info(
                 "Owner identity service loaded - Owner: %s (confidence: %s)",
-                owner_profile.name,
-                owner_profile.identity_confidence.value
+                owner_name,
+                owner_confidence,
             )
         except Exception as e:
             logger.warning("Owner identity service not available: %s", e)
@@ -700,18 +796,33 @@ class AGIOSCoordinator:
                 available=False,
                 error=str(e)
             )
+        await self._report_init_progress("owner_identity", "Owner identity initialization complete")
 
     async def _init_neural_mesh(self) -> None:
         """Initialize Neural Mesh coordinator and production agents."""
         try:
             from neural_mesh import start_neural_mesh
-            self._neural_mesh = await start_neural_mesh()
+            mesh_timeout = _env_float("JARVIS_AGI_OS_NEURAL_MESH_TIMEOUT", 120.0)
+            self._neural_mesh = await self._run_timed_init_step(
+                "neural_mesh",
+                start_neural_mesh,
+                timeout_seconds=mesh_timeout,
+            )
 
             # v237.0: Register production agents (previously only called from deprecated supervisor)
             n_production = 0
             try:
                 from neural_mesh.agents.agent_initializer import initialize_production_agents
-                registered = await initialize_production_agents(self._neural_mesh)
+                agent_timeout = _env_float("JARVIS_AGI_OS_NEURAL_AGENT_TIMEOUT", 90.0)
+
+                async def _init_production_agents() -> Any:
+                    return await initialize_production_agents(self._neural_mesh)
+
+                registered = await self._run_timed_init_step(
+                    "neural_mesh_agents",
+                    _init_production_agents,
+                    timeout_seconds=agent_timeout,
+                )
                 n_production = len(registered)
             except Exception as agent_exc:
                 logger.warning("Production agent initialization failed (mesh still running): %s", agent_exc)
@@ -721,7 +832,12 @@ class AGIOSCoordinator:
             n_adapters = 0
             try:
                 from neural_mesh import start_jarvis_neural_mesh
-                self._jarvis_bridge = await start_jarvis_neural_mesh()
+                bridge_timeout = _env_float("JARVIS_AGI_OS_NEURAL_BRIDGE_TIMEOUT", 90.0)
+                self._jarvis_bridge = await self._run_timed_init_step(
+                    "neural_mesh_bridge",
+                    start_jarvis_neural_mesh,
+                    timeout_seconds=bridge_timeout,
+                )
                 n_adapters = len(self._jarvis_bridge.registered_agents) if hasattr(self._jarvis_bridge, 'registered_agents') else 0
             except Exception as bridge_exc:
                 logger.warning("JARVIS Neural Mesh Bridge failed (mesh still running): %s", bridge_exc)
