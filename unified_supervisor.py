@@ -130,12 +130,12 @@ for s in range(1, 32):
     try:
         if s not in (9, 17):
             signal.signal(s, signal.SIG_IGN)
-    except:  # noqa: E722 — intentional: signal-immune bootstrap must not fail
+    except Exception:
         pass
 
 # New session
 try: os.setsid()
-except:  # noqa: E722 — intentional: setsid may fail on some platforms
+except Exception:
     pass
 
 # Run the actual command

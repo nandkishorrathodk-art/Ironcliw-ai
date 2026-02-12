@@ -278,7 +278,10 @@ class UnifiedAgentRuntime:
         self._max_queue_size = _env_int("AGENT_RUNTIME_MAX_QUEUE", 50)
         self._llm_concurrency = _env_int("AGENT_RUNTIME_LLM_CONCURRENCY", 2)
         self._step_max_retries = _env_int("AGENT_RUNTIME_STEP_MAX_RETRIES", 3)
-        self._goal_gen_interval = _env_float("AGENT_RUNTIME_GOAL_GEN_INTERVAL", 60.0)
+        self._goal_gen_interval = _env_float(
+            "AGENT_RUNTIME_HEARTBEAT_INTERVAL_SECONDS",
+            _env_float("AGENT_RUNTIME_GOAL_GEN_INTERVAL", 60.0),
+        )
         self._goal_gen_threshold = _env_float("AGENT_RUNTIME_GOAL_GEN_THRESHOLD", 0.7)
         self._enabled = _env_bool("AGENT_RUNTIME_ENABLED", True)
         self._cleanup_age = _env_float("AGENT_RUNTIME_CLEANUP_AGE", 86400 * 7)
@@ -292,6 +295,9 @@ class UnifiedAgentRuntime:
             "send", "email", "message", "post", "publish", "deploy",
             "transfer", "payment", "purchase", "sudo", "admin",
         }
+
+        # v240.0: Mesh coordinator reference for heartbeat context gathering
+        self._mesh_coordinator = None
 
     # ─────────────────────────────────────────────────────────
     # Lifecycle
@@ -362,6 +368,8 @@ class UnifiedAgentRuntime:
         if not coordinator or not hasattr(coordinator, 'bus'):
             logger.debug("[AgentRuntime] No coordinator bus — mesh connection skipped")
             return
+        # v240.0: Store coordinator for heartbeat context queries
+        self._mesh_coordinator = coordinator
         bus = coordinator.bus
         if not bus:
             logger.debug("[AgentRuntime] Bus is None — mesh connection skipped")
@@ -1689,7 +1697,10 @@ class UnifiedAgentRuntime:
             )
             engine = get_intervention_engine()
             if engine and hasattr(engine, 'generate_goal'):
-                goal_spec = await engine.generate_goal()
+                # v240.0: Feed context to the heartbeat so the engine can
+                # detect situations (deadline, idle, repetition, etc.)
+                context = await self._gather_heartbeat_context()
+                goal_spec = await engine.generate_goal(context=context)
                 if goal_spec:
                     await self.submit_goal(
                         description=goal_spec["description"],
@@ -1705,6 +1716,198 @@ class UnifiedAgentRuntime:
                     )
         except Exception as e:
             logger.debug("[AgentRuntime] Proactive goal generation failed: %s", e)
+
+    # ─────────────────────────────────────────────────────────
+    # v240.0: Heartbeat Context Gathering
+    # ─────────────────────────────────────────────────────────
+
+    async def _gather_heartbeat_context(self) -> Dict[str, Any]:
+        """Gather context from mesh agents and system metrics for the
+        intervention engine.  Returns {} on any failure — the heartbeat
+        loop must never be blocked by context gathering."""
+        if not _env_bool("AGENT_RUNTIME_HEARTBEAT_ENABLED", True):
+            return {}
+        global_timeout = _env_float("AGENT_RUNTIME_HEARTBEAT_TIMEOUT", 10.0)
+        agent_timeout = _env_float("AGENT_RUNTIME_HEARTBEAT_AGENT_TIMEOUT", 5.0)
+        try:
+            return await asyncio.wait_for(
+                self._gather_heartbeat_context_inner(agent_timeout),
+                timeout=global_timeout,
+            )
+        except (asyncio.TimeoutError, Exception) as e:
+            logger.debug("[AgentRuntime] Heartbeat context gather failed: %s", e)
+            return {}
+
+    async def _gather_heartbeat_context_inner(
+        self, agent_timeout: float
+    ) -> Dict[str, Any]:
+        """Parallel gather from mesh agents + cheap system metrics.
+
+        Populates both **situation-type keys** (consumed by
+        ``_detect_situation_type()``) and **UserState signal sources**
+        (consumed by ``_collect_user_state_signals()``).
+        """
+        context: Dict[str, Any] = {}
+
+        # ── Cheap system metrics (always available) ─────────────
+        try:
+            import psutil  # type: ignore[import-untyped]
+            context["system_cpu_percent"] = psutil.cpu_percent(interval=None)
+            mem = psutil.virtual_memory()
+            context["system_memory_percent"] = mem.percent
+        except ImportError:
+            pass
+
+        from datetime import datetime
+        now = datetime.now()
+        context["time_of_day"] = {
+            "hour": now.hour,
+            "is_late_night": now.hour >= 23 or now.hour < 5,
+            "is_weekend": now.weekday() >= 5,
+        }
+
+        # ── Mesh agent queries (parallel, fault-isolated) ──────
+        coordinator = self._mesh_coordinator
+        if coordinator is None:
+            logger.debug("[AgentRuntime] No mesh coordinator — heartbeat context is system-only")
+            return context
+
+        results = await asyncio.gather(
+            self._safe_agent_query(
+                coordinator, "ContextTrackerAgent",
+                {"action": "get_context"}, agent_timeout,
+            ),
+            self._safe_agent_query(
+                coordinator, "GoalInferenceAgent",
+                {"action": "get_goal_history"}, agent_timeout,
+            ),
+            self._safe_agent_query(
+                coordinator, "SpatialAwarenessAgent",
+                {"action": "get_screen_state"}, agent_timeout,
+            ),
+            self._safe_agent_query(
+                coordinator, "GoogleWorkspaceAgent",
+                {"action": "check_calendar_events", "date": "today", "days": 1},
+                agent_timeout,
+            ),
+            return_exceptions=True,
+        )
+
+        ctx_result, goal_result, spatial_result, calendar_result = results
+
+        # ── Map ContextTrackerAgent → situation keys + signal sources
+        if isinstance(ctx_result, dict):
+            # Situation-type keys
+            session_duration = ctx_result.get("session_duration", 0)
+            if isinstance(session_duration, (int, float)):
+                context["time_without_break"] = session_duration
+            task_duration = ctx_result.get("current_task_duration", 0)
+            if isinstance(task_duration, (int, float)):
+                context["time_in_current_task"] = task_duration
+            # UserState signal sources
+            behavior = ctx_result.get("user_behavior") or ctx_result.get("behavior") or {}
+            if isinstance(behavior, dict):
+                context["user_behavior"] = {
+                    "task_switches": behavior.get("task_switches", 0),
+                    "time_on_task": behavior.get("time_on_task", task_duration),
+                    "recent_errors": behavior.get("recent_errors", 0),
+                }
+            else:
+                context["user_behavior"] = {
+                    "task_switches": 0,
+                    "time_on_task": task_duration,
+                    "recent_errors": 0,
+                }
+            interactions = ctx_result.get("system_interactions") or ctx_result.get("interactions") or {}
+            if isinstance(interactions, dict):
+                context["system_interactions"] = {
+                    "help_searches": interactions.get("help_searches", 0),
+                    "undo_redo_count": interactions.get("undo_redo_count", 0),
+                }
+            else:
+                context["system_interactions"] = {"help_searches": 0, "undo_redo_count": 0}
+
+        # ── Map GoalInferenceAgent → repetitive_actions
+        if isinstance(goal_result, dict):
+            history = goal_result.get("history") or goal_result.get("goals") or []
+            if isinstance(history, list):
+                from collections import Counter
+                categories = Counter(
+                    g.get("category", g.get("type", "unknown"))
+                    for g in history
+                    if isinstance(g, dict)
+                )
+                # Most frequent category count = repetitive_actions
+                most_common = categories.most_common(1)
+                context["repetitive_actions"] = most_common[0][1] if most_common else 0
+
+        # ── Map SpatialAwarenessAgent → vision_data signal source
+        if isinstance(spatial_result, dict):
+            screen_activity = spatial_result.get("screen_activity") or spatial_result.get("activity") or {}
+            context["vision_data"] = {"screen_activity": screen_activity if isinstance(screen_activity, dict) else {}}
+            # Extract idle_time if available for situation detection
+            idle_time = screen_activity.get("idle_time", 0) if isinstance(screen_activity, dict) else 0
+            if isinstance(idle_time, (int, float)) and idle_time > 0:
+                context.setdefault("time_without_break", idle_time)
+
+        # ── Map GoogleWorkspaceAgent → deadline_approaching
+        if isinstance(calendar_result, dict):
+            events = calendar_result.get("events") or []
+            if isinstance(events, list) and events:
+                deadline_threshold_min = 30
+                for event in events:
+                    if not isinstance(event, dict):
+                        continue
+                    start_str = event.get("start")
+                    if not start_str or not isinstance(start_str, str):
+                        continue
+                    try:
+                        from datetime import datetime as dt_cls
+                        # Handle ISO format with or without timezone
+                        start_str_clean = start_str.replace("Z", "+00:00")
+                        event_start = dt_cls.fromisoformat(start_str_clean)
+                        # Compare in naive if needed
+                        now_compare = now
+                        if event_start.tzinfo and not now_compare.tzinfo:
+                            from datetime import timezone
+                            now_compare = now.replace(tzinfo=timezone.utc)
+                        elif not event_start.tzinfo and now_compare.tzinfo:
+                            event_start = event_start.replace(tzinfo=now_compare.tzinfo)
+                        minutes_until = (event_start - now_compare).total_seconds() / 60
+                        if 0 < minutes_until <= deadline_threshold_min:
+                            context["deadline_approaching"] = True
+                            break
+                    except (ValueError, TypeError):
+                        continue
+
+        keys = list(context.keys())
+        logger.debug("[AgentRuntime] Heartbeat context keys: %s", keys)
+        return context
+
+    async def _safe_agent_query(
+        self,
+        coordinator,
+        agent_name: str,
+        payload: Dict[str, Any],
+        timeout: float,
+    ) -> Optional[Dict[str, Any]]:
+        """Query a single mesh agent with timeout + error isolation.
+        Returns the agent's response dict, or None on any failure."""
+        try:
+            agent = coordinator.get_agent(agent_name)
+            if agent is None:
+                return None
+            result = await asyncio.wait_for(
+                agent.execute_task(payload),
+                timeout=timeout,
+            )
+            return result if isinstance(result, dict) else None
+        except asyncio.TimeoutError:
+            logger.debug("[AgentRuntime] Mesh agent %s timed out (%.1fs)", agent_name, timeout)
+            return None
+        except Exception as e:
+            logger.debug("[AgentRuntime] Mesh agent %s query failed: %s", agent_name, e)
+            return None
 
 
 # ─────────────────────────────────────────────────────────────

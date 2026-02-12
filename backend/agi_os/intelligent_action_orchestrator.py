@@ -740,6 +740,11 @@ class IntelligentActionOrchestrator:
                     # Narrate completion
                     if self._voice:
                         await self._voice.report_completion(action.description)
+
+                    # v240.0: Record success for learning feedback
+                    asyncio.create_task(self._record_action_experience(
+                        action, success=True, result=result,
+                    ))
                 else:
                     self._stats['actions_failed'] += 1
 
@@ -756,6 +761,11 @@ class IntelligentActionOrchestrator:
                             correlation_id=action.correlation_id,
                             requires_narration=True,
                         ))
+
+                    # v240.0: Record failure for learning feedback
+                    asyncio.create_task(self._record_action_experience(
+                        action, success=False, result=result,
+                    ))
             else:
                 # No executor available, simulate success
                 logger.warning("No action executor, simulating success for: %s", action.action_type)
@@ -781,8 +791,73 @@ class IntelligentActionOrchestrator:
                     requires_narration=True,
                 ))
 
+            # v240.0: Record exception for learning feedback
+            asyncio.create_task(self._record_action_experience(
+                action, success=False, error=str(e),
+            ))
+
         finally:
             self._executing_actions.discard(action.correlation_id)
+
+    # ─────────────────────────────────────────────────────────
+    # v240.0: Learning Feedback — Record Action Outcomes
+    # ─────────────────────────────────────────────────────────
+
+    async def _record_action_experience(
+        self,
+        action: "ProposedAction",
+        *,
+        success: bool,
+        result: object = None,
+        error: Optional[str] = None,
+    ) -> None:
+        """Record an action execution outcome as a learning experience.
+
+        Fully self-contained: catches all exceptions internally, never
+        propagates.  Called via ``asyncio.create_task()`` so it never
+        blocks the action pipeline.
+        """
+        if not os.environ.get("JARVIS_ORCH_RECORD_EXPERIENCES", "1") in ("1", "true", "yes"):
+            return
+        try:
+            from backend.intelligence.cross_repo_experience_forwarder import (
+                get_experience_forwarder,
+            )
+            forwarder = await get_experience_forwarder()
+            if forwarder is None:
+                return
+
+            confidence = getattr(action, "confidence", 0.5)
+            quality = max(0.0, confidence if success else confidence - 0.3)
+
+            await forwarder.forward_experience(
+                experience_type="action_execution",
+                input_data={
+                    "action_type": getattr(action, "action_type", "unknown"),
+                    "target": getattr(action, "target", ""),
+                    "description": getattr(action, "description", ""),
+                    "confidence": confidence,
+                    "reasoning": getattr(action, "reasoning", ""),
+                    "params": getattr(action, "params", {}),
+                },
+                output_data={
+                    "success": success,
+                    "error": error or (getattr(result, "error", None) if result else None),
+                },
+                quality_score=quality,
+                success=success,
+                component="intelligent_action_orchestrator",
+                metadata={
+                    "correlation_id": getattr(action, "correlation_id", ""),
+                    "issue_type": getattr(action, "issue_type", None),
+                },
+            )
+            logger.debug(
+                "[Orchestrator] Recorded experience: %s success=%s quality=%.2f",
+                getattr(action, "action_type", "unknown"), success, quality,
+            )
+        except Exception as e:
+            logger.debug("[Orchestrator] Experience recording failed (non-fatal): %s", e)
 
     async def _handle_user_response(self, event: AGIEvent) -> None:
         """Handle user approval/denial events."""
