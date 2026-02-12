@@ -2349,12 +2349,25 @@ console.log('[v186.0] Port config injected by loading_server.py:', {{
         ]
 
         # Start server
-        self._server = await asyncio.start_server(
-            self.handle_request,
-            host=self.config.host,
-            port=self.config.port,
-            reuse_address=True,
-        )
+        # v238.1: Handle port bind failures with actionable diagnostics
+        try:
+            self._server = await asyncio.start_server(
+                self.handle_request,
+                host=self.config.host,
+                port=self.config.port,
+                reuse_address=True,
+            )
+        except OSError as e:
+            # Cancel background tasks started above before dying
+            for task in self._background_tasks:
+                task.cancel()
+            self._background_tasks.clear()
+            logger.error(
+                f"[FATAL] Cannot bind to {self.config.host}:{self.config.port}: {e}. "
+                f"Check: lsof -i :{self.config.port} | "
+                f"Run: kill $(lsof -t -i :{self.config.port})"
+            )
+            raise
 
         addr = self._server.sockets[0].getsockname()
         logger.info(f"[v125.0] Loading server ready on http://{addr[0]}:{addr[1]}")

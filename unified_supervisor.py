@@ -130,11 +130,13 @@ for s in range(1, 32):
     try:
         if s not in (9, 17):
             signal.signal(s, signal.SIG_IGN)
-    except: pass
+    except:  # noqa: E722 — intentional: signal-immune bootstrap must not fail
+        pass
 
 # New session
 try: os.setsid()
-except: pass
+except:  # noqa: E722 — intentional: setsid may fail on some platforms
+    pass
 
 # Run the actual command
 env = dict(os.environ)
@@ -974,7 +976,6 @@ except ImportError:
 try:
     from backend.supervisor.cross_repo_startup_orchestrator import (
         initialize_cross_repo_orchestration,
-        start_all_repos,
         get_active_rescue_env_vars,
         ProcessOrchestrator,
         StartupLockError,
@@ -983,7 +984,6 @@ try:
 except ImportError:
     CROSS_REPO_ORCHESTRATOR_AVAILABLE = False
     initialize_cross_repo_orchestration = None
-    start_all_repos = None
     get_active_rescue_env_vars = None
     ProcessOrchestrator = None
     StartupLockError = None
@@ -1549,7 +1549,7 @@ LEGACY_SOCKET_PATH = LOCKS_DIR / "supervisor.sock"
 # Previous 8000 start caused port mismatch — frontend always checks 8010 first.
 BACKEND_PORT_RANGE = (8010, 8100)
 WEBSOCKET_PORT_RANGE = (8765, 8800)
-LOADING_SERVER_PORT_RANGE = (8080, 8090)
+LOADING_SERVER_PORT_RANGE = (8080, 8089)  # v238.1: Excludes 8090 (Reactor Core default)
 
 # Timeouts (seconds)
 # v181.0: Realistic timeouts for Trinity/GCP operations
@@ -11245,7 +11245,7 @@ class TrinityLaunchConfig:
 
     # API Port
     jarvis_api_port: int = field(default_factory=lambda:
-        int(os.getenv("JARVIS_API_PORT", "8080"))
+        int(os.getenv("JARVIS_API_PORT", "8010"))  # v238.1: Was 8080, collided with loading server
     )
 
     def __post_init__(self):
@@ -12573,7 +12573,7 @@ class IntelligentResourceOrchestrator:
         actions: List[str] = []
 
         required_ports = [
-            int(os.getenv("JARVIS_API_PORT", "8080")),
+            int(os.getenv("JARVIS_API_PORT", "8010")),  # v238.1: Was 8080
             int(os.getenv("JARVIS_WS_PORT", "8081")),
         ]
 
@@ -15740,311 +15740,9 @@ def get_browser_stability_manager():
 
 
 # =============================================================================
-# UNIFIED TRINITY CONNECTOR - Cross-Repo Orchestration
+# NOTE: UnifiedTrinityConnector v1.0 (dead copy) removed in v241.0.
+# The active copy with Lamport clocks lives at line ~56528.
 # =============================================================================
-
-class UnifiedTrinityConnector:
-    """
-    Master orchestrator that connects JARVIS, JARVIS Prime, and Reactor Core.
-
-    This is the single point of coordination for the entire Trinity system,
-    providing:
-    - Cross-repo self-improvement with diff preview and approval
-    - Atomic multi-repo transactions with 2PC (two-phase commit)
-    - Distributed health consensus
-    - Unified improvement request routing
-    - Session memory across all repos
-
-    Architecture:
-    - JARVIS Body: This repo (execution, voice, vision, UI)
-    - JARVIS Prime: Reasoning brain (jarvis-prime repo)
-    - Reactor Core: Training/learning pipeline (reactor-core repo)
-    """
-
-    def __init__(self):
-        self.logger = logging.getLogger("Trinity.Connector")
-        self._running = False
-        self._initialized = False
-
-        # Components (lazy-loaded)
-        self._enhanced_self_improvement = None
-        self._enhanced_cross_repo = None
-        self._session_id = f"trinity_{uuid.uuid4().hex[:12]}"
-
-        # Repository paths (from environment or defaults)
-        self._jarvis_path = Path(os.environ.get(
-            "JARVIS_PATH",
-            Path(__file__).parent
-        ))
-        self._prime_path = Path(os.environ.get(
-            "JARVIS_PRIME_PATH",
-            self._jarvis_path.parent / "jarvis-prime"
-        ))
-        self._reactor_path = Path(os.environ.get(
-            "REACTOR_CORE_PATH",
-            self._jarvis_path.parent / "reactor-core"
-        ))
-
-        # Health state
-        self._health = {
-            "jarvis": False,
-            "prime": False,
-            "reactor": False,
-        }
-
-        # Real-time communication
-        self._realtime_broadcaster = None
-
-    async def initialize(
-        self,
-        websocket_manager=None,
-        voice_system=None,
-        menu_bar=None,
-        event_bus=None,
-    ) -> bool:
-        """
-        Initialize the Trinity connector.
-
-        Sets up all enhanced components and establishes
-        connections to JARVIS Prime and Reactor Core.
-
-        Args:
-            websocket_manager: WebSocket manager for real-time UI updates
-            voice_system: Voice system for real-time narration
-            menu_bar: Menu bar for status indicators
-            event_bus: Event bus for system events
-        """
-        if self._initialized:
-            return True
-
-        self.logger.info("=" * 60)
-        self.logger.info("  UNIFIED TRINITY CONNECTOR v1.0")
-        self.logger.info("=" * 60)
-        self.logger.info(f"  Session: {self._session_id}")
-        self.logger.info(f"  JARVIS: {self._jarvis_path}")
-        self.logger.info(f"  Prime: {self._prime_path}")
-        self.logger.info(f"  Reactor: {self._reactor_path}")
-        self.logger.info("=" * 60)
-
-        try:
-            # Phase 1: Validate repositories
-            self.logger.info("[Trinity] Phase 1: Repository Validation...")
-            await self._validate_repositories()
-
-            # Phase 2: Initialize cross-repo communication (if available)
-            self.logger.info("[Trinity] Phase 2: Cross-Repo Communication...")
-            try:
-                from core.ouroboros.cross_repo import (
-                    get_enhanced_cross_repo_orchestrator,
-                    initialize_enhanced_cross_repo,
-                )
-                await initialize_enhanced_cross_repo()
-                self._enhanced_cross_repo = get_enhanced_cross_repo_orchestrator()
-                self.logger.info("[Trinity] ✓ Cross-repo orchestrator ready")
-            except ImportError:
-                self.logger.info("[Trinity] Cross-repo module not available - standalone mode")
-            except Exception as e:
-                self.logger.warning(f"[Trinity] Cross-repo init error: {e}")
-
-            # Phase 3: Initialize self-improvement (if available)
-            self.logger.info("[Trinity] Phase 3: Self-Improvement Engine...")
-            try:
-                from core.ouroboros.native_integration import (
-                    get_enhanced_self_improvement,
-                )
-                self._enhanced_self_improvement = get_enhanced_self_improvement()
-                await self._enhanced_self_improvement.initialize()
-                self.logger.info("[Trinity] ✓ Enhanced self-improvement ready")
-            except ImportError:
-                self.logger.info("[Trinity] Self-improvement module not available")
-            except Exception as e:
-                self.logger.warning(f"[Trinity] Self-improvement init error: {e}")
-
-            self._initialized = True
-            self._running = True
-
-            self.logger.info("=" * 60)
-            self.logger.info("  TRINITY CONNECTOR INITIALIZED SUCCESSFULLY")
-            self.logger.info("=" * 60)
-
-            return True
-
-        except Exception as e:
-            self.logger.error(f"[Trinity] Initialization failed: {e}")
-            import traceback
-            self.logger.debug(traceback.format_exc())
-            return False
-
-    async def _validate_repositories(self) -> None:
-        """Validate all repository connections."""
-        # JARVIS (always available - we're in it)
-        self._health["jarvis"] = True
-        self.logger.info(f"  - JARVIS: ✓ (local)")
-
-        # JARVIS Prime
-        if self._prime_path.exists():
-            prime_git = self._prime_path / ".git"
-            if prime_git.exists():
-                self._health["prime"] = True
-                self.logger.info(f"  - JARVIS Prime: ✓ ({self._prime_path})")
-            else:
-                self.logger.warning(f"  - JARVIS Prime: ⚠ not a git repo")
-        else:
-            self.logger.warning(f"  - JARVIS Prime: ⚠ not found ({self._prime_path})")
-
-        # Reactor Core
-        if self._reactor_path.exists():
-            reactor_git = self._reactor_path / ".git"
-            if reactor_git.exists():
-                self._health["reactor"] = True
-                self.logger.info(f"  - Reactor Core: ✓ ({self._reactor_path})")
-            else:
-                self.logger.warning(f"  - Reactor Core: ⚠ not a git repo")
-        else:
-            self.logger.warning(f"  - Reactor Core: ⚠ not found ({self._reactor_path})")
-
-    async def shutdown(self) -> None:
-        """Shutdown the Trinity connector."""
-        if not self._running:
-            return
-
-        self.logger.info("[Trinity] Shutting down...")
-
-        try:
-            if self._realtime_broadcaster:
-                try:
-                    from core.ouroboros.ui_integration import disconnect_realtime_broadcaster
-                    await disconnect_realtime_broadcaster()
-                except Exception as e:
-                    self.logger.warning(f"[Trinity] Realtime broadcaster disconnect error: {e}")
-                self._realtime_broadcaster = None
-
-            if self._enhanced_cross_repo:
-                try:
-                    from core.ouroboros.cross_repo import shutdown_enhanced_cross_repo
-                    await shutdown_enhanced_cross_repo()
-                except Exception as e:
-                    self.logger.warning(f"[Trinity] Cross-repo shutdown error: {e}")
-
-            if self._enhanced_self_improvement:
-                await self._enhanced_self_improvement.shutdown()
-
-        except Exception as e:
-            self.logger.warning(f"[Trinity] Shutdown error: {e}")
-
-        self._running = False
-        self._initialized = False
-        self.logger.info("[Trinity] Shutdown complete")
-
-    async def execute_improvement_with_preview(
-        self,
-        target: str,
-        goal: str,
-        require_approval: bool = True,
-    ):
-        """
-        Execute improvement with diff preview and approval workflow.
-
-        This is the main interface for Claude Code-like self-improvement.
-        """
-        if not self._initialized:
-            await self.initialize()
-
-        if self._enhanced_self_improvement:
-            return await self._enhanced_self_improvement.execute_with_preview(
-                target=target,
-                goal=goal,
-                require_approval=require_approval,
-            )
-        else:
-            return {"error": "Self-improvement module not available"}
-
-    async def execute_multi_file_improvement(
-        self,
-        files_and_goals: List[Tuple[str, str]],
-        shared_context: str = None,
-    ):
-        """Execute atomic multi-file improvement."""
-        if not self._initialized:
-            await self.initialize()
-
-        if self._enhanced_self_improvement:
-            return await self._enhanced_self_improvement.execute_multi_file_improvement(
-                files_and_goals=files_and_goals,
-                shared_context=shared_context,
-            )
-        else:
-            return {"error": "Self-improvement module not available"}
-
-    async def request_cross_repo_improvement(
-        self,
-        file_path: str,
-        goal: str,
-    ) -> str:
-        """
-        Request improvement across repositories with proper ordering.
-
-        Uses Lamport clocks for causal ordering.
-        """
-        if not self._initialized:
-            await self.initialize()
-
-        if self._enhanced_cross_repo:
-            return await self._enhanced_cross_repo.request_improvement_with_ordering(
-                file_path=file_path,
-                goal=goal,
-            )
-        else:
-            return "Cross-repo orchestrator not available"
-
-    def get_status(self) -> Dict[str, Any]:
-        """Get comprehensive Trinity status."""
-        status = {
-            "session_id": self._session_id,
-            "running": self._running,
-            "initialized": self._initialized,
-            "repositories": self._health,
-        }
-
-        if self._enhanced_self_improvement:
-            try:
-                status["self_improvement"] = self._enhanced_self_improvement.get_status()
-            except Exception:
-                status["self_improvement"] = {"error": "Status unavailable"}
-
-        if self._enhanced_cross_repo:
-            try:
-                status["cross_repo"] = self._enhanced_cross_repo.get_status()
-            except Exception:
-                status["cross_repo"] = {"error": "Status unavailable"}
-
-        return status
-
-
-# Global Trinity connector
-_trinity_connector: Optional[UnifiedTrinityConnector] = None
-
-
-def get_trinity_connector() -> UnifiedTrinityConnector:
-    """Get the global Trinity connector."""
-    global _trinity_connector
-    if _trinity_connector is None:
-        _trinity_connector = UnifiedTrinityConnector()
-    return _trinity_connector
-
-
-async def initialize_trinity() -> bool:
-    """Initialize the Trinity connector."""
-    connector = get_trinity_connector()
-    return await connector.initialize()
-
-
-async def shutdown_trinity() -> None:
-    """Shutdown the Trinity connector."""
-    global _trinity_connector
-    if _trinity_connector:
-        await _trinity_connector.shutdown()
-        _trinity_connector = None
 
 
 # =============================================================================
@@ -22564,7 +22262,7 @@ class OuroborosEngine:
         self._improvement_goals: List[Dict[str, Any]] = []
 
         # LLM client (JARVIS Prime)
-        self._jprime_url = os.getenv("JARVIS_PRIME_URL", "http://localhost:8080")
+        self._jprime_url = os.getenv("JARVIS_PRIME_URL", "http://localhost:8000")  # v238.1: Was 8080, collided with loading server
 
         # Git integration
         self._git_enabled = self._check_git_available()
@@ -65595,15 +65293,24 @@ class JarvisSystemKernel:
                     return True
             
             elif phase == "loading_server":
-                # Loading server restart
-                if self._loading_server:
+                # v238.1: Kill existing subprocess and relaunch
+                if self._loading_server_process:
                     try:
-                        await self._loading_server.stop()
-                        await asyncio.sleep(1.0)
-                        await self._loading_server.start()
-                        return True
-                    except Exception as e:
-                        self.logger.warning(f"[DMS] Loading server restart failed: {e}")
+                        self._loading_server_process.terminate()
+                        await asyncio.wait_for(
+                            self._loading_server_process.wait(), timeout=5.0
+                        )
+                    except (asyncio.TimeoutError, ProcessLookupError):
+                        try:
+                            self._loading_server_process.kill()
+                            await self._loading_server_process.wait()
+                        except Exception:
+                            pass
+                    self._loading_server_process = None
+                try:
+                    return await self._start_loading_server()
+                except Exception as e:
+                    self.logger.warning(f"[DMS] Loading server restart failed: {e}")
             
             elif phase == "backend":
                 # Backend restart typically requires full process restart
@@ -66196,9 +65903,14 @@ class JarvisSystemKernel:
                     f"[Kernel] Loading server ready on port {loading_port}"
                 )
             else:
-                self.logger.info("[Kernel] Loading server not started (disabled or unavailable)")
+                actual_port = self.config.loading_server_port
+                self.logger.warning(
+                    f"[Kernel] Loading server FAILED on port {actual_port}. "
+                    f"Loading page will not be available at http://localhost:{actual_port}. "
+                    f"Check: lsof -i :{actual_port}"
+                )
         except Exception as e:
-            self.logger.debug(f"[Kernel] Loading server error (non-fatal): {e}")
+            self.logger.warning(f"[Kernel] Loading server error: {e}", exc_info=True)
 
         # Step 2: Open Chrome Incognito to loading page with query params
         # v119.0: Use browser lock for cross-process safety
@@ -66465,13 +66177,10 @@ class JarvisSystemKernel:
 
     async def _start_loading_server(self) -> bool:
         """
-        Start the loading server for startup progress display (v118.0 robust).
+        Start the loading server for startup progress display.
 
-        Enhanced startup with:
-        - Venv Python selection with PYTHONPATH for correct imports
-        - Log file for debugging (backend/logs/loading_server_*.log)
-        - Adaptive health check with exponential backoff (15s max)
-        - Process monitoring and early exit detection
+        v238.1: Retry loop with port pre-clearing. If port 8080 is occupied by a
+        stale process, kills it and retries. Falls back to 8081, 8082 if needed.
 
         Returns:
             True if loading server started and is healthy
@@ -66480,7 +66189,7 @@ class JarvisSystemKernel:
             self.logger.info("[LoadingServer] Port not configured - skipping")
             return False
 
-        loading_port = self.config.loading_server_port
+        base_port = self.config.loading_server_port
         project_root = self.config.project_root
         loading_server_path = self.config.backend_dir / "loading_server.py"
 
@@ -66488,116 +66197,159 @@ class JarvisSystemKernel:
             self.logger.info(f"[LoadingServer] Script not found: {loading_server_path}")
             return False
 
-        self.logger.info(f"[LoadingServer] Starting on port {loading_port}...")
+        # Step 1: Determine Python executable (prefer venv for correct dependencies)
+        venv_python = project_root / "venv" / "bin" / "python3"
+        if not venv_python.exists():
+            venv_python = project_root / "venv" / "bin" / "python"
 
-        try:
-            # Step 1: Determine Python executable (prefer venv for correct dependencies)
-            venv_python = project_root / "venv" / "bin" / "python3"
-            if not venv_python.exists():
-                venv_python = project_root / "venv" / "bin" / "python"
+        if venv_python.exists():
+            python_executable = str(venv_python)
+            self.logger.debug(f"[LoadingServer] Using venv Python: {python_executable}")
+        else:
+            python_executable = sys.executable
+            self.logger.debug(f"[LoadingServer] Using system Python: {python_executable}")
 
-            if venv_python.exists():
-                python_executable = str(venv_python)
-                self.logger.debug(f"[LoadingServer] Using venv Python: {python_executable}")
-            else:
-                python_executable = sys.executable
-                self.logger.debug(f"[LoadingServer] Using system Python: {python_executable}")
+        # Step 2: Build base environment (shared across retry attempts)
+        env = os.environ.copy()
+        pythonpath_parts = [
+            str(project_root),
+            str(project_root / "backend"),
+        ]
+        existing_pythonpath = env.get("PYTHONPATH", "")
+        if existing_pythonpath:
+            pythonpath_parts.append(existing_pythonpath)
+        env["PYTHONPATH"] = os.pathsep.join(pythonpath_parts)
+        env["JARVIS_KERNEL_PID"] = str(os.getpid())
+        frontend_port = int(os.environ.get("JARVIS_FRONTEND_PORT", "3000"))
+        env["JARVIS_FRONTEND_PORT"] = str(frontend_port)
 
-            # Step 2: Set up environment with PYTHONPATH for proper imports
-            env = os.environ.copy()
-            pythonpath_parts = [
-                str(project_root),
-                str(project_root / "backend"),
-            ]
-            existing_pythonpath = env.get("PYTHONPATH", "")
-            if existing_pythonpath:
-                pythonpath_parts.append(existing_pythonpath)
-            env["PYTHONPATH"] = os.pathsep.join(pythonpath_parts)
-            env["LOADING_SERVER_PORT"] = str(loading_port)
+        # Step 3: Retry loop with port increment on failure
+        max_attempts = 3
+        max_port = LOADING_SERVER_PORT_RANGE[1]
 
-            # v211.0: Set kernel PID for parent death watcher (orphan prevention)
-            env["JARVIS_KERNEL_PID"] = str(os.getpid())
-
-            # v120.0: Also set frontend port so loading page knows where to redirect
-            frontend_port = int(os.environ.get("JARVIS_FRONTEND_PORT", "3000"))
-            env["JARVIS_FRONTEND_PORT"] = str(frontend_port)
-
-            # Step 3: Create log file for subprocess output (helps debugging)
-            logs_dir = project_root / "backend" / "logs"
-            logs_dir.mkdir(parents=True, exist_ok=True)
-            log_filename = f"loading_server_{time.strftime('%Y%m%d_%H%M%S')}.log"
-            self._loading_server_log_path = logs_dir / log_filename
-
-            # Open log file (keep reference for cleanup)
-            self._loading_server_log_file = await asyncio.to_thread(
-                open, self._loading_server_log_path, "w"
-            )
-
-            # Step 4: Start subprocess with logging
-            self._loading_server_process = await asyncio.create_subprocess_exec(
-                python_executable,
-                str(loading_server_path),
-                stdout=self._loading_server_log_file,
-                stderr=asyncio.subprocess.STDOUT,  # Combine stderr into log
-                env=env,
-            )
+        for attempt in range(max_attempts):
+            loading_port = base_port + attempt
+            if loading_port > max_port:
+                break
 
             self.logger.info(
-                f"[LoadingServer] Process started (PID: {self._loading_server_process.pid})"
+                f"[LoadingServer] Starting on port {loading_port}..."
+                + (f" (attempt {attempt + 1}/{max_attempts})" if attempt > 0 else "")
             )
-            self.logger.debug(f"[LoadingServer] Log file: {self._loading_server_log_path}")
 
-            # v183.0: Protect loading server from zombie cleanup
-            if self._loading_server_process.pid:
-                self._protected_pids.add(self._loading_server_process.pid)
-                self.logger.debug(
-                    f"[LoadingServer] PID {self._loading_server_process.pid} added to protected set"
+            try:
+                # v238.1: Pre-clear stale listeners on target port
+                try:
+                    pid_on_port = await self._find_process_on_port(loading_port)
+                    if pid_on_port and pid_on_port not in self._protected_pids:
+                        self.logger.warning(
+                            f"[LoadingServer] Port {loading_port} occupied by PID {pid_on_port}, clearing..."
+                        )
+                        await self._force_kill_process(pid_on_port)
+                        await asyncio.sleep(0.5)
+                except Exception:
+                    pass  # Best-effort port clearing
+
+                # Set port for this attempt
+                env["LOADING_SERVER_PORT"] = str(loading_port)
+
+                # Create log file for subprocess output
+                logs_dir = project_root / "backend" / "logs"
+                logs_dir.mkdir(parents=True, exist_ok=True)
+                log_filename = f"loading_server_{time.strftime('%Y%m%d_%H%M%S')}.log"
+                self._loading_server_log_path = logs_dir / log_filename
+
+                self._loading_server_log_file = await asyncio.to_thread(
+                    open, self._loading_server_log_path, "w"
                 )
 
-            # Step 5: Adaptive health check with exponential backoff
-            server_ready = await self._wait_for_loading_server_health(loading_port)
+                # Launch subprocess
+                self._loading_server_process = await asyncio.create_subprocess_exec(
+                    python_executable,
+                    str(loading_server_path),
+                    stdout=self._loading_server_log_file,
+                    stderr=asyncio.subprocess.STDOUT,
+                    env=env,
+                )
 
-            if not server_ready:
-                # Check if process died
+                self.logger.info(
+                    f"[LoadingServer] Process started (PID: {self._loading_server_process.pid})"
+                )
+                self.logger.debug(f"[LoadingServer] Log file: {self._loading_server_log_path}")
+
+                # Protect from zombie cleanup
+                if self._loading_server_process.pid:
+                    self._protected_pids.add(self._loading_server_process.pid)
+
+                # Adaptive health check
+                server_ready = await self._wait_for_loading_server_health(loading_port)
+
+                if server_ready:
+                    # Success — update config with actual port used
+                    self.config.loading_server_port = loading_port
+                    self.logger.success(
+                        f"[LoadingServer] Ready on port {loading_port} "
+                        f"(PID: {self._loading_server_process.pid})"
+                    )
+                    # Start heartbeat background task
+                    if self._heartbeat_task is None or self._heartbeat_task.done():
+                        self._heartbeat_task = create_safe_task(
+                            self._supervisor_heartbeat_loop()
+                        )
+                        self.logger.debug("[LoadingServer] Heartbeat loop started")
+                    return True
+
+                # Health check failed — check if process died or is just slow
                 if self._loading_server_process.returncode is not None:
                     self.logger.warning(
                         f"[LoadingServer] Process exited unexpectedly "
                         f"(code: {self._loading_server_process.returncode})"
                     )
-                    # Try to show last few log lines for debugging
                     await self._log_loading_server_errors()
-                    return False
+                    # Process died — clean up and try next port
+                    self._loading_server_process = None
                 else:
+                    # Process alive but slow — keep it running, start heartbeat
+                    self.config.loading_server_port = loading_port
                     self.logger.warning(
                         "[LoadingServer] Slow to respond - continuing (may still be starting)"
                     )
-                    # v184.0: Start heartbeat even when slow - ensures frontend gets liveness
                     if self._heartbeat_task is None or self._heartbeat_task.done():
                         self._heartbeat_task = create_safe_task(
                             self._supervisor_heartbeat_loop()
                         )
                         self.logger.debug("[LoadingServer] Heartbeat loop started (slow path)")
-                    # Don't fail - let it keep trying in background
                     return True
 
-                self.logger.success(
-                f"[LoadingServer] Ready on port {loading_port} "
-                    f"(PID: {self._loading_server_process.pid})"
+            except Exception as e:
+                self.logger.warning(f"[LoadingServer] Attempt {attempt + 1} error: {e}")
+                self.logger.debug(traceback.format_exc())
+                # Clean up failed process
+                if self._loading_server_process and self._loading_server_process.returncode is None:
+                    try:
+                        self._loading_server_process.terminate()
+                        await asyncio.wait_for(self._loading_server_process.wait(), timeout=3.0)
+                    except (asyncio.TimeoutError, ProcessLookupError):
+                        try:
+                            self._loading_server_process.kill()
+                        except ProcessLookupError:
+                            pass
+                self._loading_server_process = None
+
+            # Brief backoff before retry
+            if attempt < max_attempts - 1:
+                self.logger.warning(
+                    f"[LoadingServer] Attempt {attempt + 1}/{max_attempts} failed on port {loading_port}, "
+                    f"trying port {loading_port + 1}..."
                 )
+                await asyncio.sleep(0.5)
 
-            # v183.0: Start heartbeat background task
-            if self._heartbeat_task is None or self._heartbeat_task.done():
-                self._heartbeat_task = create_safe_task(
-                    self._supervisor_heartbeat_loop()
-                )
-                self.logger.debug("[LoadingServer] Heartbeat loop started")
-
-                return True
-
-        except Exception as e:
-            self.logger.warning(f"[LoadingServer] Failed to start: {e}")
-            self.logger.debug(traceback.format_exc())
-            return False
+        self.logger.warning(
+            f"[LoadingServer] FAILED after {max_attempts} attempts "
+            f"(ports {base_port}-{base_port + max_attempts - 1}). "
+            f"Check: lsof -i :{base_port}"
+        )
+        return False
 
     async def _wait_for_loading_server_health(self, port: int) -> bool:
         """

@@ -78,7 +78,12 @@ class MemoryAwareScreenAnalyzer:
             'weather_visible': weakref.WeakSet(),
             'error_detected': weakref.WeakSet(),
             'user_needs_help': weakref.WeakSet(),
-            'memory_warning': weakref.WeakSet()
+            'memory_warning': weakref.WeakSet(),
+            # v241.0: Extended callback types for ScreenAnalyzerBridge integration
+            'notification_detected': weakref.WeakSet(),
+            'meeting_detected': weakref.WeakSet(),
+            'security_concern': weakref.WeakSet(),
+            'screen_captured': weakref.WeakSet(),
         }
         
         # Performance optimization with size limits

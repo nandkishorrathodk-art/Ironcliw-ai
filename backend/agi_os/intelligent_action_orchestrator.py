@@ -54,6 +54,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Any, Callable, Dict, List, Optional, Set
@@ -82,6 +83,22 @@ from .realtime_voice_communicator import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _orch_env_float(name: str, default: float) -> float:
+    """Safely parse float from env var with fallback."""
+    try:
+        return float(os.getenv(name, str(default)))
+    except (ValueError, TypeError):
+        return default
+
+
+def _orch_env_int(name: str, default: int) -> int:
+    """Safely parse int from env var with fallback."""
+    try:
+        return int(os.getenv(name, str(default)))
+    except (ValueError, TypeError):
+        return default
 
 
 class OrchestratorState(Enum):
@@ -152,15 +169,22 @@ class IntelligentActionOrchestrator:
         self._pending_actions: Dict[str, ProposedAction] = {}
         self._executing_actions: Set[str] = set()
 
-        # Configuration (dynamically adjustable)
+        # Configuration (dynamically adjustable, env-var overridable)
         self._config = {
-            'auto_execute_threshold': 0.90,      # Auto-execute above this confidence
-            'ask_approval_threshold': 0.70,      # Ask approval between this and auto
-            'suggest_only_threshold': 0.50,      # Just suggest below ask threshold
-            'batch_delay_ms': 500,               # Delay before processing batch
-            'max_concurrent_actions': 3,         # Max parallel executions
-            'narrate_all_detections': False,     # Speak all detections
-            'narrate_high_confidence': True,     # Speak high confidence actions
+            'auto_execute_threshold': _orch_env_float(
+                'JARVIS_ORCH_AUTO_EXECUTE_THRESHOLD', 0.90),
+            'ask_approval_threshold': _orch_env_float(
+                'JARVIS_ORCH_ASK_APPROVAL_THRESHOLD', 0.70),
+            'suggest_only_threshold': _orch_env_float(
+                'JARVIS_ORCH_SUGGEST_ONLY_THRESHOLD', 0.50),
+            'batch_delay_ms': _orch_env_int(
+                'JARVIS_ORCH_BATCH_DELAY_MS', 500),
+            'max_concurrent_actions': _orch_env_int(
+                'JARVIS_ORCH_MAX_CONCURRENT_ACTIONS', 3),
+            'narrate_all_detections': os.getenv(
+                'JARVIS_ORCH_NARRATE_ALL', '').lower() in ('1', 'true', 'yes'),
+            'narrate_high_confidence': os.getenv(
+                'JARVIS_ORCH_NARRATE_HIGH', '1').lower() not in ('0', 'false', 'no'),
         }
 
         # Statistics
@@ -308,6 +332,17 @@ class IntelligentActionOrchestrator:
             self._handle_detection_event
         )
 
+        # v241.0: Subscribe to contextual events from ScreenAnalyzerBridge
+        self._event_stream.subscribe(
+            [
+                EventType.CONTENT_CHANGED,
+                EventType.APP_CHANGED,
+                EventType.MEETING_DETECTED,
+                EventType.MEMORY_WARNING,
+            ],
+            self._handle_contextual_event
+        )
+
         # Subscribe to user events
         self._event_stream.subscribe(
             [
@@ -352,6 +387,44 @@ class IntelligentActionOrchestrator:
 
         # Generate action proposal
         await self._propose_action_for_issue(issue)
+
+    async def _handle_contextual_event(self, event: AGIEvent) -> None:
+        """
+        v241.0: Handle contextual events from screen analyzer bridge.
+
+        These are lower-priority events (app changes, content changes)
+        that enrich situational awareness but don't always warrant action.
+        Only escalate to action proposal for MEETING_DETECTED and MEMORY_WARNING.
+        """
+        if self._paused:
+            return
+
+        try:
+            event_type = event.event_type
+
+            # MEETING_DETECTED and MEMORY_WARNING warrant action proposals
+            if event_type in (EventType.MEETING_DETECTED, EventType.MEMORY_WARNING):
+                self._stats['issues_detected'] += 1
+
+                issue = DetectedIssue(
+                    issue_type=event_type.value,
+                    location=event.data.get('location', event.data.get('app', 'system')),
+                    description=event.data.get('message', str(event.data)),
+                    severity=self._determine_severity(event),
+                    raw_data=event.data,
+                    correlation_id=event.correlation_id or self._event_stream.create_correlation_id(),
+                )
+                self._pending_issues[issue.correlation_id] = issue
+                await self._propose_action_for_issue(issue)
+            else:
+                # APP_CHANGED and CONTENT_CHANGED: log for context, no action
+                logger.debug(
+                    "[Orchestrator v241.0] Contextual event: %s (app=%s)",
+                    event_type.value,
+                    event.data.get('new_app', event.data.get('app', 'unknown'))
+                )
+        except Exception as e:
+            logger.debug("[Orchestrator v241.0] Contextual event handler error: %s", e)
 
     async def _propose_action_for_issue(self, issue: DetectedIssue) -> None:
         """
