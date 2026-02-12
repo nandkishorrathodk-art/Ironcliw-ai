@@ -1036,11 +1036,16 @@ class HeartbeatManager:
                     threshold = max(threshold, 60.0)  # Give 60s for heavy components
 
                 if heartbeat.age_seconds > threshold:
-                    # v149.2: During grace period, only mark stale if we've received
-                    # at least one heartbeat before (sequence > 1)
-                    if in_grace_period and heartbeat.sequence <= 1:
-                        continue  # Skip - component is still starting up
-                    
+                    # v250.0: During grace period, suppress ALL stale detections.
+                    # The previous check (sequence <= 1) was insufficient — components
+                    # like ECAPA send an initial heartbeat (sequence=1) then go silent
+                    # for 60s while loading models. With sequence=2+ from a registration
+                    # heartbeat, the old check let stale callbacks fire during grace,
+                    # which then hit _handle_stale_heartbeat() → UNHEALTHY bypass.
+                    # The grace period exists precisely for this startup window.
+                    if in_grace_period:
+                        continue
+
                     stale_components.append(component)
                     # Only log if this is the first time we're detecting it as stale
                     if component not in self._stale_logged:
@@ -1514,15 +1519,25 @@ class VBIHealthMonitor:
                 pass
 
     async def _handle_stale_heartbeat(self, component: ComponentType) -> None:
-        """Handle stale heartbeat detection."""
+        """Handle stale heartbeat detection.
+
+        v250.0: Respect ComponentHealthState grace period. During startup,
+        stale heartbeats are expected (components loading ML models, connecting
+        to databases, etc.). Cap at DEGRADED during grace — never UNHEALTHY.
+        This prevents the healthy→unhealthy transition within 90s of startup
+        that cascaded into agi_os phase stall.
+        """
         health = self._component_health.get(component)
         if health:
-            health.health_level = HealthLevel.UNHEALTHY
+            if health.in_grace_period:
+                # During grace: cap at DEGRADED — stale heartbeats are expected
+                # while heavy components (ECAPA, CloudSQL) are still loading.
+                # _update_health_level() already caps at DEGRADED during grace,
+                # but this callback path bypassed it entirely (the original bug).
+                health.health_level = HealthLevel.DEGRADED
+            else:
+                health.health_level = HealthLevel.UNHEALTHY
 
-        # Don't log if we already logged this component as stale recently
-        # This prevents the log spam seen in the user query
-        # The HeartbeatManager handles deduplication of logs
-        
         await self._emit_event("heartbeat_stale", {"component": component.value})
 
     async def _emit_event(self, event_type: str, data: Dict[str, Any]) -> None:

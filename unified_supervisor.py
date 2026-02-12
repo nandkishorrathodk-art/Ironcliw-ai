@@ -63381,10 +63381,26 @@ class JarvisSystemKernel:
 
                     # =====================================================================
                     # STEP 2: Start AGI OS Coordinator
+                    # v250.0: Pass progress callback so the coordinator reports
+                    # intermediate progress during its 6-phase init sequence.
+                    # Without this, the 60-75s gap between progress 86→87
+                    # triggers the DMS 60s stall detector.
                     # =====================================================================
                     await self._broadcast_progress(86, "agi_os_coordinator", "Starting AGI OS Coordinator...")
 
-                    self._agi_os = await start_agi_os()
+                    # Sub-progress counter: 86.1 → 86.6 across coordinator phases
+                    _agi_sub = {"n": 0}
+                    async def _agi_os_progress(step: str, detail: str) -> None:
+                        _agi_sub["n"] += 1
+                        # Broadcast sub-progress to keep DMS watchdog alive
+                        # Progress stays within 86-87 range (allocated for agi_os)
+                        await self._broadcast_progress(
+                            86, f"agi_os_{step}", f"AGI OS: {detail}"
+                        )
+
+                    self._agi_os = await start_agi_os(
+                        progress_callback=_agi_os_progress
+                    )
 
                     if self._agi_os:
                         self._agi_os_status["coordinator"] = True

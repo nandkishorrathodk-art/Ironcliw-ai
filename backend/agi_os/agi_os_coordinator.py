@@ -222,11 +222,18 @@ class AGIOSCoordinator:
         """Get component status dictionary."""
         return self._component_status
 
-    async def start(self) -> None:
+    async def start(self, progress_callback=None) -> None:
         """
         Start the AGI OS.
 
         Initializes all components and begins autonomous operation.
+
+        Args:
+            progress_callback: Optional async callable(step: str, detail: str)
+                Reports initialization progress back to the supervisor so the
+                DMS watchdog doesn't trigger a stall during the 60-75s init
+                sequence. v250.0: Without this, progress 86→87 gap exceeds
+                the 60s stall threshold.
         """
         if self._state == AGIOSState.ONLINE:
             logger.warning("AGI OS already online")
@@ -236,13 +243,31 @@ class AGIOSCoordinator:
         self._started_at = datetime.now()
         logger.info("Starting AGI OS...")
 
-        # Initialize components in order
+        async def _report(step: str, detail: str) -> None:
+            if progress_callback:
+                try:
+                    await progress_callback(step, detail)
+                except Exception as e:
+                    logger.debug("Progress callback error (non-fatal): %s", e)
+
+        # Initialize components in order, reporting progress after each phase
         await self._init_agi_os_components()
+        await _report("agi_os_components", "Core components initialized")
+
         await self._init_intelligence_systems()
+        await _report("intelligence_systems", "Intelligence systems initialized")
+
         await self._init_neural_mesh()
+        await _report("neural_mesh", "Neural Mesh initialized")
+
         await self._init_hybrid_orchestrator()
+        await _report("hybrid_orchestrator", "Hybrid orchestrator initialized")
+
         await self._init_screen_analyzer()
+        await _report("screen_analyzer", "Screen analyzer initialized")
+
         await self._connect_components()
+        await _report("components_connected", "All components connected")
 
         # Start health monitoring
         self._health_task = asyncio.create_task(
@@ -1367,16 +1392,20 @@ async def get_agi_os() -> AGIOSCoordinator:
     return _agi_os
 
 
-async def start_agi_os() -> AGIOSCoordinator:
+async def start_agi_os(progress_callback=None) -> AGIOSCoordinator:
     """
     Get and start the global AGI OS coordinator.
+
+    Args:
+        progress_callback: Optional async callable(step: str, detail: str)
+            forwarded to AGIOSCoordinator.start() for DMS progress reporting.
 
     Returns:
         The started AGIOSCoordinator instance
     """
     agi = await get_agi_os()
     if agi._state == AGIOSState.OFFLINE:
-        await agi.start()
+        await agi.start(progress_callback=progress_callback)
     return agi
 
 

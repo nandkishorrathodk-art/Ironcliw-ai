@@ -288,21 +288,26 @@ class SystemEventMonitor:
     async def _init_yabai_integration(self) -> None:
         """Initialize integration with existing Yabai Spatial Intelligence."""
         try:
-            from intelligence.yabai_spatial_intelligence import YabaiSpatialIntelligence
+            from intelligence.yabai_spatial_intelligence import (
+                YabaiSpatialIntelligence,
+                YabaiEventType,
+            )
 
             self._yabai_si = YabaiSpatialIntelligence()
 
             # Register event listener to bridge Yabai events
+            # v250.0: Use YabaiEventType enums — register_event_listener expects
+            # enum instances, not strings (calling .value on a string crashes)
             self._yabai_si.register_event_listener(
-                "space_changed",
+                YabaiEventType.SPACE_CHANGED,
                 self._on_yabai_space_changed
             )
             self._yabai_si.register_event_listener(
-                "window_focused",
+                YabaiEventType.WINDOW_FOCUSED,
                 self._on_yabai_window_focused
             )
             self._yabai_si.register_event_listener(
-                "app_launched",
+                YabaiEventType.APP_LAUNCHED,
                 self._on_yabai_app_launched
             )
 
@@ -732,6 +737,7 @@ class SystemEventMonitor:
             try:
                 await asyncio.sleep(self.config.batch_window_ms / 1000)
 
+                events = []
                 async with self._batch_lock:
                     if self._pending_events:
                         events = self._pending_events.copy()
