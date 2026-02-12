@@ -54,21 +54,23 @@ class GoalCheckpointStore:
     """SQLite-based goal persistence for crash recovery.
 
     Uses WAL mode for concurrent reads and crash safety.
+    Maintains a persistent connection instead of opening/closing per-operation.
     Follows learning_database.py schema migration pattern.
     """
 
     CURRENT_SCHEMA_VERSION = 1
-    DB_PATH = Path(os.getenv(
-        "AGENT_RUNTIME_DB_PATH",
-        str(Path.home() / ".jarvis" / "agent_runtime.db")
-    ))
 
     def __init__(self):
         self._initialized = False
         self._lock = asyncio.Lock()
+        self._db = None  # Persistent aiosqlite connection
+        self._db_path = Path(os.getenv(
+            "AGENT_RUNTIME_DB_PATH",
+            str(Path.home() / ".jarvis" / "agent_runtime.db"),
+        ))
 
     async def initialize(self):
-        """Create tables if needed. Handles schema migrations."""
+        """Create tables if needed. Opens persistent connection."""
         if self._initialized:
             return
         try:
@@ -77,45 +79,68 @@ class GoalCheckpointStore:
             logger.warning("[CheckpointStore] aiosqlite not installed — persistence disabled")
             return
 
-        self.DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+        self._db_path.parent.mkdir(parents=True, exist_ok=True)
 
-        async with aiosqlite.connect(str(self.DB_PATH)) as db:
-            await db.execute("PRAGMA journal_mode=WAL")
-            await db.execute("""
-                CREATE TABLE IF NOT EXISTS goals (
-                    goal_id TEXT PRIMARY KEY,
-                    schema_version INTEGER DEFAULT 1,
-                    description TEXT,
-                    status TEXT,
-                    priority INTEGER,
-                    source TEXT,
-                    state_json TEXT,
-                    created_at REAL,
-                    updated_at REAL,
-                    kernel_pid INTEGER
-                )
-            """)
-            await db.execute("""
-                CREATE INDEX IF NOT EXISTS idx_goals_status
-                ON goals(status)
-            """)
-            await db.commit()
+        self._db = await aiosqlite.connect(str(self._db_path))
+        await self._db.execute("PRAGMA journal_mode=WAL")
+        await self._db.execute("PRAGMA busy_timeout=5000")
+        await self._db.execute("""
+            CREATE TABLE IF NOT EXISTS goals (
+                goal_id TEXT PRIMARY KEY,
+                schema_version INTEGER DEFAULT 1,
+                description TEXT,
+                status TEXT,
+                priority INTEGER,
+                source TEXT,
+                state_json TEXT,
+                created_at REAL,
+                updated_at REAL,
+                kernel_pid INTEGER
+            )
+        """)
+        await self._db.execute("""
+            CREATE INDEX IF NOT EXISTS idx_goals_status
+            ON goals(status)
+        """)
+        await self._db.commit()
 
         self._initialized = True
-        logger.info(f"[CheckpointStore] Initialized at {self.DB_PATH}")
+        logger.info("[CheckpointStore] Initialized at %s", self._db_path)
+
+    async def close(self):
+        """Close the persistent database connection."""
+        if self._db:
+            try:
+                await self._db.close()
+            except Exception:
+                pass
+            self._db = None
+            self._initialized = False
+
+    async def _ensure_connection(self):
+        """Re-establish connection if it was lost."""
+        if self._db is None and self._initialized:
+            try:
+                import aiosqlite
+                self._db = await aiosqlite.connect(str(self._db_path))
+                await self._db.execute("PRAGMA journal_mode=WAL")
+                await self._db.execute("PRAGMA busy_timeout=5000")
+            except Exception as e:
+                logger.warning("[CheckpointStore] Failed to reconnect: %s", e)
+                self._db = None
 
     async def save(self, goal: Goal):
         """Atomic save of a goal state."""
         if not self._initialized:
             return
 
-        import aiosqlite
-
         state_json = goal.to_json()
         async with self._lock:
-            async with aiosqlite.connect(str(self.DB_PATH)) as db:
-                await db.execute("PRAGMA journal_mode=WAL")
-                await db.execute("""
+            await self._ensure_connection()
+            if self._db is None:
+                return
+            try:
+                await self._db.execute("""
                     INSERT OR REPLACE INTO goals
                     (goal_id, schema_version, description, status, priority, source,
                      state_json, created_at, updated_at, kernel_pid)
@@ -126,21 +151,28 @@ class GoalCheckpointStore:
                     goal.source, state_json, goal.created_at, time.time(),
                     os.getpid(),
                 ))
-                await db.commit()
+                await self._db.commit()
+            except Exception as e:
+                logger.warning("[CheckpointStore] Save failed: %s", e)
 
     async def get_incomplete(self) -> List[Goal]:
         """Load goals that aren't in terminal states (for crash recovery)."""
         if not self._initialized:
             return []
 
-        import aiosqlite
-
-        async with aiosqlite.connect(str(self.DB_PATH)) as db:
-            cursor = await db.execute("""
-                SELECT state_json, schema_version FROM goals
-                WHERE status NOT IN ('completed', 'failed', 'abandoned', 'cancelled')
-            """)
-            rows = await cursor.fetchall()
+        async with self._lock:
+            await self._ensure_connection()
+            if self._db is None:
+                return []
+            try:
+                cursor = await self._db.execute("""
+                    SELECT state_json, schema_version FROM goals
+                    WHERE status NOT IN ('completed', 'failed', 'abandoned', 'cancelled')
+                """)
+                rows = await cursor.fetchall()
+            except Exception as e:
+                logger.warning("[CheckpointStore] get_incomplete failed: %s", e)
+                return []
 
         goals = []
         for row in rows:
@@ -151,7 +183,7 @@ class GoalCheckpointStore:
                 goal = Goal.from_json(state_json)
                 goals.append(goal)
             except Exception as e:
-                logger.warning(f"[CheckpointStore] Failed to restore goal: {e}")
+                logger.warning("[CheckpointStore] Failed to restore goal: %s", e)
         return goals
 
     async def mark_terminal(self, goal_id: str, status: str):
@@ -159,32 +191,38 @@ class GoalCheckpointStore:
         if not self._initialized:
             return
 
-        import aiosqlite
-
         async with self._lock:
-            async with aiosqlite.connect(str(self.DB_PATH)) as db:
-                await db.execute(
+            await self._ensure_connection()
+            if self._db is None:
+                return
+            try:
+                await self._db.execute(
                     "UPDATE goals SET status = ?, updated_at = ? WHERE goal_id = ?",
-                    (status, time.time(), goal_id)
+                    (status, time.time(), goal_id),
                 )
-                await db.commit()
+                await self._db.commit()
+            except Exception as e:
+                logger.warning("[CheckpointStore] mark_terminal failed: %s", e)
 
     async def cleanup_old(self, max_age_seconds: float = 86400 * 7):
         """Remove goals older than max_age_seconds in terminal states."""
         if not self._initialized:
             return
 
-        import aiosqlite
-
         cutoff = time.time() - max_age_seconds
         async with self._lock:
-            async with aiosqlite.connect(str(self.DB_PATH)) as db:
-                await db.execute("""
+            await self._ensure_connection()
+            if self._db is None:
+                return
+            try:
+                await self._db.execute("""
                     DELETE FROM goals
                     WHERE status IN ('completed', 'failed', 'abandoned', 'cancelled')
                     AND updated_at < ?
                 """, (cutoff,))
-                await db.commit()
+                await self._db.commit()
+            except Exception as e:
+                logger.warning("[CheckpointStore] cleanup_old failed: %s", e)
 
     def _migrate(self, state_json: str, from_version: int) -> str:
         """Migrate checkpoint from older schema version."""
@@ -223,6 +261,12 @@ class UnifiedAgentRuntime:
         self._running = False
         self._shutdown_event = asyncio.Event()
         self._progress_callbacks: List[Callable] = []
+        # Promotion lock prevents concurrent promote calls from
+        # submit_goal() and housekeeping_loop() exceeding _max_concurrent
+        self._promotion_lock = asyncio.Lock()
+        # LLM semaphore limits concurrent J-Prime/reasoning calls
+        # (J-Prime processes one request at a time; concurrent calls just queue)
+        self._llm_semaphore: Optional[asyncio.Semaphore] = None  # Created in start()
 
         # Config (all env-var driven, no hardcoding)
         self._max_concurrent = _env_int("AGENT_RUNTIME_MAX_CONCURRENT", 3)
@@ -232,6 +276,7 @@ class UnifiedAgentRuntime:
         self._think_timeout = _env_float("AGENT_RUNTIME_THINK_TIMEOUT", 30.0)
         self._act_timeout = _env_float("AGENT_RUNTIME_ACT_TIMEOUT", 60.0)
         self._max_queue_size = _env_int("AGENT_RUNTIME_MAX_QUEUE", 50)
+        self._llm_concurrency = _env_int("AGENT_RUNTIME_LLM_CONCURRENCY", 2)
         self._step_max_retries = _env_int("AGENT_RUNTIME_STEP_MAX_RETRIES", 3)
         self._goal_gen_interval = _env_float("AGENT_RUNTIME_GOAL_GEN_INTERVAL", 60.0)
         self._goal_gen_threshold = _env_float("AGENT_RUNTIME_GOAL_GEN_THRESHOLD", 0.7)
@@ -262,10 +307,12 @@ class UnifiedAgentRuntime:
         await self._wait_for_dependencies(timeout=30.0)
 
         await self._checkpoint_store.initialize()
+        self._llm_semaphore = asyncio.Semaphore(self._llm_concurrency)
         await self._resume_incomplete_goals()
         self._running = True
-        logger.info("[AgentRuntime] Started (max_concurrent=%d, max_iterations=%d)",
-                     self._max_concurrent, self._max_iterations)
+        logger.info("[AgentRuntime] Started (max_concurrent=%d, max_iterations=%d, "
+                     "llm_concurrency=%d)",
+                     self._max_concurrent, self._max_iterations, self._llm_concurrency)
 
     async def stop(self):
         """Graceful shutdown. Checkpoint all active goals."""
@@ -294,9 +341,68 @@ class UnifiedAgentRuntime:
 
         # Periodic cleanup of old checkpoints
         await self._checkpoint_store.cleanup_old(self._cleanup_age)
+        # Close persistent DB connection
+        await self._checkpoint_store.close()
 
         logger.info("[AgentRuntime] Stopped, %d goals checkpointed",
                      len(self._active_goals))
+
+    # v239.0: Neural Mesh ↔ Runtime bridge
+    async def connect_to_neural_mesh(self, bridge):
+        """Subscribe to Neural Mesh bus for goal submissions from agents.
+
+        Called by supervisor after AGI OS (Phase 6.5) starts the mesh.
+        Mesh agents can submit goals via CUSTOM messages with
+        mesh_action='submit_goal'.
+        """
+        if not bridge or not hasattr(bridge, 'coordinator'):
+            logger.debug("[AgentRuntime] No bridge/coordinator — mesh connection skipped")
+            return
+        coordinator = getattr(bridge, 'coordinator', None)
+        if not coordinator or not hasattr(coordinator, 'bus'):
+            logger.debug("[AgentRuntime] No coordinator bus — mesh connection skipped")
+            return
+        bus = coordinator.bus
+        if not bus:
+            logger.debug("[AgentRuntime] Bus is None — mesh connection skipped")
+            return
+
+        try:
+            from backend.neural_mesh.data_models import MessageType
+        except ImportError:
+            logger.warning("[AgentRuntime] Cannot import MessageType — mesh connection skipped")
+            return
+
+        runtime_ref = self  # prevent closure over 'self' confusion
+
+        async def _on_goal_submission(message):
+            """Handle mesh goal submission messages."""
+            payload = message.payload if hasattr(message, 'payload') else {}
+            if payload.get("mesh_action") != "submit_goal":
+                return  # Not a goal submission — ignore
+            description = payload.get("description")
+            if not description:
+                logger.warning("[AgentRuntime] Mesh goal missing 'description', ignoring")
+                return
+            try:
+                priority_str = payload.get("priority", "normal").upper()
+                priority = GoalPriority[priority_str] if priority_str in GoalPriority.__members__ else GoalPriority.NORMAL
+                from_agent = getattr(message, 'from_agent', 'unknown_mesh_agent')
+                goal_id = await runtime_ref.submit_goal(
+                    description=description,
+                    priority=priority,
+                    source=f"mesh:{from_agent}",
+                    context=payload.get("context"),
+                )
+                logger.info("[AgentRuntime] Goal from mesh:%s → %s", from_agent, goal_id)
+            except Exception as e:
+                logger.warning("[AgentRuntime] Mesh goal submission failed: %s", e)
+
+        try:
+            await bus.subscribe("agent_runtime", MessageType.CUSTOM, _on_goal_submission)
+            logger.info("[AgentRuntime] Connected to Neural Mesh bus for goal submissions")
+        except Exception as e:
+            logger.warning("[AgentRuntime] Failed to subscribe to mesh bus: %s", e)
 
     async def _wait_for_dependencies(self, timeout: float):
         """Wait for required components with retry."""
@@ -329,7 +435,9 @@ class UnifiedAgentRuntime:
             # Re-queue with their original priority
             goal.status = GoalStatus.PENDING
             try:
-                await self._goal_queue.put((goal.priority.value, goal.goal_id, goal))
+                # Negate priority so CRITICAL(4) dequeues before BACKGROUND(1)
+                # PriorityQueue pops lowest value first
+                await self._goal_queue.put((-goal.priority.value, goal.goal_id, goal))
             except Exception as e:
                 logger.warning("[AgentRuntime] Failed to re-queue goal %s: %s",
                               goal.goal_id, e)
@@ -366,7 +474,8 @@ class UnifiedAgentRuntime:
         )
 
         await self._checkpoint_store.save(goal)
-        await self._goal_queue.put((priority.value, goal.goal_id, goal))
+        # Negate priority so CRITICAL(4) dequeues before BACKGROUND(1)
+        await self._goal_queue.put((-priority.value, goal.goal_id, goal))
         await self._emit_progress(goal, "submitted", f"Goal queued: {description[:80]}")
 
         # If runtime is active, try to promote immediately
@@ -462,7 +571,16 @@ class UnifiedAgentRuntime:
         logger.info("[AgentRuntime] Housekeeping loop exited")
 
     async def _promote_pending_goals(self):
-        """Move goals from queue to active, spawning runner coroutines."""
+        """Move goals from queue to active, spawning runner coroutines.
+
+        Protected by _promotion_lock to prevent concurrent calls from
+        submit_goal() and housekeeping_loop() from over-promoting.
+        """
+        async with self._promotion_lock:
+            await self._promote_pending_goals_inner()
+
+    async def _promote_pending_goals_inner(self):
+        """Inner promotion logic (must hold _promotion_lock)."""
         while len(self._active_goals) < self._max_concurrent:
             try:
                 _, goal_id, goal = self._goal_queue.get_nowait()
@@ -755,17 +873,42 @@ class UnifiedAgentRuntime:
         return " | ".join(observations)
 
     async def _capture_screen_state(self) -> Optional[str]:
-        """Capture and describe the current screen state."""
+        """Capture and describe the current screen state.
+
+        Uses ClaudeComputerUseConnector.capture_and_cache() which returns
+        (PIL Image or None, base64 string). We then use the LLM to describe
+        the screenshot if available.
+        """
+        # Primary: ClaudeComputerUseConnector (has capture_and_cache)
         try:
-            from backend.autonomy.vision_decision_pipeline import get_vision_pipeline
-            pipeline = await get_vision_pipeline()
-            if pipeline:
-                result = await pipeline.capture_and_analyze()
-                return result.get("description", "Screen captured")
+            from backend.display.computer_use_connector import get_computer_use_connector
+            connector = get_computer_use_connector()
+            if connector:
+                _image, b64_screenshot = await connector.capture_and_cache(
+                    resize_for_api=True,
+                )
+                if b64_screenshot:
+                    # Get spatial context (window layout, focused app)
+                    spatial = await connector.get_current_spatial_context()
+                    desc = f"Screenshot captured ({len(b64_screenshot)} bytes b64)"
+                    if spatial:
+                        desc += f" | Spatial: {spatial[:300]}"
+                    return desc
         except ImportError:
             pass
         except Exception as e:
-            logger.debug("[AgentRuntime] Screen capture failed: %s", e)
+            logger.debug("[AgentRuntime] ClaudeComputerUseConnector capture failed: %s", e)
+
+        # Fallback: ComputerUseTool for basic screen info
+        try:
+            from backend.autonomy.computer_use_tool import get_computer_use_tool
+            tool = get_computer_use_tool()
+            if tool:
+                metrics = tool.get_metrics()
+                return f"Screen metrics: {json.dumps(metrics, default=str)[:300]}"
+        except (ImportError, Exception):
+            pass
+
         return None
 
     # ─────────────────────────────────────────────────────────
@@ -801,6 +944,23 @@ class UnifiedAgentRuntime:
             "remaining_iterations": goal.max_iterations - wm.iteration_count,
         }
 
+    def _get_available_tools_text(self) -> str:
+        """v239.0: Build available tools list for THINK prompts."""
+        try:
+            from backend.autonomy.langchain_tools import ToolRegistry
+            registry = ToolRegistry.get_instance()
+            max_tools = int(os.getenv("AGENT_RUNTIME_MAX_TOOLS_IN_PROMPT", "50"))
+            tools = list(registry.get_all())[:max_tools]
+            if not tools:
+                return ""
+            lines = [f"  - {t.metadata.name}: {t.metadata.description[:150]}" for t in tools]
+            return (
+                "\nAvailable tools (use exact name in 'tool' field of action):\n"
+                + "\n".join(lines) + "\n"
+            )
+        except Exception:
+            return ""
+
     async def _think(
         self, goal: Goal, observation: str,
         context: Dict, mode: ThinkMode,
@@ -817,15 +977,18 @@ class UnifiedAgentRuntime:
         self, goal: Goal, observation: str, context: Dict,
     ) -> Tuple[str, Dict]:
         """First iteration: break goal into concrete steps."""
+        tools_text = self._get_available_tools_text()
         prompt = (
             f"You are JARVIS, an autonomous agent. Decompose this goal into "
             f"concrete executable steps.\n\n"
             f"Goal: {goal.description}\n"
             f"Current observation: {observation}\n"
-            f"Context: {json.dumps(context, default=str)[:2000]}\n\n"
+            f"Context: {json.dumps(context, default=str)[:2000]}\n"
+            f"{tools_text}\n"
             f"Return a JSON object with:\n"
             f"- 'thought': your reasoning about how to approach this\n"
-            f"- 'first_step': {{'description': str, 'action': dict, "
+            f"- 'first_step': {{'description': str, 'action': {{'tool': str, "
+            f"'params': dict}}, "
             f"'action_type': str, 'needs_vision': bool, "
             f"'verification': 'visual'|'api_result'|'semantic'|'none'}}\n"
             f"- 'remaining_steps': list of step objects in the same format\n"
@@ -845,6 +1008,9 @@ class UnifiedAgentRuntime:
             for p in wm.plan_history[-3:]
         ]
 
+        # v239.0: Include available tools for replanning
+        tools_text = self._get_available_tools_text()
+
         prompt = (
             f"You are JARVIS. The previous approach failed. Devise an "
             f"ALTERNATIVE strategy that avoids the same mistakes.\n\n"
@@ -852,11 +1018,12 @@ class UnifiedAgentRuntime:
             f"Observation: {observation}\n"
             f"Failed approaches: {json.dumps(failed_approaches)}\n"
             f"Blockers: {wm.blockers[-3:]}\n"
-            f"Context: {json.dumps(context, default=str)[:1500]}\n\n"
+            f"Context: {json.dumps(context, default=str)[:1500]}\n"
+            f"{tools_text}\n"
             f"Return a JSON object with:\n"
             f"- 'thought': why previous approach failed and what to try instead\n"
             f"- 'description': what this step does\n"
-            f"- 'action': dict describing the action\n"
+            f"- 'action': {{'tool': str, 'params': dict}} describing the action\n"
             f"- 'action_type': str\n"
             f"- 'needs_vision': bool\n"
             f"- 'verification': 'visual'|'api_result'|'semantic'|'none'"
@@ -869,16 +1036,20 @@ class UnifiedAgentRuntime:
         self, goal: Goal, observation: str, context: Dict,
     ) -> Tuple[str, Dict]:
         """Standard continuation: what's next given current results?"""
+        # v239.0: Include available tools for step planning
+        tools_text = self._get_available_tools_text()
+
         prompt = (
             f"You are JARVIS. Determine the next step for this goal.\n\n"
             f"Goal: {goal.description}\n"
             f"Observation: {observation}\n"
-            f"Context: {json.dumps(context, default=str)[:2000]}\n\n"
+            f"Context: {json.dumps(context, default=str)[:2000]}\n"
+            f"{tools_text}\n"
             f"If the goal is complete, set action_type to 'complete'.\n\n"
             f"Return a JSON object with:\n"
             f"- 'thought': your reasoning about what to do next\n"
             f"- 'description': what this step does\n"
-            f"- 'action': dict describing the action\n"
+            f"- 'action': {{'tool': str, 'params': dict}} describing the action\n"
             f"- 'action_type': str\n"
             f"- 'needs_vision': bool\n"
             f"- 'verification': 'visual'|'api_result'|'semantic'|'none'"
@@ -888,8 +1059,24 @@ class UnifiedAgentRuntime:
         return thought, result
 
     async def _call_reasoning(self, prompt: str) -> Dict:
-        """Call the reasoning engine (J-Prime or fallback)."""
-        # Try J-Prime's AGI endpoint first
+        """Call the reasoning engine (J-Prime or fallback).
+
+        Protected by _llm_semaphore to limit concurrent LLM calls.
+        J-Prime handles one request at a time — unbounded concurrency
+        just wastes queue time and risks timeouts.
+        """
+        # Acquire semaphore to limit concurrent LLM calls
+        if self._llm_semaphore:
+            await self._llm_semaphore.acquire()
+        try:
+            return await self._call_reasoning_inner(prompt)
+        finally:
+            if self._llm_semaphore:
+                self._llm_semaphore.release()
+
+    async def _call_reasoning_inner(self, prompt: str) -> Dict:
+        """Inner reasoning call (must hold _llm_semaphore)."""
+        # Try J-Prime via PrimeRouter first
         try:
             result = await self._think_via_prime(prompt)
             if result and isinstance(result, dict):
@@ -923,19 +1110,28 @@ class UnifiedAgentRuntime:
         }
 
     async def _think_via_prime(self, prompt: str) -> Optional[Dict]:
-        """Route thinking to J-Prime's /agi/reason endpoint."""
+        """Route thinking to J-Prime via PrimeRouter.generate()."""
         try:
             from backend.core.prime_router import get_prime_router
             router = await get_prime_router()
             if router is None:
                 return None
-            result = await router.call_agi_endpoint("/agi/reason", {
-                "query": prompt,
-                "strategy": "chain_of_thought",
-                "context": {"source": "agent_runtime"},
-            })
-            return result
-        except (ImportError, AttributeError):
+            response = await router.generate(
+                prompt=prompt,
+                system_prompt=(
+                    "You are JARVIS, an autonomous agent runtime. "
+                    "Always respond with valid JSON matching the requested schema. "
+                    "No markdown wrapping."
+                ),
+                max_tokens=2048,
+                temperature=0.3,
+            )
+            # RouterResponse.content is the raw text — parse to dict
+            if response and response.content:
+                return self._parse_json_response(response.content)
+            return None
+        except (ImportError, AttributeError, Exception) as e:
+            logger.debug("[AgentRuntime] J-Prime via PrimeRouter failed: %s", e)
             return None
 
     def _parse_json_response(self, text: str) -> Dict:
@@ -1008,15 +1204,32 @@ class UnifiedAgentRuntime:
     async def _execute_action(self, action: Dict) -> Dict:
         """Dispatch action to appropriate executor."""
         action_type = action.get("type", action.get("action_type", ""))
-
-        # Tool execution via orchestrator
         tool_name = action.get("tool", action.get("tool_name", ""))
-        if tool_name and self._agent.tool_orchestrator:
-            result = await self._agent.tool_orchestrator.execute(
-                tool_name=tool_name,
-                **action.get("params", action.get("parameters", {})),
-            )
-            return {"success": True, "tool": tool_name, "result": result}
+        params = action.get("params", action.get("parameters", {}))
+
+        # v239.0: Direct registry dispatch (handles mesh + built-in tools)
+        if tool_name:
+            try:
+                from backend.autonomy.langchain_tools import ToolRegistry
+                registry = ToolRegistry.get_instance()
+                tool = registry.get(tool_name)
+                if tool:
+                    result = await tool.run(**params)
+                    return {"success": True, "tool": tool_name, "result": result}
+            except Exception as e:
+                return {"success": False, "tool": tool_name, "error": str(e)}
+
+            # Fallback to orchestrator for unregistered action types
+            if self._agent.tool_orchestrator:
+                try:
+                    result = await self._agent.tool_orchestrator.execute(
+                        action_type=tool_name,
+                        target=params.get("target", ""),
+                        parameters=params,
+                    )
+                    return {"success": True, "tool": tool_name, "result": result}
+                except Exception as e:
+                    return {"success": False, "tool": tool_name, "error": str(e)}
 
         # Reasoning-only action (no tool needed)
         if action_type in ("reason", "analyze", "plan"):
@@ -1026,44 +1239,91 @@ class UnifiedAgentRuntime:
         if action_type in ("click", "type", "scroll", "screenshot"):
             return await self._execute_computer_use(action)
 
-        # Shell command
-        if action_type == "shell" and action.get("command"):
-            return await self._execute_shell(action["command"])
+        # Ghost Hands: background autonomous visual workflow
+        if action_type in ("ghost_hands", "background_visual", "ghost_task"):
+            return await self._execute_via_ghost_hands(action)
+
+        # Shell commands are NOT allowed — security risk (arbitrary command injection)
+        # Route through tool orchestrator instead which has proper sandboxing
+        if action_type == "shell":
+            logger.warning("[AgentRuntime] Shell execution blocked — use tool orchestrator")
+            return {"success": False, "error": "Direct shell execution not allowed. "
+                    "Use a registered tool instead."}
 
         # Default: pass through
         return {"success": True, "action_type": action_type, "action": action}
 
     async def _execute_computer_use(self, action: Dict) -> Dict:
-        """Execute a computer use action (click, type, etc.)."""
+        """Execute a computer use action via ComputerUseTool.
+
+        Uses the correct API: get_computer_use_tool() is SYNC,
+        then await tool.run(goal=...) returns ComputerUseResult.
+        """
         try:
             from backend.autonomy.computer_use_tool import get_computer_use_tool
-            tool = await get_computer_use_tool()
-            if tool:
-                result = await tool.execute(action)
-                return {"success": True, "result": result}
-        except (ImportError, Exception) as e:
-            return {"success": False, "error": f"Computer use unavailable: {e}"}
-        return {"success": False, "error": "Computer use tool not found"}
+            tool = get_computer_use_tool()  # SYNC factory
+            if tool is None:
+                return {"success": False, "error": "Computer use tool not available"}
 
-    async def _execute_shell(self, command: str) -> Dict:
-        """Execute a shell command safely."""
-        try:
-            proc = await asyncio.create_subprocess_shell(
-                command,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
+            # Build a goal string from the action dict
+            goal_str = action.get("description", action.get("goal", ""))
+            if not goal_str:
+                goal_str = f"{action.get('type', 'interact')}: {json.dumps(action, default=str)[:200]}"
+
+            result = await tool.run(
+                goal=goal_str,
+                context=action.get("context"),
+                narrate=action.get("narrate", False),
             )
-            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=30.0)
             return {
-                "success": proc.returncode == 0,
-                "stdout": stdout.decode()[:2000] if stdout else "",
-                "stderr": stderr.decode()[:2000] if stderr else "",
-                "returncode": proc.returncode,
+                "success": result.success if hasattr(result, 'success') else True,
+                "confidence": getattr(result, 'confidence', 0.0),
+                "message": getattr(result, 'final_message', ''),
+                "actions_count": getattr(result, 'actions_count', 0),
+                "duration_ms": getattr(result, 'total_duration_ms', 0.0),
             }
-        except asyncio.TimeoutError:
-            return {"success": False, "error": "Shell command timed out (30s)"}
+        except ImportError:
+            return {"success": False, "error": "computer_use_tool not installed"}
         except Exception as e:
-            return {"success": False, "error": str(e)}
+            logger.debug("[AgentRuntime] Computer use execution failed: %s", e)
+            return {"success": False, "error": f"Computer use error: {e}"}
+
+    async def _execute_via_ghost_hands(self, action: Dict) -> Dict:
+        """Execute a background visual task via Ghost Hands Orchestrator.
+
+        Ghost Hands runs tasks on the ghost display (Yabai) so they
+        don't steal user focus. Uses N-Optic Nerve for vision and
+        Background Actuator for UI interaction.
+        """
+        try:
+            from backend.ghost_hands.orchestrator import get_ghost_hands
+            orchestrator = await get_ghost_hands()
+            if orchestrator is None:
+                return {"success": False, "error": "Ghost Hands not available"}
+
+            task_name = action.get("name", f"agent-runtime-{time.time():.0f}")
+            watch_app = action.get("app", action.get("watch_app"))
+            trigger = action.get("trigger_text")
+
+            ghost_task = await orchestrator.create_task(
+                name=task_name,
+                watch_app=watch_app,
+                trigger_text=trigger,
+                one_shot=action.get("one_shot", True),
+                priority=action.get("priority", 5),
+            )
+
+            return {
+                "success": True,
+                "task_name": task_name,
+                "ghost_task_status": getattr(ghost_task, 'status', 'created'),
+                "message": f"Ghost Hands task '{task_name}' created",
+            }
+        except ImportError:
+            return {"success": False, "error": "ghost_hands module not available"}
+        except Exception as e:
+            logger.debug("[AgentRuntime] Ghost Hands execution failed: %s", e)
+            return {"success": False, "error": f"Ghost Hands error: {e}"}
 
     # ─────────────────────────────────────────────────────────
     # VERIFY Phase
@@ -1338,12 +1598,18 @@ class UnifiedAgentRuntime:
         await self._broadcast_ws(event)
 
     async def _broadcast_ws(self, event: Dict):
-        """Broadcast an event via the existing WebSocket infrastructure."""
+        """Broadcast an event via BroadcastConnectionManager.
+
+        Uses the module-level `manager` singleton from broadcast_router,
+        which is the canonical WebSocket broadcast mechanism.
+        """
         try:
-            from backend.routers.hybrid import _broadcast_ws_event
-            await _broadcast_ws_event(event)
-        except (ImportError, Exception):
-            pass  # Non-critical — UI just won't update
+            from backend.api.broadcast_router import manager as broadcast_manager
+            await broadcast_manager.broadcast(event)
+        except ImportError:
+            pass  # broadcast_router not available
+        except Exception as e:
+            logger.debug("[AgentRuntime] WebSocket broadcast failed: %s", e)
 
     # ─────────────────────────────────────────────────────────
     # Goal Completion & Learning

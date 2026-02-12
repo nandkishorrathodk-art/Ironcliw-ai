@@ -514,6 +514,47 @@ class FunctionTool(JARVISTool):
 
 
 # ============================================================================
+# Neural Mesh Agent Tool (v239.0)
+# ============================================================================
+
+class NeuralMeshAgentTool(JARVISTool):
+    """Tool that delegates to a Neural Mesh agent's execute_task().
+
+    Each mesh agent capability (e.g., "fetch_unread_emails") gets wrapped
+    as a JARVISTool so the agent runtime's THINK step can discover it
+    and the ACT step can execute it via the standard tool.run() pipeline.
+    """
+
+    def __init__(
+        self,
+        agent,  # BaseNeuralMeshAgent (untyped to avoid circular import)
+        capability: str,
+        category: ToolCategory = ToolCategory.INTEGRATION,
+        risk_level: ToolRiskLevel = ToolRiskLevel.LOW,
+        timeout_seconds: float = 30.0,
+    ):
+        tool_name = f"mesh:{agent.agent_name}:{capability}"
+        metadata = ToolMetadata(
+            name=tool_name,
+            description=f"[Neural Mesh] {capability} via {agent.agent_name}",
+            category=category,
+            risk_level=risk_level,
+            requires_permission=False,
+            timeout_seconds=timeout_seconds,
+            capabilities=[capability],
+            tags=["neural_mesh", agent.agent_type, agent.agent_name],
+        )
+        super().__init__(metadata)
+        self._agent = agent
+        self._capability = capability
+
+    async def _execute(self, **kwargs) -> Any:
+        """Delegate to the mesh agent's execute_task method."""
+        payload = {"action": self._capability, **kwargs}
+        return await self._agent.execute_task(payload)
+
+
+# ============================================================================
 # Tool Registry
 # ============================================================================
 

@@ -3590,6 +3590,28 @@ class MosaicWatcher:
         self.start_time = time.time()
         self._stop_event.clear()
 
+        # v242.0: Pre-flight display ID validation
+        self._active_cg_display_ids = None
+        try:
+            from Quartz import CGGetActiveDisplayList
+            err, displays, count = CGGetActiveDisplayList(16, None, None)
+            if err == 0 and displays:
+                self._active_cg_display_ids = list(displays)[:count]
+                if self.config.display_id in self._active_cg_display_ids:
+                    logger.info(
+                        f"[MosaicWatcher v242.0] ✅ Display {self.config.display_id} "
+                        f"validated as active CGDirectDisplayID"
+                    )
+                else:
+                    logger.error(
+                        f"[MosaicWatcher v242.0] ❌ DISPLAY MISMATCH: "
+                        f"display_id={self.config.display_id} NOT in active "
+                        f"CGDirectDisplayIDs {self._active_cg_display_ids}. "
+                        f"This may be a yabai index, not a CGDirectDisplayID."
+                    )
+        except Exception as e:
+            logger.debug(f"[MosaicWatcher v242.0] Pre-flight check skipped: {e}")
+
         try:
             if self._is_avfoundation:
                 success = await self._start_avfoundation_capture()
@@ -3638,7 +3660,15 @@ class MosaicWatcher:
             )
 
             if not screen_input:
-                logger.error(f"[MosaicWatcher] Failed to create screen input for display {self.config.display_id}")
+                active_ids_info = (
+                    f" Active CG display IDs: {self._active_cg_display_ids}"
+                    if self._active_cg_display_ids else ""
+                )
+                logger.error(
+                    f"[MosaicWatcher v242.0] Failed to create AVCaptureScreenInput for "
+                    f"display_id={self.config.display_id}. Verify this is a CGDirectDisplayID, "
+                    f"not a yabai display index.{active_ids_info}"
+                )
                 return False
 
             # Configure frame rate

@@ -979,23 +979,26 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
     # 3. Conservative default
     # =========================================================================
 
-    def _get_ghost_display_index(self) -> int:
+    def _get_ghost_yabai_index(self) -> int:
         """
-        v241.0: Dynamic ghost display index resolution.
+        v242.0: Get ghost display YABAI INDEX (for window routing comparisons).
+
+        Use this when comparing against window['display_id'] from yabai queries.
+        Do NOT use for AVFoundation/Quartz capture APIs — use _get_ghost_cg_display_id().
 
         Three-tier fallback:
-        1. GhostDisplayManager.ghost_display_id (live, authoritative)
-        2. JARVIS_SHADOW_DISPLAY env var (operator override)
+        1. GhostDisplayManager._ghost_info.yabai_display_index (live)
+        2. JARVIS_SHADOW_DISPLAY env var (operator override, stores yabai index)
         3. Conservative default: 2
         """
         # Tier 1: Live query from GhostDisplayManager
         if _lazy_import_ghost_manager() and _ghost_manager_module:
             try:
                 ghost_mgr = _ghost_manager_module.get_ghost_manager()
-                if ghost_mgr:
-                    display_id = ghost_mgr.ghost_display_id
-                    if display_id is not None:
-                        return display_id
+                if ghost_mgr and ghost_mgr._ghost_info:
+                    yabai_idx = ghost_mgr._ghost_info.yabai_display_index
+                    if yabai_idx and yabai_idx > 0:
+                        return yabai_idx
             except Exception:
                 pass
 
@@ -1009,6 +1012,59 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
 
         # Tier 3: Conservative default
         return 2
+
+    def _get_ghost_cg_display_id(self) -> int:
+        """
+        v242.0: Get ghost display CGDirectDisplayID (for AVFoundation/Quartz capture).
+
+        Use this when passing display_id to MosaicWatcherConfig, AVCaptureScreenInput,
+        or CGDisplayCreateImage. Do NOT use for yabai window routing comparisons.
+
+        Four-tier fallback:
+        1. GhostDisplayManager.ghost_display_id (now stores CGDirectDisplayID)
+        2. JARVIS_GHOST_CG_DISPLAY_ID env var (direct override)
+        3. Resolve JARVIS_SHADOW_DISPLAY yabai index → CGDirectDisplayID
+        4. Raw yabai index with warning (matches old broken behavior)
+        """
+        # Tier 1: GhostDisplayManager (now returns CGDirectDisplayID after v242.0 fix)
+        if _lazy_import_ghost_manager() and _ghost_manager_module:
+            try:
+                ghost_mgr = _ghost_manager_module.get_ghost_manager()
+                if ghost_mgr:
+                    cg_id = ghost_mgr.ghost_display_id
+                    if cg_id is not None:
+                        return cg_id
+            except Exception:
+                pass
+
+        # Tier 2: Direct CGDirectDisplayID override
+        env_cg = os.getenv("JARVIS_GHOST_CG_DISPLAY_ID")
+        if env_cg:
+            try:
+                return int(env_cg)
+            except (ValueError, TypeError):
+                pass
+
+        # Tier 3: Resolve yabai index → CGDirectDisplayID
+        yabai_index = self._get_ghost_yabai_index()
+        if _lazy_import_ghost_manager() and _ghost_manager_module:
+            try:
+                resolve_fn = getattr(
+                    _ghost_manager_module, 'resolve_yabai_index_to_cg_display_id', None
+                )
+                if resolve_fn:
+                    resolved = resolve_fn(yabai_index)
+                    if resolved is not None:
+                        return resolved
+            except Exception:
+                pass
+
+        # Tier 4: Raw yabai index (will likely fail, but preserves old behavior)
+        logger.warning(
+            f"[v242.0] Could not resolve yabai index {yabai_index} "
+            f"to CGDirectDisplayID — capture may fail"
+        )
+        return yabai_index
 
     def _get_ghost_display_dimensions(self) -> tuple:
         """
@@ -1141,10 +1197,10 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
                 MosaicWatcher, MosaicWatcherConfig
             )
 
-            ghost_display_index = self._get_ghost_display_index()
+            ghost_cg_display_id = self._get_ghost_cg_display_id()  # v242.0: CGDirectDisplayID for capture
 
             new_config = MosaicWatcherConfig(
-                display_id=ghost_display_index,
+                display_id=ghost_cg_display_id,
                 display_width=new_width,
                 display_height=new_height,
                 fps=self.config.mosaic_fps,
@@ -3296,7 +3352,7 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
                 # v53.0: SHADOW REALM - Also recognize Display 2 as capturable
                 # Windows exiled to Shadow Realm (BetterDisplay) should always be
                 # considered capturable regardless of their space_id
-                shadow_display = self._get_ghost_display_index()  # v241.0: Dynamic resolution
+                shadow_display = self._get_ghost_yabai_index()  # v242.0: Yabai index for window routing
 
                 try:
                     yabai_detector = get_yabai_detector()
@@ -3584,12 +3640,12 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
         # SOLUTION: If ANY window is on Ghost Display, force Mosaic mode
         # regardless of window count. The display capture is reliable.
         # ===================================================================
-        ghost_display_index = self._get_ghost_display_index()  # v241.0: Dynamic resolution
+        ghost_yabai_index = self._get_ghost_yabai_index()  # v242.0: Yabai index for window routing
 
         # v61.0: Check if any window is on Ghost Display
         any_on_ghost_display = any(
             window.get('is_on_ghost_display', False) or
-            window.get('display_id', 1) >= ghost_display_index
+            window.get('display_id', 1) >= ghost_yabai_index
             for window in windows
         )
 
@@ -3642,12 +3698,15 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
             # ===================================================================
             if not mosaic_config or not mosaic_config.get('display_id'):
                 if any_on_ghost_display:
+                    # v242.0: MosaicWatcher needs CGDirectDisplayID, not yabai index
+                    ghost_cg_id = self._get_ghost_cg_display_id()
                     logger.info(
-                        f"[v61.1 RETINA FOCUS] 🔭 Using detected ghost display index: {ghost_display_index}"
+                        f"[v61.1 RETINA FOCUS] 🔭 Using ghost CGDirectDisplayID: {ghost_cg_id} "
+                        f"(yabai index: {ghost_yabai_index})"
                     )
                     ghost_dims = self._get_ghost_display_dimensions()  # v241.0: Dynamic resolution
                     mosaic_config = {
-                        'display_id': ghost_display_index,
+                        'display_id': ghost_cg_id,
                         'display_width': ghost_dims[0],
                         'display_height': ghost_dims[1],
                     }
@@ -5611,8 +5670,8 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
                     if confidence > 0:
                         # v60.0 PANOPTICON: Include display_id for Ghost Display awareness
                         display_id = window_obj.display_id if hasattr(window_obj, 'display_id') else 1
-                        ghost_display_index = self._get_ghost_display_index()  # v241.0: Dynamic resolution
-                        is_on_ghost_display = display_id >= ghost_display_index
+                        ghost_yabai_index = self._get_ghost_yabai_index()  # v242.0: Yabai index for window routing
+                        is_on_ghost_display = display_id >= ghost_yabai_index
 
                         matching_windows.append({
                             'found': True,
@@ -5880,9 +5939,9 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
         # The Ferrari Engine (ScreenCaptureKit) CAN capture these windows -
         # it's only the VALIDATION that fails, not the actual capture.
         # =====================================================================
-        ghost_display_index = self._get_ghost_display_index()  # v241.0: Dynamic resolution
+        ghost_yabai_index = self._get_ghost_yabai_index()  # v242.0: Yabai index for window routing
         window_display_id = window.get('display_id', 1)
-        is_on_ghost_display = window.get('is_on_ghost_display', False) or window_display_id >= ghost_display_index
+        is_on_ghost_display = window.get('is_on_ghost_display', False) or window_display_id >= ghost_yabai_index
 
         if is_on_ghost_display:
             logger.info(

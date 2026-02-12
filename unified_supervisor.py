@@ -62711,6 +62711,17 @@ class JarvisSystemKernel:
                     if self._agi_os:
                         self._agi_os_status["coordinator"] = True
                         self.logger.success("[AGI-OS] ✓ AGIOSCoordinator started")
+
+                        # v239.0: Connect agent runtime ↔ Neural Mesh
+                        if hasattr(self, '_agent_runtime') and self._agent_runtime:
+                            bridge = getattr(self._agi_os, '_jarvis_bridge', None)
+                            if bridge:
+                                try:
+                                    await self._agent_runtime.connect_to_neural_mesh(bridge)
+                                    self.connect_neural_mesh(bridge)
+                                    self.logger.success("[AGI-OS] ✓ AgentRuntime ↔ Neural Mesh connected")
+                                except Exception as e:
+                                    self.logger.warning(f"[AGI-OS] Runtime↔Mesh wiring failed (non-fatal): {e}")
                     else:
                         self.logger.warning("[AGI-OS] ⚠ AGIOSCoordinator failed to start")
 

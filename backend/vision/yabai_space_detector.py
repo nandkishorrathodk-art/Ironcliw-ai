@@ -1300,12 +1300,13 @@ class GhostDisplayInfo:
     - Animation timing information
     """
     space_id: int
-    display_id: int
+    display_id: int  # v242.0: CGDirectDisplayID (for Quartz/AVFoundation capture APIs)
     display_name: str
     width: int
     height: int
     is_virtual: bool
     window_count: int
+    yabai_display_index: int = 0  # v242.0: Original yabai display index (for yabai commands)
     last_health_check: Optional[datetime] = None
     consecutive_failures: int = 0
 
@@ -2498,20 +2499,41 @@ class GhostDisplayManager:
                 spaces = yabai_detector.enumerate_all_spaces(include_display_info=True)
                 for space in spaces:
                     if space.get("space_id") == ghost_space:
+                        # v242.0: Resolve yabai display index → CGDirectDisplayID
+                        yabai_idx = space.get("display", 2)
+                        cg_display_id = resolve_yabai_index_to_cg_display_id(yabai_idx)
+
+                        # Direct override (for debugging/testing)
+                        cg_override = os.environ.get('JARVIS_GHOST_CG_DISPLAY_ID')
+                        if cg_override:
+                            try:
+                                cg_display_id = int(cg_override)
+                            except (ValueError, TypeError):
+                                pass
+
+                        if cg_display_id is None:
+                            logger.warning(
+                                f"[GhostManager v242.0] Could not resolve yabai display "
+                                f"index {yabai_idx} to CGDirectDisplayID. "
+                                f"Using raw index (capture may fail)."
+                            )
+                            cg_display_id = yabai_idx
+
                         self._ghost_info = GhostDisplayInfo(
                             space_id=ghost_space,
-                            display_id=space.get("display", 2),
-                            display_name=f"Display {space.get('display', 2)}",
+                            display_id=cg_display_id,
+                            display_name=f"Display {yabai_idx} (CG:{cg_display_id})",
                             width=space.get("width", 1920),
                             height=space.get("height", 1080),
-                            is_virtual=space.get("display", 1) > 1,
+                            is_virtual=yabai_idx > 1,
                             window_count=space.get("window_count", 0),
+                            yabai_display_index=yabai_idx,
                             last_health_check=datetime.now()
                         )
                         self._status = GhostDisplayStatus.AVAILABLE
                         logger.info(
-                            f"[GhostManager] ✅ Initialized: Space {ghost_space} "
-                            f"on Display {self._ghost_info.display_id} "
+                            f"[GhostManager v242.0] ✅ Initialized: Space {ghost_space} "
+                            f"on Yabai Display {yabai_idx} → CGDirectDisplayID {cg_display_id} "
                             f"({self._ghost_info.width}x{self._ghost_info.height})"
                         )
 
@@ -2816,6 +2838,7 @@ class GhostDisplayManager:
 
             else:
                 # Ghost Display changed or disappeared
+                invalidate_display_map_cache()  # v242.0: Display may have changed
                 self._ghost_info.consecutive_failures += 1
                 logger.warning(
                     f"[GhostManager] ⚠️ Health check failed "
@@ -2841,18 +2864,28 @@ class GhostDisplayManager:
             spaces = yabai_detector.enumerate_all_spaces(include_display_info=True)
             for space in spaces:
                 if space.get("space_id") == new_ghost:
+                    # v242.0: Resolve yabai index → CGDirectDisplayID (same as initialize)
+                    yabai_idx = space.get("display", 2)
+                    cg_display_id = resolve_yabai_index_to_cg_display_id(yabai_idx)
+                    if cg_display_id is None:
+                        cg_display_id = yabai_idx
+
                     self._ghost_info = GhostDisplayInfo(
                         space_id=new_ghost,
-                        display_id=space.get("display", 2),
-                        display_name=f"Display {space.get('display', 2)}",
+                        display_id=cg_display_id,
+                        display_name=f"Display {yabai_idx} (CG:{cg_display_id})",
                         width=space.get("width", 1920),
                         height=space.get("height", 1080),
-                        is_virtual=space.get("display", 1) > 1,
+                        is_virtual=yabai_idx > 1,
                         window_count=space.get("window_count", 0),
+                        yabai_display_index=yabai_idx,
                         last_health_check=datetime.now()
                     )
                     self._status = GhostDisplayStatus.AVAILABLE
-                    logger.info(f"[GhostManager] ✅ Recovery successful: Space {new_ghost}")
+                    logger.info(
+                        f"[GhostManager v242.0] ✅ Recovery successful: Space {new_ghost} "
+                        f"(Yabai Display {yabai_idx} → CG:{cg_display_id})"
+                    )
 
                     # v48.0: Enforce BSP layout on recovered Ghost Space
                     await self._enforce_bsp_layout(new_ghost)
@@ -3535,6 +3568,153 @@ def reset_ghost_manager() -> None:
     """Reset the global Ghost Display Manager (for testing)."""
     global _GHOST_MANAGER
     _GHOST_MANAGER = None
+
+
+# =============================================================================
+# v242.0: Yabai Display Index → CGDirectDisplayID Resolution
+# =============================================================================
+# Yabai's space["display"] returns a display INDEX (1, 2, ...) but macOS
+# capture APIs (AVCaptureScreenInput, CGDisplayCreateImage) need a
+# CGDirectDisplayID (e.g., 1, 4, 69406017). These are NOT the same.
+# This module resolves the mapping via yabai --displays or Quartz fallback.
+# =============================================================================
+
+_yabai_to_cg_cache: Dict[int, int] = {}
+_yabai_to_cg_cache_time: float = 0.0
+
+
+def resolve_yabai_index_to_cg_display_id(
+    yabai_index: int,
+    yabai_path: Optional[str] = None,
+    timeout: float = 5.0,
+) -> Optional[int]:
+    """
+    v242.0: Resolve yabai display index to macOS CGDirectDisplayID.
+
+    Strategy:
+      1. Check TTL-based cache
+      2. Query `yabai -m query --displays` (authoritative mapping)
+      3. Fallback to Quartz CGGetActiveDisplayList (position-based)
+
+    Returns None if resolution fails entirely.
+    """
+    global _yabai_to_cg_cache, _yabai_to_cg_cache_time
+
+    cache_ttl = float(os.environ.get('JARVIS_DISPLAY_MAP_CACHE_TTL', '30.0'))
+
+    # Check cache
+    if (time.time() - _yabai_to_cg_cache_time < cache_ttl
+            and yabai_index in _yabai_to_cg_cache):
+        return _yabai_to_cg_cache[yabai_index]
+
+    # Primary: yabai --displays
+    resolved = _resolve_via_yabai_displays(yabai_index, yabai_path, timeout)
+    if resolved is not None:
+        return resolved
+
+    # Fallback: Quartz
+    resolved = _resolve_via_quartz_fallback(yabai_index)
+    if resolved is not None:
+        return resolved
+
+    return None
+
+
+def _resolve_via_yabai_displays(
+    yabai_index: int,
+    yabai_path: Optional[str] = None,
+    timeout: float = 5.0,
+) -> Optional[int]:
+    """Query yabai --displays and map index → id (CGDirectDisplayID)."""
+    global _yabai_to_cg_cache, _yabai_to_cg_cache_time
+
+    path = yabai_path or os.environ.get("YABAI_PATH", "/opt/homebrew/bin/yabai")
+    try:
+        result = subprocess.run(
+            [path, "-m", "query", "--displays"],
+            capture_output=True, text=True, timeout=timeout,
+        )
+        if result.returncode != 0:
+            return None
+
+        displays = json.loads(result.stdout)
+        new_cache = {}
+        for d in displays:
+            idx = d.get("index")
+            cg_id = d.get("id")
+            if idx is not None and cg_id is not None:
+                new_cache[idx] = cg_id
+
+        # Atomic cache replacement
+        _yabai_to_cg_cache = new_cache
+        _yabai_to_cg_cache_time = time.time()
+
+        resolved = new_cache.get(yabai_index)
+        if resolved is not None:
+            logger.info(
+                f"[v242.0] Display mapping: yabai index {yabai_index} "
+                f"→ CGDirectDisplayID {resolved} (via yabai)"
+            )
+        return resolved
+
+    except Exception as e:
+        logger.debug(f"[v242.0] yabai display query failed: {e}")
+        return None
+
+
+def _resolve_via_quartz_fallback(yabai_index: int) -> Optional[int]:
+    """Fallback: use CGGetActiveDisplayList and match by position ordering."""
+    global _yabai_to_cg_cache, _yabai_to_cg_cache_time
+
+    try:
+        import Quartz
+        err, display_ids, count = Quartz.CGGetActiveDisplayList(16, None, None)
+        if err != 0 or not display_ids:
+            return None
+
+        active = list(display_ids)[:count]
+
+        # Yabai orders displays: main=1, then by x-position left-to-right
+        main_id = None
+        non_main = []
+        for did in active:
+            if Quartz.CGDisplayIsMain(did):
+                main_id = did
+            else:
+                bounds = Quartz.CGDisplayBounds(did)
+                non_main.append((bounds.origin.x, did))
+
+        non_main.sort(key=lambda t: t[0])  # Sort by x-position
+
+        ordered = []
+        if main_id is not None:
+            ordered.append(main_id)  # index 1
+        ordered.extend(did for _, did in non_main)  # index 2, 3, ...
+
+        # Cache ALL mappings
+        new_cache = {i + 1: did for i, did in enumerate(ordered)}
+        _yabai_to_cg_cache = new_cache
+        _yabai_to_cg_cache_time = time.time()
+
+        resolved = new_cache.get(yabai_index)
+        if resolved is not None:
+            logger.info(
+                f"[v242.0] Display mapping: yabai index {yabai_index} "
+                f"→ CGDirectDisplayID {resolved} (via Quartz fallback)"
+            )
+        return resolved
+
+    except Exception as e:
+        logger.debug(f"[v242.0] Quartz display resolution failed: {e}")
+        return None
+
+
+def invalidate_display_map_cache() -> None:
+    """v242.0: Invalidate the display mapping cache (on topology change)."""
+    global _yabai_to_cg_cache, _yabai_to_cg_cache_time
+    _yabai_to_cg_cache = {}
+    _yabai_to_cg_cache_time = 0.0
+    logger.debug("[v242.0] Display mapping cache invalidated")
 
 
 def get_ghost_display_status() -> Dict[str, Any]:
@@ -8409,6 +8589,9 @@ class YabaiSpaceDetector:
         Returns:
             Dict with return results
         """
+        # v242.0: Invalidate display mapping cache on any topology change
+        invalidate_display_map_cache()
+
         shadow_display = int(os.getenv("JARVIS_SHADOW_DISPLAY", "2"))
 
         logger.info(

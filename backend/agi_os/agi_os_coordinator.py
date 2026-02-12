@@ -824,6 +824,44 @@ class AGIOSCoordinator:
             self._action_orchestrator._uae_engine = self._uae_engine
             logger.info("UAE → Action Orchestrator connected")
 
+        # v239.0: Register Neural Mesh agent capabilities as tools in ToolRegistry
+        # This bridges the mesh (60+ agents) into the autonomy system so the agent
+        # runtime's THINK step can discover capabilities and ACT step can invoke them.
+        if self._jarvis_bridge:
+            try:
+                from autonomy.langchain_tools import (
+                    NeuralMeshAgentTool,
+                    ToolRegistry,
+                )
+
+                registry = ToolRegistry.get_instance()
+                default_timeout = float(os.getenv("MESH_TOOL_TIMEOUT", "30"))
+                registered = 0
+
+                for agent_name in self._jarvis_bridge.registered_agents:
+                    agent = self._jarvis_bridge.get_agent(agent_name)
+                    if agent is None:
+                        continue
+                    for capability in agent.capabilities:
+                        try:
+                            tool = NeuralMeshAgentTool(
+                                agent=agent,
+                                capability=capability,
+                                timeout_seconds=default_timeout,
+                            )
+                            registry.register(tool, replace=True)
+                            registered += 1
+                        except Exception:
+                            pass
+
+                logger.info(
+                    "Neural Mesh → ToolRegistry: %d capabilities registered from %d agents",
+                    registered,
+                    len(self._jarvis_bridge.registered_agents),
+                )
+            except Exception as e:
+                logger.warning("Mesh tool registration failed (non-fatal): %s", e)
+
         logger.debug("Components connected")
 
     async def _announce_startup(self) -> None:
