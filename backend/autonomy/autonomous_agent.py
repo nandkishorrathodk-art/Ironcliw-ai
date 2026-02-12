@@ -241,6 +241,7 @@ class AutonomousAgent:
         self._current_session: Optional[AgentSession] = None
         self._sessions: Dict[str, AgentSession] = {}
         self._metrics = AgentMetrics()
+        self._runtime = None  # Set by UnifiedAgentRuntime during startup
 
         # Callbacks
         self._callbacks: Dict[str, List[Callable]] = {
@@ -789,6 +790,78 @@ class AutonomousAgent:
 
         self._initialized = False
         self.logger.info(f"{self.config.name} agent shut down")
+
+    # ========================================================================
+    # Agent Runtime Integration — Goal Pursuit API
+    # ========================================================================
+
+    async def pursue_goal(
+        self,
+        description: str,
+        priority: str = "normal",
+        context: Optional[Dict[str, Any]] = None,
+        needs_vision: bool = False,
+    ) -> str:
+        """Submit a goal for multi-step autonomous pursuit.
+
+        This delegates to the UnifiedAgentRuntime which provides:
+        - SENSE→THINK→ACT→VERIFY→REFLECT loop per goal
+        - Concurrent goal execution with ScreenLease
+        - Checkpoint persistence for crash recovery
+        - Per-step dynamic escalation
+
+        Args:
+            description: What the agent should accomplish
+            priority: "background", "normal", "high", or "critical"
+            context: Additional context for the goal
+            needs_vision: Whether this goal requires screen access
+
+        Returns:
+            goal_id string for tracking
+
+        Raises:
+            RuntimeError: If agent runtime is not initialized
+        """
+        if self._runtime is None:
+            raise RuntimeError(
+                "Agent runtime not initialized. "
+                "Submit goals after runtime startup completes."
+            )
+        from backend.autonomy.agent_runtime_models import GoalPriority
+        return await self._runtime.submit_goal(
+            description=description,
+            priority=GoalPriority[priority.upper()],
+            source="user",
+            context=context,
+            needs_vision=needs_vision,
+        )
+
+    async def cancel_goal(self, goal_id: str, reason: str = "user_cancelled"):
+        """Cancel a specific goal by ID."""
+        if self._runtime is not None:
+            await self._runtime.cancel_goal(goal_id, reason)
+
+    async def cancel_all_goals(self, reason: str = "user_cancelled"):
+        """Cancel all active goals. Called on 'JARVIS stop'."""
+        if self._runtime is not None:
+            await self._runtime.cancel_active_goals(reason)
+
+    async def get_goal_status(self, goal_id: str) -> Optional[Dict[str, Any]]:
+        """Get current status of a goal."""
+        if self._runtime is not None:
+            return await self._runtime.get_goal_status(goal_id)
+        return None
+
+    async def get_all_goals(self) -> List[Dict[str, Any]]:
+        """Get status of all active goals."""
+        if self._runtime is not None:
+            return await self._runtime.get_all_goals_status()
+        return []
+
+    async def approve_escalation(self, goal_id: str, approved: bool = True):
+        """Approve or reject an escalated goal step."""
+        if self._runtime is not None:
+            await self._runtime.approve_escalation(goal_id, approved)
 
 
 # ============================================================================

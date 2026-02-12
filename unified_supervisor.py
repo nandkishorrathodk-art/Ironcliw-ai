@@ -57292,6 +57292,9 @@ class JarvisSystemKernel:
         self._background_tasks: List[asyncio.Task] = []
         self._shutdown_event = asyncio.Event()
 
+        # Unified Agent Runtime (initialized in _start_agent_runtime)
+        self._agent_runtime = None
+
         # v199.0: Invincible Node (Static IP Spot VM) state
         self._invincible_node_ready: bool = False
         self._invincible_node_ip: Optional[str] = None
@@ -58094,6 +58097,16 @@ class JarvisSystemKernel:
             self._frontend_process.kill()
         if self._loading_server_process:
             self._loading_server_process.kill()
+
+        # Stop Agent Runtime (checkpoint all active goals)
+        if hasattr(self, '_agent_runtime') and self._agent_runtime:
+            try:
+                await asyncio.wait_for(self._agent_runtime.stop(), timeout=5.0)
+                self.logger.info("[Kernel] Agent Runtime stopped")
+            except asyncio.TimeoutError:
+                self.logger.debug("[Kernel] Agent Runtime stop timed out (5s)")
+            except Exception as e:
+                self.logger.debug(f"[Kernel] Agent Runtime cleanup error: {e}")
 
         # Cancel all background tasks
         for task in self._background_tasks:
@@ -59828,6 +59841,14 @@ class JarvisSystemKernel:
                     }
                 }
             )
+
+            # =====================================================================
+            # UNIFIED AGENT RUNTIME INITIALIZATION
+            # =====================================================================
+            # Start the persistent outer-loop agent runtime after Intelligence
+            # is ready. Non-fatal — degraded mode without autonomous goal pursuit.
+            # =====================================================================
+            await self._start_agent_runtime()
 
             # =====================================================================
             # v200.0: TWO-TIER SECURITY INITIALIZATION
@@ -61964,6 +61985,62 @@ class JarvisSystemKernel:
             "Voice commands may fail initially."
         )
         return True  # Allow startup to continue with degraded WebSocket
+
+    # =========================================================================
+    # UNIFIED AGENT RUNTIME — Persistent Outer-Loop Goal Pursuit
+    # =========================================================================
+
+    async def _start_agent_runtime(self):
+        """Start the Unified Agent Runtime with dependency health check.
+
+        The agent runtime provides multi-step autonomous goal pursuit with:
+        - Per-goal async coroutines (event-driven, not tick-driven)
+        - SENSE→THINK→ACT→VERIFY→REFLECT loop per goal
+        - SQLite-backed checkpoint persistence
+        - ScreenLease for concurrent vision safety
+        - Real-time WebSocket progress streaming
+
+        Non-fatal: startup continues in degraded mode if this fails.
+        """
+        try:
+            from backend.autonomy.agent_runtime import (
+                UnifiedAgentRuntime,
+                create_agent_runtime,
+            )
+            from backend.autonomy.autonomous_agent import get_default_agent
+
+            agent = get_default_agent()
+            if not agent._initialized:
+                await agent.initialize()
+
+            self._agent_runtime = await create_agent_runtime(agent)
+
+            # Store runtime reference on the agent for API access
+            agent._runtime = self._agent_runtime
+
+            # Spawn housekeeping as managed background task
+            task = asyncio.create_task(
+                self._agent_runtime.housekeeping_loop(),
+                name="agent-runtime-housekeeping",
+            )
+            task.add_done_callback(
+                lambda t: _fallback_task_done_callback(t, "agent-runtime-housekeeping")
+            )
+            self._background_tasks.append(task)
+
+            self._update_component_status(
+                "agent_runtime", "running", "Agent Runtime active"
+            )
+            self.logger.info("[Kernel] Unified Agent Runtime started")
+
+        except Exception as e:
+            self.logger.warning(
+                f"[Kernel] Agent Runtime failed to start (non-critical): {e}"
+            )
+            self._update_component_status(
+                "agent_runtime", "degraded", str(e)
+            )
+            self._agent_runtime = None
 
     async def _phase_intelligence(self) -> bool:
         """

@@ -17,6 +17,7 @@ Zero hardcoding: All parameters are learned and dynamically adapted
 import asyncio
 import logging
 import json
+import os
 import time
 from typing import Dict, List, Optional, Tuple, Any, Union
 from dataclasses import dataclass, field
@@ -1429,6 +1430,91 @@ class InterventionDecisionEngine:
             ) / (1024 * 1024)
         }
     
+    # =========================================================================
+    # Agent Runtime Integration — Proactive Goal Generation
+    # =========================================================================
+
+    async def generate_goal(
+        self,
+        context: Optional[Dict[str, Any]] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """Convert detected situations into actionable runtime goals.
+
+        Called periodically by the UnifiedAgentRuntime's housekeeping loop
+        to check if the current environment warrants proactive action.
+
+        Returns:
+            Goal spec dict with 'description', 'priority', 'source', 'context',
+            or None if no proactive action is warranted.
+        """
+        threshold = float(os.getenv("AGENT_RUNTIME_GOAL_GEN_THRESHOLD", "0.7"))
+
+        try:
+            # Use existing situation assessment
+            eval_context = context or {}
+            situation = self.situation_analyzer.assess_situation(
+                eval_context,
+                self.user_state_evaluator.evaluate_user_state(
+                    await self._collect_user_state_signals(eval_context),
+                    eval_context,
+                )[0],
+            )
+
+            if situation is None or situation.severity < threshold:
+                return None
+
+            # Build a goal description from the situation
+            description = self._situation_to_goal_description(situation)
+            if not description:
+                return None
+
+            # Determine priority from severity
+            if situation.severity >= 0.9:
+                priority = "high"
+            elif situation.severity >= 0.7:
+                priority = "normal"
+            else:
+                priority = "background"
+
+            return {
+                "description": description,
+                "priority": priority,
+                "source": "proactive",
+                "context": {
+                    "situation_type": situation.situation_type.value,
+                    "severity": situation.severity,
+                    "time_criticality": situation.time_criticality,
+                    "confidence": situation.confidence,
+                },
+            }
+
+        except Exception as e:
+            logger.debug(f"[InterventionEngine] Goal generation failed: {e}")
+            return None
+
+    def _situation_to_goal_description(
+        self, situation: SituationAssessment
+    ) -> Optional[str]:
+        """Convert a SituationAssessment into a natural language goal."""
+        type_map = {
+            SituationType.CRITICAL_ERROR: "Investigate and resolve the detected system error",
+            SituationType.WORKFLOW_BLOCKED: "Help unblock the current workflow",
+            SituationType.EFFICIENCY_OPPORTUNITY: "Suggest workflow optimizations based on observed patterns",
+            SituationType.LEARNING_MOMENT: "Provide helpful information about the current task",
+            SituationType.HEALTH_REMINDER: "Suggest a break and check on wellbeing",
+            SituationType.SECURITY_CONCERN: "Investigate and address the detected security concern",
+            SituationType.TIME_MANAGEMENT: "Review schedule and suggest time management adjustments",
+        }
+        base = type_map.get(situation.situation_type)
+        if not base:
+            return None
+
+        # Enrich with context details if available
+        details = situation.context.get("details", "")
+        if details:
+            return f"{base}: {str(details)[:100]}"
+        return base
+
     def save_learned_data(self):
         """Save all learned data to disk"""
         

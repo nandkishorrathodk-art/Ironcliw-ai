@@ -2181,6 +2181,90 @@ class UnifiedDataFlywheel:
             logger.warning(f"[Flywheel] Failed to record to observability: {e}")
 
     # =========================================================================
+    # Agent Runtime Integration — Goal Trajectory Recording
+    # =========================================================================
+
+    async def record_goal_pursuit(
+        self,
+        goal_id: str,
+        description: str,
+        steps: List[Dict[str, Any]],
+        outcome: str,
+        iterations: int,
+        total_time: float,
+    ):
+        """Record a completed goal pursuit as high-quality training data.
+
+        Called by the UnifiedAgentRuntime when a goal reaches a terminal state.
+        The full trajectory (goal → steps → outcome) provides rich training
+        signal for improving future autonomous behavior.
+
+        Args:
+            goal_id: Unique identifier for the goal
+            description: What the agent was trying to accomplish
+            steps: List of step dicts with description, action, result, confidence
+            outcome: Terminal status (completed, failed, abandoned, cancelled)
+            iterations: Number of SENSE→THINK→ACT→VERIFY→REFLECT cycles
+            total_time: Wall-clock seconds from creation to completion
+        """
+        # Build a structured input/output pair for the experience database
+        input_text = f"Goal: {description}"
+        output_text = json.dumps({
+            "outcome": outcome,
+            "steps": [
+                {
+                    "description": s.get("description", ""),
+                    "action_type": s.get("action_type", ""),
+                    "status": s.get("status", ""),
+                    "confidence": s.get("confidence", 0.0),
+                }
+                for s in steps
+            ],
+            "iterations": iterations,
+            "total_time_seconds": round(total_time, 1),
+        }, default=str)
+
+        # Quality score based on outcome
+        quality_map = {
+            "completed": 0.9,
+            "failed": 0.3,
+            "abandoned": 0.2,
+            "cancelled": 0.1,
+        }
+        quality_score = quality_map.get(outcome, 0.5)
+
+        # Boost quality for fast successful completions
+        if outcome == "completed" and total_time < 60.0:
+            quality_score = min(1.0, quality_score + 0.1)
+
+        context = {
+            "type": "goal_pursuit",
+            "goal_id": goal_id,
+            "outcome": outcome,
+            "iterations": iterations,
+            "total_time_seconds": round(total_time, 1),
+            "step_count": len(steps),
+        }
+
+        # Use async experience recording
+        try:
+            experience_id = await self.add_experience_async(
+                source="agent_runtime",
+                input_text=input_text,
+                output_text=output_text,
+                context=context,
+                quality_score=quality_score,
+            )
+            if experience_id:
+                logger.info(
+                    "[Flywheel] Recorded goal trajectory %s (outcome=%s, "
+                    "steps=%d, time=%.1fs) as experience %s",
+                    goal_id, outcome, len(steps), total_time, experience_id,
+                )
+        except Exception as e:
+            logger.debug("[Flywheel] Failed to record goal trajectory: %s", e)
+
+    # =========================================================================
     # Convenience Methods
     # =========================================================================
 

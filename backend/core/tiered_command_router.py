@@ -855,6 +855,10 @@ class TieredCommandRouter:
             )
             return await self._execute_workspace_command(command, context, workspace_intent)
 
+        # v-next: Check if this is a multi-step goal suited for the Agent Runtime
+        if await self._is_multi_step_command(command, context):
+            return await self._execute_via_agent_runtime(command, context)
+
         try:
             # v6.3: Detect if this should use Proactive Parallelism
             from core.proactive_command_detector import get_proactive_detector
@@ -1183,6 +1187,103 @@ class TieredCommandRouter:
                 "workspace_intent": workspace_intent.intent.value,
                 "agent": "GoogleWorkspaceAgent",
             }
+
+    # =========================================================================
+    # Agent Runtime Integration — Multi-Step Goal Routing
+    # =========================================================================
+
+    async def _is_multi_step_command(
+        self, command: str, context: Dict[str, Any]
+    ) -> bool:
+        """Determine if a command requires multi-step autonomous execution.
+
+        Uses LLM-based complexity assessment rather than keyword matching
+        for more accurate classification.
+        """
+        # Guard: runtime must be available
+        try:
+            from backend.autonomy.agent_runtime import get_agent_runtime
+            if get_agent_runtime() is None:
+                return False
+        except ImportError:
+            return False
+
+        # Fast path: check intent metadata if available
+        complexity = context.get("complexity", "unknown")
+        if complexity == "low":
+            return False
+        if complexity == "high":
+            return True
+
+        # For medium/unknown: use a quick LLM classification
+        try:
+            result = await self._quick_classify_complexity(command)
+            return result
+        except Exception:
+            return False  # Default to single-step
+
+    async def _quick_classify_complexity(self, command: str) -> bool:
+        """Quick LLM call to classify command complexity."""
+        prompt = (
+            f"Does this command require MULTIPLE sequential actions to complete "
+            f"(like research, plan, then execute), or is it a SINGLE direct action? "
+            f"Command: '{command}'\nAnswer only: multi-step or single-step"
+        )
+        try:
+            # Try J-Prime for fast classification
+            client = await self._get_jarvis_prime_client()
+            if client:
+                response = await asyncio.wait_for(
+                    client.generate(prompt=prompt, max_tokens=20),
+                    timeout=5.0,
+                )
+                result_text = response if isinstance(response, str) else str(response)
+                return "multi" in result_text.lower()
+        except Exception:
+            pass
+        return False
+
+    async def _execute_via_agent_runtime(
+        self, command: str, context: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Route a multi-step command to the Unified Agent Runtime."""
+        try:
+            from backend.autonomy.agent_runtime import get_agent_runtime
+            runtime = get_agent_runtime()
+            if runtime is None:
+                logger.warning("[TieredRouter] Agent Runtime not available, falling back")
+                return await self._execute_standard_computer_use(command, context)
+
+            # Determine if command needs screen access
+            needs_vision = any(
+                kw in command.lower()
+                for kw in ("open", "click", "navigate", "show", "display", "look at")
+            )
+
+            goal_id = await runtime.submit_goal(
+                description=command,
+                priority=context.get("priority", "normal") if isinstance(context.get("priority"), str) else "normal",
+                source="user",
+                context=context,
+                needs_vision=needs_vision,
+            )
+
+            logger.info(
+                f"[TieredRouter] Routed to Agent Runtime as goal {goal_id}: "
+                f"{command[:50]}..."
+            )
+
+            return {
+                "success": True,
+                "response": f"I'm working on that as goal {goal_id}. I'll keep you updated on progress.",
+                "goal_id": goal_id,
+                "mode": "agent_runtime",
+                "needs_vision": needs_vision,
+            }
+
+        except Exception as e:
+            logger.error(f"[TieredRouter] Agent Runtime submission failed: {e}")
+            return await self._execute_standard_computer_use(command, context)
 
     # =========================================================================
     # Statistics

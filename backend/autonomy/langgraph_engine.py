@@ -228,6 +228,12 @@ class GraphState(BaseModel):
     started_at: Optional[str] = None
     completed_at: Optional[str] = None
 
+    # Agent Runtime integration
+    goal_validated: bool = False
+    needs_replan: bool = False
+    working_memory_ref: Optional[str] = None  # goal_id for cross-referencing
+    verification_result: Optional[Dict[str, Any]] = None
+
     class Config:
         arbitrary_types_allowed = True
 
@@ -1228,12 +1234,26 @@ def route_after_execution(state: GraphState) -> str:
 
 
 def route_after_reflection(state: GraphState) -> str:
-    """Route after reflection node."""
-    # Check if we should iterate
+    """Route after reflection node.
+
+    Enhanced for Agent Runtime integration:
+    - goal_validated: short-circuit to learning (goal confirmed complete)
+    - needs_replan: force re-analysis regardless of confidence
+    - Original low-confidence retry preserved
+    """
+    # Agent Runtime: goal validated → proceed to learning
+    if state.goal_validated:
+        return "learning"
+
+    # Agent Runtime: explicit replan requested → re-analyze
+    if state.needs_replan:
+        return "analysis"
+
+    # Original logic: iterate if confidence is low
     if state.current_iteration < state.max_iterations and state.should_continue:
-        # Only iterate if confidence is low
         if state.confidence < 0.5:
             return "analysis"
+
     return "learning"
 
 
