@@ -58432,12 +58432,18 @@ class JarvisSystemKernel:
                 f"🚨 GLOBAL STARTUP TIMEOUT after {timeout_seconds}s - "
                 "forcing emergency shutdown"
             )
-            await self._emergency_shutdown()
+            await self._emergency_shutdown(
+                reason="global_startup_timeout",
+                expected=False,
+            )
             return 1
         except asyncio.CancelledError:
             self.logger.warning("🛑 Startup cancelled (SIGINT/SIGTERM received)")
             try:
-                await self._emergency_shutdown()
+                await self._emergency_shutdown(
+                    reason="startup_cancelled_signal",
+                    expected=True,
+                )
             except asyncio.CancelledError:
                 pass  # Already shutting down
             return 130  # Standard exit code for SIGINT
@@ -58445,12 +58451,15 @@ class JarvisSystemKernel:
             self.logger.error(f"🚨 Startup failed ({type(e).__name__}): {e!r}")
             self.logger.error(traceback.format_exc())
             try:
-                await self._emergency_shutdown()
+                await self._emergency_shutdown(
+                    reason=f"startup_exception:{type(e).__name__}",
+                    expected=False,
+                )
             except Exception:
                 pass
             return 1
 
-    async def _emergency_shutdown(self) -> None:
+    async def _emergency_shutdown(self, reason: str = "unspecified", expected: bool = False) -> None:
         """
         Emergency shutdown - kill everything fast.
 
@@ -58466,7 +58475,9 @@ class JarvisSystemKernel:
 
         Does NOT wait for graceful shutdown - uses kill signals.
         """
-        self.logger.warning("[Kernel] ⚠️ Emergency shutdown initiated")
+        self.logger.warning(
+            f"[Kernel] ⚠️ Emergency shutdown initiated (reason={reason}, expected={expected})"
+        )
         self._state = KernelState.SHUTTING_DOWN
 
         # v181.0: Write crash marker for next startup
@@ -58485,6 +58496,9 @@ class JarvisSystemKernel:
                     "epoch": time.time(),
                     "pid": os.getpid(),
                     "kernel_state": self._state.value if self._state else "unknown",
+                    "shutdown_mode": "emergency",
+                    "shutdown_reason": reason,
+                    "expected": bool(expected),
                     "uptime_seconds": round(uptime, 1),
                     "component_status": {},
                 }
@@ -58521,7 +58535,8 @@ class JarvisSystemKernel:
                 except Exception:
                     # Fallback to plain text if JSON serialization fails
                     crash_marker.write_text(
-                        f"Emergency shutdown at {time.strftime('%Y-%m-%d %H:%M:%S')}"
+                        f"Emergency shutdown at {time.strftime('%Y-%m-%d %H:%M:%S')} "
+                        f"(reason={reason}, expected={expected})"
                     )
 
             await asyncio.to_thread(_write_crash_marker)
@@ -58710,7 +58725,11 @@ class JarvisSystemKernel:
         self._state = KernelState.STOPPED
         self.logger.warning("[Kernel] ⚠️ Emergency shutdown complete")
 
-    async def emergency_shutdown(self) -> None:
+    async def emergency_shutdown(
+        self,
+        reason: str = "external_api_request",
+        expected: bool = False,
+    ) -> None:
         """
         v183.0: Public API for emergency shutdown.
 
@@ -58720,7 +58739,7 @@ class JarvisSystemKernel:
         if self._state == KernelState.SHUTTING_DOWN:
             self.logger.debug("[Kernel] Emergency shutdown already in progress")
             return
-        await self._emergency_shutdown()
+        await self._emergency_shutdown(reason=reason, expected=expected)
 
     def _configure_system_mode(
         self,
@@ -66703,7 +66722,7 @@ class JarvisSystemKernel:
             # ─────────────────────────────────────────────────────────────────
 
             async def detect_crash_marker() -> tuple:
-                """Detect kernel crash marker (confidence: 1.0 - definitive crash signal).
+                """Detect kernel crash marker and classify crash confidence.
 
                 v242.5: Reads enriched JSON crash marker with diagnostic context.
                 Falls back to plain-text parsing for backward compatibility.
@@ -66715,6 +66734,7 @@ class JarvisSystemKernel:
                         content = content.strip()
                         # v242.5: Try JSON format first (enriched diagnostics)
                         detail = content
+                        confidence = 1.0
                         try:
                             diag = json.loads(content)
                             ts = diag.get("timestamp", "unknown")
@@ -66723,10 +66743,30 @@ class JarvisSystemKernel:
                             pid = diag.get("pid", "?")
                             mem_rss = diag.get("memory_rss_mb", "?")
                             sys_mem = diag.get("system_memory_pct", "?")
+                            reason = str(diag.get("shutdown_reason", "unknown"))
+                            expected = bool(diag.get("expected", False))
+
+                            normalized_reason = reason.lower()
+                            if expected or any(
+                                token in normalized_reason
+                                for token in ("cancelled", "signal", "finally_guard")
+                            ):
+                                # Expected/controlled emergency paths should still clear
+                                # stale state, but should not be treated as hard crashes.
+                                confidence = 0.25
+                            elif any(
+                                token in normalized_reason
+                                for token in ("timeout", "exception", "fatal", "stall", "watchdog", "rollback")
+                            ):
+                                confidence = 1.0
+                            else:
+                                confidence = 0.8
+
                             detail = (
                                 f"Emergency shutdown at {ts} "
                                 f"(state={state}, uptime={uptime}s, pid={pid}, "
-                                f"rss={mem_rss}MB, sys_mem={sys_mem}%)"
+                                f"rss={mem_rss}MB, sys_mem={sys_mem}%, "
+                                f"reason={reason}, expected={expected})"
                             )
                             # Log component status from crash for forensics
                             comp_status = diag.get("component_status", {})
@@ -66743,7 +66783,7 @@ class JarvisSystemKernel:
                                     )
                         except (json.JSONDecodeError, TypeError):
                             pass  # Plain-text format (pre-v242.5 marker)
-                        return ("crash_marker", 1.0, True, crash_marker, detail)
+                        return ("crash_marker", confidence, True, crash_marker, detail)
                     except Exception:
                         return ("crash_marker", 0.8, True, crash_marker, "unreadable")
                 return ("crash_marker", 0.0, False, crash_marker, None)
@@ -75897,7 +75937,16 @@ async def async_main(args: argparse.Namespace) -> int:
             if kernel._state not in (KernelState.STOPPED, KernelState.INITIALIZING):
                 kernel.logger.warning("[Kernel] Forcing shutdown in finally block...")
                 try:
-                    await asyncio.wait_for(kernel.emergency_shutdown(), timeout=5.0)
+                    expected_finally_shutdown = (
+                        kernel._state == KernelState.SHUTTING_DOWN and exit_code in (0, 130)
+                    )
+                    await asyncio.wait_for(
+                        kernel.emergency_shutdown(
+                            reason=f"finally_guard:{kernel._state.value}",
+                            expected=expected_finally_shutdown,
+                        ),
+                        timeout=5.0,
+                    )
                 except (asyncio.TimeoutError, Exception) as cleanup_err:
                     kernel.logger.error(f"[Kernel] Emergency shutdown error: {cleanup_err}")
 
