@@ -1708,7 +1708,7 @@ class GhostDisplayManager:
             and self._geometry_cache[wid].app_name
         }) if self._geometry_cache else []
 
-        return {
+        snapshot = {
             "available": self._status == GhostDisplayStatus.AVAILABLE,
             "status": self._status.value if hasattr(self._status, 'value') else str(self._status),
             "window_count": len(self._windows_on_ghost),
@@ -1719,6 +1719,17 @@ class GhostDisplayManager:
             "space_id": self.ghost_space,
             "is_fallback": self._status == GhostDisplayStatus.FALLBACK,
         }
+
+        # v241.0: Include capture metrics if provider registered
+        if self._capture_metrics_provider:
+            try:
+                capture_metrics = self._capture_metrics_provider()
+                if isinstance(capture_metrics, dict):
+                    snapshot["capture_metrics"] = capture_metrics
+            except Exception:
+                pass
+
+        return snapshot
 
     async def _notify_state_change(self, event_type: str, data: Optional[Dict[str, Any]] = None):
         """
@@ -1747,6 +1758,7 @@ class GhostDisplayManager:
                     "window_removed": EventType.GHOST_DISPLAY_WINDOW_REMOVED,
                     "status_changed": EventType.GHOST_DISPLAY_STATUS_CHANGED,
                     "display_created": EventType.GHOST_DISPLAY_CREATED,
+                    "resolution_changed": EventType.GHOST_DISPLAY_RESOLUTION_CHANGED,  # v241.0
                 }
                 topic = topic_map.get(event_type)
                 if topic:
@@ -1998,12 +2010,21 @@ class GhostDisplayManager:
         yabai_detector: 'YabaiSpaceDetector'
     ):
         """
-        Handle a resolution change by optionally re-laying out windows.
+        Handle a resolution change by notifying observers and optionally re-laying out windows.
 
         Args:
             change_info: Resolution change information
             yabai_detector: YabaiSpaceDetector for window operations
         """
+        # v241.0: Always notify observers of resolution change (even if auto_relayout is disabled)
+        # This enables MosaicWatcher recreation in VisualMonitorAgent
+        await self._notify_state_change("resolution_changed", {
+            "old_width": change_info.get("old_width"),
+            "old_height": change_info.get("old_height"),
+            "new_width": change_info.get("new_width"),
+            "new_height": change_info.get("new_height"),
+        })
+
         if not self.config.auto_relayout_on_resolution_change:
             return
 

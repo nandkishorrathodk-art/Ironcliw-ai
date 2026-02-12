@@ -874,6 +874,9 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
         self._detector = None
         self._spatial_agent = None
 
+        # v241.0: Ghost display observer unsubscribe callable
+        self._ghost_observer_unsubscribe: Optional[Callable] = None
+
         # v12.0: Direct VideoWatcher management (Ferrari Engine)
         self._active_video_watchers: Dict[str, Any] = {}  # watcher_id -> VideoWatcher instance
         self._fast_capture_engine = None  # For window discovery
@@ -966,6 +969,202 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
     # =========================================================================
     # Helper Methods for Non-Blocking Initialization
     # =========================================================================
+
+    # =========================================================================
+    # v241.0: Dynamic Ghost Display Resolution Helpers
+    # =========================================================================
+    # Three-tier fallback pattern:
+    # 1. GhostDisplayManager (live, authoritative)
+    # 2. Environment variable (operator override)
+    # 3. Conservative default
+    # =========================================================================
+
+    def _get_ghost_display_index(self) -> int:
+        """
+        v241.0: Dynamic ghost display index resolution.
+
+        Three-tier fallback:
+        1. GhostDisplayManager.ghost_display_id (live, authoritative)
+        2. JARVIS_SHADOW_DISPLAY env var (operator override)
+        3. Conservative default: 2
+        """
+        # Tier 1: Live query from GhostDisplayManager
+        if _lazy_import_ghost_manager() and _ghost_manager_module:
+            try:
+                ghost_mgr = _ghost_manager_module.get_ghost_manager()
+                if ghost_mgr:
+                    display_id = ghost_mgr.ghost_display_id
+                    if display_id is not None:
+                        return display_id
+            except Exception:
+                pass
+
+        # Tier 2: Env var override
+        env_val = os.getenv("JARVIS_SHADOW_DISPLAY")
+        if env_val:
+            try:
+                return int(env_val)
+            except (ValueError, TypeError):
+                pass
+
+        # Tier 3: Conservative default
+        return 2
+
+    def _get_ghost_display_dimensions(self) -> tuple:
+        """
+        v241.0: Dynamic ghost display dimensions resolution.
+
+        Three-tier fallback:
+        1. GhostDisplayManager.ghost_display_dimensions (only if _ghost_info is populated)
+        2. JARVIS_GHOST_WIDTH / JARVIS_GHOST_HEIGHT env vars
+        3. Conservative default: (1920, 1080)
+        """
+        # Tier 1: Live query from GhostDisplayManager
+        if _lazy_import_ghost_manager() and _ghost_manager_module:
+            try:
+                ghost_mgr = _ghost_manager_module.get_ghost_manager()
+                if ghost_mgr and ghost_mgr._ghost_info is not None:
+                    dims = ghost_mgr.ghost_display_dimensions
+                    if dims and dims[0] > 0 and dims[1] > 0:
+                        return dims
+            except Exception:
+                pass
+
+        # Tier 2: Env var override
+        try:
+            w = int(os.getenv('JARVIS_GHOST_WIDTH', '0'))
+            h = int(os.getenv('JARVIS_GHOST_HEIGHT', '0'))
+            if w > 0 and h > 0:
+                return (w, h)
+        except (ValueError, TypeError):
+            pass
+
+        # Tier 3: Conservative default
+        return (1920, 1080)
+
+    def _get_capture_metrics(self) -> Dict[str, Any]:
+        """
+        v241.0: Return current Ferrari Engine capture metrics for ghost display state.
+
+        Called by GhostDisplayManager's state snapshot via registered provider.
+        """
+        mosaic_active = hasattr(self, '_active_mosaic_watcher') and self._active_mosaic_watcher is not None
+        active_watchers = len(self._active_video_watchers) if self._active_video_watchers else 0
+
+        metrics = {
+            "mosaic_active": mosaic_active,
+            "active_video_watchers": active_watchers,
+            "total_watches_started": self._total_watches_started,
+            "total_events_detected": self._total_events_detected,
+        }
+
+        # Include MosaicWatcher stats if available
+        if mosaic_active:
+            try:
+                mw = self._active_mosaic_watcher
+                metrics["mosaic_display_id"] = mw.config.display_id if hasattr(mw, 'config') else None
+                metrics["mosaic_fps"] = mw.config.fps if hasattr(mw, 'config') else None
+                metrics["mosaic_tile_count"] = len(mw.config.window_tiles) if hasattr(mw, 'config') else 0
+            except Exception:
+                pass
+
+        return metrics
+
+    async def _handle_ghost_display_event(self, event_type: str, payload: Dict[str, Any]) -> None:
+        """
+        v241.0: Handle ghost display state change events.
+
+        Called by GhostDisplayManager observer pattern when:
+        - window_added/window_removed: Window count changed
+        - status_changed: Ghost display became available/unavailable
+        - resolution_changed: Display dimensions changed (triggers MosaicWatcher recreation)
+        - display_created: Ghost display was just created
+        """
+        try:
+            if event_type == "resolution_changed":
+                await self._handle_ghost_resolution_change(payload)
+            elif event_type == "status_changed":
+                state = payload.get("state", {})
+                status = state.get("status", "unknown")
+                logger.info(
+                    f"[VisualMonitor v241.0] Ghost display status: {status}, "
+                    f"windows: {state.get('window_count', 0)}"
+                )
+            elif event_type in ("window_added", "window_removed"):
+                state = payload.get("state", {})
+                logger.debug(
+                    f"[VisualMonitor v241.0] Ghost display {event_type}: "
+                    f"window_count={state.get('window_count', 0)}"
+                )
+        except Exception as e:
+            logger.debug(f"[VisualMonitor v241.0] Ghost event handler error: {e}")
+
+    async def _handle_ghost_resolution_change(self, payload: Dict[str, Any]) -> None:
+        """
+        v241.0: Handle ghost display resolution change by recreating MosaicWatcher.
+
+        AVFoundation capture session resolution is set at creation time and
+        cannot be changed dynamically. When the ghost display resolution changes,
+        we must stop the old MosaicWatcher and create a new one with updated dimensions.
+        """
+        new_width = payload.get("new_width")
+        new_height = payload.get("new_height")
+        old_width = payload.get("old_width")
+        old_height = payload.get("old_height")
+
+        if not new_width or not new_height:
+            return
+
+        logger.info(
+            f"[VisualMonitor v241.0] Ghost display resolution changed: "
+            f"{old_width}x{old_height} -> {new_width}x{new_height}"
+        )
+
+        # Only recreate if MosaicWatcher is currently active
+        if not hasattr(self, '_active_mosaic_watcher') or self._active_mosaic_watcher is None:
+            logger.debug("[VisualMonitor v241.0] No active MosaicWatcher — skipping recreation")
+            return
+
+        try:
+            # Stop existing MosaicWatcher
+            old_watcher = self._active_mosaic_watcher
+            self._active_mosaic_watcher = None
+
+            try:
+                await asyncio.wait_for(old_watcher.stop(), timeout=5.0)
+                logger.info("[VisualMonitor v241.0] Stopped old MosaicWatcher for resolution update")
+            except (asyncio.TimeoutError, Exception) as e:
+                logger.warning(f"[VisualMonitor v241.0] Old MosaicWatcher stop error: {e}")
+
+            # Create new MosaicWatcher with updated dimensions
+            from backend.vision.macos_video_capture_advanced import (
+                MosaicWatcher, MosaicWatcherConfig
+            )
+
+            ghost_display_index = self._get_ghost_display_index()
+
+            new_config = MosaicWatcherConfig(
+                display_id=ghost_display_index,
+                display_width=new_width,
+                display_height=new_height,
+                fps=self.config.mosaic_fps,
+                window_tiles=old_watcher.config.window_tiles if hasattr(old_watcher, 'config') else []
+            )
+
+            new_watcher = MosaicWatcher(new_config)
+            success = await new_watcher.start()
+
+            if success:
+                self._active_mosaic_watcher = new_watcher
+                logger.info(
+                    f"[VisualMonitor v241.0] MosaicWatcher recreated with "
+                    f"{new_width}x{new_height} resolution"
+                )
+            else:
+                logger.warning("[VisualMonitor v241.0] Failed to start new MosaicWatcher after resolution change")
+
+        except Exception as e:
+            logger.warning(f"[VisualMonitor v241.0] Resolution change handler error: {e}")
 
     def _create_spatial_agent_sync(self):
         """
@@ -1381,6 +1580,22 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
                         component_status["spatial_agent"]["success"] = True
                         component_status["spatial_agent"]["duration"] = time_module.time() - comp_start
                         logger.info("✅ Spatial Awareness Ready")
+
+                        # v241.0: Subscribe to GhostDisplayManager events + register capture metrics
+                        if _lazy_import_ghost_manager() and _ghost_manager_module:
+                            try:
+                                ghost_mgr = _ghost_manager_module.get_ghost_manager()
+                                if ghost_mgr:
+                                    self._ghost_observer_unsubscribe = ghost_mgr.add_observer(
+                                        self._handle_ghost_display_event
+                                    )
+                                    ghost_mgr.register_capture_metrics_provider(
+                                        self._get_capture_metrics
+                                    )
+                                    logger.info("[VisualMonitor v241.0] Subscribed to GhostDisplayManager events")
+                            except Exception as e:
+                                logger.debug(f"[VisualMonitor v241.0] Ghost observer setup skipped: {e}")
+
                     except asyncio.TimeoutError:
                         # Partial success - agent created but not fully initialized
                         component_status["spatial_agent"]["success"] = True  # Partial
@@ -1538,6 +1753,15 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
             f"Alerts: {self._total_alerts_sent}, "
             f"Actions: {self._total_actions_executed} ({self._total_actions_succeeded} succeeded)"
         )
+
+        # v241.0: Unsubscribe from GhostDisplayManager events
+        if self._ghost_observer_unsubscribe:
+            try:
+                self._ghost_observer_unsubscribe()
+                self._ghost_observer_unsubscribe = None
+                logger.debug("[VisualMonitor v241.0] Unsubscribed from GhostDisplayManager")
+            except Exception:
+                pass
 
         # v12.0: Stop all Ferrari Engine watchers
         if self._active_video_watchers:
@@ -3072,7 +3296,7 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
                 # v53.0: SHADOW REALM - Also recognize Display 2 as capturable
                 # Windows exiled to Shadow Realm (BetterDisplay) should always be
                 # considered capturable regardless of their space_id
-                shadow_display = int(os.getenv("JARVIS_SHADOW_DISPLAY", "2"))
+                shadow_display = self._get_ghost_display_index()  # v241.0: Dynamic resolution
 
                 try:
                     yabai_detector = get_yabai_detector()
@@ -3360,7 +3584,7 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
         # SOLUTION: If ANY window is on Ghost Display, force Mosaic mode
         # regardless of window count. The display capture is reliable.
         # ===================================================================
-        ghost_display_index = int(os.getenv("JARVIS_SHADOW_DISPLAY", "2"))
+        ghost_display_index = self._get_ghost_display_index()  # v241.0: Dynamic resolution
 
         # v61.0: Check if any window is on Ghost Display
         any_on_ghost_display = any(
@@ -3421,10 +3645,11 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
                     logger.info(
                         f"[v61.1 RETINA FOCUS] 🔭 Using detected ghost display index: {ghost_display_index}"
                     )
+                    ghost_dims = self._get_ghost_display_dimensions()  # v241.0: Dynamic resolution
                     mosaic_config = {
                         'display_id': ghost_display_index,
-                        'display_width': int(os.getenv('JARVIS_GHOST_WIDTH', '1920')),
-                        'display_height': int(os.getenv('JARVIS_GHOST_HEIGHT', '1080'))
+                        'display_width': ghost_dims[0],
+                        'display_height': ghost_dims[1],
                     }
 
             if mosaic_config and mosaic_config.get('display_id'):
@@ -5386,7 +5611,7 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
                     if confidence > 0:
                         # v60.0 PANOPTICON: Include display_id for Ghost Display awareness
                         display_id = window_obj.display_id if hasattr(window_obj, 'display_id') else 1
-                        ghost_display_index = int(os.getenv("JARVIS_SHADOW_DISPLAY", "2"))
+                        ghost_display_index = self._get_ghost_display_index()  # v241.0: Dynamic resolution
                         is_on_ghost_display = display_id >= ghost_display_index
 
                         matching_windows.append({
@@ -5655,7 +5880,7 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
         # The Ferrari Engine (ScreenCaptureKit) CAN capture these windows -
         # it's only the VALIDATION that fails, not the actual capture.
         # =====================================================================
-        ghost_display_index = int(os.getenv("JARVIS_SHADOW_DISPLAY", "2"))
+        ghost_display_index = self._get_ghost_display_index()  # v241.0: Dynamic resolution
         window_display_id = window.get('display_id', 1)
         is_on_ghost_display = window.get('is_on_ghost_display', False) or window_display_id >= ghost_display_index
 
