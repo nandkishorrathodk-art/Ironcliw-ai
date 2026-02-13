@@ -940,6 +940,8 @@ class GCPReconciler:
         self._session_id = self._generate_session_id()
         self._lock_file = Path.home() / ".jarvis" / "infra_lock" / f"{self._session_id}.lock"
         self._circuit_breaker = CircuitBreaker(max_failures=3, timeout_seconds=300)
+        # v251.3: Dedup drift warnings (only log when drift set changes)
+        self._last_drift_signature: Optional[str] = None
 
         logger.info(f"[GCPReconciler] Session ID: {self._session_id}")
 
@@ -1062,12 +1064,30 @@ class GCPReconciler:
             self._circuit_breaker.record_success()
 
             if results["drift_detected"]:
-                logger.warning(
-                    f"[GCPReconciler] Drift detected: {len(results['orphaned_vms'])} orphaned VMs, "
-                    f"{len(results['orphaned_cloud_run'])} orphaned Cloud Run services"
+                # v251.3: Deduplicate — only warn when drift signature changes
+                drift_sig = (
+                    f"vms={sorted(v.get('name','?') for v in results['orphaned_vms'])},"
+                    f"cr={sorted(s.get('name','?') for s in results['orphaned_cloud_run'])}"
                 )
+                if drift_sig != self._last_drift_signature:
+                    logger.warning(
+                        "[GCPReconciler] Drift detected: %d orphaned VMs, %d orphaned Cloud Run services",
+                        len(results["orphaned_vms"]),
+                        len(results["orphaned_cloud_run"]),
+                    )
+                    self._last_drift_signature = drift_sig
+                else:
+                    logger.debug(
+                        "[GCPReconciler] Same drift still present: %d VMs, %d Cloud Run",
+                        len(results["orphaned_vms"]),
+                        len(results["orphaned_cloud_run"]),
+                    )
             else:
-                logger.info("[GCPReconciler] No drift detected - state is consistent")
+                if self._last_drift_signature is not None:
+                    logger.info("[GCPReconciler] Drift resolved — state is now consistent")
+                    self._last_drift_signature = None
+                else:
+                    logger.info("[GCPReconciler] No drift detected - state is consistent")
 
             return results
 
@@ -1895,6 +1915,8 @@ class OrphanDetectionLoop:
         self._running = False
         self._task: Optional[asyncio.Task] = None
         self._last_artifact_cleanup: float = 0.0
+        # v251.3: Deduplication — only warn when orphan set changes
+        self._last_orphan_names: Optional[frozenset] = None
         self._stats = {
             "checks": 0,
             "orphans_found": 0,
@@ -1956,7 +1978,29 @@ class OrphanDetectionLoop:
 
             if orphan_count > 0:
                 self._stats["orphans_found"] += orphan_count
-                logger.warning(f"[OrphanDetection] Found {orphan_count} orphaned resources")
+
+                # v251.3: Only log WARNING when orphan set changes; DEBUG otherwise
+                orphan_vm_names = frozenset(
+                    vm.get("name", "unknown")
+                    for vm in reconcile_result.get("orphaned_vms", [])
+                )
+                orphan_cr_names = frozenset(
+                    svc.get("name", "unknown")
+                    for svc in reconcile_result.get("orphaned_cloud_run", [])
+                )
+                current_orphans = orphan_vm_names | orphan_cr_names
+                if current_orphans != self._last_orphan_names:
+                    logger.warning(
+                        "[OrphanDetection] Found %d orphaned resource(s): %s",
+                        orphan_count,
+                        ", ".join(sorted(current_orphans)),
+                    )
+                    self._last_orphan_names = current_orphans
+                else:
+                    logger.debug(
+                        "[OrphanDetection] Same %d orphan(s) still present",
+                        orphan_count,
+                    )
 
                 if self.auto_cleanup:
                     cleanup_result = await self.reconciler.cleanup_orphans(reconcile_result)

@@ -33,6 +33,17 @@ class HealthMonitorAgent(BaseNeuralMeshAgent):
     - self_heal: Attempt to recover unhealthy components
     """
 
+    # v251.3: Statuses that are acceptable (not counted as issues)
+    _HEALTHY_STATUSES = frozenset({AgentStatus.ONLINE, AgentStatus.BUSY})
+
+    # v251.3: Optional agents whose non-ONLINE state never degrades system health
+    _OPTIONAL_AGENTS: frozenset = frozenset(
+        s.strip() for s in os.getenv(
+            "JARVIS_OPTIONAL_AGENTS",
+            "computer_use_agent",
+        ).split(",") if s.strip()
+    )
+
     def __init__(self) -> None:
         super().__init__(
             agent_name="health_monitor_agent",
@@ -52,6 +63,10 @@ class HealthMonitorAgent(BaseNeuralMeshAgent):
         self._alerts: List[Dict[str, Any]] = []
         self._monitoring_task: Optional[asyncio.Task] = None
         self._check_interval = 30.0  # seconds
+        # v251.3: Startup grace period — agents within this window are not counted as issues
+        self._startup_grace_seconds = float(os.getenv("HEALTH_MONITOR_STARTUP_GRACE", "90.0"))
+        # v251.3: Log deduplication — only re-log when issue set changes
+        self._last_logged_issues: Optional[frozenset] = None
 
     async def on_initialize(self) -> None:
         logger.info("Initializing HealthMonitorAgent")
@@ -129,13 +144,16 @@ class HealthMonitorAgent(BaseNeuralMeshAgent):
         if self.registry:
             try:
                 agents = await self.registry.get_all_agents()
-                online = sum(1 for a in agents if a.status == AgentStatus.ONLINE)
+                now = datetime.now()
+                healthy_count = sum(
+                    1 for a in agents if a.status in self._HEALTHY_STATUSES
+                )
                 total = len(agents)
 
                 health["agents"] = {
                     "total": total,
-                    "online": online,
-                    "offline": total - online,
+                    "online": healthy_count,
+                    "offline": total - healthy_count,
                 }
 
                 for agent in agents:
@@ -143,22 +161,38 @@ class HealthMonitorAgent(BaseNeuralMeshAgent):
                         "status": agent.status.value,
                         "type": agent.agent_type,
                     }
-                    if agent.status != AgentStatus.ONLINE:
-                        health["issues"].append(f"Agent {agent.agent_name} is {agent.status.value}")
-                        # v238.0: Broadcast health alert for unhealthy agents
-                        try:
-                            await self.broadcast(
-                                message_type=MessageType.ALERT_RAISED,
-                                payload={
-                                    "type": "agent_health_alert",
-                                    "agent_name": agent.agent_name,
-                                    "status": agent.status.value,
-                                    "agent_type": agent.agent_type,
-                                },
-                                priority=MessagePriority.HIGH,
-                            )
-                        except Exception:
-                            pass  # Best-effort broadcast
+                    if agent.status in self._HEALTHY_STATUSES:
+                        continue
+
+                    # v251.3: Skip agents still within startup grace period
+                    if hasattr(agent, "registered_at") and agent.registered_at:
+                        age = (now - agent.registered_at).total_seconds()
+                        if age < self._startup_grace_seconds:
+                            health["components"][agent.agent_name]["grace"] = True
+                            continue
+
+                    # v251.3: Optional agents degrade is informational, not an issue
+                    if agent.agent_name in self._OPTIONAL_AGENTS:
+                        health["components"][agent.agent_name]["optional"] = True
+                        continue
+
+                    health["issues"].append(
+                        f"Agent {agent.agent_name} is {agent.status.value}"
+                    )
+                    # v238.0: Broadcast health alert for unhealthy agents
+                    try:
+                        await self.broadcast(
+                            message_type=MessageType.ALERT_RAISED,
+                            payload={
+                                "type": "agent_health_alert",
+                                "agent_name": agent.agent_name,
+                                "status": agent.status.value,
+                                "agent_type": agent.agent_type,
+                            },
+                            priority=MessagePriority.HIGH,
+                        )
+                    except Exception:
+                        pass  # Best-effort broadcast
             except Exception as e:
                 health["agents"] = {"error": str(e)}
 
@@ -287,12 +321,23 @@ class HealthMonitorAgent(BaseNeuralMeshAgent):
                 if len(self._alerts) > 1000:
                     self._alerts = self._alerts[-1000:]
 
-                # Log if unhealthy
-                if health["overall_status"] != "healthy":
-                    logger.warning(
-                        f"System health: {health['overall_status']} - "
-                        f"{len(health.get('issues', []))} issues"
-                    )
+                # v251.3: Log if unhealthy, with deduplication and detail
+                issues = health.get("issues", [])
+                if health["overall_status"] != "healthy" and issues:
+                    current_issues = frozenset(issues)
+                    if current_issues != self._last_logged_issues:
+                        # Issue set changed — log with full detail
+                        logger.warning(
+                            "System health: %s - %d issue(s): %s",
+                            health["overall_status"],
+                            len(issues),
+                            "; ".join(issues),
+                        )
+                        self._last_logged_issues = current_issues
+                elif health["overall_status"] == "healthy":
+                    if self._last_logged_issues is not None:
+                        logger.info("System health recovered to healthy")
+                        self._last_logged_issues = None
 
             except asyncio.TimeoutError:
                 logger.warning("Health check iteration timed out")

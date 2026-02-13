@@ -2744,7 +2744,8 @@ class MLEngineRegistry:
                             self._cloud_embedding_cb.record_success()
                             # v251.2: Reset fallback warning flag on success
                             # so it fires again if cloud goes down later
-                            extract_speaker_embedding._cloud_fallback_warned = False
+                            global _cloud_fallback_warned
+                            _cloud_fallback_warned = False
                             return embedding_tensor
                         else:
                             error_msg = result.get('error', 'unknown')
@@ -3411,6 +3412,10 @@ def require_ml_ready(timeout: float = 30.0):
 # SPEAKER EMBEDDING FUNCTIONS - Hybrid Local/Cloud with Automatic Fallback
 # =============================================================================
 
+# v251.3: Module-level flag for cloud→local fallback log-once pattern.
+# Reset on cloud success so the WARNING fires again if cloud re-fails.
+_cloud_fallback_warned: bool = False
+
 async def extract_speaker_embedding(
     audio_data: bytes,
     prefer_cloud: Optional[bool] = None,
@@ -3455,9 +3460,10 @@ async def extract_speaker_embedding(
             # on EVERY voice verification while cloud is down — very spammy
             # when the circuit breaker is open.  Only log the first occurrence
             # at WARNING; subsequent hits log at DEBUG.
-            if not getattr(extract_speaker_embedding, '_cloud_fallback_warned', False):
+            global _cloud_fallback_warned
+            if not _cloud_fallback_warned:
                 logger.warning("Cloud extraction failed, falling back to local")
-                extract_speaker_embedding._cloud_fallback_warned = True
+                _cloud_fallback_warned = True
             else:
                 logger.debug("Cloud extraction failed, falling back to local")
             return await _extract_local_embedding(registry, audio_data)

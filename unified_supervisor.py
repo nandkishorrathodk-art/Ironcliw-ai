@@ -11653,6 +11653,10 @@ class TrinityLaunchConfig:
     circuit_breaker_timeout_sec: float = field(default_factory=lambda:
         float(os.getenv("TRINITY_CIRCUIT_TIMEOUT", "60.0"))
     )
+    # v251.3: Max probe calls allowed in HALF_OPEN state before re-opening
+    circuit_breaker_half_open_max_calls: int = field(default_factory=lambda:
+        int(os.getenv("TRINITY_CIRCUIT_HALF_OPEN_MAX", "3"))
+    )
 
     # Process Management
     log_dir: Path = field(default_factory=lambda:
@@ -13623,6 +13627,8 @@ class ProcessRestartManager:
         recovery_decision = None
         if _use_modular_crash_recovery() and _modular_handle_crash is not None:
             try:
+                assert ModularComponentCriticality is not None  # type guard
+                assert ModularRecoveryStrategy is not None  # type guard
                 # Determine criticality based on component name
                 criticality = ModularComponentCriticality.REQUIRED
                 if "optional" in name.lower() or "cache" in name.lower():
@@ -15884,7 +15890,7 @@ class BrowserCrashMonitor:
                 if dashboard.enabled:
                     dashboard.update_component(
                         "browser", "error",
-                        f"Crash (code {crash_code})"
+                        detail=f"Crash (code {crash_code})",
                     )
             except Exception:
                 pass
@@ -15953,7 +15959,7 @@ class BrowserCrashMonitor:
                 try:
                     dashboard = get_live_dashboard()
                     if dashboard.enabled:
-                        dashboard.update_component("browser", "healthy", "Recovered")
+                        dashboard.update_component("browser", "healthy", detail="Recovered")
                 except Exception:
                     pass
             else:
