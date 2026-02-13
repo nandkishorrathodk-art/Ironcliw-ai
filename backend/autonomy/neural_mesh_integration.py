@@ -215,8 +215,10 @@ if NEURAL_MESH_AVAILABLE:
                     AgentCapability.SCREEN_CAPTURE,
                 ])
 
+            # v250.2: Renamed from "computer_use_agent" to avoid name collision
+            # with ComputerUseAgent in computer_use_tool.py (production agent).
             super().__init__(
-                agent_name="computer_use_agent",
+                agent_name="computer_use_neural_agent",
                 agent_type=AgentType.EXECUTOR,
                 capabilities=capabilities,
                 **kwargs

@@ -367,7 +367,11 @@ class NeuralMeshCoordinator:
             raise RuntimeError("Coordinator not initialized")
 
         if agent.agent_name in self._agents:
-            logger.warning("Agent %s already registered", agent.agent_name)
+            # v250.2: Downgraded from WARNING to DEBUG — this is expected
+            # when multiple init paths (bridge, initializer, task runner)
+            # converge on the same singleton coordinator. The early return
+            # is correct behavior; the log was just noise.
+            logger.debug("Agent %s already registered (idempotent skip)", agent.agent_name)
             return
 
         # Initialize agent with components
@@ -383,7 +387,10 @@ class NeuralMeshCoordinator:
 
         self._agents[agent.agent_name] = agent
 
-        logger.info("Registered agent: %s", agent.agent_name)
+        # v250.2: Downgraded from INFO to DEBUG — the caller (bridge or
+        # initializer) logs its own INFO line. Having both coordinator AND
+        # caller log "Registered agent" at INFO doubles the noise.
+        logger.debug("Coordinator registered: %s", agent.agent_name)
 
     async def unregister_agent(self, agent_name: str) -> bool:
         """

@@ -206,6 +206,11 @@ class JARVISNeuralMeshBridge:
         self._initialized = False
         self._running = False
 
+        # v250.2: Prevent concurrent start() race — two callers seeing
+        # _running=False both proceed to _discover_and_register_agents(),
+        # causing every adapter to be registered twice.
+        self._start_lock = asyncio.Lock()
+
         # Agent tracking
         self._adapters: Dict[str, BaseNeuralMeshAgent] = {}
         self._failed_agents: Dict[str, str] = {}  # name -> error
@@ -261,43 +266,46 @@ class JARVISNeuralMeshBridge:
             if not await self.initialize():
                 return False
 
-        if self._running:
-            return True
+        # v250.2: Lock prevents concurrent start() race where two callers
+        # both see _running=False and both run _discover_and_register_agents().
+        async with self._start_lock:
+            if self._running:
+                return True
 
-        logger.info("Starting JARVIS Neural Mesh Bridge...")
-        self._metrics.started_at = datetime.utcnow()
+            logger.info("Starting JARVIS Neural Mesh Bridge...")
+            self._metrics.started_at = datetime.utcnow()
 
-        try:
-            # Start coordinator
-            await self._coordinator.start()
+            try:
+                # Start coordinator
+                await self._coordinator.start()
 
-            # Discover and register agents
-            await self._discover_and_register_agents()
+                # Discover and register agents
+                await self._discover_and_register_agents()
 
-            # Register custom agents
-            for name, agent in self._custom_agents.items():
-                await self._register_custom_agent(name, agent)
+                # Register custom agents
+                for name, agent in self._custom_agents.items():
+                    await self._register_custom_agent(name, agent)
 
-            self._running = True
+                self._running = True
 
-            # Trigger callbacks
-            await self._trigger_callback("system_ready", {
-                "agents": len(self._adapters),
-                "failed": len(self._failed_agents),
-            })
+                # Trigger callbacks
+                await self._trigger_callback("system_ready", {
+                    "agents": len(self._adapters),
+                    "failed": len(self._failed_agents),
+                })
 
-            logger.info(
-                "JARVIS Neural Mesh Bridge started: %d agents registered, %d failed",
-                len(self._adapters),
-                len(self._failed_agents),
-            )
-            return True
+                logger.info(
+                    "JARVIS Neural Mesh Bridge started: %d agents registered, %d failed",
+                    len(self._adapters),
+                    len(self._failed_agents),
+                )
+                return True
 
-        except Exception as e:
-            logger.error("Failed to start bridge: %s", e)
-            self._metrics.errors += 1
-            await self._trigger_callback("system_error", {"error": str(e)})
-            return False
+            except Exception as e:
+                logger.error("Failed to start bridge: %s", e)
+                self._metrics.errors += 1
+                await self._trigger_callback("system_error", {"error": str(e)})
+                return False
 
     async def stop(self) -> None:
         """Stop the bridge and all agents gracefully."""
@@ -465,6 +473,12 @@ class JARVISNeuralMeshBridge:
         Returns:
             Registered adapter or None on failure
         """
+        # v250.2: Skip if already registered (idempotent discovery).
+        # Prevents log spam when multiple init paths converge.
+        if name in self._adapters:
+            logger.debug("Agent %s already discovered, skipping", name)
+            return self._adapters[name]
+
         retries = 0
         while retries <= self._config.max_retries:
             try:

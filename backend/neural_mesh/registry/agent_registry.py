@@ -296,7 +296,10 @@ class AgentRegistry:
         """
         async with self._lock:
             if agent_name in self._agents:
-                logger.warning("Agent %s already registered, updating", agent_name)
+                # v250.2: Downgraded from WARNING to DEBUG — duplicate registration
+                # is handled gracefully via _update_registration(). Multiple init
+                # paths converging on the same registry is expected, not alarming.
+                logger.debug("Agent %s already registered, updating", agent_name)
                 return await self._update_registration(
                     agent_name, agent_type, capabilities, backend, version, dependencies, metadata
                 )
@@ -339,8 +342,11 @@ class AgentRegistry:
             self._metrics.currently_online += 1
             self._metrics.registrations += 1
 
-            logger.info(
-                "Registered agent: %s (type=%s, capabilities=%s)",
+            # v250.2: Downgraded from INFO to DEBUG — the caller (bridge or
+            # initializer) provides its own INFO log. Having both registry
+            # AND caller log "Registered agent" at INFO triples the noise.
+            logger.debug(
+                "Registry indexed: %s (type=%s, capabilities=%s)",
                 agent_name,
                 agent_type,
                 ", ".join(capabilities),
