@@ -296,6 +296,7 @@ class AutonomousAgent:
                 self.conversation_memory = ConversationMemory(
                     max_turns=self.config.conversation_history_size
                 )
+                await self.conversation_memory.initialize()
 
                 if self.config.enable_episodic_memory:
                     self.episodic_memory = EpisodicMemory()
@@ -781,6 +782,9 @@ class AutonomousAgent:
     async def shutdown(self) -> None:
         """Shutdown the agent gracefully."""
         self.logger.info(f"Shutting down {self.config.name} agent...")
+
+        if self.conversation_memory:
+            await self.conversation_memory.shutdown()
 
         if self.memory_manager:
             await self.memory_manager.stop()

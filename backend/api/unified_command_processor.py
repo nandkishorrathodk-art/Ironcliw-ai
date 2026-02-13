@@ -1297,7 +1297,7 @@ class UnifiedCommandProcessor:
                 )
                 _ag_result = await asyncio.wait_for(
                     _tiered_router.execute_tier2(command_text),
-                    timeout=float(os.getenv("JARVIS_AGENTIC_EXEC_TIMEOUT", "60.0")),
+                    timeout=float(os.getenv("JARVIS_AGENTIC_EXEC_TIMEOUT", "120.0")),
                 )
                 return {
                     **_ag_result,

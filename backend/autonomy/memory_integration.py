@@ -790,8 +790,121 @@ class ConversationMemory:
         self._turns: Deque[ConversationTurn] = deque(maxlen=max_turns)
         self._summaries: List[str] = []
         self._tool_history: List[Dict[str, Any]] = []
+        self._pending_user_turns: Deque[ConversationTurn] = deque(
+            maxlen=max(10, max_turns)
+        )
+
+        # Persistent conversation memory settings
+        self._session_id = os.getenv(
+            "JARVIS_CONVERSATION_MEMORY_SESSION_ID",
+            f"conv_{uuid4().hex[:12]}",
+        )
+        self._persistence_enabled = os.getenv(
+            "JARVIS_CONVERSATION_MEMORY_ENABLED",
+            "true",
+        ).lower() in ("1", "true", "yes")
+        self._queue_maxsize = max(
+            100,
+            int(os.getenv("JARVIS_CONVERSATION_MEMORY_QUEUE_SIZE", "1000")),
+        )
+        self._worker_count = max(
+            1,
+            int(os.getenv("JARVIS_CONVERSATION_MEMORY_WORKERS", "1")),
+        )
+        self._drain_timeout = float(
+            os.getenv("JARVIS_CONVERSATION_MEMORY_DRAIN_TIMEOUT", "10.0")
+        )
+
+        self._persist_queue: "asyncio.Queue[Dict[str, Any]]" = asyncio.Queue(
+            maxsize=self._queue_maxsize
+        )
+        self._workers: List[asyncio.Task] = []
+        self._initialized = False
+        self._running = False
+        self._init_task: Optional[asyncio.Task] = None
+        self._init_lock = asyncio.Lock()
+        self._stats: Dict[str, int] = {
+            "loaded_turns": 0,
+            "events_enqueued": 0,
+            "events_persisted": 0,
+            "events_dropped": 0,
+            "events_failed": 0,
+        }
 
         self.logger = logging.getLogger(__name__)
+
+    async def initialize(self) -> bool:
+        """Initialize persistent memory loading and background workers."""
+        async with self._init_lock:
+            if self._initialized:
+                return True
+
+            # Clear stale init task reference if any.
+            if self._init_task and self._init_task.done():
+                self._init_task = None
+
+            if not self._persistence_enabled:
+                self._initialized = True
+                return True
+
+            try:
+                self._stats["loaded_turns"] = await self._load_persisted_turns()
+                self._running = True
+                for worker_idx in range(self._worker_count):
+                    self._workers.append(
+                        asyncio.create_task(
+                            self._persistence_worker(worker_idx),
+                            name=f"conversation-memory-worker-{worker_idx}",
+                        )
+                    )
+                self._initialized = True
+                return True
+            except Exception as e:
+                # Degrade gracefully: keep in-memory behavior operational.
+                self.logger.warning(f"Conversation memory persistence unavailable: {e}")
+                self._persistence_enabled = False
+                self._initialized = True
+                return False
+
+    async def shutdown(self) -> None:
+        """Drain and stop background persistence workers."""
+        if self._init_task and not self._init_task.done():
+            try:
+                await asyncio.wait_for(self._init_task, timeout=5.0)
+            except Exception:
+                pass
+
+        if not self._running and not self._workers:
+            return
+
+        self._running = False
+        try:
+            await asyncio.wait_for(self._persist_queue.join(), timeout=self._drain_timeout)
+        except asyncio.TimeoutError:
+            self.logger.warning(
+                f"Conversation memory drain timed out ({self._drain_timeout:.1f}s)"
+            )
+
+        for worker in self._workers:
+            worker.cancel()
+        if self._workers:
+            await asyncio.gather(*self._workers, return_exceptions=True)
+        self._workers.clear()
+
+    def _ensure_background_initialize(self) -> None:
+        """Best-effort async initialization for call-sites that don't await initialize()."""
+        if self._initialized:
+            return
+        if self._init_task and not self._init_task.done():
+            return
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return
+        self._init_task = loop.create_task(
+            self.initialize(),
+            name="conversation-memory-init",
+        )
 
     def add_turn(
         self,
@@ -814,6 +927,8 @@ class ConversationMemory:
         Returns:
             Turn ID
         """
+        self._ensure_background_initialize()
+
         turn = ConversationTurn(
             turn_id=str(uuid4()),
             role=role,
@@ -839,6 +954,9 @@ class ConversationMemory:
             len(self._turns) >= self.summary_threshold and
             len(self._turns) % self.summary_threshold == 0):
             asyncio.create_task(self._summarize_old_turns())
+
+        # Persist asynchronously without blocking the caller.
+        self._enqueue_persistence(turn)
 
         return turn.turn_id
 
@@ -900,6 +1018,7 @@ class ConversationMemory:
         self._turns.clear()
         self._summaries.clear()
         self._tool_history.clear()
+        self._pending_user_turns.clear()
 
     async def _summarize_old_turns(self) -> None:
         """Summarize older turns to save context space."""
@@ -928,6 +1047,155 @@ class ConversationMemory:
         for _ in range(len(turns_to_summarize)):
             if self._turns:
                 self._turns.popleft()
+
+    def _enqueue_persistence(self, turn: ConversationTurn) -> None:
+        """Queue user/assistant turns for durable persistence as interactions."""
+        if not self._persistence_enabled:
+            return
+        if turn.role == "user":
+            self._pending_user_turns.append(turn)
+            return
+        if turn.role != "assistant":
+            return
+
+        user_turn: Optional[ConversationTurn] = None
+        if self._pending_user_turns:
+            user_turn = self._pending_user_turns.popleft()
+
+        payload = {
+            "user_query": user_turn.content if user_turn else "[implicit]",
+            "jarvis_response": turn.content,
+            "response_type": "autonomy_conversation",
+            "success": not bool((turn.metadata or {}).get("error")),
+            "execution_time_ms": (turn.metadata or {}).get("latency_ms"),
+            "confidence_score": (turn.metadata or {}).get("confidence"),
+            "session_id": self._session_id,
+            "context": {
+                "source": "autonomy.conversation_memory",
+                "turn_id": turn.turn_id,
+                "user_turn_id": user_turn.turn_id if user_turn else None,
+                "tool_calls": turn.tool_calls or [],
+                "tool_results": turn.tool_results or [],
+                "turn_metadata": turn.metadata or {},
+            },
+        }
+
+        try:
+            if self._persist_queue.full():
+                try:
+                    self._persist_queue.get_nowait()
+                    self._persist_queue.task_done()
+                    self._stats["events_dropped"] += 1
+                except asyncio.QueueEmpty:
+                    pass
+
+            self._persist_queue.put_nowait(payload)
+            self._stats["events_enqueued"] += 1
+        except Exception:
+            self._stats["events_failed"] += 1
+
+    async def _persistence_worker(self, worker_id: int) -> None:
+        """Background writer for durable conversation interaction records."""
+        while self._running or not self._persist_queue.empty():
+            try:
+                try:
+                    payload = await asyncio.wait_for(self._persist_queue.get(), timeout=0.5)
+                except asyncio.TimeoutError:
+                    continue
+
+                try:
+                    await self._persist_interaction(payload)
+                    self._stats["events_persisted"] += 1
+                except Exception as e:
+                    self._stats["events_failed"] += 1
+                    self.logger.debug(
+                        f"Conversation memory worker {worker_id} persist failed: {e}"
+                    )
+                finally:
+                    self._persist_queue.task_done()
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                self._stats["events_failed"] += 1
+                self.logger.debug(f"Conversation memory worker loop warning: {e}")
+
+    async def _persist_interaction(self, payload: Dict[str, Any]) -> None:
+        learning_db = await self._get_learning_db()
+        await learning_db.record_interaction(
+            user_query=payload["user_query"],
+            jarvis_response=payload["jarvis_response"],
+            response_type=payload.get("response_type"),
+            confidence_score=payload.get("confidence_score"),
+            execution_time_ms=payload.get("execution_time_ms"),
+            success=bool(payload.get("success", True)),
+            session_id=payload.get("session_id"),
+            context=payload.get("context", {}),
+        )
+
+    async def _load_persisted_turns(self) -> int:
+        """Rehydrate recent conversational turns from persistent learning storage."""
+        if self._turns:
+            # Avoid reordering if turns already exist.
+            return 0
+
+        learning_db = await self._get_learning_db()
+        fetch_limit = max(10, min(self.max_turns * 3, 500))
+        rows = await learning_db.get_recent_interactions(
+            limit=fetch_limit,
+            response_types=["autonomy_conversation"],
+        )
+
+        loaded_turns = 0
+        for row in reversed(rows):
+            timestamp = self._parse_timestamp(row.get("timestamp"))
+            user_query = str(row.get("user_query") or "").strip()
+            assistant_response = str(row.get("jarvis_response") or "").strip()
+
+            if user_query:
+                self._turns.append(
+                    ConversationTurn(
+                        turn_id=f"restored_u_{row.get('interaction_id', uuid4().hex[:8])}",
+                        role="user",
+                        content=user_query,
+                        timestamp=timestamp,
+                        metadata={"restored": True},
+                    )
+                )
+                loaded_turns += 1
+
+            if assistant_response:
+                self._turns.append(
+                    ConversationTurn(
+                        turn_id=f"restored_a_{row.get('interaction_id', uuid4().hex[:8])}",
+                        role="assistant",
+                        content=assistant_response,
+                        timestamp=timestamp,
+                        metadata={"restored": True},
+                    )
+                )
+                loaded_turns += 1
+
+        return loaded_turns
+
+    def _parse_timestamp(self, raw_timestamp: Any) -> datetime:
+        """Parse DB timestamp values into datetime safely."""
+        if isinstance(raw_timestamp, datetime):
+            return raw_timestamp
+        if isinstance(raw_timestamp, str) and raw_timestamp:
+            normalized = raw_timestamp.replace("Z", "+00:00")
+            try:
+                return datetime.fromisoformat(normalized)
+            except ValueError:
+                pass
+        return datetime.utcnow()
+
+    async def _get_learning_db(self):
+        """Get shared learning DB instance with import-cycle-safe fallbacks."""
+        try:
+            from backend.intelligence.learning_database import get_learning_database
+        except Exception:
+            from intelligence.learning_database import get_learning_database
+        return await get_learning_database(config={"enable_ml_features": False})
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary."""

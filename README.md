@@ -1395,6 +1395,107 @@ _infer_task_type()                             ChatRequest.metadata
 
 ---
 
+### v245.0 — Google Workspace Live Verification & Critical Bug Fixes
+
+**The Problem:** Google Workspace commands (email, calendar, drafts) appeared functional in unit tests but exhibited critical failures in live production:
+
+1. **49-second agent recreation on every request** — The `get_google_workspace_agent()` singleton never called `.start()` on standalone agents, leaving `_running=False`. The staleness check destroyed and recreated the agent (~49s model loading) on every subsequent API call.
+2. **Draft email body generation silently failed** — The `payload["query"]` field was never set by the `TieredCommandRouter`, so the condition `if not body and (query or original_email)` was always `False`, producing empty email bodies.
+3. **Wrong model serving API call** — `_generate_email_body()` called `model_serving.generate(prompt=..., task_type=..., max_tokens=...)` but the actual API takes a `ModelRequest` object. It also read `result.get("text")` on a `ModelResponse` dataclass instead of `result.content`.
+4. **Recipient regex over-captured** — Pattern `r"to\s+(\S+(?:\s+[a-z]+)?)"` captured `"test@example.com about"` instead of just `"test@example.com"` because the optional second word matched trailing prepositions.
+
+**The Fixes:**
+
+| # | Bug | File | Fix | Impact |
+|---|-----|------|-----|--------|
+| 1 | Agent singleton cache destruction | `google_workspace_agent.py:3818` | Set `instance._running = True` after `on_initialize()` for standalone agents; added `self._workspace_agent` cache on `TieredCommandRouter` | 49s → 0.2s per request |
+| 2 | Missing `query` field in draft payload | `tiered_command_router.py:1129` | Added `payload["query"] = command` so original command serves as AI body generation context | Draft emails now generate real content |
+| 3 | Wrong `generate()` API signature | `google_workspace_agent.py:2722` | Build proper `ModelRequest` with `messages`, `task_type=MSTaskType.CHAT`, `max_tokens=800`; read `result.content` and `result.success` | Body generation actually calls the model |
+| 4 | Recipient regex over-capture | `workspace_routing_intelligence.py:151` | Email-aware alternation with lookahead: `r"to\s+(\S+@\S+\|[A-Za-z]+(?:\s+[A-Za-z]+)?)(?=\s+(?:about\|regarding\|for\|with\|on\|at)\b\|\s*$)"` | Clean email extraction without trailing words |
+| 5 | Workspace execution timeout | `unified_command_processor.py:1273` | Default timeout 30s → 45s | Accommodates cold-start agent init + API calls |
+
+**Live Smoke Test Results (All 6 Passing):**
+
+| # | Test | Result | Details |
+|---|------|--------|---------|
+| 1 | Check email | PASS | 201 unread emails, real Gmail data via Google API |
+| 2 | Draft email | PASS | Draft ID `r3142702207852773165` created in Gmail, 21.5s |
+| 3 | Search email | PASS | Correctly routed as `search_email` intent |
+| 4 | Calendar | PASS | 0 events today via Google Calendar API |
+| 5 | Workspace summary | PASS | Aggregated email + calendar data |
+| 6 | Query fallthrough | PASS | Standard query, not captured by tiered router |
+
+**Files Modified:**
+- `backend/neural_mesh/agents/google_workspace_agent.py` — Singleton lifecycle fix + ModelRequest API fix
+- `backend/core/tiered_command_router.py` — Router-level agent cache + query field injection
+- `backend/core/workspace_routing_intelligence.py` — Recipient regex fix
+- `backend/api/unified_command_processor.py` — Timeout bump
+
+---
+
+### Architectural Status Report — System-Wide Audit (February 2026)
+
+A comprehensive architectural audit identified several critical system-wide issues that affect JARVIS's ability to operate as a truly autonomous AI agent. These findings inform the roadmap below.
+
+#### LangGraph / LangChain Status
+
+| Package | In `requirements.txt` | Actually Installed | Version |
+|---|---|---|---|
+| `langchain` | Yes | **Yes** | 0.3.27 |
+| `langchain-core` | Yes | **Yes** | 0.3.80 |
+| `langchain-community` | Yes | **Yes** | 0.3.31 |
+| `langchain-experimental` | Yes | **No** | — |
+| **`langgraph`** | **Yes** | **No** | — |
+| `langgraph-checkpoint` | Yes | **No** | — |
+
+**LangGraph is not installed.** All 9 LangGraph graphs in the codebase are dead code. Every engine that checks `LANGGRAPH_AVAILABLE` gets `False` and falls through to its linear fallback:
+
+| File | What It Builds | What Actually Runs |
+|---|---|---|
+| `langgraph_engine.py` | 7-node reasoning graph with conditional routing | Linear fallback: analysis → planning → validation → execution → reflection → learning |
+| `voice_unlock_integration.py` | 9-node adaptive auth graph | Direct `speaker_service.verify_speaker_enhanced()` |
+| `display_aware_sai.py` | Display-aware typing strategy graph | `_fallback_strategy()` |
+| `intelligence_langgraph.py` | EnhancedSAI + EnhancedCAI graphs | `_fallback()` methods |
+| `chain_of_thought.py` | Chain-of-thought reasoning graph | `_fallback_reasoning()` |
+| `reasoning_graph_engine.py` | Multi-branch reasoning graph | `_fallback_execution()` |
+| `uae_langgraph.py` | UAE reasoning graph | `_fallback_reasoning()` |
+| `repository_intelligence.py` | Repository reasoning graph | Error return ("LangGraph not available") |
+| `memory_integration.py` | JARVISCheckpointer | Inherits from `object` instead of `BaseCheckpointSaver` |
+
+**LangChain** is installed but barely used (~5%): type hints (`BaseChatModel`, `BaseTool`), LlamaCpp wrapper for local model loading, and adapter classes. No LangChain agents, chains, or orchestration is running.
+
+The theoretical loop-back in `route_after_reflection()` (confidence < 0.5 → route back to "analysis") has **never executed** because it's a LangGraph routing function and LangGraph isn't installed.
+
+#### Missing Agent Loop (No Persistent Goal Pursuit)
+
+JARVIS lacks a true **outer agent loop** — a persistent observe-think-act-verify-reflect cycle that pursues goals across multiple steps without human re-prompting:
+
+- **`AutonomousAgent.run()`** performs a **single reasoning pass**, not an iterative loop
+- **`AgenticTaskRunner._execute_autonomous()`** follows a **linear sequence** of phases (VISION → ANALYZING → PLANNING → SAFETY_AUDIT → EXECUTING → VERIFYING → REFLECTING → LEARNING) with no loop-back
+- **`GoogleWorkspaceAgent._handle_natural_query()`** maps a natural language query to a **single intent** and executes a **single action** — no multi-step command chaining (e.g., "check my email and draft a reply to the latest one" would only execute the first part)
+- **`LangGraphReasoningEngine._fallback_execution()`** runs nodes in **strict linear order** with no conditional routing or iteration
+
+The system reacts to individual commands but cannot autonomously decompose, chain, or iterate toward complex goals.
+
+#### Ghost Display ↔ Computer Use Disconnection
+
+The Ghost Display (`GhostDisplayManager` in `yabai_space_detector.py`) creates a virtual macOS display for background autonomous work, but:
+
+- **Computer Use targets the main display** — `ClaudeComputerUseConnector` uses `pyautogui.screenshot()` which captures the primary display, not a specific `CGDirectDisplayID`
+- **No screen lease mechanism** — Nothing prevents Computer Use from operating on the main display (disrupting the user) when the Ghost Display is available
+- **Ghost Hands Orchestrator is standalone** — Not integrated with the `GoogleWorkspaceAgent` or Autonomy System's tool registry
+
+#### Neural Mesh ↔ Autonomy System Gap
+
+The Neural Mesh (60+ agents) and the Autonomy System (`AutonomousAgent`, `AgenticTaskRunner`) are **parallel systems that don't communicate**:
+
+- Neural Mesh agents (including `GoogleWorkspaceAgent`) are not registered in the Autonomy System's `UnifiedToolRegistry`
+- The `AutonomousAgent` cannot dispatch work to Neural Mesh agents
+- No shared state or event bus connects the two systems
+- The Agent Runtime (when built) needs to bridge both systems to enable autonomous multi-agent workflows
+
+---
+
 ### Roadmap — Next Phases
 
 #### v241.2 — 14B Model Tier + Ouroboros Foundation (Planned)
@@ -1449,6 +1550,90 @@ Activate the pre-staged LLaVA-v1.6-Mistral-7B for self-hosted vision:
 - [ ] Mark LLaVA as `routable: true` in manifest
 - [ ] Route vision commands to LLaVA instead of Claude Vision API
 - [ ] Eliminate last external API dependency for core JARVIS features
+
+#### v246.0 — LangGraph Activation (Planned)
+
+Install LangGraph and light up all 9 dead reasoning graphs, transforming linear fallback execution into conditional, iterative, checkpointed reasoning:
+
+- [ ] **Install dependencies** — `pip install langgraph langgraph-checkpoint langgraph-checkpoint-sqlite` and add to `requirements.txt`
+- [ ] **Activate `LangGraphReasoningEngine`** — The 7-node graph (analysis → planning → validation → execution → reflection → learning) with `route_after_reflection()` loop-back on low confidence
+- [ ] **Activate voice unlock graph** — 9-node adaptive authentication graph in `voice_unlock_integration.py`
+- [ ] **Activate display-aware SAI graph** — Display-aware typing strategy in `display_aware_sai.py`
+- [ ] **Activate chain-of-thought graph** — Multi-step reasoning in `chain_of_thought.py`
+- [ ] **Activate reasoning graph engine** — Multi-branch reasoning in `reasoning_graph_engine.py`
+- [ ] **Activate UAE graph** — Unified Awareness Engine reasoning in `uae_langgraph.py`
+- [ ] **Activate repository intelligence graph** — Codebase analysis in `repository_intelligence.py`
+- [ ] **Activate JARVISCheckpointer** — Proper `BaseCheckpointSaver` inheritance in `memory_integration.py` for state persistence across sessions
+- [ ] **Verify all 9 graphs** — Ensure `LANGGRAPH_AVAILABLE=True` and fallback paths are no longer reached in production
+- [ ] **Checkpoint storage** — Configure SQLite-backed checkpointing for graph state persistence and session recovery
+
+**Impact:** The `route_after_reflection()` function — which can loop back to analysis when confidence < 0.5 — will execute for the first time, enabling iterative reasoning instead of single-pass linear execution.
+
+#### v247.0 — Unified Agent Runtime (Planned)
+
+Build the missing **outer agent loop** — a persistent sense-think-act-verify-reflect cycle that enables true autonomous goal pursuit:
+
+- [ ] **Agent Runtime core** — Event-driven tick loop with per-goal concurrency (not serialized through a single lock)
+- [ ] **Goal lifecycle** — `PENDING → DECOMPOSING → ACTIVE → VERIFYING → DONE/FAILED` with checkpointing to SQLite for crash recovery
+- [ ] **Sense phase** — Environment observation via screen capture, notification monitoring, and system state polling (event-driven, not polling-based where possible)
+- [ ] **Think phase** — Call `LangGraphReasoningEngine` (or fallback) to decompose goals into sub-steps, with distinct paths for initial decomposition vs. mid-execution replanning
+- [ ] **Act phase** — Execute sub-steps through `UnifiedToolRegistry` + Neural Mesh agent dispatch (bridging the Autonomy ↔ Neural Mesh gap)
+- [ ] **Verify phase** — Vision-based verification after each action (screenshot → "did this work?") with up to 3 retries
+- [ ] **Reflect phase** — Confidence scoring, learning from successes/failures, experience recording to Reactor Core
+- [ ] **Multi-step command chaining** — "Check my email and draft a reply to the latest one" decomposes into: (1) fetch unread → (2) identify latest → (3) extract context → (4) draft reply — with data flowing between steps
+- [ ] **Escalation protocol** — Dynamic risk assessment for human-in-the-loop approval on destructive or uncertain actions
+- [ ] **Cancellation and progress** — Real-time progress events via WebSocket, graceful cancellation at any phase
+- [ ] **Cross-repo integration** — Runtime state shared via `~/.jarvis/agent_runtime/` for Prime and Reactor to observe
+
+**Architecture:**
+```
+┌──────────────────────────────────────────────────────────────────┐
+│                    UNIFIED AGENT RUNTIME                          │
+│               (Persistent Goal Pursuit Loop)                     │
+├──────────────────────────────────────────────────────────────────┤
+│                                                                    │
+│  Goal Queue ──→ ┌─────────────────────────────────────────┐      │
+│                 │  Per-Goal Coroutine (concurrent)          │      │
+│                 │                                           │      │
+│                 │  SENSE ──→ THINK ──→ ACT ──→ VERIFY      │      │
+│                 │    ↑                            │         │      │
+│                 │    └──────── REFLECT ←──────────┘         │      │
+│                 │                                           │      │
+│                 │  Checkpoint to SQLite after each phase    │      │
+│                 └─────────────────────────────────────────┘      │
+│                                                                    │
+│  Tool Bridge:  UnifiedToolRegistry + Neural Mesh Agents           │
+│  State:        ~/.jarvis/agent_runtime/goals.db                   │
+│  Events:       WebSocket + AgentCommunicationBus                  │
+│  Recovery:     Resume from last checkpoint on restart             │
+│                                                                    │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+#### v248.0 — Ghost Display Integration (Planned)
+
+Connect the Ghost Display to Computer Use and the Agent Runtime for non-intrusive background automation:
+
+- [ ] **Display-aware Computer Use** — Replace `pyautogui.screenshot()` in `ClaudeComputerUseConnector` with `CGDirectDisplayID`-targeted capture using `GhostDisplayManager.ghost_display_id`
+- [ ] **Screen lease mechanism** — Agent Runtime acquires a "screen lease" (Ghost Display preferred, main display with user permission) before any Computer Use action
+- [ ] **Ghost Hands ↔ Agent Runtime bridge** — `GhostHandsOrchestrator` becomes a tool in the Agent Runtime's registry, enabling autonomous visual workflows on the Ghost Display
+- [ ] **Coordinate offset translation** — Click coordinates from Computer Use screenshots are translated to the Ghost Display's virtual coordinate space
+- [ ] **MosaicWatcher display targeting** — Fix `VisualMonitorAgent` to pass correct `CGDirectDisplayID` (from `GhostDisplayManager`) instead of yabai display index
+- [ ] **Ghost Display auto-provisioning** — Agent Runtime automatically creates/discovers Ghost Display on startup if autonomous visual tasks are queued
+- [ ] **Fallback to main display** — If Ghost Display is unavailable, prompt user before using main display for visual automation
+
+**Goal:** JARVIS can autonomously draft emails, manage calendar, and perform visual tasks on the Ghost Display without stealing the user's focus or requiring their active screen.
+
+#### v249.0 — Neural Mesh ↔ Autonomy Bridge (Planned)
+
+Unify the Neural Mesh multi-agent system with the Autonomy System's tool registry and the Agent Runtime:
+
+- [ ] **MeshToolBridge** — Register Neural Mesh agents as tools in `UnifiedToolRegistry` so the Agent Runtime can dispatch work to any of the 60+ agents
+- [ ] **Agent dispatch from Runtime** — `GoogleWorkspaceAgent`, `RepositoryIntelligenceAgent`, `SpatialAwarenessAgent`, etc. become callable actions in the sense-think-act loop
+- [ ] **Shared event bus** — `AgentCommunicationBus` events flow to the Agent Runtime, enabling agents to trigger goal creation or provide environmental observations
+- [ ] **Cross-agent data flow** — Results from one Neural Mesh agent (e.g., email content from `GoogleWorkspaceAgent`) can be passed as context to another agent (e.g., `PredictivePlanningAgent`) within the same goal execution
+- [ ] **Agent Runtime → Neural Mesh status** — Runtime goal progress is published to the Communication Bus so monitoring agents (HealthMonitor, MetricsCollector) can observe autonomous work
+- [ ] **Multi-agent goal decomposition** — Complex goals are decomposed into sub-tasks that route to the most capable agent via capability-based matching in the Agent Registry
 
 ---
 

@@ -38,12 +38,12 @@ import subprocess
 import logging
 import time
 import weakref
-from collections import OrderedDict
+from collections import OrderedDict, deque
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum, auto
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Set, Tuple
+from typing import Any, Callable, Deque, Dict, List, Optional, Set, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -114,6 +114,22 @@ class VoiceModeConfig:
     pitch_adjustment: int = 0  # Future use
 
 
+@dataclass
+class UserUtterance:
+    """Represents a user utterance captured via voice input."""
+    text: str
+    source: str = "unknown"
+    metadata: Dict[str, Any] = field(default_factory=dict)
+    timestamp: datetime = field(default_factory=datetime.now)
+    utterance_id: str = field(default="")
+
+    def __post_init__(self) -> None:
+        if not self.utterance_id:
+            self.utterance_id = hashlib.md5(
+                f"{self.text}{self.source}{self.timestamp.isoformat()}".encode()
+            ).hexdigest()[:12]
+
+
 class RealTimeVoiceCommunicator:
     """
     Advanced async voice communicator for AGI OS.
@@ -174,6 +190,18 @@ class RealTimeVoiceCommunicator:
         self._last_speech_time: Optional[datetime] = None
         self._speech_count_today = 0
         self._user_preferences: Dict[str, Any] = {}
+
+        # Bidirectional voice loop state
+        self._state_lock = asyncio.Lock()
+        self._listening_window: Optional[Dict[str, Any]] = None
+        self._listening_timeout_task: Optional[asyncio.Task] = None
+        self._listening_window_counter = 0
+        self._utterance_history: Deque[UserUtterance] = deque(maxlen=250)
+        self._pending_utterances: Deque[UserUtterance] = deque(maxlen=250)
+        self._utterance_waiters: "OrderedDict[str, Tuple[asyncio.Future, Optional[Callable[[UserUtterance], bool]]]]" = OrderedDict()
+
+        # Lifecycle-managed background tasks (timeouts, delayed opens, async notifications)
+        self._background_tasks: Set[asyncio.Task] = set()
 
         # Initialize voices
         self._discover_voices()
@@ -238,6 +266,7 @@ class RealTimeVoiceCommunicator:
 
         # Stop any current speech
         await self.stop_speaking()
+        await self.close_listening_window(reason="voice_shutdown")
 
         # Cancel processor task
         if self._speech_task:
@@ -246,6 +275,22 @@ class RealTimeVoiceCommunicator:
                 await self._speech_task
             except asyncio.CancelledError:
                 pass
+
+        # Cancel all background tasks
+        pending_tasks = list(self._background_tasks)
+        for task in pending_tasks:
+            task.cancel()
+        if pending_tasks:
+            await asyncio.gather(*pending_tasks, return_exceptions=True)
+        self._background_tasks.clear()
+
+        # Release any waiters so shutdown is deterministic
+        async with self._state_lock:
+            for waiter, _ in self._utterance_waiters.values():
+                if not waiter.done():
+                    waiter.cancel()
+            self._utterance_waiters.clear()
+            self._pending_utterances.clear()
 
         logger.info("Voice communicator stopped")
 
@@ -407,11 +452,37 @@ class RealTimeVoiceCommunicator:
         Returns:
             True for yes, False for no, None if timed out
         """
-        await self.speak_and_wait(question, mode=VoiceMode.APPROVAL)
+        timeout = max(1.0, timeout)
+        await self.speak_and_wait(question, mode=VoiceMode.APPROVAL, timeout=timeout + 5.0)
+        await self.open_listening_window(
+            reason="yes_no_question",
+            timeout_seconds=timeout,
+            metadata={"question": question, "expect": "yes_no", "close_on_utterance": False},
+        )
 
-        # In full implementation, this would await voice recognition
-        # For now, return the default after speaking
-        return default
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + timeout
+        response: Optional[bool] = None
+
+        try:
+            while loop.time() < deadline:
+                remaining = max(0.1, deadline - loop.time())
+                utterance = await self.wait_for_user_utterance(
+                    timeout=remaining,
+                    matcher=lambda item: self._parse_yes_no_intent(item.text) is not None,
+                )
+                if utterance is None:
+                    break
+
+                response = self._parse_yes_no_intent(utterance.text)
+                if response is not None:
+                    break
+        finally:
+            await self.close_listening_window(
+                reason="answered" if response is not None else "timeout"
+            )
+
+        return response if response is not None else default
 
     async def interrupt_for_priority(self, priority: VoicePriority) -> None:
         """
@@ -455,7 +526,10 @@ class RealTimeVoiceCommunicator:
     def mute(self) -> None:
         """Mute all voice output."""
         self._muted = True
-        asyncio.create_task(self.stop_speaking())
+        self._spawn_background_task(
+            self.stop_speaking(),
+            name="voice_mute_stop_speaking",
+        )
         logger.info("Voice communicator muted")
 
     def unmute(self) -> None:
@@ -497,11 +571,12 @@ class RealTimeVoiceCommunicator:
                 if UNIFIED_SPEECH_STATE_AVAILABLE:
                     try:
                         manager = get_speech_state_manager_sync()
-                        asyncio.create_task(
+                        self._spawn_background_task(
                             manager.start_speaking(
                                 message.text,
-                                source=SpeechSource.TTS_BACKEND
-                            )
+                                source=SpeechSource.TTS_BACKEND,
+                            ),
+                            name="voice_unified_state_start",
                         )
                     except Exception as e:
                         logger.debug(f"Unified speech state start error: {e}")
@@ -523,8 +598,9 @@ class RealTimeVoiceCommunicator:
                     if UNIFIED_SPEECH_STATE_AVAILABLE:
                         try:
                             manager = get_speech_state_manager_sync()
-                            asyncio.create_task(
-                                manager.stop_speaking(actual_duration_ms=speech_duration_ms)
+                            self._spawn_background_task(
+                                manager.stop_speaking(actual_duration_ms=speech_duration_ms),
+                                name="voice_unified_state_stop",
                             )
                         except Exception as e:
                             logger.debug(f"Unified speech state stop error: {e}")
@@ -536,6 +612,8 @@ class RealTimeVoiceCommunicator:
                             message.callback()
                         except Exception as e:
                             logger.error("Error in speech callback: %s", e)
+
+                    await self._handle_post_speech_context(message)
 
                 self._speech_queue.task_done()
 
@@ -631,6 +709,366 @@ class RealTimeVoiceCommunicator:
         while len(self._recent_messages) > self._max_memory_size:
             self._recent_messages.popitem(last=False)
 
+    def _spawn_background_task(self, coro: Any, name: str) -> asyncio.Task:
+        """Create and track a background task so lifecycle cleanup is deterministic."""
+        task = asyncio.create_task(coro, name=name)
+        self._background_tasks.add(task)
+
+        def _finalize(completed_task: asyncio.Task) -> None:
+            self._background_tasks.discard(completed_task)
+            try:
+                completed_task.result()
+            except asyncio.CancelledError:
+                pass
+            except Exception as exc:
+                logger.debug("Background task %s failed: %s", name, exc)
+
+        task.add_done_callback(_finalize)
+        return task
+
+    async def open_listening_window(
+        self,
+        reason: str = "general",
+        timeout_seconds: float = 20.0,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Open a backend-driven listening window and notify connected voice clients.
+
+        The frontend uses this signal to enter "waiting for command" mode without
+        requiring a wake word for proactive follow-up interactions.
+        """
+        timeout_seconds = max(1.0, float(timeout_seconds))
+        close_on_utterance = bool((metadata or {}).get("close_on_utterance", True))
+        state: Dict[str, Any]
+
+        async with self._state_lock:
+            self._listening_window_counter += 1
+            window_id = f"listen_{self._listening_window_counter}_{int(time.time() * 1000)}"
+            now = datetime.now()
+
+            if self._listening_timeout_task:
+                self._listening_timeout_task.cancel()
+                self._listening_timeout_task = None
+
+            state = {
+                "window_id": window_id,
+                "reason": reason,
+                "opened_at": now.isoformat(),
+                "opened_epoch": time.time(),
+                "timeout_seconds": timeout_seconds,
+                "close_on_utterance": close_on_utterance,
+                "metadata": dict(metadata or {}),
+            }
+            self._listening_window = state
+
+            self._listening_timeout_task = self._spawn_background_task(
+                self._expire_listening_window(window_id, timeout_seconds),
+                name=f"voice_listening_timeout_{window_id}",
+            )
+
+        await self._broadcast_listening_window_state(opened=True, state=state)
+        logger.debug(
+            "Opened listening window %s (reason=%s timeout=%.1fs)",
+            state["window_id"],
+            reason,
+            timeout_seconds,
+        )
+        return state
+
+    async def close_listening_window(
+        self,
+        reason: str = "completed",
+        metadata: Optional[Dict[str, Any]] = None,
+        window_id: Optional[str] = None,
+    ) -> bool:
+        """Close the current listening window and notify connected clients."""
+        closed_state: Optional[Dict[str, Any]] = None
+
+        async with self._state_lock:
+            if not self._listening_window:
+                return False
+
+            if window_id and self._listening_window.get("window_id") != window_id:
+                return False
+
+            closed_state = {
+                **self._listening_window,
+                "closed_at": datetime.now().isoformat(),
+                "close_reason": reason,
+                "close_metadata": dict(metadata or {}),
+            }
+
+            if self._listening_timeout_task:
+                self._listening_timeout_task.cancel()
+                self._listening_timeout_task = None
+
+            self._listening_window = None
+
+        await self._broadcast_listening_window_state(opened=False, state=closed_state)
+        logger.debug(
+            "Closed listening window %s (reason=%s)",
+            closed_state.get("window_id"),
+            reason,
+        )
+        return True
+
+    async def _expire_listening_window(self, window_id: str, timeout_seconds: float) -> None:
+        """Timeout handler for listening window lifecycle."""
+        try:
+            await asyncio.sleep(timeout_seconds)
+            await self.close_listening_window(reason="timeout", window_id=window_id)
+        except asyncio.CancelledError:
+            pass
+
+    async def register_user_utterance(
+        self,
+        text: str,
+        source: str = "websocket",
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> Optional[UserUtterance]:
+        """
+        Register a user utterance from the STT/WebSocket path.
+
+        This is the input side of the bidirectional voice loop.
+        """
+        normalized = (text or "").strip()
+        if not normalized:
+            return None
+
+        utterance = UserUtterance(
+            text=normalized,
+            source=source,
+            metadata=dict(metadata or {}),
+        )
+
+        matched_waiter = False
+        should_close_window = False
+        close_reason = "user_utterance"
+        active_window_id: Optional[str] = None
+
+        async with self._state_lock:
+            self._utterance_history.append(utterance)
+
+            for waiter_id, (future, matcher) in list(self._utterance_waiters.items()):
+                if future.done():
+                    self._utterance_waiters.pop(waiter_id, None)
+                    continue
+
+                try:
+                    is_match = matcher is None or matcher(utterance)
+                except Exception as exc:
+                    logger.debug("Utterance matcher failed for waiter %s: %s", waiter_id, exc)
+                    is_match = False
+
+                if is_match:
+                    future.set_result(utterance)
+                    self._utterance_waiters.pop(waiter_id, None)
+                    matched_waiter = True
+                    break
+
+            if not matched_waiter:
+                self._pending_utterances.append(utterance)
+
+            if self._listening_window:
+                active_window_id = self._listening_window.get("window_id")
+                self._listening_window["last_utterance_at"] = utterance.timestamp.isoformat()
+                self._listening_window["last_utterance_text"] = utterance.text
+                if self._listening_window.get("close_on_utterance", True):
+                    should_close_window = True
+
+        if should_close_window:
+            await self.close_listening_window(
+                reason=close_reason,
+                metadata={"utterance_id": utterance.utterance_id},
+                window_id=active_window_id,
+            )
+
+        return utterance
+
+    async def wait_for_user_utterance(
+        self,
+        timeout: float = 20.0,
+        matcher: Optional[Callable[[UserUtterance], bool]] = None,
+    ) -> Optional[UserUtterance]:
+        """Wait for a matching user utterance with timeout protection."""
+        timeout = max(0.1, float(timeout))
+
+        async with self._state_lock:
+            for pending in list(self._pending_utterances):
+                try:
+                    is_match = matcher is None or matcher(pending)
+                except Exception as exc:
+                    logger.debug("Pending utterance matcher failed: %s", exc)
+                    is_match = False
+                if is_match:
+                    self._pending_utterances.remove(pending)
+                    return pending
+
+            future: asyncio.Future = asyncio.get_running_loop().create_future()
+            waiter_id = f"waiter_{int(time.time() * 1000)}_{id(future)}"
+            self._utterance_waiters[waiter_id] = (future, matcher)
+
+        try:
+            return await asyncio.wait_for(future, timeout=timeout)
+        except asyncio.TimeoutError:
+            return None
+        finally:
+            async with self._state_lock:
+                self._utterance_waiters.pop(waiter_id, None)
+
+    def _parse_yes_no_intent(self, transcript: str) -> Optional[bool]:
+        """Parse yes/no intent from natural language."""
+        text = (transcript or "").lower()
+        if not text:
+            return None
+
+        approval_markers = (
+            "yes",
+            "yeah",
+            "yep",
+            "sure",
+            "ok",
+            "okay",
+            "affirmative",
+            "go ahead",
+            "proceed",
+            "do it",
+            "approved",
+        )
+        denial_markers = (
+            "no",
+            "nope",
+            "negative",
+            "stop",
+            "cancel",
+            "deny",
+            "denied",
+            "don't",
+            "do not",
+            "hold on",
+            "wait",
+        )
+
+        for marker in denial_markers:
+            if marker in text:
+                return False
+        for marker in approval_markers:
+            if marker in text:
+                return True
+        return None
+
+    def _build_listening_window_context(
+        self,
+        context: Optional[Dict[str, Any]],
+    ) -> Optional[Dict[str, Any]]:
+        """Normalize speech context into listening window parameters."""
+        if not context:
+            return None
+
+        open_flag = bool(context.get("open_listen_window", False))
+        if not open_flag:
+            return None
+
+        timeout_seconds = float(context.get("listen_timeout_seconds", 20.0))
+        delay_seconds = float(context.get("listen_delay_seconds", 0.15))
+        reason = str(context.get("listen_reason", "post_speech_follow_up"))
+        close_on_utterance = bool(context.get("listen_close_on_utterance", True))
+        metadata = dict(context.get("listen_metadata", {}))
+        metadata.update(
+            {
+                "close_on_utterance": close_on_utterance,
+                "speech_context": {
+                    k: v
+                    for k, v in context.items()
+                    if k not in {"listen_metadata"}
+                },
+            }
+        )
+
+        return {
+            "reason": reason,
+            "timeout_seconds": timeout_seconds,
+            "delay_seconds": delay_seconds,
+            "metadata": metadata,
+        }
+
+    async def _handle_post_speech_context(self, message: SpeechMessage) -> None:
+        """Apply optional post-speech behavior from message context."""
+        listen_context = self._build_listening_window_context(message.context)
+        if not listen_context:
+            return
+
+        delay_seconds = max(0.0, float(listen_context.get("delay_seconds", 0.0)))
+        if delay_seconds > 0:
+            self._spawn_background_task(
+                self._open_listening_window_after_delay(
+                    delay_seconds=delay_seconds,
+                    reason=str(listen_context["reason"]),
+                    timeout_seconds=float(listen_context["timeout_seconds"]),
+                    metadata=dict(listen_context["metadata"]),
+                ),
+                name=f"voice_open_window_delayed_{message.message_id}",
+            )
+            return
+
+        await self.open_listening_window(
+            reason=str(listen_context["reason"]),
+            timeout_seconds=float(listen_context["timeout_seconds"]),
+            metadata=dict(listen_context["metadata"]),
+        )
+
+    async def _open_listening_window_after_delay(
+        self,
+        delay_seconds: float,
+        reason: str,
+        timeout_seconds: float,
+        metadata: Dict[str, Any],
+    ) -> None:
+        """Delay opening a listening window to avoid clipping speech tails."""
+        try:
+            await asyncio.sleep(delay_seconds)
+            await self.open_listening_window(
+                reason=reason,
+                timeout_seconds=timeout_seconds,
+                metadata=metadata,
+            )
+        except asyncio.CancelledError:
+            pass
+
+    async def _broadcast_listening_window_state(
+        self,
+        opened: bool,
+        state: Dict[str, Any],
+    ) -> None:
+        """Broadcast listening window state to any connected WebSocket clients."""
+        try:
+            from api.unified_websocket import get_ws_manager_if_initialized
+        except Exception as exc:
+            logger.debug("WebSocket manager import unavailable for voice broadcast: %s", exc)
+            return
+
+        manager = get_ws_manager_if_initialized()
+        if manager is None:
+            return
+
+        payload = {
+            "type": "voice_listen_window_open" if opened else "voice_listen_window_closed",
+            "window_id": state.get("window_id"),
+            "reason": state.get("reason"),
+            "timeout_seconds": state.get("timeout_seconds"),
+            "opened_at": state.get("opened_at"),
+            "closed_at": state.get("closed_at"),
+            "close_reason": state.get("close_reason"),
+            "metadata": state.get("metadata", {}),
+            "source": "realtime_voice_communicator",
+        }
+
+        try:
+            await manager.broadcast(payload)
+        except Exception as exc:
+            logger.debug("Failed to broadcast listening window state: %s", exc)
+
     def _fire_callbacks(self, event: str, data: Any = None) -> None:
         """Fire callbacks for an event."""
         if event not in self._callbacks:
@@ -712,9 +1150,12 @@ class RealTimeVoiceCommunicator:
 
     def get_status(self) -> Dict[str, Any]:
         """Get current communicator status."""
+        listening_window_id = self._listening_window.get("window_id") if self._listening_window else None
         return {
             'running': self._running,
             'is_speaking': self._is_speaking,
+            'is_listening_for_input': self._listening_window is not None,
+            'listening_window_id': listening_window_id,
             'paused': self._paused,
             'muted': self._muted,
             'queue_size': self._speech_queue.qsize(),
@@ -749,6 +1190,11 @@ class RealTimeVoiceCommunicator:
             bool: True if speaking or has queued speech
         """
         return self._is_speaking or not self._speech_queue.empty()
+
+    @property
+    def is_listening_for_input(self) -> bool:
+        """Check if a backend listening window is currently open."""
+        return self._listening_window is not None
 
     # ============== Convenience Methods for AGI OS ==============
 

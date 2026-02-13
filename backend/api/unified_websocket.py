@@ -13,6 +13,7 @@ Features:
 """
 
 import asyncio
+import base64
 import logging
 import os
 import time
@@ -20,7 +21,7 @@ from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 # Initialize logger FIRST before using it
 logger = logging.getLogger(__name__)
@@ -1487,12 +1488,11 @@ class UnifiedWebSocketManager:
                 from agi_os.realtime_voice_communicator import get_voice_communicator
                 voice_comm = await asyncio.wait_for(get_voice_communicator(), timeout=0.3)
 
-                if voice_comm and (voice_comm.is_speaking or voice_comm.is_processing_speech):
+                if voice_comm and voice_comm.is_speaking:
                     # JARVIS is currently speaking - this audio is likely echo
                     logger.warning(
                         f"🔇 [SELF-VOICE-SUPPRESSION] Rejecting audio message - "
-                        f"JARVIS is speaking (is_speaking={voice_comm.is_speaking}, "
-                        f"is_processing={voice_comm.is_processing_speech})"
+                        f"JARVIS is speaking (is_speaking={voice_comm.is_speaking})"
                     )
                     return {
                         "success": False,
@@ -1545,6 +1545,25 @@ class UnifiedWebSocketManager:
                     # Enhanced VBI Debug Logging
                     command_start_time = time.time()
                     command_text = message.get("text", message.get("command", ""))
+
+                    # Feed user utterance into bidirectional voice loop (for proactive follow-up windows)
+                    await self._register_bidirectional_voice_input(
+                        client_id=client_id,
+                        msg_type=msg_type,
+                        message=message,
+                        command_text=command_text,
+                        audio_data=audio_data_received,
+                    )
+
+                    # If a voice approval request is pending, short-circuit into approval resolution.
+                    approval_response = await self._handle_pending_voice_approval(
+                        command_text=command_text,
+                        message=message,
+                        audio_data=audio_data_received,
+                    )
+                    if approval_response:
+                        logger.info("[WS-APPROVAL] Pending approval handled via voice response")
+                        return approval_response
 
                     logger.info("=" * 70)
                     logger.info(f"[WS-VBI] COMMAND RECEIVED")
@@ -2242,6 +2261,140 @@ class UnifiedWebSocketManager:
                 # Force cleanup
                 self.connections.pop(client_id, None)
                 self.connection_health.pop(client_id, None)
+
+    def _is_probable_voice_input(
+        self,
+        msg_type: str,
+        message: Dict[str, Any],
+        audio_data: Optional[Any],
+    ) -> bool:
+        """Infer whether a command originated from voice input."""
+        if msg_type in {"voice_command", "jarvis_command"}:
+            return True
+        if audio_data:
+            return True
+
+        metadata = message.get("metadata") if isinstance(message.get("metadata"), dict) else {}
+        voice_markers = {
+            "confidence",
+            "originalConfidence",
+            "wasWaitingForCommand",
+            "wasWakeWordCombo",
+            "wasCriticalCommand",
+            "stt_engine",
+            "voice_input",
+            "speech_source",
+        }
+        if any(marker in metadata for marker in voice_markers):
+            return True
+        if message.get("audio_source"):
+            return True
+        return bool(message.get("voice_input"))
+
+    async def _register_bidirectional_voice_input(
+        self,
+        client_id: str,
+        msg_type: str,
+        message: Dict[str, Any],
+        command_text: str,
+        audio_data: Optional[Any],
+    ) -> None:
+        """Feed recognized user utterances into the backend voice loop."""
+        if not command_text:
+            return
+        if not self._is_probable_voice_input(msg_type, message, audio_data):
+            return
+
+        try:
+            from agi_os.realtime_voice_communicator import get_voice_communicator
+
+            voice_comm = await asyncio.wait_for(get_voice_communicator(), timeout=0.5)
+            await voice_comm.register_user_utterance(
+                text=command_text,
+                source="websocket_command",
+                metadata={
+                    "client_id": client_id,
+                    "message_type": msg_type,
+                    "audio_present": bool(audio_data),
+                    "request_id": message.get("requestId"),
+                },
+            )
+        except asyncio.TimeoutError:
+            logger.debug("[WS-VOICE-LOOP] Voice communicator timeout while registering utterance")
+        except Exception as exc:
+            logger.debug("[WS-VOICE-LOOP] Failed to register user utterance: %s", exc)
+
+    def _decode_audio_payload(self, audio_payload: Any) -> Optional[bytes]:
+        """Decode base64 audio payload into bytes when available."""
+        if isinstance(audio_payload, (bytes, bytearray)):
+            return bytes(audio_payload)
+        if not isinstance(audio_payload, str) or not audio_payload:
+            return None
+
+        payload = audio_payload.strip()
+        if "," in payload:
+            payload = payload.split(",", 1)[1]
+        padding = (-len(payload)) % 4
+        if padding:
+            payload = f"{payload}{'=' * padding}"
+
+        try:
+            return base64.b64decode(payload, validate=False)
+        except Exception:
+            return None
+
+    async def _handle_pending_voice_approval(
+        self,
+        command_text: str,
+        message: Dict[str, Any],
+        audio_data: Optional[Any],
+    ) -> Optional[Dict[str, Any]]:
+        """Route yes/no voice responses to VoiceApprovalManager before normal command handling."""
+        if not command_text:
+            return None
+
+        try:
+            from agi_os.voice_approval_manager import get_approval_manager
+
+            approval_manager = await asyncio.wait_for(get_approval_manager(), timeout=0.75)
+            pending_summary = approval_manager.get_pending_request_summary()
+            if not pending_summary:
+                return None
+
+            audio_bytes = self._decode_audio_payload(audio_data)
+            approval_result = await approval_manager.process_voice_response(
+                transcript=command_text,
+                audio_data=audio_bytes,
+                require_owner_verification=audio_bytes is not None,
+            )
+            if not approval_result:
+                return None
+
+            request_id, approved = approval_result
+            response_text = (
+                "Approval recorded. Proceeding with the requested action."
+                if approved
+                else "Understood. I will cancel that action."
+            )
+            return {
+                "type": "command_response",
+                "response": response_text,
+                "success": True,
+                "speak": True,
+                "requestId": message.get("requestId"),
+                "command_type": "approval_response",
+                "approval": {
+                    "request_id": request_id,
+                    "approved": approved,
+                    "handled": True,
+                },
+            }
+        except asyncio.TimeoutError:
+            logger.debug("[WS-APPROVAL] Approval manager lookup timed out")
+            return None
+        except Exception as exc:
+            logger.debug("[WS-APPROVAL] Could not process voice approval response: %s", exc)
+            return None
 
     # Handler implementations
 
