@@ -30,7 +30,7 @@ Architecture:
     │   ├── Action phrases
     │   └── Confirmation phrases
     ├── TTSBridge (voice output)
-    │   └── UnifiedTTSEngine integration
+    │   └── Trinity Voice Coordinator -> macOS say -> UnifiedTTSEngine
     ├── NarrationQueue (priority queue)
     │   └── Debouncing & deduplication
     └── EventSubscriber (event listeners)
@@ -46,6 +46,7 @@ import logging
 import os
 import random
 import re
+import shutil
 import time
 from abc import ABC, abstractmethod
 from collections import deque
@@ -121,8 +122,18 @@ class NarrationConfig:
             "JARVIS_NARRATION_TTS", "true"
         ).lower() == "true"
     )
+    tts_use_trinity: bool = field(
+        default_factory=lambda: os.getenv(
+            "JARVIS_NARRATION_USE_TRINITY", "true"
+        ).lower() == "true"
+    )
     tts_voice: Optional[str] = field(
-        default_factory=lambda: os.getenv("JARVIS_NARRATION_VOICE", None)
+        default_factory=lambda: (
+            os.getenv("JARVIS_NARRATION_VOICE")
+            or os.getenv("JARVIS_NARRATOR_VOICE_NAME")
+            or os.getenv("JARVIS_VOICE_NAME")
+            or "Daniel"
+        )
     )
     tts_speed: float = field(
         default_factory=lambda: float(os.getenv("JARVIS_NARRATION_SPEED", "1.1"))
@@ -505,12 +516,47 @@ class TTSBridge:
     def __init__(self, config: NarrationConfig):
         self.config = config
         self._tts_engine = None
+        self._voice_coordinator = None
+        self._voice_context = None
+        self._voice_priority = {}
+        self._use_trinity = False
+        self._use_macos_say = False
+        self._say_voice = self._resolve_voice_name()
+        self._say_rate_wpm = self._resolve_rate_wpm()
         self._initialized = False
         self._speaking = False
         self._speak_lock = asyncio.Lock()
 
+    def _resolve_voice_name(self) -> str:
+        """Resolve canonical narration voice with JARVIS fallback chain."""
+        return (
+            self.config.tts_voice
+            or os.getenv("JARVIS_NARRATOR_VOICE_NAME")
+            or os.getenv("JARVIS_VOICE_NAME")
+            or "Daniel"
+        )
+
+    def _resolve_rate_wpm(self) -> int:
+        """Resolve narration speech rate (words per minute)."""
+        narrator_rate = os.getenv("JARVIS_NARRATOR_VOICE_RATE")
+        if narrator_rate:
+            try:
+                return max(120, min(260, int(narrator_rate)))
+            except ValueError:
+                pass
+
+        legacy_rate = os.getenv("JARVIS_VOICE_RATE_WPM")
+        if legacy_rate:
+            try:
+                return max(120, min(260, int(legacy_rate)))
+            except ValueError:
+                pass
+
+        derived_rate = int(round(175 * max(0.5, min(2.0, self.config.tts_speed))))
+        return max(120, min(260, derived_rate))
+
     async def initialize(self) -> bool:
-        """Initialize the TTS engine."""
+        """Initialize the narration voice backend with deterministic fallback."""
         if self._initialized:
             return True
 
@@ -518,6 +564,56 @@ class TTSBridge:
             logger.info("[NARRATION] TTS disabled by configuration")
             return False
 
+        self._say_voice = self._resolve_voice_name()
+        self._say_rate_wpm = self._resolve_rate_wpm()
+
+        # Ensure narrator profile defaults are present before coordinator bootstrap.
+        os.environ.setdefault("JARVIS_NARRATOR_VOICE_NAME", self._say_voice)
+        os.environ.setdefault("JARVIS_NARRATOR_VOICE_RATE", str(self._say_rate_wpm))
+
+        # 1) Preferred path: Trinity Voice Coordinator (shared control plane).
+        if self.config.tts_use_trinity:
+            try:
+                try:
+                    from backend.core.trinity_voice_coordinator import (
+                        VoiceContext,
+                        VoicePriority,
+                        get_voice_coordinator,
+                    )
+                except ImportError:
+                    from core.trinity_voice_coordinator import (  # type: ignore
+                        VoiceContext,
+                        VoicePriority,
+                        get_voice_coordinator,
+                    )
+
+                self._voice_coordinator = await get_voice_coordinator()
+                self._voice_context = VoiceContext.NARRATOR
+                self._voice_priority = {
+                    True: VoicePriority.NORMAL,
+                    False: VoicePriority.HIGH,
+                }
+                self._use_trinity = True
+                self._initialized = True
+                logger.info(
+                    "[NARRATION] TTS bridge initialized via Trinity Voice Coordinator "
+                    f"(voice={self._say_voice}, rate={self._say_rate_wpm} WPM)"
+                )
+                return True
+            except Exception as e:
+                logger.warning(f"[NARRATION] Trinity voice path unavailable: {e}")
+
+        # 2) Fallback path on macOS: direct 'say' command (avoids playback static).
+        if shutil.which("say"):
+            self._use_macos_say = True
+            self._initialized = True
+            logger.info(
+                "[NARRATION] TTS bridge initialized via macOS say "
+                f"(voice={self._say_voice}, rate={self._say_rate_wpm} WPM)"
+            )
+            return True
+
+        # 3) Last resort: legacy unified TTS engine.
         try:
             from voice.engines.unified_tts_engine import UnifiedTTSEngine
 
@@ -532,7 +628,7 @@ class TTSBridge:
                 self._tts_engine.set_speed(self.config.tts_speed)
 
             self._initialized = True
-            logger.info("[NARRATION] TTS bridge initialized")
+            logger.info("[NARRATION] TTS bridge initialized via UnifiedTTSEngine")
             return True
 
         except ImportError:
@@ -553,15 +649,55 @@ class TTSBridge:
         Returns:
             True if speech completed, False if interrupted or failed
         """
-        if not self._initialized or not self._tts_engine:
+        if not self._initialized:
             logger.debug(f"[NARRATION] (No TTS) Would say: {text}")
             return False
 
         async with self._speak_lock:
             self._speaking = True
             try:
-                await self._tts_engine.speak(text, play_audio=True)
-                return True
+                if self._use_trinity and self._voice_coordinator and self._voice_context:
+                    priority = self._voice_priority.get(interruptible) or self._voice_priority.get(True)
+                    if priority is None:
+                        logger.warning("[NARRATION] Trinity priority profile missing, skipping narration")
+                        return False
+                    success, reason = await self._voice_coordinator.announce(
+                        message=text,
+                        context=self._voice_context,
+                        priority=priority,
+                        source="ghost_hands",
+                        metadata={"interruptible": interruptible, "component": "narration_engine"},
+                    )
+                    if not success:
+                        logger.warning(f"[NARRATION] Trinity voice rejected narration: {reason}")
+                    return success
+
+                if self._use_macos_say:
+                    cmd = [
+                        "say",
+                        "-v", self._say_voice,
+                        "-r", str(self._say_rate_wpm),
+                        text,
+                    ]
+                    proc = await asyncio.create_subprocess_exec(
+                        *cmd,
+                        stdout=asyncio.subprocess.DEVNULL,
+                        stderr=asyncio.subprocess.PIPE,
+                    )
+                    _, stderr = await proc.communicate()
+                    if proc.returncode == 0:
+                        return True
+
+                    err = stderr.decode(errors="ignore").strip() if stderr else ""
+                    logger.error(f"[NARRATION] macOS say failed ({proc.returncode}): {err}")
+                    return False
+
+                if self._tts_engine:
+                    await self._tts_engine.speak(text, play_audio=True)
+                    return True
+
+                logger.debug(f"[NARRATION] (No active backend) Would say: {text}")
+                return False
             except Exception as e:
                 logger.error(f"[NARRATION] TTS speak failed: {e}")
                 return False
@@ -577,6 +713,10 @@ class TTSBridge:
         """Clean up TTS resources."""
         if self._tts_engine:
             await self._tts_engine.cleanup()
+        self._tts_engine = None
+        self._voice_coordinator = None
+        self._use_trinity = False
+        self._use_macos_say = False
         self._initialized = False
 
 

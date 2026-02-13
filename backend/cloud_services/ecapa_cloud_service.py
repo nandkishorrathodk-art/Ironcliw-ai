@@ -2627,9 +2627,15 @@ if FASTAPI_AVAILABLE:
             embedding = await manager.extract_embedding(audio)
 
             if embedding is None:
+                retry_after = int(os.getenv("ECAPA_EMBEDDING_RETRY_AFTER", "5"))
+                startup_state = _startup_context.get("state", StartupState.PENDING)
                 raise HTTPException(
-                    status_code=500,
-                    detail="Embedding extraction returned None"
+                    status_code=503,
+                    detail=(
+                        f"Embedding extraction unavailable "
+                        f"(startup_state={getattr(startup_state, 'value', startup_state)})"
+                    ),
+                    headers={"Retry-After": str(retry_after)},
                 )
 
             processing_time = (time.time() - start_time) * 1000
@@ -2642,6 +2648,14 @@ if FASTAPI_AVAILABLE:
                 cached=False,
             )
 
+        except RuntimeError as e:
+            retry_after = int(os.getenv("ECAPA_EMBEDDING_RETRY_AFTER", "5"))
+            logger.warning(f"Embedding extraction runtime unavailable: {e}")
+            raise HTTPException(
+                status_code=503,
+                detail=f"Embedding extraction temporarily unavailable: {e}",
+                headers={"Retry-After": str(retry_after)},
+            )
         except HTTPException:
             raise
         except Exception as e:
@@ -2689,9 +2703,15 @@ if FASTAPI_AVAILABLE:
             embedding = await manager.extract_embedding(audio)
 
             if embedding is None:
+                retry_after = int(os.getenv("ECAPA_EMBEDDING_RETRY_AFTER", "5"))
+                startup_state = _startup_context.get("state", StartupState.PENDING)
                 raise HTTPException(
-                    status_code=500,
-                    detail="Embedding extraction failed"
+                    status_code=503,
+                    detail=(
+                        f"Embedding extraction unavailable "
+                        f"(startup_state={getattr(startup_state, 'value', startup_state)})"
+                    ),
+                    headers={"Retry-After": str(retry_after)},
                 )
 
             # Compare with reference
@@ -2716,6 +2736,14 @@ if FASTAPI_AVAILABLE:
                 processing_time_ms=round(processing_time, 2),
             )
 
+        except RuntimeError as e:
+            retry_after = int(os.getenv("ECAPA_EMBEDDING_RETRY_AFTER", "5"))
+            logger.warning(f"Speaker verification runtime unavailable: {e}")
+            raise HTTPException(
+                status_code=503,
+                detail=f"Speaker verification temporarily unavailable: {e}",
+                headers={"Retry-After": str(retry_after)},
+            )
         except HTTPException:
             raise
         except Exception as e:

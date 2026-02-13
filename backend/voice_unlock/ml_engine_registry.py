@@ -120,6 +120,18 @@ class MLConfig:
     # ==========================================================================
     CLOUD_FIRST_MODE = os.getenv("JARVIS_CLOUD_FIRST_ML", "false").lower() == "true"
     CLOUD_FALLBACK_ENABLED = os.getenv("JARVIS_CLOUD_FALLBACK", "true").lower() == "true"
+    CLOUD_API_FAILURE_BACKOFF_BASE = float(
+        os.getenv("JARVIS_CLOUD_API_FAILURE_BACKOFF_BASE", "20.0")
+    )
+    CLOUD_API_FAILURE_BACKOFF_MAX = float(
+        os.getenv("JARVIS_CLOUD_API_FAILURE_BACKOFF_MAX", "600.0")
+    )
+    CLOUD_API_FAILURE_STREAK_RESET = float(
+        os.getenv("JARVIS_CLOUD_API_FAILURE_STREAK_RESET", "300.0")
+    )
+    CLOUD_COOLDOWN_LOG_INTERVAL = float(
+        os.getenv("JARVIS_CLOUD_COOLDOWN_LOG_INTERVAL", "30.0")
+    )
 
     # RAM thresholds for automatic cloud routing (in GB)
     RAM_THRESHOLD_LOCAL = float(os.getenv("JARVIS_RAM_THRESHOLD_LOCAL", "6.0"))
@@ -144,6 +156,9 @@ class MLConfig:
             "cache_dir": str(cls.CACHE_DIR),
             "cloud_first_mode": cls.CLOUD_FIRST_MODE,
             "cloud_fallback_enabled": cls.CLOUD_FALLBACK_ENABLED,
+            "cloud_api_failure_backoff_base": cls.CLOUD_API_FAILURE_BACKOFF_BASE,
+            "cloud_api_failure_backoff_max": cls.CLOUD_API_FAILURE_BACKOFF_MAX,
+            "cloud_api_failure_streak_reset": cls.CLOUD_API_FAILURE_STREAK_RESET,
             "ram_threshold_local": cls.RAM_THRESHOLD_LOCAL,
             "memory_pressure_threshold": cls.MEMORY_PRESSURE_THRESHOLD,
         }
@@ -1177,6 +1192,14 @@ class MLEngineRegistry:
         self._startup_decision: Optional[Any] = None  # StartupDecision from MemoryAwareStartup
         self._memory_pressure_at_init: Tuple[bool, float, str] = (False, 0.0, "Not checked")
         self._cloud_fallback_enabled: bool = MLConfig.CLOUD_FALLBACK_ENABLED
+        self._cloud_verified: bool = False
+        self._cloud_last_verified: float = 0.0
+        self._cloud_readiness_probe_lock = LazyAsyncLock()
+        self._cloud_api_failure_streak: int = 0
+        self._cloud_api_last_failure_at: float = 0.0
+        self._cloud_api_degraded_until: float = 0.0
+        self._cloud_api_last_error: str = ""
+        self._cloud_api_last_cooldown_log_at: float = 0.0
 
         # v21.1.0: Cloud embedding circuit breaker
         self._cloud_embedding_cb = CloudEmbeddingCircuitBreaker()
@@ -2608,12 +2631,103 @@ class MLEngineRegistry:
         # v21.1.0: Include cloud circuit breaker state
         if hasattr(self, '_cloud_embedding_cb'):
             status["diagnostics"]["cloud_circuit_breaker"] = self._cloud_embedding_cb.to_dict()
+        status["diagnostics"]["cloud_api_failure_streak"] = self._cloud_api_failure_streak
+        status["diagnostics"]["cloud_api_degraded_until"] = self._cloud_api_degraded_until
+        status["diagnostics"]["cloud_api_last_error"] = self._cloud_api_last_error
+        status["diagnostics"]["cloud_api_cooldown_remaining"] = self._cloud_api_cooldown_remaining()
 
         # Final determination
         if not status["available"]:
             status["error"] = "No ECAPA encoder available (local not loaded, cloud not verified)"
 
         return status
+
+    def _cloud_api_cooldown_remaining(self) -> float:
+        """Seconds remaining before cloud API calls should be retried."""
+        return max(0.0, self._cloud_api_degraded_until - time.time())
+
+    def _parse_retry_after_seconds(self, retry_after: Optional[str]) -> float:
+        """Parse Retry-After header value safely."""
+        if not retry_after:
+            return 0.0
+        try:
+            return max(0.0, float(retry_after))
+        except (TypeError, ValueError):
+            return 0.0
+
+    def _apply_cloud_retry_after(self, retry_after_seconds: float, reason: str = "") -> None:
+        """
+        Apply server-provided cooldown without counting it as a hard API failure.
+        """
+        if retry_after_seconds <= 0:
+            return
+        self._cloud_api_degraded_until = max(
+            self._cloud_api_degraded_until,
+            time.time() + retry_after_seconds,
+        )
+        if reason:
+            self._cloud_api_last_error = reason[:240]
+
+    def _mark_cloud_api_failure(
+        self,
+        reason: str,
+        status_code: Optional[int] = None,
+        retry_after_seconds: float = 0.0,
+    ) -> None:
+        """
+        Record a hard cloud API failure and enter degraded cooldown mode.
+        """
+        now = time.time()
+        if (
+            self._cloud_api_last_failure_at
+            and (now - self._cloud_api_last_failure_at) > MLConfig.CLOUD_API_FAILURE_STREAK_RESET
+        ):
+            self._cloud_api_failure_streak = 0
+
+        self._cloud_api_failure_streak += 1
+        backoff = min(
+            MLConfig.CLOUD_API_FAILURE_BACKOFF_BASE * (2 ** max(0, self._cloud_api_failure_streak - 1)),
+            MLConfig.CLOUD_API_FAILURE_BACKOFF_MAX,
+        )
+        if retry_after_seconds > 0:
+            backoff = max(backoff, retry_after_seconds)
+
+        self._cloud_api_degraded_until = max(self._cloud_api_degraded_until, now + backoff)
+        self._cloud_api_last_failure_at = now
+        if status_code is None:
+            self._cloud_api_last_error = reason[:240]
+        else:
+            self._cloud_api_last_error = f"HTTP {status_code}: {reason[:200]}"
+
+        self._cloud_verified = False
+
+    def _mark_cloud_api_success(self) -> None:
+        """Clear degraded cloud API state after a successful API request."""
+        self._cloud_api_failure_streak = 0
+        self._cloud_api_last_failure_at = 0.0
+        self._cloud_api_degraded_until = 0.0
+        self._cloud_api_last_error = ""
+        self._cloud_api_last_cooldown_log_at = 0.0
+        self._cloud_verified = True
+        self._cloud_last_verified = time.time()
+
+    def _log_cloud_cooldown(self, context: str) -> None:
+        """Rate-limited cooldown log to avoid warning spam."""
+        remaining = self._cloud_api_cooldown_remaining()
+        if remaining <= 0:
+            return
+
+        msg = (
+            f"{context}; cooldown {remaining:.0f}s, "
+            f"failure_streak={self._cloud_api_failure_streak}, "
+            f"last_error={self._cloud_api_last_error or 'n/a'}"
+        )
+        now = time.time()
+        if (now - self._cloud_api_last_cooldown_log_at) >= MLConfig.CLOUD_COOLDOWN_LOG_INTERVAL:
+            logger.warning(msg)
+            self._cloud_api_last_cooldown_log_at = now
+        else:
+            logger.debug(msg)
 
     async def _check_cloud_readiness(self) -> bool:
         """
@@ -2622,9 +2736,15 @@ class MLEngineRegistry:
         Checks _cloud_verified flag and re-verifies via a fast health check
         if the verification is stale. Returns True if cloud is ready.
         """
-        cloud_verified = getattr(self, '_cloud_verified', False)
-        cloud_last_verified = getattr(self, '_cloud_last_verified', 0)
+        if not self._cloud_endpoint:
+            return False
 
+        if self._cloud_api_cooldown_remaining() > 0:
+            self._log_cloud_cooldown("Cloud API in degraded state, skipping readiness check")
+            return False
+
+        cloud_verified = self._cloud_verified
+        cloud_last_verified = self._cloud_last_verified
         verify_ttl = float(os.getenv("JARVIS_CLOUD_VERIFY_TTL", "300"))
         verification_stale = (
             (time.time() - cloud_last_verified) > verify_ttl
@@ -2634,40 +2754,88 @@ class MLEngineRegistry:
         if cloud_verified and not verification_stale:
             return True
 
-        # Quick single-shot health check (not the full polling verifier)
-        quick_timeout = float(os.getenv("JARVIS_CLOUD_QUICK_HEALTH_TIMEOUT", "3.0"))
-        try:
-            import aiohttp
-            health_url = f"{self._cloud_endpoint.rstrip('/')}/health"
-            async with aiohttp.ClientSession() as session:
-                async with session.get(
-                    health_url,
-                    timeout=aiohttp.ClientTimeout(total=quick_timeout),
-                    headers={"Accept": "application/json"},
-                ) as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        if data.get("ecapa_ready", False):
-                            self._cloud_verified = True
-                            self._cloud_last_verified = time.time()
-                            logger.debug("Cloud ECAPA re-verified via quick health check")
-                            return True
-                        else:
+        # Serialize health probes to prevent request stampede during failures.
+        async with self._cloud_readiness_probe_lock:
+            if self._cloud_api_cooldown_remaining() > 0:
+                self._log_cloud_cooldown("Cloud API in degraded state (post-lock), skipping readiness check")
+                return False
+
+            cloud_verified = self._cloud_verified
+            cloud_last_verified = self._cloud_last_verified
+            verification_stale = (
+                (time.time() - cloud_last_verified) > verify_ttl
+                if cloud_last_verified else True
+            )
+            if cloud_verified and not verification_stale:
+                return True
+
+            # Quick single-shot health check (not the full polling verifier)
+            quick_timeout = float(os.getenv("JARVIS_CLOUD_QUICK_HEALTH_TIMEOUT", "3.0"))
+            try:
+                import aiohttp
+                health_url = f"{self._cloud_endpoint.rstrip('/')}/health"
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(
+                        health_url,
+                        timeout=aiohttp.ClientTimeout(total=quick_timeout),
+                        headers={"Accept": "application/json"},
+                    ) as response:
+                        if response.status == 200:
+                            data = await response.json()
+                            if data.get("ecapa_ready", False):
+                                self._cloud_verified = True
+                                self._cloud_last_verified = time.time()
+                                logger.debug("Cloud ECAPA re-verified via quick health check")
+                                return True
+
+                            self._cloud_verified = False
                             status = data.get("status", data.get("startup_state", "unknown"))
+                            retry_after = self._parse_retry_after_seconds(
+                                response.headers.get("Retry-After")
+                            )
+                            if retry_after <= 0:
+                                retry_after = float(
+                                    os.getenv("JARVIS_CLOUD_NOT_READY_COOLDOWN_SECONDS", "5.0")
+                                )
+                            self._apply_cloud_retry_after(
+                                retry_after,
+                                reason=f"health status={status}",
+                            )
                             logger.warning(
                                 f"Cloud ECAPA not ready (status: {status}), "
                                 "skipping cloud request"
                             )
                             return False
-                    else:
+
+                        if response.status >= 500:
+                            error_text = await response.text()
+                            self._mark_cloud_api_failure(
+                                reason=f"Health check failed: {error_text[:120]}",
+                                status_code=response.status,
+                            )
+                            self._log_cloud_cooldown("Cloud health endpoint failed")
+                            return False
+
+                        retry_after = self._parse_retry_after_seconds(
+                            response.headers.get("Retry-After")
+                        )
+                        if retry_after <= 0 and response.status in (408, 425, 429):
+                            retry_after = float(
+                                os.getenv("JARVIS_CLOUD_NOT_READY_COOLDOWN_SECONDS", "5.0")
+                            )
+                        self._apply_cloud_retry_after(
+                            retry_after,
+                            reason=f"health HTTP {response.status}",
+                        )
                         logger.warning(
                             f"Cloud health check returned {response.status}, "
                             "skipping cloud request"
                         )
                         return False
-        except Exception as e:
-            logger.warning(f"Quick cloud health check failed: {e}, skipping cloud request")
-            return False
+            except Exception as e:
+                self._mark_cloud_api_failure(f"Health check exception: {e}")
+                self._log_cloud_cooldown("Quick cloud health check failed")
+                return False
 
     async def extract_speaker_embedding_cloud(
         self,
@@ -2742,6 +2910,7 @@ class MLEngineRegistry:
 
                             logger.debug(f"Cloud embedding received: shape {embedding_tensor.shape}")
                             self._cloud_embedding_cb.record_success()
+                            self._mark_cloud_api_success()
                             # v251.2: Reset fallback warning flag on success
                             # so it fires again if cloud goes down later
                             global _cloud_fallback_warned
@@ -2751,6 +2920,7 @@ class MLEngineRegistry:
                             error_msg = result.get('error', 'unknown')
                             logger.error(f"Cloud embedding failed: {error_msg}")
                             self._cloud_embedding_cb.record_failure(f"API error: {error_msg}")
+                            self._mark_cloud_api_failure(f"API error: {error_msg}")
                             return None
 
                     elif response.status == 503:
@@ -2771,11 +2941,21 @@ class MLEngineRegistry:
 
                         # Invalidate verification since server is not ready
                         self._cloud_verified = False
+                        retry_after_seconds = self._parse_retry_after_seconds(retry_after)
+                        self._apply_cloud_retry_after(
+                            retry_after_seconds,
+                            reason=f"503: {detail}",
+                        )
 
                         # Only trip circuit breaker for permanent failures,
                         # not transient init states
                         if startup_state in ("failed", "degraded"):
                             self._cloud_embedding_cb.record_failure(f"503: {detail}")
+                            self._mark_cloud_api_failure(
+                                reason=detail,
+                                status_code=503,
+                                retry_after_seconds=retry_after_seconds,
+                            )
 
                         return None
 
@@ -2797,6 +2977,12 @@ class MLEngineRegistry:
                         # Forces re-verification via _check_cloud_readiness()
                         # before the next circuit breaker probe attempt.
                         if response.status >= 500:
+                            self._mark_cloud_api_failure(
+                                reason=error_text[:160],
+                                status_code=response.status,
+                            )
+                            self._log_cloud_cooldown("Cloud embedding API hard failure")
+                        else:
                             self._cloud_verified = False
                         return None
 
@@ -2806,10 +2992,12 @@ class MLEngineRegistry:
         except asyncio.TimeoutError:
             logger.error(f"Cloud embedding request timed out ({timeout}s)")
             self._cloud_embedding_cb.record_failure(f"Timeout after {timeout}s")
+            self._mark_cloud_api_failure(f"Timeout after {timeout}s")
             return None
         except Exception as e:
             logger.error(f"Cloud embedding request failed: {e}")
             self._cloud_embedding_cb.record_failure(str(e)[:100])
+            self._mark_cloud_api_failure(str(e)[:100])
             return None
 
     async def verify_speaker_cloud(
@@ -2881,6 +3069,7 @@ class MLEngineRegistry:
                         result = await response.json()
                         logger.debug(f"Cloud verification result: {result}")
                         self._cloud_embedding_cb.record_success()
+                        self._mark_cloud_api_success()
                         return result
 
                     elif response.status == 503:
@@ -2899,14 +3088,24 @@ class MLEngineRegistry:
                             + (f", retry after {retry_after}s" if retry_after else "")
                         )
                         self._cloud_verified = False
+                        retry_after_seconds = self._parse_retry_after_seconds(retry_after)
+                        self._apply_cloud_retry_after(
+                            retry_after_seconds,
+                            reason=f"503: {detail}",
+                        )
 
                         if startup_state in ("failed", "degraded"):
                             self._cloud_embedding_cb.record_failure(f"503: {detail}")
+                            self._mark_cloud_api_failure(
+                                reason=detail,
+                                status_code=503,
+                                retry_after_seconds=retry_after_seconds,
+                            )
                         return None
 
                     else:
                         error_text = await response.text()
-                        logger.error(
+                        logger.warning(
                             f"Cloud verification failed ({response.status}): "
                             f"{error_text[:200]}"
                         )
@@ -2915,6 +3114,12 @@ class MLEngineRegistry:
                         )
                         # v3.5: Invalidate readiness cache on server errors
                         if response.status >= 500:
+                            self._mark_cloud_api_failure(
+                                reason=error_text[:160],
+                                status_code=response.status,
+                            )
+                            self._log_cloud_cooldown("Cloud verification API hard failure")
+                        else:
                             self._cloud_verified = False
                         return None
 
@@ -2924,10 +3129,12 @@ class MLEngineRegistry:
         except asyncio.TimeoutError:
             logger.error(f"Cloud verification request timed out ({timeout}s)")
             self._cloud_embedding_cb.record_failure(f"Timeout after {timeout}s")
+            self._mark_cloud_api_failure(f"Timeout after {timeout}s")
             return None
         except Exception as e:
             logger.error(f"Cloud verification request failed: {e}")
             self._cloud_embedding_cb.record_failure(str(e)[:100])
+            self._mark_cloud_api_failure(str(e)[:100])
             return None
 
     def set_cloud_endpoint(self, endpoint: str) -> None:
