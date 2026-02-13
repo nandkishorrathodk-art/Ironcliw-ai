@@ -1270,7 +1270,7 @@ class UnifiedCommandProcessor:
                         command_text,
                         context={"workspace_intent": _workspace_intent},
                     ),
-                    timeout=float(os.getenv("JARVIS_WORKSPACE_EXEC_TIMEOUT", "30.0")),
+                    timeout=float(os.getenv("JARVIS_WORKSPACE_EXEC_TIMEOUT", "45.0")),
                 )
                 _ws_success = _ws_result.get("success", False)
                 _ws_response = _ws_result.get("response") or _ws_result.get("error")

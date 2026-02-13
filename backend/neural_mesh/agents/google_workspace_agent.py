@@ -3812,6 +3812,11 @@ async def get_google_workspace_agent() -> Optional["GoogleWorkspaceAgent"]:
     try:
         instance = GoogleWorkspaceAgent()
         await instance.on_initialize()
+        # Mark as running so the staleness check (line 3795) doesn't
+        # destroy the singleton on the next call.  Standalone agents
+        # skip .start() (no message bus / coordinator) but are fully
+        # functional for direct execute_task() invocations.
+        instance._running = True
         _workspace_agent_instance = instance
         return _workspace_agent_instance
     except Exception as exc:

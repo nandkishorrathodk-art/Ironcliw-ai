@@ -363,6 +363,12 @@ class TieredCommandRouter:
         # v2.0: JARVIS-Prime client for Tier 0 (lazy loaded)
         self._jarvis_prime_client = None
 
+        # Cached workspace agent — belt-and-suspenders alongside the
+        # module-level singleton in google_workspace_agent.py.
+        # Survives dual-module aliasing where the module-level global
+        # would be different objects under different import paths.
+        self._workspace_agent = None
+
         # Stats
         self._route_count = 0
         self._tier0_count = 0
@@ -1071,12 +1077,16 @@ class TieredCommandRouter:
             Execution result dict
         """
         try:
-            # Lazy load GoogleWorkspaceAgent
-            from neural_mesh.agents.google_workspace_agent import (
-                get_google_workspace_agent,
-            )
+            # Use router-level cached agent first (survives dual-module aliasing)
+            agent = self._workspace_agent
+            if agent is None or (hasattr(agent, "_running") and not agent._running):
+                from neural_mesh.agents.google_workspace_agent import (
+                    get_google_workspace_agent,
+                )
+                agent = await get_google_workspace_agent()
+                if agent:
+                    self._workspace_agent = agent
 
-            agent = await get_google_workspace_agent()
             if not agent:
                 logger.error("[TieredRouter] GoogleWorkspaceAgent not available")
                 return {
