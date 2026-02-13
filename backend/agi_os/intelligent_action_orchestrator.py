@@ -53,11 +53,14 @@ Usage:
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 import os
+import time
+from collections import Counter
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import Any, Callable, Dict, List, Optional, Set
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 from enum import Enum, auto
 
 from .proactive_event_stream import (
@@ -99,6 +102,14 @@ def _orch_env_int(name: str, default: int) -> int:
         return int(os.getenv(name, str(default)))
     except (ValueError, TypeError):
         return default
+
+
+def _orch_env_bool(name: str, default: bool) -> bool:
+    """Safely parse bool from env var with fallback."""
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in ("1", "true", "yes", "on")
 
 
 class OrchestratorState(Enum):
@@ -155,6 +166,7 @@ class IntelligentActionOrchestrator:
         self._approval_manager: Optional[VoiceApprovalManager] = None
         self._voice: Optional[RealTimeVoiceCommunicator] = None
         self._decision_engine: Optional[Any] = None
+        self._intervention_engine: Optional[Any] = None
         self._action_executor: Optional[Any] = None
         self._screen_analyzer: Optional[Any] = None
         self._permission_manager: Optional[Any] = None
@@ -163,11 +175,15 @@ class IntelligentActionOrchestrator:
         # State
         self._state = OrchestratorState.STOPPED
         self._paused = False
+        self._lifecycle_lock = asyncio.Lock()
 
         # Pending items
         self._pending_issues: Dict[str, DetectedIssue] = {}
         self._pending_actions: Dict[str, ProposedAction] = {}
         self._executing_actions: Set[str] = set()
+        self._subscription_ids: Set[str] = set()
+        self._proactive_situation_cooldowns: Dict[str, float] = {}
+        self._proactive_goal_fingerprints: Dict[str, float] = {}
 
         # Configuration (dynamically adjustable, env-var overridable)
         self._config = {
@@ -185,6 +201,29 @@ class IntelligentActionOrchestrator:
                 'JARVIS_ORCH_NARRATE_ALL', '').lower() in ('1', 'true', 'yes'),
             'narrate_high_confidence': os.getenv(
                 'JARVIS_ORCH_NARRATE_HIGH', '1').lower() not in ('0', 'false', 'no'),
+            'enable_proactive_loop': _orch_env_bool(
+                'JARVIS_ORCH_PROACTIVE_ENABLED', True),
+            'proactive_interval_seconds': max(
+                5.0, _orch_env_float('JARVIS_ORCH_PROACTIVE_INTERVAL_SECONDS', 30.0)),
+            'proactive_goal_timeout_seconds': max(
+                1.0, _orch_env_float('JARVIS_ORCH_PROACTIVE_GOAL_TIMEOUT_SECONDS', 6.0)),
+            'proactive_situation_cooldown_seconds': max(
+                5.0,
+                _orch_env_float(
+                    'JARVIS_ORCH_PROACTIVE_SITUATION_COOLDOWN_SECONDS', 180.0
+                )
+            ),
+            'proactive_fingerprint_window_seconds': max(
+                5.0,
+                _orch_env_float(
+                    'JARVIS_ORCH_PROACTIVE_FINGERPRINT_WINDOW_SECONDS', 300.0
+                )
+            ),
+            'proactive_context_window_minutes': max(
+                1, _orch_env_int('JARVIS_ORCH_PROACTIVE_CONTEXT_WINDOW_MINUTES', 5)
+            ),
+            'allow_proactive_auto_execute': _orch_env_bool(
+                'JARVIS_ORCH_PROACTIVE_AUTO_EXECUTE', False),
         }
 
         # Statistics
@@ -197,84 +236,112 @@ class IntelligentActionOrchestrator:
             'actions_executed': 0,
             'actions_failed': 0,
             'actions_rolled_back': 0,
+            'proactive_cycles': 0,
+            'proactive_goals_generated': 0,
+            'proactive_goals_suppressed': 0,
+            'proactive_errors': 0,
+            'proactive_last_cycle_at': None,
+            'proactive_last_goal_at': None,
         }
 
         # Processing tasks
         self._detection_task: Optional[asyncio.Task] = None
         self._execution_queue: asyncio.Queue[ProposedAction] = asyncio.Queue()
         self._executor_task: Optional[asyncio.Task] = None
+        self._proactive_task: Optional[asyncio.Task] = None
 
         logger.info("IntelligentActionOrchestrator initialized")
 
     async def start(self) -> None:
         """Start the orchestrator and all its components."""
-        if self._state == OrchestratorState.RUNNING:
-            return
+        async with self._lifecycle_lock:
+            if self._state in (OrchestratorState.RUNNING, OrchestratorState.STARTING):
+                return
 
-        self._state = OrchestratorState.STARTING
-        logger.info("Starting IntelligentActionOrchestrator...")
+            self._state = OrchestratorState.STARTING
+            logger.info("Starting IntelligentActionOrchestrator...")
 
-        # Initialize components
-        await self._init_components()
+            try:
+                # Initialize components
+                await self._init_components()
 
-        # Subscribe to events
-        await self._setup_event_handlers()
+                # Subscribe to events
+                await self._setup_event_handlers()
 
-        # Start background tasks
-        self._executor_task = asyncio.create_task(
-            self._action_executor_loop(),
-            name="agi_os_action_executor"
-        )
+                # Start background tasks
+                self._executor_task = asyncio.create_task(
+                    self._action_executor_loop(),
+                    name="agi_os_action_executor"
+                )
+                if self._config.get('enable_proactive_loop', True):
+                    self._proactive_task = asyncio.create_task(
+                        self._proactive_monitor_loop(),
+                        name="agi_os_orchestrator_proactive_monitor",
+                    )
 
-        self._state = OrchestratorState.RUNNING
+                self._state = OrchestratorState.RUNNING
+            except Exception:
+                self._state = OrchestratorState.STOPPING
+                await self._cancel_task(self._proactive_task, "proactive monitor")
+                await self._cancel_task(self._executor_task, "action executor")
+                self._proactive_task = None
+                self._executor_task = None
+                self._teardown_event_handlers()
+                self._state = OrchestratorState.STOPPED
+                raise
 
         # Announce startup with dynamic JARVIS online message
         if self._voice:
-            import random
-            startup_messages = [
-                "JARVIS online. Ready to assist you, sir.",
-                "JARVIS is now online. How can I help you today?",
-                "All systems operational. JARVIS at your service.",
-                "JARVIS online and awaiting your command.",
-                "Good to see you. JARVIS is ready.",
-            ]
-            await self._voice.speak(
-                random.choice(startup_messages),
-                mode=VoiceMode.NORMAL
-            )
+            try:
+                import random
+                startup_messages = [
+                    "JARVIS online. Ready to assist you, sir.",
+                    "JARVIS is now online. How can I help you today?",
+                    "All systems operational. JARVIS at your service.",
+                    "JARVIS online and awaiting your command.",
+                    "Good to see you. JARVIS is ready.",
+                ]
+                await self._voice.speak(
+                    random.choice(startup_messages),
+                    mode=VoiceMode.NORMAL
+                )
+            except Exception as e:
+                logger.debug("Startup narration failed (non-fatal): %s", e)
 
         logger.info("IntelligentActionOrchestrator started")
 
     async def stop(self) -> None:
         """Stop the orchestrator gracefully."""
-        if self._state != OrchestratorState.RUNNING:
-            return
+        async with self._lifecycle_lock:
+            if self._state in (OrchestratorState.STOPPED, OrchestratorState.STOPPING):
+                return
 
-        self._state = OrchestratorState.STOPPING
+            self._state = OrchestratorState.STOPPING
 
-        # Announce shutdown with dynamic JARVIS offline message
-        if self._voice:
-            import random
-            shutdown_messages = [
-                "JARVIS going offline. Goodbye, sir.",
-                "Shutting down. See you soon.",
-                "JARVIS offline. Take care, sir.",
-                "Systems shutting down. Until next time.",
-            ]
-            await self._voice.speak(
-                random.choice(shutdown_messages),
-                mode=VoiceMode.QUIET
-            )
+            # Announce shutdown with dynamic JARVIS offline message
+            if self._voice:
+                try:
+                    import random
+                    shutdown_messages = [
+                        "JARVIS going offline. Goodbye, sir.",
+                        "Shutting down. See you soon.",
+                        "JARVIS offline. Take care, sir.",
+                        "Systems shutting down. Until next time.",
+                    ]
+                    await self._voice.speak(
+                        random.choice(shutdown_messages),
+                        mode=VoiceMode.QUIET
+                    )
+                except Exception as e:
+                    logger.debug("Shutdown narration failed (non-fatal): %s", e)
 
-        # Cancel background tasks
-        if self._executor_task:
-            self._executor_task.cancel()
-            try:
-                await self._executor_task
-            except asyncio.CancelledError:
-                pass
+            await self._cancel_task(self._proactive_task, "proactive monitor")
+            await self._cancel_task(self._executor_task, "action executor")
+            self._proactive_task = None
+            self._executor_task = None
+            self._teardown_event_handlers()
+            self._state = OrchestratorState.STOPPED
 
-        self._state = OrchestratorState.STOPPED
         logger.info("IntelligentActionOrchestrator stopped")
 
     def pause(self) -> None:
@@ -316,13 +383,22 @@ class IntelligentActionOrchestrator:
         except Exception as e:
             logger.warning("Permission manager not available: %s", e)
 
+        try:
+            from autonomy.intervention_decision_engine import get_intervention_engine
+            self._intervention_engine = get_intervention_engine()
+            logger.info("Intervention engine loaded")
+        except Exception as e:
+            logger.warning("Intervention engine not available: %s", e)
+
     async def _setup_event_handlers(self) -> None:
         """Set up event stream handlers."""
         if not self._event_stream:
             return
 
+        self._teardown_event_handlers()
+
         # Subscribe to detection events
-        self._event_stream.subscribe(
+        self._subscription_ids.add(self._event_stream.subscribe(
             [
                 EventType.ERROR_DETECTED,
                 EventType.WARNING_DETECTED,
@@ -330,10 +406,10 @@ class IntelligentActionOrchestrator:
                 EventType.SECURITY_CONCERN,
             ],
             self._handle_detection_event
-        )
+        ))
 
         # v241.0: Subscribe to contextual events from ScreenAnalyzerBridge
-        self._event_stream.subscribe(
+        self._subscription_ids.add(self._event_stream.subscribe(
             [
                 EventType.CONTENT_CHANGED,
                 EventType.APP_CHANGED,
@@ -341,18 +417,382 @@ class IntelligentActionOrchestrator:
                 EventType.MEMORY_WARNING,
             ],
             self._handle_contextual_event
-        )
+        ))
 
         # Subscribe to user events
-        self._event_stream.subscribe(
+        self._subscription_ids.add(self._event_stream.subscribe(
             [
                 EventType.USER_APPROVED,
                 EventType.USER_DENIED,
             ],
             self._handle_user_response
-        )
+        ))
 
         logger.debug("Event handlers set up")
+
+    def _teardown_event_handlers(self) -> None:
+        """Unsubscribe all event handlers for this orchestrator instance."""
+        if not self._event_stream:
+            self._subscription_ids.clear()
+            return
+
+        for subscription_id in list(self._subscription_ids):
+            try:
+                self._event_stream.unsubscribe(subscription_id)
+            except Exception as e:
+                logger.debug("Failed to unsubscribe %s: %s", subscription_id, e)
+        self._subscription_ids.clear()
+
+    async def _cancel_task(self, task: Optional[asyncio.Task], label: str) -> None:
+        """Cancel an async task and swallow cancellation noise."""
+        if not task:
+            return
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            logger.debug("Task shutdown error (%s): %s", label, e)
+
+    def _create_correlation_id(self) -> str:
+        """Create a correlation ID even when event stream is unavailable."""
+        if self._event_stream:
+            try:
+                return self._event_stream.create_correlation_id()
+            except Exception as e:
+                logger.debug("Event-stream correlation ID failed: %s", e)
+        return hashlib.md5(
+            f"{datetime.now().isoformat()}:{id(self)}".encode()
+        ).hexdigest()[:12]
+
+    async def _proactive_monitor_loop(self) -> None:
+        """Internal proactive scheduler independent from inbound events."""
+        logger.info("Orchestrator proactive monitor started")
+
+        loop = asyncio.get_running_loop()
+        next_run = loop.time()
+
+        while self._state == OrchestratorState.RUNNING:
+            interval_seconds = max(
+                1.0, float(self._config.get('proactive_interval_seconds', 30.0))
+            )
+            next_run += interval_seconds
+            try:
+                if not self._paused and self._config.get('enable_proactive_loop', True):
+                    await self._run_proactive_cycle()
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                self._stats['proactive_errors'] += 1
+                logger.exception("Proactive monitor cycle failed: %s", e)
+
+            sleep_seconds = max(0.0, next_run - loop.time())
+            try:
+                await asyncio.sleep(sleep_seconds)
+            except asyncio.CancelledError:
+                break
+
+        logger.info("Orchestrator proactive monitor stopped")
+
+    async def _run_proactive_cycle(self) -> None:
+        """Run one proactive decision cycle and route any generated action."""
+        self._stats['proactive_cycles'] += 1
+        self._stats['proactive_last_cycle_at'] = datetime.now().isoformat()
+
+        goal_spec = await self._generate_proactive_goal()
+        if not goal_spec:
+            return
+
+        suppression_reason = self._should_suppress_proactive_goal(goal_spec)
+        if suppression_reason:
+            self._stats['proactive_goals_suppressed'] += 1
+            logger.debug("Suppressed proactive goal: %s", suppression_reason)
+            return
+
+        action = self._build_proactive_action(goal_spec)
+        if not action:
+            self._stats['proactive_goals_suppressed'] += 1
+            return
+
+        self._record_proactive_goal(goal_spec)
+        self._stats['issues_detected'] += 1
+        self._stats['actions_proposed'] += 1
+        self._stats['proactive_goals_generated'] += 1
+        self._stats['proactive_last_goal_at'] = datetime.now().isoformat()
+        if action.issue and action.issue.correlation_id:
+            self._pending_issues[action.issue.correlation_id] = action.issue
+
+        await self._route_action(action)
+
+    def _get_intervention_engine(self) -> Optional[Any]:
+        """Resolve intervention engine lazily with import isolation."""
+        if self._intervention_engine is not None:
+            return self._intervention_engine
+
+        try:
+            from autonomy.intervention_decision_engine import get_intervention_engine
+
+            self._intervention_engine = get_intervention_engine()
+        except Exception as e:
+            logger.debug("Intervention engine resolve failed: %s", e)
+            self._intervention_engine = None
+        return self._intervention_engine
+
+    async def _generate_proactive_goal(self) -> Optional[Dict[str, Any]]:
+        """Generate a proactive goal from intervention decision intelligence."""
+        engine = self._get_intervention_engine()
+        if not engine or not hasattr(engine, 'generate_goal'):
+            return None
+
+        try:
+            context = await self._gather_proactive_context()
+            timeout_seconds = max(
+                1.0, float(self._config.get('proactive_goal_timeout_seconds', 6.0))
+            )
+            goal = await asyncio.wait_for(
+                engine.generate_goal(context=context),
+                timeout=timeout_seconds,
+            )
+            if isinstance(goal, dict):
+                return goal
+        except asyncio.TimeoutError:
+            logger.debug("Proactive goal generation timed out")
+        except Exception as e:
+            self._stats['proactive_errors'] += 1
+            logger.debug("Proactive goal generation failed: %s", e)
+        return None
+
+    async def _gather_proactive_context(self) -> Dict[str, Any]:
+        """Assemble context for proactive decisioning."""
+        context: Dict[str, Any] = {
+            'timestamp': datetime.now().isoformat(),
+            'orchestrator_state': self._state.value,
+            'orchestrator_paused': self._paused,
+            'pending_issues': len(self._pending_issues),
+            'pending_actions': len(self._pending_actions),
+            'executing_actions': len(self._executing_actions),
+            'queue_size': self._execution_queue.qsize(),
+        }
+
+        if self._event_stream:
+            try:
+                minutes = int(self._config.get('proactive_context_window_minutes', 5))
+                recent_events = self._event_stream.get_recent_events(minutes=minutes)
+                type_counts = Counter(event.event_type.value for event in recent_events)
+                context['recent_events'] = {
+                    'window_minutes': minutes,
+                    'count': len(recent_events),
+                    'by_type': dict(type_counts),
+                }
+            except Exception as e:
+                logger.debug("Failed to gather recent event context: %s", e)
+
+        try:
+            import psutil  # type: ignore[import-untyped]
+
+            context["system_cpu_percent"] = psutil.cpu_percent(interval=None)
+            memory = psutil.virtual_memory()
+            context["system_memory_percent"] = memory.percent
+        except Exception:
+            pass
+
+        return context
+
+    def _build_proactive_action(
+        self, goal_spec: Dict[str, Any]
+    ) -> Optional[ProposedAction]:
+        """Translate a proactive goal into a routed orchestrator action."""
+        if not isinstance(goal_spec, dict):
+            return None
+
+        goal_context = goal_spec.get('context')
+        context = goal_context if isinstance(goal_context, dict) else {}
+
+        description = str(
+            goal_spec.get('description') or "Provide proactive assistance."
+        ).strip()
+        if not description:
+            return None
+
+        situation_type = str(
+            context.get('situation_type') or "proactive_assistance"
+        ).strip().lower()
+        target = str(
+            context.get('target')
+            or context.get('location')
+            or context.get('app')
+            or "workspace"
+        )
+        severity_score = self._as_float(context.get('severity'), 0.70)
+        confidence = self._as_float(context.get('confidence'), severity_score)
+        confidence = max(0.0, min(1.0, max(confidence, severity_score)))
+
+        priority = str(goal_spec.get('priority') or 'normal').strip().lower()
+        if priority == 'background':
+            confidence = min(
+                confidence,
+                max(self._config['ask_approval_threshold'] - 0.05, 0.0),
+            )
+        elif priority == 'high':
+            confidence = max(
+                confidence,
+                min(self._config['ask_approval_threshold'] + 0.05, 1.0),
+            )
+
+        # Default proactive flow requires approval before execution.
+        if (
+            not self._config.get('allow_proactive_auto_execute', False)
+            and confidence >= self._config['auto_execute_threshold']
+        ):
+            confidence = max(
+                self._config['ask_approval_threshold'],
+                self._config['auto_execute_threshold'] - 0.01,
+            )
+
+        correlation_id = self._create_correlation_id()
+        severity = self._score_to_severity(severity_score)
+        issue = DetectedIssue(
+            issue_type=f"proactive:{situation_type}",
+            location=target,
+            description=description,
+            severity=severity,
+            raw_data={
+                'source': 'orchestrator_proactive_loop',
+                'goal': goal_spec,
+            },
+            correlation_id=correlation_id,
+        )
+
+        reasoning = (
+            "Proactive scheduler generated this action from intervention analysis "
+            f"(situation={situation_type}, severity={severity_score:.2f}, "
+            f"confidence={confidence:.2f})."
+        )
+        action = ProposedAction(
+            action_type=self._map_situation_to_action(situation_type),
+            target=target,
+            description=description,
+            confidence=confidence,
+            reasoning=reasoning,
+            params={
+                'source': 'orchestrator_proactive_loop',
+                'goal_spec': goal_spec,
+                'situation_type': situation_type,
+                'severity': severity_score,
+            },
+            issue=issue,
+            correlation_id=correlation_id,
+        )
+        return action
+
+    def _map_situation_to_action(self, situation_type: str) -> str:
+        """Map intervention situation types to executor-supported actions."""
+        mapping = {
+            'critical_error': 'handle_urgent_item',
+            'workflow_blocked': 'handle_urgent_item',
+            'efficiency_opportunity': 'organize_workspace',
+            'learning_moment': 'routine_automation',
+            'health_reminder': 'minimize_distractions',
+            'security_concern': 'security_alert',
+            'time_management': 'prepare_meeting',
+        }
+        return mapping.get(situation_type, 'handle_urgent_item')
+
+    def _goal_fingerprint(self, goal_spec: Dict[str, Any]) -> Tuple[str, str]:
+        """Build (situation_type, fingerprint) for proactive deduplication."""
+        goal_context = goal_spec.get('context')
+        context = goal_context if isinstance(goal_context, dict) else {}
+        situation_type = str(
+            context.get('situation_type') or "proactive_assistance"
+        ).strip().lower()
+        target = str(
+            context.get('target') or context.get('location') or context.get('app') or ''
+        ).strip().lower()
+        description = " ".join(
+            str(goal_spec.get('description') or '').strip().lower().split()
+        )
+        digest = hashlib.sha1(
+            f"{situation_type}|{target}|{description[:220]}".encode()
+        ).hexdigest()[:20]
+        return situation_type, digest
+
+    def _should_suppress_proactive_goal(self, goal_spec: Dict[str, Any]) -> Optional[str]:
+        """Return a suppression reason if this proactive goal should be skipped."""
+        now = time.monotonic()
+        self._trim_proactive_dedup_cache(now)
+        situation_type, fingerprint = self._goal_fingerprint(goal_spec)
+
+        cooldown_seconds = max(
+            1.0,
+            float(self._config.get('proactive_situation_cooldown_seconds', 180.0)),
+        )
+        if situation_type:
+            last_situation_ts = self._proactive_situation_cooldowns.get(situation_type)
+            if last_situation_ts is not None and now - last_situation_ts < cooldown_seconds:
+                return f"situation_cooldown:{situation_type}"
+
+        dedup_window_seconds = max(
+            1.0,
+            float(self._config.get('proactive_fingerprint_window_seconds', 300.0)),
+        )
+        last_fingerprint_ts = self._proactive_goal_fingerprints.get(fingerprint)
+        if last_fingerprint_ts is not None and now - last_fingerprint_ts < dedup_window_seconds:
+            return "fingerprint_dedup"
+
+        return None
+
+    def _record_proactive_goal(self, goal_spec: Dict[str, Any]) -> None:
+        """Record proactive goal keys before routing to enforce cooldown."""
+        now = time.monotonic()
+        situation_type, fingerprint = self._goal_fingerprint(goal_spec)
+        if situation_type:
+            self._proactive_situation_cooldowns[situation_type] = now
+        self._proactive_goal_fingerprints[fingerprint] = now
+        self._trim_proactive_dedup_cache(now)
+
+    def _trim_proactive_dedup_cache(self, now: Optional[float] = None) -> None:
+        """Trim proactive dedupe/cooldown state."""
+        current = now if now is not None else time.monotonic()
+        max_window = max(
+            float(self._config.get('proactive_situation_cooldown_seconds', 180.0)),
+            float(self._config.get('proactive_fingerprint_window_seconds', 300.0)),
+        )
+        expiration_window = max(1.0, max_window * 2.0)
+
+        expired_situations = [
+            key
+            for key, ts in self._proactive_situation_cooldowns.items()
+            if current - ts > expiration_window
+        ]
+        for key in expired_situations:
+            del self._proactive_situation_cooldowns[key]
+
+        expired_fingerprints = [
+            key
+            for key, ts in self._proactive_goal_fingerprints.items()
+            if current - ts > expiration_window
+        ]
+        for key in expired_fingerprints:
+            del self._proactive_goal_fingerprints[key]
+
+    def _as_float(self, value: Any, default: float) -> float:
+        """Best-effort float conversion with clamp to [0, 1]."""
+        try:
+            parsed = float(value)
+        except (TypeError, ValueError):
+            parsed = default
+        return max(0.0, min(1.0, parsed))
+
+    def _score_to_severity(self, score: float) -> str:
+        """Convert [0, 1] severity score to discrete severity label."""
+        if score >= 0.9:
+            return 'critical'
+        if score >= 0.75:
+            return 'high'
+        if score >= 0.5:
+            return 'medium'
+        return 'low'
 
     async def _handle_detection_event(self, event: AGIEvent) -> None:
         """
@@ -372,7 +812,7 @@ class IntelligentActionOrchestrator:
             description=event.data.get('message', str(event.data)),
             severity=self._determine_severity(event),
             raw_data=event.data,
-            correlation_id=event.correlation_id or self._event_stream.create_correlation_id(),
+            correlation_id=event.correlation_id or self._create_correlation_id(),
         )
 
         # Store pending issue
@@ -412,7 +852,7 @@ class IntelligentActionOrchestrator:
                     description=event.data.get('message', str(event.data)),
                     severity=self._determine_severity(event),
                     raw_data=event.data,
-                    correlation_id=event.correlation_id or self._event_stream.create_correlation_id(),
+                    correlation_id=event.correlation_id or self._create_correlation_id(),
                 )
                 self._pending_issues[issue.correlation_id] = issue
                 await self._propose_action_for_issue(issue)
@@ -924,6 +1364,10 @@ class IntelligentActionOrchestrator:
             'pending_actions': len(self._pending_actions),
             'executing_actions': len(self._executing_actions),
             'queue_size': self._execution_queue.qsize(),
+            'event_subscriptions': len(self._subscription_ids),
+            'proactive_task_running': bool(
+                self._proactive_task and not self._proactive_task.done()
+            ),
             'config': self._config.copy(),
         }
 
@@ -966,7 +1410,7 @@ class IntelligentActionOrchestrator:
             Correlation ID for tracking
         """
         if self._event_stream:
-            correlation_id = self._event_stream.create_correlation_id()
+            correlation_id = self._create_correlation_id()
 
             event_type_map = {
                 'error': EventType.ERROR_DETECTED,
