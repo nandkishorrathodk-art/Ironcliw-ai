@@ -2190,11 +2190,13 @@ class GoogleWorkspaceAgent(BaseNeuralMeshAgent):
             f"Unified Executor ready: {self._unified_executor.get_stats()['available_tiers']}"
         )
 
-        # Subscribe to workspace-related messages
-        await self.subscribe(
-            MessageType.CUSTOM,
-            self._handle_workspace_message,
-        )
+        # Subscribe to workspace-related messages (only when connected to coordinator)
+        # In standalone mode (no message bus), skip subscription — execute_task() works directly
+        if self.message_bus:
+            await self.subscribe(
+                MessageType.CUSTOM,
+                self._handle_workspace_message,
+            )
 
         logger.info("GoogleWorkspaceAgent initialized with Never-Fail fallbacks")
 

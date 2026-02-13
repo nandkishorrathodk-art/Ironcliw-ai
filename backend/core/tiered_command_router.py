@@ -1168,15 +1168,21 @@ class TieredCommandRouter:
             # Execute via agent's execute_task() method
             result = await agent.execute_task(payload)
 
+            # Determine success: if execute_task returned without exception
+            # and no "error" key, the operation succeeded.
+            # Some handlers return data dicts without explicit "success" key.
+            _has_error = bool(result.get("error"))
+            _success = result.get("success", not _has_error)
+
             return {
-                "success": result.get("success", False),
+                **result,
+                "success": _success,
                 "response": result.get("response", ""),
                 "workspace_intent": workspace_intent.intent.value,
                 "execution_mode": result.get("execution_mode", workspace_intent.execution_mode.value),
                 "tier_used": result.get("tier_used", "unknown"),
                 "spatial_target": workspace_intent.spatial_target,
                 "agent": "GoogleWorkspaceAgent",
-                **result,
             }
 
         except Exception as e:

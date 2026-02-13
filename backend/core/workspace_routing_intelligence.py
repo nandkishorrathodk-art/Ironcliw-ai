@@ -159,7 +159,7 @@ class WorkspaceIntentDetector:
             intent=WorkspaceIntent.SEND_EMAIL,
             triggers=[
                 "send email", "send message", "send an email",
-                "email", "message to", "send to",
+                "email to", "message to", "send to",
             ],
             entity_patterns={
                 "recipient": r"(?:to|email)\s+([a-z]+(?:\s+[a-z]+)?)",
@@ -175,6 +175,10 @@ class WorkspaceIntentDetector:
                 "check email", "check my email", "check inbox",
                 "unread emails", "new emails", "any emails",
                 "email notifications", "inbox status",
+                "my email", "my emails", "my inbox",
+                "read email", "read my email", "open email",
+                "show email", "show my email", "show inbox",
+                "get email", "get my email",
             ],
             entity_patterns={
                 "sender": r"from\s+([a-z]+(?:\s+[a-z]+)?)",
@@ -294,19 +298,24 @@ class WorkspaceIntentDetector:
             score = 0.0
             temp_entities = {}
 
-            # Check trigger phrases
+            # Check trigger phrases — pick the longest (most specific) match
+            best_trigger_len = 0
             for trigger in pattern.triggers:
-                if trigger in command_lower:
-                    # Exact match gets full weight
-                    score = pattern.weight
+                if trigger in command_lower and len(trigger) > best_trigger_len:
+                    best_trigger_len = len(trigger)
 
-                    # Extract entities using regex patterns
-                    for entity_name, entity_pattern in pattern.entity_patterns.items():
-                        match = re.search(entity_pattern, command_lower, re.IGNORECASE)
-                        if match:
-                            temp_entities[entity_name] = match.group(1).strip()
+            if best_trigger_len > 0:
+                # Base score from pattern weight, plus small specificity
+                # tiebreaker so longer (more specific) matches win ties.
+                # "check my email" (14 chars) gets +0.05 vs "email to" (8 chars) +0.03
+                specificity = best_trigger_len / max(len(command_lower), 1)
+                score = pattern.weight + 0.05 * specificity
 
-                    break
+                # Extract entities using regex patterns
+                for entity_name, entity_pattern in pattern.entity_patterns.items():
+                    match = re.search(entity_pattern, command_lower, re.IGNORECASE)
+                    if match:
+                        temp_entities[entity_name] = match.group(1).strip()
 
             # Update best match
             if score > best_score:

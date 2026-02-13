@@ -1237,6 +1237,7 @@ class UnifiedCommandProcessor:
         # Voice commands get VBIA via EnhancedSimpleContextHandler upstream.
         # =========================================================================
         try:
+            import os  # Ensure local binding — shadowed by `import os` in surveillance section below
             from core.tiered_command_router import get_tiered_router, CommandTier
 
             _tiered_router = get_tiered_router()
