@@ -4213,9 +4213,9 @@ class UnifiedCommandProcessor:
                             # Capture screenshot if needed
                             screenshot = None
                             try:
-                                from vision.screenshot_manager import capture_screenshot
-
-                                screenshot = await capture_screenshot()
+                                import pyautogui
+                                loop = asyncio.get_running_loop()
+                                screenshot = await loop.run_in_executor(None, pyautogui.screenshot)
                             except Exception as e:
                                 logger.warning(f"[UNIFIED] Failed to capture screenshot: {e}")
 

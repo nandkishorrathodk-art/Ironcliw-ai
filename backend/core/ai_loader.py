@@ -1257,6 +1257,8 @@ class AsyncModelManager:
         self._lock = threading.RLock()
         self._shutdown = False
         self._total_memory_bytes = 0
+        # v6.3: Strong refs to background tasks prevent GC before completion
+        self._background_tasks: Set[asyncio.Task] = set()
 
         # Loading queue sorted by priority
         self._load_queue: List[Tuple[ModelPriority, str, Callable]] = []
@@ -1369,10 +1371,12 @@ class AsyncModelManager:
         def _wrapped_loader():
             return self._load_with_engine(name, loader_func, engine_loader, quantize)
 
-        # Schedule the load
-        asyncio.create_task(
+        # Schedule the load with strong reference to prevent GC (v6.3)
+        task = asyncio.create_task(
             self._background_load(name, _wrapped_loader, priority)
         )
+        self._background_tasks.add(task)
+        task.add_done_callback(self._background_tasks.discard)
 
     async def _background_load(
         self,

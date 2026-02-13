@@ -121,7 +121,9 @@ except ImportError:
 # Async Utilities - Thread Pool for Blocking Operations
 # ============================================================================
 
-# Global thread pool for PyAutoGUI operations (max 2 workers to prevent conflicts)
+# Global thread pool for PyAutoGUI operations
+# v6.3: Increased from 2→4 to prevent deadlock when screenshot + action + concurrent ops overlap
+_CU_THREAD_POOL_WORKERS = _env_int("CU_THREAD_POOL_WORKERS", 4)
 _executor: Optional[ThreadPoolExecutor] = None
 
 def _get_executor() -> ThreadPoolExecutor:
@@ -129,9 +131,9 @@ def _get_executor() -> ThreadPoolExecutor:
     global _executor
     if _executor is None:
         if _HAS_MANAGED_EXECUTOR:
-            _executor = ManagedThreadPoolExecutor(max_workers=2, thread_name_prefix="pyautogui_", name="pyautogui")
+            _executor = ManagedThreadPoolExecutor(max_workers=_CU_THREAD_POOL_WORKERS, thread_name_prefix="pyautogui_", name="pyautogui")
         else:
-            _executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="pyautogui_")
+            _executor = ThreadPoolExecutor(max_workers=_CU_THREAD_POOL_WORKERS, thread_name_prefix="pyautogui_")
     return _executor
 
 async def run_blocking(func: Callable, *args, timeout: float = 30.0, **kwargs) -> Any:
@@ -926,18 +928,28 @@ class MemoryEfficientScreenshotManager:
             png_data = buffer.getvalue()
             base64_data = base64.standard_b64encode(png_data).decode("utf-8")
 
-            # Calculate hash for deduplication
-            image_hash = hashlib.md5(png_data[:10000]).hexdigest()[:16]
+            # v6.3: Hash full PNG data (not truncated) for reliable deduplication
+            image_hash = hashlib.md5(png_data).hexdigest()[:16]
 
-            # Check cache hit
+            # Check cache hit with TTL expiry
+            _cache_ttl = _env_float("CU_SCREENSHOT_CACHE_TTL", 2.0)
             if image_hash in self._cache:
-                self._logger.debug(f"[SCREENSHOT] Cache hit: {image_hash}")
                 cached = self._cache[image_hash]
-                # Update access order
-                if image_hash in self._access_order:
-                    self._access_order.remove(image_hash)
-                self._access_order.append(image_hash)
-                return cached.image, cached.base64_data
+                # v6.3: TTL check — stale screenshots should not be returned
+                if time.time() - cached.timestamp < _cache_ttl:
+                    self._logger.debug(f"[SCREENSHOT] Cache hit: {image_hash}")
+                    # Update access order
+                    if image_hash in self._access_order:
+                        self._access_order.remove(image_hash)
+                    self._access_order.append(image_hash)
+                    return cached.image, cached.base64_data
+                else:
+                    self._logger.debug(f"[SCREENSHOT] Cache expired: {image_hash}")
+                    # Remove expired entry
+                    self._total_bytes -= cached.size_bytes
+                    del self._cache[image_hash]
+                    if image_hash in self._access_order:
+                        self._access_order.remove(image_hash)
 
             # Create cached entry
             cached = CachedScreenshot(
@@ -1542,6 +1554,9 @@ class ScreenCaptureHandler:
         self._screenshot_cache: Dict[str, str] = {}
         # v6.0: Lazy lock initialization
         self._capture_lock: Optional[asyncio.Lock] = None
+        # v6.3: Track API-resized dimensions for Retina coordinate transform
+        self._last_api_width: int = 0
+        self._last_api_height: int = 0
 
     def _get_capture_lock(self) -> asyncio.Lock:
         """v6.0: Lazy lock getter."""
@@ -1616,7 +1631,15 @@ class ScreenCaptureHandler:
                     timeout=self.capture_timeout
                 )
 
-                logger.debug(f"[CAPTURE] Screenshot captured and processed successfully")
+                # v6.3: Track API-resized dimensions on event loop thread (race-free)
+                # These are used by ActionExecutor._scale_coordinates() for Retina transform
+                self._last_api_width = processed_screenshot.width
+                self._last_api_height = processed_screenshot.height
+
+                logger.debug(
+                    f"[CAPTURE] Screenshot captured and processed successfully "
+                    f"(API size: {self._last_api_width}x{self._last_api_height})"
+                )
                 return processed_screenshot, base64_image
 
             except asyncio.TimeoutError:
@@ -1656,6 +1679,10 @@ class ActionExecutor:
         self.action_timeout = action_timeout
         # v6.0: Lazy lock initialization
         self._action_lock: Optional[asyncio.Lock] = None
+        # v6.3: API-resized dimensions for Retina coordinate transform
+        # Set by connector before each action execution loop iteration
+        self._api_width: int = 0
+        self._api_height: int = 0
 
         # Configure PyAutoGUI
         pyautogui.PAUSE = safety_pause
@@ -1847,8 +1874,34 @@ class ActionExecutor:
         )
 
     def _scale_coordinates(self, coords: Tuple[int, int]) -> Tuple[int, int]:
-        """Scale coordinates for Retina displays if needed."""
+        """
+        Transform coordinates from Claude API-resized space to pyautogui logical space.
+
+        v6.3: Proper Retina coordinate transform.
+        Three coordinate spaces exist:
+          1. Physical pixels — pyautogui.screenshot() captures at physical resolution (e.g. 2880x1800)
+          2. API-resized pixels — image resized to max 1568px for Claude API (e.g. 1568x978)
+          3. Logical pixels — pyautogui.click(x, y) expects logical coordinates (e.g. 1440x900)
+
+        Claude returns coordinates in space #2. We transform to space #3:
+          x_logical = x_api * (logical_width / api_resized_width)
+          y_logical = y_api * (logical_height / api_resized_height)
+        """
         x, y = coords
+
+        if self._api_width > 0 and self._api_height > 0:
+            logical_w, logical_h = pyautogui.size()
+            scale_x = logical_w / self._api_width
+            scale_y = logical_h / self._api_height
+            result = (int(x * scale_x), int(y * scale_y))
+            logger.debug(
+                f"[COORDS] API({x},{y}) in {self._api_width}x{self._api_height} "
+                f"-> Logical{result} in {logical_w}x{logical_h} "
+                f"(scale: {scale_x:.3f}x{scale_y:.3f})"
+            )
+            return result
+
+        # Fallback: legacy scale_factor (pre-v6.3 behavior)
         return (int(x * self.scale_factor), int(y * self.scale_factor))
 
 
@@ -1864,8 +1917,8 @@ class ClaudeComputerUseConnector:
     Integrates with voice narration for transparency.
     """
 
-    # Claude Computer Use model
-    COMPUTER_USE_MODEL = "claude-sonnet-4-20250514"
+    # Claude Computer Use model (v6.3: env-var configurable)
+    COMPUTER_USE_MODEL = os.getenv("COMPUTER_USE_MODEL", "claude-sonnet-4-20250514")
 
     # System prompt for computer use - Enhanced with Open Interpreter patterns
     SYSTEM_PROMPT = """You are JARVIS, an AI assistant helping to control a macOS computer.
@@ -2063,6 +2116,7 @@ Always provide your reasoning before taking action, including grid position esti
         self._action_history: List[ComputerAction] = []
         self._learned_positions: Dict[str, Tuple[int, int]] = {}
         self._auth_failed: bool = False  # Track API authentication failures
+        self._no_action_count: int = 0  # v6.3: Properly initialized (was hasattr-guarded)
 
         # Load learned positions
         self._load_learned_positions()
@@ -2433,6 +2487,8 @@ SPATIAL RULES:
 
         self.narrator.enabled = narrate
         self.narrator.clear_log()
+        # v6.3: Reset per-task state to prevent stale state across tasks
+        self._no_action_count = 0
 
         await self.narrator.narrate(
             NarrationEvent.STARTING,
@@ -2454,6 +2510,11 @@ SPATIAL RULES:
                 )
 
                 screenshot, base64_screenshot = await self.screen_capture.capture()
+
+                # v6.3: Update ActionExecutor with current API-resized dimensions
+                # for proper Retina coordinate transform
+                self.action_executor._api_width = self.screen_capture._last_api_width
+                self.action_executor._api_height = self.screen_capture._last_api_height
 
                 # Get Claude's analysis and suggested action
                 analysis = await self._analyze_and_decide(
@@ -2523,12 +2584,14 @@ SPATIAL RULES:
 
                         if result.success:
                             # Learn from successful action
+                            # v6.3: Save post-transform LOGICAL coordinates, not raw API coordinates
                             if action.coordinates and action.reasoning:
                                 element_hint = self._extract_element_name(action.reasoning)
                                 if element_hint:
-                                    self._save_learned_position(element_hint, action.coordinates)
+                                    logical_coords = self.action_executor._scale_coordinates(action.coordinates)
+                                    self._save_learned_position(element_hint, logical_coords)
                                     learning_insights.append(
-                                        f"Learned position for '{element_hint}': {action.coordinates}"
+                                        f"Learned position for '{element_hint}': {logical_coords}"
                                     )
 
                             # OPTIMIZATION: Only wait between actions, not after last one
@@ -2601,12 +2664,14 @@ SPATIAL RULES:
 
                     if result.success:
                         # Learn from successful action
+                        # v6.3: Save post-transform LOGICAL coordinates, not raw API coordinates
                         if action.coordinates and action.reasoning:
                             element_hint = self._extract_element_name(action.reasoning)
                             if element_hint:
-                                self._save_learned_position(element_hint, action.coordinates)
+                                logical_coords = self.action_executor._scale_coordinates(action.coordinates)
+                                self._save_learned_position(element_hint, logical_coords)
                                 learning_insights.append(
-                                    f"Learned position for '{element_hint}': {action.coordinates}"
+                                    f"Learned position for '{element_hint}': {logical_coords}"
                                 )
 
                         # Wait for UI to update
@@ -2621,8 +2686,6 @@ SPATIAL RULES:
                     # No action suggested - task might be complete or Claude is stuck
                     logger.warning("[COMPUTER USE] No action suggested by Claude")
                     # If no action for 2 consecutive turns, assume task is complete
-                    if not hasattr(self, '_no_action_count'):
-                        self._no_action_count = 0
                     self._no_action_count += 1
 
                     if self._no_action_count >= 2:
@@ -2898,71 +2961,127 @@ Respond with your analysis followed by the action JSON."""
         if is_goal_achieved:
             goal_progress = 1.0
 
-        # Extract JSON action(s) if present
+        # v6.3: Multi-strategy JSON extraction (handles fenced, bare, and no-tag formats)
+        _COORD_ACTIONS = {ActionType.CLICK, ActionType.DOUBLE_CLICK, ActionType.RIGHT_CLICK, ActionType.DRAG, ActionType.CURSOR_POSITION}
+
+        json_str: Optional[str] = None
+
+        # Strategy 1: ```json ... ``` (most common, handles batches)
         json_match = re.search(r'```json\s*(.*?)\s*```', response_text, re.DOTALL)
         if json_match:
+            json_str = json_match.group(1)
+
+        # Strategy 2: ``` ... ``` (no language tag)
+        if not json_str:
+            json_match = re.search(r'```\s*(.*?)\s*```', response_text, re.DOTALL)
+            if json_match:
+                candidate = json_match.group(1).strip()
+                if candidate.startswith('{') or candidate.startswith('['):
+                    json_str = candidate
+
+        # Strategy 3: Bare JSON object — SINGLE ACTION ONLY
+        if not json_str:
+            json_match = re.search(
+                r'(\{[^{}]*"action_type"[^{}]*\})',
+                response_text, re.DOTALL
+            )
+            if json_match:
+                json_str = json_match.group(1)
+
+        if json_str:
             try:
-                action_data = json.loads(json_match.group(1))
+                action_data = json.loads(json_str)
 
-                # Check if this is a BATCH response
-                if isinstance(action_data, dict) and action_data.get("batch") is True:
-                    # BATCH MODE: Multiple actions
-                    is_static_interface = action_data.get("interface_type") == "static"
-                    actions_list = action_data.get("actions", [])
+                # Guard: partial batch capture from Strategy 3
+                if isinstance(action_data, dict) and action_data.get("batch") and not action_data.get("actions"):
+                    logger.warning("[PARSE] Partial batch capture detected, discarding")
+                    action_data = None
 
-                    logger.info(f"[ACTION CHAINING] Detected batch of {len(actions_list)} actions")
+                if action_data is not None:
+                    # Check if this is a BATCH response
+                    if isinstance(action_data, dict) and action_data.get("batch") is True:
+                        # BATCH MODE: Multiple actions
+                        is_static_interface = action_data.get("interface_type") == "static"
+                        actions_list = action_data.get("actions", [])
 
-                    for i, act_data in enumerate(actions_list):
-                        action_type = ActionType(act_data.get("action_type", "click"))
-                        coords = act_data.get("coordinates")
+                        logger.info(f"[ACTION CHAINING] Detected batch of {len(actions_list)} actions")
+
+                        for i, act_data in enumerate(actions_list):
+                            # v6.3: Safe ActionType parsing — skip unknown types
+                            raw_type = act_data.get("action_type", "click")
+                            try:
+                                action_type = ActionType(raw_type)
+                            except ValueError:
+                                logger.warning(f"[PARSE] Unknown action type '{raw_type}', skipping action {i+1}")
+                                continue
+
+                            coords = act_data.get("coordinates")
+                            if coords and isinstance(coords, list) and len(coords) == 2:
+                                coords = tuple(coords)
+                            else:
+                                coords = None
+
+                            # v6.3: Coordinate validation — click/drag/etc require coords
+                            if action_type in _COORD_ACTIONS and not coords:
+                                logger.warning(f"[PARSE] {action_type.value} requires coordinates, skipping action {i+1}")
+                                continue
+
+                            action = ComputerAction(
+                                action_id=str(uuid4()),
+                                action_type=action_type,
+                                coordinates=coords,
+                                text=act_data.get("text"),
+                                key=act_data.get("key"),
+                                scroll_amount=act_data.get("scroll_amount"),
+                                duration=act_data.get("duration", 0.1),  # Faster for batches
+                                reasoning=act_data.get("reasoning", f"Batch action {i+1}"),
+                                confidence=0.8
+                            )
+                            suggested_actions.append(action)
+
+                        # Set first action as suggested_action for backward compatibility
+                        if suggested_actions:
+                            suggested_action = suggested_actions[0]
+
+                        logger.info(f"[ACTION CHAINING] Parsed {len(suggested_actions)} actions successfully")
+
+                    else:
+                        # SINGLE ACTION MODE (original behavior)
+                        # v6.3: Safe ActionType parsing
+                        raw_type = action_data.get("action_type", "click")
+                        try:
+                            action_type = ActionType(raw_type)
+                        except ValueError:
+                            logger.warning(f"[PARSE] Unknown action type '{raw_type}', defaulting to click")
+                            action_type = ActionType.CLICK
+
+                        coords = action_data.get("coordinates")
                         if coords and isinstance(coords, list) and len(coords) == 2:
                             coords = tuple(coords)
                         else:
                             coords = None
 
-                        action = ComputerAction(
-                            action_id=str(uuid4()),
-                            action_type=action_type,
-                            coordinates=coords,
-                            text=act_data.get("text"),
-                            key=act_data.get("key"),
-                            scroll_amount=act_data.get("scroll_amount"),
-                            duration=act_data.get("duration", 0.1),  # Faster for batches
-                            reasoning=act_data.get("reasoning", f"Batch action {i+1}"),
-                            confidence=0.8
-                        )
-                        suggested_actions.append(action)
+                        # v6.3: Coordinate validation for single action
+                        if action_type in _COORD_ACTIONS and not coords:
+                            logger.warning(f"[PARSE] {action_type.value} requires coordinates, skipping action")
+                        else:
+                            suggested_action = ComputerAction(
+                                action_id=str(uuid4()),
+                                action_type=action_type,
+                                coordinates=coords,
+                                text=action_data.get("text"),
+                                key=action_data.get("key"),
+                                scroll_amount=action_data.get("scroll_amount"),
+                                duration=action_data.get("duration", 0.5),
+                                reasoning=action_data.get("reasoning", ""),
+                                confidence=0.8
+                            )
+                            suggested_actions = [suggested_action]
 
-                    # Set first action as suggested_action for backward compatibility
-                    if suggested_actions:
-                        suggested_action = suggested_actions[0]
-
-                    logger.info(f"[ACTION CHAINING] Parsed {len(suggested_actions)} actions successfully")
-
-                else:
-                    # SINGLE ACTION MODE (original behavior)
-                    action_type = ActionType(action_data.get("action_type", "click"))
-                    coords = action_data.get("coordinates")
-                    if coords and isinstance(coords, list) and len(coords) == 2:
-                        coords = tuple(coords)
-                    else:
-                        coords = None
-
-                    suggested_action = ComputerAction(
-                        action_id=str(uuid4()),
-                        action_type=action_type,
-                        coordinates=coords,
-                        text=action_data.get("text"),
-                        key=action_data.get("key"),
-                        scroll_amount=action_data.get("scroll_amount"),
-                        duration=action_data.get("duration", 0.5),
-                        reasoning=action_data.get("reasoning", ""),
-                        confidence=0.8
-                    )
-                    suggested_actions = [suggested_action] if suggested_action else []
-
-            except (json.JSONDecodeError, ValueError) as e:
-                logger.warning(f"Could not parse action JSON: {e}")
+            except json.JSONDecodeError as e:
+                logger.warning(f"[PARSE] Could not parse action JSON: {e}")
+            except Exception as e:
+                logger.warning(f"[PARSE] Unexpected error parsing action: {e}")
 
         return VisionAnalysis(
             analysis_id=analysis_id,
