@@ -148,7 +148,7 @@ class WorkspaceIntentDetector:
                 "email draft", "prepare email",
             ],
             entity_patterns={
-                "recipient": r"to\s+([a-z]+(?:\s+[a-z]+)?)",  # "to John Smith"
+                "recipient": r"to\s+(\S+(?:\s+[a-z]+)?)",  # "to John Smith" or "to user@email.com"
                 "subject": r"(?:about|regarding|re:|subject:?)\s+(.+?)(?:\s+to|\s+for|$)",
             },
             visual_keywords=["draft", "compose", "write", "type"],
@@ -162,7 +162,7 @@ class WorkspaceIntentDetector:
                 "email to", "message to", "send to",
             ],
             entity_patterns={
-                "recipient": r"(?:to|email)\s+([a-z]+(?:\s+[a-z]+)?)",
+                "recipient": r"(?:to|email)\s+(\S+(?:\s+[a-z]+)?)",
                 "content": r"(?:saying|that says|message:?)\s+(.+)$",
             },
             visual_keywords=[],
@@ -190,8 +190,9 @@ class WorkspaceIntentDetector:
         self._patterns.append(IntentPattern(
             intent=WorkspaceIntent.SEARCH_EMAIL,
             triggers=[
-                "search email", "find email", "look for email",
-                "search for", "find message from",
+                "search email", "search my email", "find email",
+                "find my email", "look for email", "search for",
+                "find message from", "search inbox",
             ],
             entity_patterns={
                 "query": r"(?:for|about|regarding)\s+(.+)$",
@@ -376,14 +377,14 @@ class WorkspaceIntentDetector:
         Returns:
             ExecutionMode enum
         """
-        # Interactive commands (draft, compose, write) should prefer visual
-        interactive_intents = {
-            WorkspaceIntent.DRAFT_EMAIL,
-            WorkspaceIntent.CREATE_DOCUMENT,
-            WorkspaceIntent.EDIT_DOCUMENT,
-        }
-
-        if intent in interactive_intents or requires_visual:
+        # Only use visual mode when user explicitly requests visual execution
+        # (e.g., "show me the draft on screen", "compose this visually").
+        # For standard commands like "draft an email", the agent's 3-tier
+        # waterfall (API → Local → Computer Use) picks the best method.
+        explicit_visual_phrases = ("on screen", "visually", "show me", "let me see")
+        if requires_visual and any(
+            phrase in command for phrase in explicit_visual_phrases
+        ):
             return ExecutionMode.VISUAL_PREFERRED
 
         # Read-only commands can use API for speed

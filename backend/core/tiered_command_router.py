@@ -1072,7 +1072,7 @@ class TieredCommandRouter:
         """
         try:
             # Lazy load GoogleWorkspaceAgent
-            from backend.neural_mesh.agents.google_workspace_agent import (
+            from neural_mesh.agents.google_workspace_agent import (
                 get_google_workspace_agent,
             )
 
@@ -1208,7 +1208,7 @@ class TieredCommandRouter:
         """
         # Guard: runtime must be available
         try:
-            from backend.autonomy.agent_runtime import get_agent_runtime
+            from autonomy.agent_runtime import get_agent_runtime
             if get_agent_runtime() is None:
                 return False
         except ImportError:
@@ -1254,7 +1254,7 @@ class TieredCommandRouter:
     ) -> Dict[str, Any]:
         """Route a multi-step command to the Unified Agent Runtime."""
         try:
-            from backend.autonomy.agent_runtime import get_agent_runtime
+            from autonomy.agent_runtime import get_agent_runtime
             runtime = get_agent_runtime()
             if runtime is None:
                 logger.warning("[TieredRouter] Agent Runtime not available, falling back")

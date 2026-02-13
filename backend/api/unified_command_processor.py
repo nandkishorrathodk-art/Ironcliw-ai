@@ -2319,7 +2319,8 @@ class UnifiedCommandProcessor:
                 lines.append(f"  - {summary} ({start})")
             return "\n".join(lines)
         elif intent == "workspace_summary":
-            return result.get("summary", "Workspace summary completed.")
+            # Prefer the agent's "brief" field, then "summary", then fallback
+            return result.get("brief") or result.get("summary", "Workspace summary completed.")
         else:
             return "Workspace command completed successfully."
 
