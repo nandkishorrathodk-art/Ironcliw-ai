@@ -954,6 +954,123 @@ class MacOSSayEngine(TTSEngine):
         super().__init__("macos_say", config)
         self._process_pool: List[subprocess.Popen] = []
         self._lock = asyncio.Lock()
+        self._voice_cache_ttl_sec = max(
+            5.0,
+            _env_float("JARVIS_MACOS_SAY_VOICE_CACHE_TTL_SEC", 300.0),
+        )
+        self._voice_cache_updated_at = 0.0
+        self._available_voices: List[str] = []
+        self._available_voices_lower: Dict[str, str] = {}
+
+    async def _refresh_available_voices(self, force: bool = False) -> List[str]:
+        """Refresh available macOS voices with bounded cache TTL."""
+        now = time.time()
+        if (
+            not force
+            and self._available_voices
+            and (now - self._voice_cache_updated_at) < self._voice_cache_ttl_sec
+        ):
+            return self._available_voices
+
+        result = await asyncio.create_subprocess_exec(
+            "say", "-v", "?",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await result.communicate()
+        if result.returncode != 0:
+            stderr_text = stderr.decode(errors="ignore").strip() if stderr else ""
+            self.last_error = stderr_text or "Failed to enumerate macOS voices"
+            return self._available_voices
+
+        voices: List[str] = []
+        for line in stdout.decode(errors="ignore").splitlines():
+            parts = line.strip().split(maxsplit=1)
+            if parts:
+                voices.append(parts[0])
+
+        self._available_voices = voices
+        self._available_voices_lower = {voice.lower(): voice for voice in voices}
+        self._voice_cache_updated_at = now
+        return voices
+
+    def _match_available_voice(self, requested_voice: str) -> Optional[str]:
+        """Match requested voice name against installed macOS voices."""
+        candidate = (requested_voice or "").strip()
+        if not candidate:
+            return None
+
+        direct = self._available_voices_lower.get(candidate.lower())
+        if direct:
+            return direct
+
+        # Accept pyttsx-like IDs (e.g., com.apple.voice.compact.en-GB.Daniel)
+        if "." in candidate:
+            tail = candidate.rsplit(".", 1)[-1].strip()
+            if tail:
+                by_tail = self._available_voices_lower.get(tail.lower())
+                if by_tail:
+                    return by_tail
+
+        candidate_lower = candidate.lower()
+        for voice in self._available_voices:
+            voice_lower = voice.lower()
+            if candidate_lower in voice_lower or voice_lower in candidate_lower:
+                return voice
+
+        return None
+
+    async def _resolve_voice_name(
+        self,
+        requested_voice: str,
+        *,
+        force_refresh: bool = False,
+    ) -> str:
+        """
+        Resolve a valid installed macOS voice.
+
+        Prevents silent fallback to macOS default voice when an invalid name is
+        passed to `say -v`, which can otherwise switch personality unexpectedly.
+        """
+        available = await self._refresh_available_voices(force=force_refresh)
+        if not available:
+            return requested_voice or os.getenv("JARVIS_VOICE_NAME", "Daniel")
+
+        fallback_chain = [
+            voice.strip()
+            for voice in os.getenv(
+                "JARVIS_VOICE_FALLBACK_ORDER",
+                "Daniel,Alex,Tom,Karen,Samantha",
+            ).split(",")
+            if voice.strip()
+        ]
+
+        candidates = [
+            requested_voice,
+            os.getenv("JARVIS_NARRATOR_VOICE_NAME", ""),
+            os.getenv("JARVIS_VOICE_NAME", ""),
+            *fallback_chain,
+        ]
+
+        seen: Set[str] = set()
+        for candidate in candidates:
+            normalized = candidate.strip().lower()
+            if not normalized or normalized in seen:
+                continue
+            seen.add(normalized)
+
+            matched = self._match_available_voice(candidate)
+            if matched:
+                requested_normalized = (requested_voice or "").strip().lower()
+                if requested_normalized and requested_normalized != matched.lower():
+                    logger.warning(
+                        "[macos_say] Requested voice '%s' unavailable, using '%s'",
+                        requested_voice,
+                        matched,
+                    )
+                return matched
+
+        return available[0]
 
     async def initialize(self) -> bool:
         """Check if 'say' command is available."""
@@ -964,7 +1081,15 @@ class MacOSSayEngine(TTSEngine):
                 stderr=asyncio.subprocess.PIPE
             )
             await result.wait()
-            self.available = (result.returncode == 0)
+            if result.returncode != 0:
+                self.available = False
+                self.last_error = "macOS 'say' command not found"
+                return False
+
+            voices = await self._refresh_available_voices(force=True)
+            self.available = bool(voices)
+            if not self.available:
+                self.last_error = self.last_error or "No macOS voices available"
             return self.available
         except Exception as e:
             self.last_error = str(e)
@@ -979,10 +1104,12 @@ class MacOSSayEngine(TTSEngine):
         """Speak using macOS say command."""
         try:
             async with self._lock:
+                resolved_voice = await self._resolve_voice_name(personality.voice_name)
+
                 # Build say command with personality
                 cmd = [
                     "say",
-                    "-v", personality.voice_name,
+                    "-v", resolved_voice,
                     "-r", str(personality.rate),
                     message
                 ]
@@ -1079,31 +1206,75 @@ class Pyttsx3Engine(TTSEngine):
                     with self._lock:
                         self._engine.setProperty('rate', personality.rate)
                         self._engine.setProperty('volume', personality.volume)
-                        # v251.5: Fix silent fallback to system default voice (often
-                        # Samantha/female). If matching fails, explicitly try the
-                        # configured voice name by ID substring match.  Never leave
-                        # the engine on its default voice silently.
+                        # Deterministically resolve a voice instead of silently
+                        # falling back to pyttsx3/system defaults.
                         try:
-                            voices = self._engine.getProperty('voices')
-                            matched = False
-                            for voice in voices:
-                                if personality.voice_name.lower() in voice.name.lower():
-                                    self._engine.setProperty('voice', voice.id)
-                                    matched = True
-                                    break
-                            if not matched and voices:
-                                # Try matching by voice ID (pyttsx3 on macOS uses
-                                # IDs like com.apple.voice.compact.en-GB.Daniel)
+                            voices = self._engine.getProperty('voices') or []
+
+                            fallback_chain = [
+                                voice.strip()
+                                for voice in os.getenv(
+                                    "JARVIS_VOICE_FALLBACK_ORDER",
+                                    "Daniel,Alex,Tom,Karen,Samantha",
+                                ).split(",")
+                                if voice.strip()
+                            ]
+
+                            candidate_chain = [
+                                personality.voice_name,
+                                os.getenv("JARVIS_NARRATOR_VOICE_NAME", ""),
+                                os.getenv("JARVIS_VOICE_NAME", ""),
+                                *fallback_chain,
+                            ]
+
+                            selected_voice = None
+                            seen = set()
+                            for candidate in candidate_chain:
+                                normalized = (candidate or "").strip().lower()
+                                if not normalized or normalized in seen:
+                                    continue
+                                seen.add(normalized)
                                 for voice in voices:
-                                    if personality.voice_name.lower() in voice.id.lower():
-                                        self._engine.setProperty('voice', voice.id)
-                                        matched = True
+                                    voice_name = getattr(voice, "name", "") or ""
+                                    voice_id = getattr(voice, "id", "") or ""
+                                    voice_name_l = voice_name.lower()
+                                    voice_id_l = voice_id.lower()
+                                    if (
+                                        normalized in voice_name_l
+                                        or normalized in voice_id_l
+                                        or voice_name_l in normalized
+                                        or voice_id_l in normalized
+                                    ):
+                                        selected_voice = voice
                                         break
-                            if not matched:
+                                if selected_voice:
+                                    break
+
+                            if selected_voice:
+                                self._engine.setProperty('voice', selected_voice.id)
+                                requested = (personality.voice_name or "").strip().lower()
+                                selected_name = (getattr(selected_voice, "name", "") or "").strip().lower()
+                                selected_id = (getattr(selected_voice, "id", "") or "").strip().lower()
+                                if requested and requested not in (selected_name, selected_id):
+                                    logger.warning(
+                                        "[Pyttsx3] Voice '%s' unavailable, using '%s'",
+                                        personality.voice_name,
+                                        getattr(selected_voice, "name", selected_voice.id),
+                                    )
+                            elif voices:
+                                # Explicit deterministic fallback if no preference matched.
+                                self._engine.setProperty('voice', voices[0].id)
                                 logger.warning(
                                     "[Pyttsx3] Voice '%s' not found among %d voices, "
-                                    "system default will be used",
-                                    personality.voice_name, len(voices) if voices else 0,
+                                    "using first installed voice '%s'",
+                                    personality.voice_name,
+                                    len(voices),
+                                    getattr(voices[0], "name", voices[0].id),
+                                )
+                            else:
+                                logger.warning(
+                                    "[Pyttsx3] No voices reported by engine, "
+                                    "system default voice will be used",
                                 )
                         except Exception as e:
                             logger.warning(
