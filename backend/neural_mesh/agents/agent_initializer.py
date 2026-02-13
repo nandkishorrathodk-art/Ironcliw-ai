@@ -159,7 +159,17 @@ class AgentInitializer:
                     intelligence_agents.append(agent_class)
                 else:
                     other_agents.append(agent_class)
-            except Exception:
+            except TypeError as e:
+                # v250.1: Abstract class or missing required args — skip entirely.
+                # Previously this silently added to other_agents, which then
+                # failed again at _initialize_agent (double instantiation).
+                logger.warning(
+                    f"Skipping {agent_class.__name__}: cannot instantiate ({e})"
+                )
+            except Exception as e:
+                logger.debug(
+                    f"Could not peek agent_type for {agent_class.__name__}: {e}"
+                )
                 other_agents.append(agent_class)
 
         ordered_agents = core_agents + intelligence_agents + other_agents

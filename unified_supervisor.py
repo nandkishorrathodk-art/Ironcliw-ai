@@ -63751,13 +63751,11 @@ class JarvisSystemKernel:
             await self._publish_ghost_display_state(phantom_mgr)
 
             # Start background health monitor
-            if ASYNC_SAFETY_AVAILABLE:
-                task = create_safe_task(
-                    self._ghost_display_health_loop(phantom_mgr),
-                    name="ghost-display-health",
-                )
-            else:
-                task = asyncio.create_task(self._ghost_display_health_loop(phantom_mgr))
+            # v250.1: create_safe_task is always available (imported or fallback)
+            task = create_safe_task(
+                self._ghost_display_health_loop(phantom_mgr),
+                name="ghost-display-health",
+            )
             self._background_tasks.append(task)
 
             self._update_component_status("ghost_display", "complete", "Ghost Display ready")
@@ -64106,13 +64104,11 @@ class JarvisSystemKernel:
             # Step 6: Publish initial state + start health monitor
             await self._publish_visual_pipeline_state(ferrari_available=ferrari_available)
 
-            if ASYNC_SAFETY_AVAILABLE:
-                task = create_safe_task(
-                    self._visual_pipeline_health_loop(ferrari_available=ferrari_available),
-                    name="visual-pipeline-health",
-                )
-            else:
-                task = asyncio.create_task(self._visual_pipeline_health_loop(ferrari_available=ferrari_available))
+            # v250.1: create_safe_task is always available (imported or fallback)
+            task = create_safe_task(
+                self._visual_pipeline_health_loop(ferrari_available=ferrari_available),
+                name="visual-pipeline-health",
+            )
             self._visual_pipeline_health_task = task
             self._background_tasks.append(task)
 
@@ -70559,7 +70555,7 @@ class JarvisSystemKernel:
                             await ensure_docker_ecapa_service()
                         except Exception:
                             pass
-                    asyncio.create_task(_bg_docker_start())
+                    create_safe_task(_bg_docker_start(), name="bg-docker-ecapa-start")
 
         # =====================================================================
         # Phase 3: Configure Selected Backend
