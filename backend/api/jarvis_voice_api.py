@@ -62,6 +62,7 @@ import base64
 import logging
 import os
 import sys
+import time
 import traceback
 from datetime import datetime
 from functools import wraps
@@ -4804,8 +4805,11 @@ async def get_cost_report(period: str = "today"):
                 "costs": {},
             }
 
-        # Get cost report
-        report = await vbi._cost_tracker.get_report(period=period)
+        # Get cost report (method may be added dynamically or in subclass)
+        _get_report = getattr(vbi._cost_tracker, 'get_report', None)
+        if _get_report is None:
+            return {"available": False, "message": "get_report method not available", "costs": {}}
+        report = await _get_report(period=period)
 
         # Add VBI-level stats
         report['vbi_stats'] = {
@@ -4852,27 +4856,24 @@ async def query_voice_patterns(
                 "patterns": [],
             }
 
-        # Query patterns based on type
-        if query_type == "behavioral":
-            patterns = await vbi._pattern_memory.query_behavioral_patterns(
-                user_id=user_id,
-                time_range_hours=time_range_hours,
-                limit=limit,
-            )
-        elif query_type == "evolution":
-            patterns = await vbi._pattern_memory.query_voice_evolution(
-                user_id=user_id,
-                limit=limit,
-            )
-        elif query_type == "attacks":
-            patterns = await vbi._pattern_memory.query_attack_patterns(
-                limit=limit,
-            )
-        else:
+        # Query patterns based on type (methods may be added dynamically)
+        _pm = vbi._pattern_memory
+        _query_map = {
+            "behavioral": ("query_behavioral_patterns", {"user_id": user_id, "time_range_hours": time_range_hours, "limit": limit}),
+            "evolution": ("query_voice_evolution", {"user_id": user_id, "limit": limit}),
+            "attacks": ("query_attack_patterns", {"limit": limit}),
+        }
+        if query_type not in _query_map:
             raise HTTPException(
                 status_code=400,
                 detail=f"Unknown query type: {query_type}. Use: behavioral, evolution, attacks"
             )
+
+        method_name, kwargs = _query_map[query_type]
+        _method = getattr(_pm, method_name, None)
+        if _method is None:
+            return {"available": False, "message": f"{method_name} not implemented", "patterns": []}
+        patterns = await _method(**kwargs)
 
         return {
             "available": True,
@@ -4912,8 +4913,11 @@ async def get_drift_status(user_id: Optional[str] = None):
                 "drift_status": {},
             }
 
-        # Get drift status
-        status = await vbi._drift_detector.get_status(
+        # Get drift status (method may be added dynamically)
+        _get_drift_status = getattr(vbi._drift_detector, 'get_status', None)
+        if _get_drift_status is None:
+            return {"available": False, "message": "get_status not implemented", "drift_status": {}}
+        status = await _get_drift_status(
             user_id=user_id or vbi._owner_name or "owner"
         )
 
@@ -4993,8 +4997,9 @@ async def get_coding_council_voice_status():
                 "timestamp": time.time(),
             }
 
-        # Get status from announcer
-        status = await announcer.get_status() if hasattr(announcer, 'get_status') else {}
+        # Get status from announcer (method may be added dynamically)
+        _get_status_fn = getattr(announcer, 'get_status', None)
+        status: dict = await _get_status_fn() if _get_status_fn else {}
 
         return {
             "available": True,

@@ -295,7 +295,10 @@ class NeuralMeshCoordinator:
 
         logger.info("Starting Neural Mesh system...")
 
-        # Start components
+        # Start components (guaranteed non-None after initialize())
+        assert self._bus is not None, "Bus not initialized"
+        assert self._registry is not None, "Registry not initialized"
+        assert self._orchestrator is not None, "Orchestrator not initialized"
         await self._bus.start()
         await self._registry.start()
         await self._orchestrator.start()
@@ -615,6 +618,7 @@ class NeuralMeshCoordinator:
 
             # Register with the registry using individual parameters
             # The AgentRegistry.register() method expects individual parameters, not an AgentInfo object
+            assert self._registry is not None, "Registry not initialized"
             await self._registry.register(
                 agent_name=node_name,
                 agent_type=agent_type_str,
@@ -692,6 +696,7 @@ class NeuralMeshCoordinator:
 
             # Subscribe via the bus
             # Bus.subscribe expects: agent_name, message_type, callback
+            assert self._bus is not None, "Bus not initialized"
             agent_name = subscriber_id or f"external_{topic}"
             await self._bus.subscribe(
                 agent_name=agent_name,
@@ -734,16 +739,17 @@ class NeuralMeshCoordinator:
             return False
 
         try:
-            from .data_models import Message, MessageType
+            from .data_models import AgentMessage, MessageType
             import uuid
 
-            message = Message(
+            assert self._bus is not None, "Bus not initialized"
+            message = AgentMessage(
                 message_id=str(uuid.uuid4())[:8],
-                sender_id="neural_mesh_coordinator",
+                from_agent="neural_mesh_coordinator",
+                to_agent="broadcast",
                 message_type=MessageType.BROADCAST,
-                topic=event_type,
-                payload=payload,
-                recipients=target_nodes,
+                payload={"event_type": event_type, **payload},
+                metadata={"target_nodes": target_nodes} if target_nodes else {},
             )
 
             await self._bus.publish(message)

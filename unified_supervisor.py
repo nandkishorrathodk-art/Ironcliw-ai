@@ -27453,13 +27453,14 @@ class ServiceMeshRouter:
                 pass
 
         # Return result from faster one
+        last_error: Optional[Exception] = None
         for task in done:
             try:
                 return task.result()
             except Exception as e:
                 last_error = e
 
-        raise last_error
+        raise last_error or RuntimeError("All hedged requests failed")
 
     async def _health_check_loop(self) -> None:
         """Background loop for health checking endpoints."""
@@ -28890,6 +28891,8 @@ class AutoScalingController:
         target_util: float,
     ) -> int:
         """Calculate desired replicas based on utilization."""
+        import math
+
         if target_util <= 0:
             return self._current_replicas
 
@@ -29140,6 +29143,7 @@ class SecretVaultManager:
 
     def _encrypt(self, value: str) -> str:
         """Simple XOR encryption with the key."""
+        import base64
         # This is a basic implementation - in production, use proper encryption
         encrypted = []
         for i, char in enumerate(value):
@@ -29149,6 +29153,7 @@ class SecretVaultManager:
 
     def _decrypt(self, encrypted: str) -> str:
         """Decrypt a value."""
+        import base64
         decoded = base64.b64decode(encrypted).decode("latin-1")
         decrypted = []
         for i, char in enumerate(decoded):
@@ -41748,8 +41753,8 @@ class BackgroundJobManager:
 
 
 @dataclass
-class RetryPolicy:
-    """Retry policy configuration."""
+class RetryPolicyDef:
+    """Retry policy configuration (BPM-style, distinct from ServiceMesh RetryPolicy)."""
     policy_id: str
     max_attempts: int = 3
     initial_delay_seconds: float = 1.0
@@ -41777,7 +41782,7 @@ class RetryPolicyManager:
 
     def __init__(self, config: SystemKernelConfig):
         self.config = config
-        self._policies: Dict[str, RetryPolicy] = {}
+        self._policies: Dict[str, RetryPolicyDef] = {}
         self._metrics: Dict[str, Dict[str, int]] = {}
         self._logger = UnifiedLogger(
             name="RetryPolicyManager",
@@ -41819,7 +41824,7 @@ class RetryPolicyManager:
             self._logger.error(f"Failed to initialize retry policy manager: {e}")
             return False
 
-    def register_policy(self, policy: RetryPolicy) -> None:
+    def register_policy(self, policy: RetryPolicyDef) -> None:
         """Register a retry policy."""
         self._policies[policy.policy_id] = policy
         self._metrics[policy.policy_id] = {"attempts": 0, "successes": 0, "failures": 0}
@@ -41880,7 +41885,7 @@ class RetryPolicyManager:
         self._metrics[policy_id]["failures"] += 1
         raise last_exception  # type: ignore
 
-    def _should_retry(self, exception: Exception, policy: RetryPolicy) -> bool:
+    def _should_retry(self, exception: Exception, policy: RetryPolicyDef) -> bool:
         """Determine if exception should trigger retry."""
         # Check non-retryable exceptions first
         for exc_type in policy.non_retryable_exceptions:
@@ -41897,7 +41902,7 @@ class RetryPolicyManager:
         # Default: retry all exceptions
         return True
 
-    def _calculate_delay(self, attempt: int, policy: RetryPolicy) -> float:
+    def _calculate_delay(self, attempt: int, policy: RetryPolicyDef) -> float:
         """Calculate retry delay with exponential backoff and optional jitter."""
         delay = policy.initial_delay_seconds * (policy.backoff_multiplier ** (attempt - 1))
         delay = min(delay, policy.max_delay_seconds)
@@ -46921,8 +46926,8 @@ class WorkflowTransition(NamedTuple):
     condition: Optional[str]  # Transition condition expression
 
 
-class WorkflowDefinition(NamedTuple):
-    """Workflow process definition."""
+class BPMWorkflowDef(NamedTuple):
+    """BPMN workflow process definition (distinct from WorkflowEngine's WorkflowDefinition)."""
     workflow_id: str
     name: str
     version: str
@@ -46949,8 +46954,8 @@ class WorkflowTaskInstance(NamedTuple):
     retry_count: int
 
 
-class WorkflowInstance(NamedTuple):
-    """Running workflow instance."""
+class BPMWorkflowInst(NamedTuple):
+    """Running BPMN workflow instance (distinct from WorkflowEngine's WorkflowInstance)."""
     instance_id: str
     workflow_id: str
     workflow_name: str
@@ -46978,8 +46983,8 @@ class WorkflowOrchestrator:
     """
 
     def __init__(self) -> None:
-        self._definitions: Dict[str, WorkflowDefinition] = {}
-        self._instances: Dict[str, WorkflowInstance] = {}
+        self._definitions: Dict[str, BPMWorkflowDef] = {}
+        self._instances: Dict[str, BPMWorkflowInst] = {}
         self._handlers: Dict[str, Callable[..., Awaitable[Dict[str, Any]]]] = {}
         self._lock = asyncio.Lock()
         self._running = False
@@ -47019,7 +47024,7 @@ class WorkflowOrchestrator:
         start_task: str = "",
         end_tasks: Optional[List[str]] = None,
         variables: Optional[Dict[str, Any]] = None,
-    ) -> WorkflowDefinition:
+    ) -> BPMWorkflowDef:
         """
         Define a new workflow.
 
@@ -47034,7 +47039,7 @@ class WorkflowOrchestrator:
             variables: Default workflow variables
 
         Returns:
-            WorkflowDefinition instance
+            BPMWorkflowDef instance
         """
         async with self._lock:
             workflow_id = f"wf_{hashlib.sha256(f'{name}:{version}:{time.time()}'.encode()).hexdigest()[:16]}"
@@ -47066,7 +47071,7 @@ class WorkflowOrchestrator:
                 for t in (transitions or [])
             ]
 
-            definition = WorkflowDefinition(
+            definition = BPMWorkflowDef(
                 workflow_id=workflow_id,
                 name=name,
                 version=version,
@@ -47088,7 +47093,7 @@ class WorkflowOrchestrator:
         workflow_id: str,
         variables: Optional[Dict[str, Any]] = None,
         parent_instance_id: Optional[str] = None,
-    ) -> Optional[WorkflowInstance]:
+    ) -> Optional[BPMWorkflowInst]:
         """
         Start a new workflow instance.
 
@@ -47098,7 +47103,7 @@ class WorkflowOrchestrator:
             parent_instance_id: Parent instance for sub-workflows
 
         Returns:
-            WorkflowInstance if started successfully
+            BPMWorkflowInst if started successfully
         """
         async with self._lock:
             definition = self._definitions.get(workflow_id)
@@ -47113,7 +47118,7 @@ class WorkflowOrchestrator:
             if variables:
                 merged_vars.update(variables)
 
-            instance = WorkflowInstance(
+            instance = BPMWorkflowInst(
                 instance_id=instance_id,
                 workflow_id=workflow_id,
                 workflow_name=definition.name,
@@ -47151,7 +47156,7 @@ class WorkflowOrchestrator:
         for instance in instances_to_process:
             await self._process_instance(instance)
 
-    async def _process_instance(self, instance: WorkflowInstance) -> None:
+    async def _process_instance(self, instance: BPMWorkflowInst) -> None:
         """Process a single workflow instance."""
         definition = self._definitions.get(instance.workflow_id)
         if not definition:
@@ -47187,7 +47192,7 @@ class WorkflowOrchestrator:
 
     async def _execute_task(
         self,
-        instance: WorkflowInstance,
+        instance: BPMWorkflowInst,
         task_instance: WorkflowTaskInstance,
     ) -> None:
         """Execute a single workflow task."""
@@ -47269,7 +47274,7 @@ class WorkflowOrchestrator:
 
     async def _handle_task_failure(
         self,
-        instance: WorkflowInstance,
+        instance: BPMWorkflowInst,
         task_instance: WorkflowTaskInstance,
         error: str,
     ) -> None:
@@ -47337,11 +47342,11 @@ class WorkflowOrchestrator:
             self._instances[instance_id] = updated
             return True
 
-    def get_workflow_definition(self, workflow_id: str) -> Optional[WorkflowDefinition]:
+    def get_workflow_definition(self, workflow_id: str) -> Optional[BPMWorkflowDef]:
         """Get a workflow definition."""
         return self._definitions.get(workflow_id)
 
-    def get_workflow_instance(self, instance_id: str) -> Optional[WorkflowInstance]:
+    def get_workflow_instance(self, instance_id: str) -> Optional[BPMWorkflowInst]:
         """Get a workflow instance."""
         return self._instances.get(instance_id)
 
