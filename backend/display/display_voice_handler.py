@@ -198,7 +198,10 @@ class DisplayVoiceHandler:
             # Add message
             cmd.append(message)
 
-            # Run in background (non-blocking)
+            # v251.5: Wait for completion to prevent overlapping `say` processes
+            # with the unified orchestrator — fire-and-forget was the root cause
+            # of audio static when display voice and startup narrator spoke
+            # simultaneously.
             process = await asyncio.create_subprocess_exec(
                 *cmd,
                 stdout=asyncio.subprocess.DEVNULL,
@@ -207,8 +210,11 @@ class DisplayVoiceHandler:
 
             logger.debug(f"[DISPLAY VOICE] Used macOS say command (voice={self.voice_name}, rate={self.voice_rate})")
 
-            # Don't wait for completion (fire and forget)
-            # await process.wait()
+            try:
+                await asyncio.wait_for(process.wait(), timeout=30.0)
+            except asyncio.TimeoutError:
+                process.kill()
+                logger.warning("[DISPLAY VOICE] say process timed out, killed")
 
         except FileNotFoundError:
             logger.error("[DISPLAY VOICE] say command not found (not on macOS?)")

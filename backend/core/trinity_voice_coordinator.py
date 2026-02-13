@@ -1079,14 +1079,37 @@ class Pyttsx3Engine(TTSEngine):
                     with self._lock:
                         self._engine.setProperty('rate', personality.rate)
                         self._engine.setProperty('volume', personality.volume)
+                        # v251.5: Fix silent fallback to system default voice (often
+                        # Samantha/female). If matching fails, explicitly try the
+                        # configured voice name by ID substring match.  Never leave
+                        # the engine on its default voice silently.
                         try:
                             voices = self._engine.getProperty('voices')
+                            matched = False
                             for voice in voices:
                                 if personality.voice_name.lower() in voice.name.lower():
                                     self._engine.setProperty('voice', voice.id)
+                                    matched = True
                                     break
-                        except Exception:
-                            pass
+                            if not matched and voices:
+                                # Try matching by voice ID (pyttsx3 on macOS uses
+                                # IDs like com.apple.voice.compact.en-GB.Daniel)
+                                for voice in voices:
+                                    if personality.voice_name.lower() in voice.id.lower():
+                                        self._engine.setProperty('voice', voice.id)
+                                        matched = True
+                                        break
+                            if not matched:
+                                logger.warning(
+                                    "[Pyttsx3] Voice '%s' not found among %d voices, "
+                                    "system default will be used",
+                                    personality.voice_name, len(voices) if voices else 0,
+                                )
+                        except Exception as e:
+                            logger.warning(
+                                "[Pyttsx3] Voice enumeration failed: %s — "
+                                "system default voice will be used", e,
+                            )
 
                         self._engine.say(message)
                         self._engine.runAndWait()
@@ -1669,13 +1692,14 @@ class TrinityVoiceCoordinator:
         - Graceful fallback without error spam
         - Async-safe with threading lock
 
-        Priority:
+        Priority (configurable via JARVIS_VOICE_FALLBACK_ORDER):
         1. Daniel (UK Male) - JARVIS's signature voice - NON-NEGOTIABLE
-        2. Samantha (US Female) - Clear fallback
-        3. Alex (US Male) - macOS default
-        4. Tom/Karen - Additional fallbacks
-        5. First available voice
-        6. Environment default (JARVIS_DEFAULT_VOICE_NAME)
+        2. Alex (US Male) - macOS default
+        3. Tom (US Male) - Additional fallback
+        4. Karen (AU Female) - Additional fallback
+        5. Samantha (US Female) - Last resort named fallback
+        6. First available voice
+        7. Environment default (JARVIS_DEFAULT_VOICE_NAME)
         """
         # v93.1: Return cached voice if available
         with self._voice_cache_lock:

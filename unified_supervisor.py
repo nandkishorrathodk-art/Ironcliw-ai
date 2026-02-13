@@ -12236,6 +12236,28 @@ class AsyncVoiceNarrator:
 
         await self._speak_internal(text, wait=wait, priority=priority)
 
+    def _get_shared_speech_lock(self) -> asyncio.Lock:
+        """
+        v251.5: Get the shared speech lock from UnifiedVoiceOrchestrator if
+        available.  This prevents concurrent ``say`` processes between the
+        AsyncVoiceNarrator (direct subprocess) and the
+        IntelligentStartupNarrator (orchestrator → Trinity engines) — the
+        root cause of audio static/overlapping voices during startup.
+
+        Falls back to our own ``_speech_lock`` if the orchestrator hasn't
+        been created yet (very early startup).
+        """
+        try:
+            from backend.core.supervisor.unified_voice_orchestrator import (
+                get_voice_orchestrator,
+            )
+            orch = get_voice_orchestrator()
+            if orch is not None and hasattr(orch, "_speech_lock"):
+                return orch._speech_lock
+        except Exception:
+            pass
+        return self._speech_lock
+
     async def _speak_internal(
         self,
         text: str,
@@ -12244,12 +12266,17 @@ class AsyncVoiceNarrator:
     ) -> None:
         """
         Internal speech implementation.
-        
+
         v220.2: CRITICAL FIX - Uses asyncio Lock to prevent duplicate/overlapping speech.
         This fixes the "hallucinated duplicate voices" issue during startup by:
         1. Acquiring exclusive lock before speaking
         2. Deduplicating identical messages within a time window
         3. Properly serializing all speech requests
+
+        v251.5: Uses the UnifiedVoiceOrchestrator's speech lock (when
+        available) instead of our own, so that both the AsyncVoiceNarrator
+        and the IntelligentStartupNarrator share a single mutual-exclusion
+        boundary — eliminating concurrent ``say`` processes (static).
         """
         if not self.enabled:
             return
@@ -12258,11 +12285,14 @@ class AsyncVoiceNarrator:
         # This prevents rapid-fire duplicate announcements
         now = time.time()
         text_normalized = text.strip().lower()
-        if (text_normalized == self._last_spoken_text.strip().lower() and 
+        if (text_normalized == self._last_spoken_text.strip().lower() and
             (now - self._last_spoken_time) < self._duplicate_prevention_window):
             _unified_logger.debug(f"[Voice] Skipping duplicate message: {text[:50]}...")
             self._messages_deduplicated += 1
             return
+
+        # v251.5: Share lock with the orchestrator to prevent concurrent say
+        speech_lock = self._get_shared_speech_lock()
 
         # v220.2: CRITICAL - Acquire lock to prevent concurrent speech
         # This is a non-blocking try to prevent deadlocks during rapid calls
@@ -12270,7 +12300,7 @@ class AsyncVoiceNarrator:
         acquired = False
         try:
             # Try to acquire lock with short timeout (non-blocking)
-            await asyncio.wait_for(self._speech_lock.acquire(), timeout=0.1)
+            await asyncio.wait_for(speech_lock.acquire(), timeout=0.1)
             acquired = True
         except asyncio.TimeoutError:
             # Another speech is in progress - skip this one if lower priority
@@ -12279,9 +12309,9 @@ class AsyncVoiceNarrator:
                 self._messages_skipped += 1
                 return
             # Higher priority - wait for lock (blocking)
-            await self._speech_lock.acquire()
+            await speech_lock.acquire()
             acquired = True
-        
+
         try:
             # Priority interrupt: kill lower priority speech
             if self._speaking and priority.value < self._current_priority.value:
@@ -12324,7 +12354,7 @@ class AsyncVoiceNarrator:
         finally:
             self._speaking = False
             if acquired:
-                self._speech_lock.release()
+                speech_lock.release()
 
     async def _wait_and_cleanup(self) -> None:
         """Wait for speech to finish and cleanup."""

@@ -11,7 +11,7 @@ Date: 2025-10-15
 
 import os
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import List
 
 
 @dataclass
@@ -31,7 +31,11 @@ class TVMonitorConfig:
     
     # Voice settings
     enable_voice_prompts: bool = field(default_factory=lambda: os.getenv("TV_VOICE_PROMPTS", "true").lower() == "true")
-    voice_name: str = field(default_factory=lambda: os.getenv("TV_VOICE_NAME", "Samantha"))  # macOS voice
+    # v251.5: Cascade from canonical JARVIS_VOICE_NAME to prevent female-voice fallback.
+    # Previous default was "Samantha" (female) — wrong for JARVIS identity.
+    voice_name: str = field(default_factory=lambda: os.getenv(
+        "TV_VOICE_NAME", os.getenv("JARVIS_VOICE_NAME", "Daniel")
+    ))  # macOS voice
     voice_rate: int = field(default_factory=lambda: int(os.getenv("TV_VOICE_RATE", "180")))  # Words per minute
     
     # Prompt settings
