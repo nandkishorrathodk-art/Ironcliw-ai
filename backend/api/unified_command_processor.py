@@ -1272,10 +1272,20 @@ class UnifiedCommandProcessor:
                     ),
                     timeout=float(os.getenv("JARVIS_WORKSPACE_EXEC_TIMEOUT", "30.0")),
                 )
+                _ws_success = _ws_result.get("success", False)
+                _ws_response = _ws_result.get("response") or _ws_result.get("error")
+                if not _ws_response:
+                    # Generate response from structured data when none provided
+                    if _ws_success:
+                        _ws_response = self._summarize_workspace_result(
+                            _ws_result, _workspace_intent.intent.value
+                        )
+                    else:
+                        _ws_response = "Workspace command failed"
                 return {
                     **_ws_result,
-                    "success": _ws_result.get("success", False),
-                    "response": _ws_result.get("response") or _ws_result.get("error", "Workspace command failed"),
+                    "success": _ws_success,
+                    "response": _ws_response,
                     "command_type": "workspace",
                     "routed_via": "tiered_command_router",
                 }
@@ -2280,6 +2290,38 @@ class UnifiedCommandProcessor:
             logger.warning(f"[UNIFIED] Telemetry emission setup failed: {e}")
 
         return result_dict
+
+    @staticmethod
+    def _summarize_workspace_result(result: dict, intent: str) -> str:
+        """Generate a human-readable response from structured workspace data."""
+        if intent in ("check_email", "fetch_unread_emails"):
+            count = result.get("count", 0)
+            total = result.get("total_unread", count)
+            if count == 0:
+                return "No unread emails found."
+            emails = result.get("emails", [])
+            lines = [f"You have {total} unread emails. Here are the latest {count}:"]
+            for em in emails[:5]:
+                subj = em.get("subject", "(no subject)")
+                sender = em.get("from", "unknown")
+                lines.append(f"  - {subj} (from {sender})")
+            if count > 5:
+                lines.append(f"  ...and {count - 5} more")
+            return "\n".join(lines)
+        elif intent in ("check_calendar", "check_calendar_events"):
+            events = result.get("events", [])
+            if not events:
+                return "No events on your calendar for this time period."
+            lines = [f"You have {len(events)} event(s):"]
+            for ev in events[:5]:
+                summary = ev.get("summary", ev.get("title", "(untitled)"))
+                start = ev.get("start", "")
+                lines.append(f"  - {summary} ({start})")
+            return "\n".join(lines)
+        elif intent == "workspace_summary":
+            return result.get("summary", "Workspace summary completed.")
+        else:
+            return "Workspace command completed successfully."
 
     async def _classify_command(self, command_text: str) -> Tuple[CommandType, float]:
         """Dynamically classify command using learned patterns"""

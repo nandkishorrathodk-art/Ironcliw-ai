@@ -269,6 +269,7 @@ class WorkspaceIntentDetector:
             triggers=[
                 "workspace summary", "daily summary", "daily briefing",
                 "what's happening", "catch me up", "status update",
+                "my summary", "briefing", "what did i miss",
             ],
             entity_patterns={},
             visual_keywords=[],
