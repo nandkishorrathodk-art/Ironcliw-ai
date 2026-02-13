@@ -6409,6 +6409,7 @@ class IssueCategory(Enum):
     FILESYSTEM = "Filesystem"
     IMPORT = "Import / Dependencies"
     CONFIG = "Configuration"
+    SYSTEM = "System / Hardware"
     GENERAL = "General"
 
 
@@ -57861,6 +57862,7 @@ class JarvisSystemKernel:
         # - Voice approval workflows
         # - Proactive event streaming
         self._agi_os: Optional[Any] = None  # AGIOSCoordinator
+        self._neural_mesh_bridge: Optional[Any] = None  # Runtime↔Mesh bridge handle
 
         # v200.0: Two-Tier + AGI OS status tracking
         self._two_tier_status: Dict[str, Any] = {
@@ -57919,6 +57921,24 @@ class JarvisSystemKernel:
             "instance_name": self.config.invincible_node_instance_name,
             "port": self.config.invincible_node_port,
         }
+
+    def connect_neural_mesh(self, mesh: Any) -> None:
+        """
+        Register the active Neural Mesh bridge with kernel-owned integrations.
+
+        This provides a stable kernel-level contract used by AGI OS startup
+        wiring and allows kernel-managed subsystems to discover the live mesh
+        bridge without directly reaching into AGI OS internals.
+        """
+        self._neural_mesh_bridge = mesh
+
+        # Propagate to optional collective intelligence subsystem if present.
+        collective = getattr(self, "_collective_ai", None)
+        if collective is not None and hasattr(collective, "connect_neural_mesh"):
+            try:
+                collective.connect_neural_mesh(mesh)
+            except Exception as e:
+                self.logger.debug(f"[Kernel] CollectiveAI mesh wiring warning: {e}")
 
     def _propagate_invincible_node_url(self, node_ip: str, source: str = "startup") -> None:
         """
@@ -75995,6 +76015,16 @@ async def async_main(args: argparse.Namespace) -> int:
         exit_code = await kernel.run()
         return exit_code
 
+    except asyncio.CancelledError:
+        # Treat cooperative cancellation as controlled shutdown instead of
+        # bubbling a traceback from asyncio.run().
+        exit_code = 130
+        try:
+            kernel.logger.warning("[Kernel] Main loop cancelled; proceeding to cleanup")
+        except Exception:
+            pass
+        return exit_code
+
     except Exception as e:
         # Log unexpected exception
         kernel.logger.error(f"[Kernel] Unexpected exception in main: {e}")
@@ -76027,6 +76057,11 @@ async def async_main(args: argparse.Namespace) -> int:
                         ),
                         timeout=5.0,
                     )
+                except asyncio.CancelledError:
+                    # Late-loop cancellation can happen during interpreter teardown.
+                    # Continue best-effort cleanup without crashing the process.
+                    exit_code = 130
+                    kernel.logger.warning("[Kernel] Emergency shutdown cancelled during final cleanup")
                 except (asyncio.TimeoutError, Exception) as cleanup_err:
                     kernel.logger.error(f"[Kernel] Emergency shutdown error: {cleanup_err}")
 
@@ -76063,6 +76098,9 @@ async def async_main(args: argparse.Namespace) -> int:
             except Exception as thread_err:
                 kernel.logger.error(f"[Kernel] Thread cleanup error: {thread_err}")
 
+        except asyncio.CancelledError:
+            exit_code = 130
+            print("[Kernel] Final cleanup cancelled; exiting with SIGINT/SIGTERM code")
         except Exception as final_err:
             print(f"[Kernel] Error in finally cleanup: {final_err}")
 
