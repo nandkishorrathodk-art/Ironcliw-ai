@@ -2742,6 +2742,9 @@ class MLEngineRegistry:
 
                             logger.debug(f"Cloud embedding received: shape {embedding_tensor.shape}")
                             self._cloud_embedding_cb.record_success()
+                            # v251.2: Reset fallback warning flag on success
+                            # so it fires again if cloud goes down later
+                            extract_speaker_embedding._cloud_fallback_warned = False
                             return embedding_tensor
                         else:
                             error_msg = result.get('error', 'unknown')
@@ -2777,7 +2780,11 @@ class MLEngineRegistry:
 
                     else:
                         error_text = await response.text()
-                        logger.error(
+                        # v251.2: Downgraded from ERROR → WARNING. The local
+                        # fallback handles this gracefully; a cloud 500 is an
+                        # operational issue, not a system failure. The circuit
+                        # breaker limits these to ≤3 before opening.
+                        logger.warning(
                             f"Cloud embedding request failed ({response.status}): "
                             f"{error_text[:200]}"
                         )
@@ -3444,7 +3451,15 @@ async def extract_speaker_embedding(
 
         # Cloud failed - try local if fallback enabled and local is ready
         if fallback_enabled and registry.is_voice_unlock_ready:
-            logger.warning("Cloud extraction failed, falling back to local")
+            # v251.2: Log-once pattern for cloud→local fallback.  This fires
+            # on EVERY voice verification while cloud is down — very spammy
+            # when the circuit breaker is open.  Only log the first occurrence
+            # at WARNING; subsequent hits log at DEBUG.
+            if not getattr(extract_speaker_embedding, '_cloud_fallback_warned', False):
+                logger.warning("Cloud extraction failed, falling back to local")
+                extract_speaker_embedding._cloud_fallback_warned = True
+            else:
+                logger.debug("Cloud extraction failed, falling back to local")
             return await _extract_local_embedding(registry, audio_data)
 
         logger.error("Cloud extraction failed and fallback not available")

@@ -1763,8 +1763,22 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
             await run_tier("Tier 3 (Dependent)", tier3_funcs, tier3_timeout)
 
         except Exception as e:
-            logger.warning(f"⚠️ Tiered initialization error: {e}")
+            logger.warning(f"Tiered initialization error: {e}")
             logger.warning("   Some components may not be fully initialized")
+
+        # v251.2: Sweep for components left with error=None after tier
+        # cancellation.  When asyncio.wait_for() times out a tier, it
+        # cancels all tasks in that tier.  CancelledError (BaseException
+        # in Python 3.9+) is NOT caught by ``except Exception`` inside
+        # each init function, leaving component_status with the initial
+        # {success: False, error: None, duration: 0.0}.
+        for _comp_name, _status in component_status.items():
+            if (
+                not _status.get("success")
+                and not _status.get("skipped")
+                and _status.get("error") is None
+            ):
+                _status["error"] = "cancelled (tier timeout)"
 
         # =====================================================================
         # INITIALIZATION COMPLETE - Report Status
@@ -1789,7 +1803,7 @@ class VisualMonitorAgent(BaseNeuralMeshAgent):
             elif status.get("success"):
                 logger.info(f"   ✅ {comp_name}: READY ({status['duration']:.2f}s)")
             else:
-                logger.info(f"   ⚠️  {comp_name}: DEGRADED - {status.get('error', 'unknown')} ({status['duration']:.2f}s)")
+                logger.info(f"   ⚠️  {comp_name}: DEGRADED - {status.get('error') or 'unknown'} ({status['duration']:.2f}s)")
 
         logger.info("=" * 60)
         logger.info("")
