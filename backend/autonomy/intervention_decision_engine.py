@@ -1341,63 +1341,104 @@ class InterventionDecisionEngine:
         }
     
     async def _execute_gentle_suggestion(self, decision: InterventionDecision) -> Dict[str, Any]:
-        """Execute gentle suggestion"""
-        
-        message = decision.intervention_content.get('message', '')
-        logger.info(f"Gentle suggestion: {message}")
-        
-        # This would show a dismissible notification
-        return {
-            'success': True,
-            'user_response': 'suggested',
-            'effectiveness_score': 0.7
-        }
-    
+        """Execute gentle suggestion — deliver via notification bridge."""
+        message = decision.intervention_content.get(
+            'message', decision.reasoning or 'JARVIS has a suggestion.',
+        )
+        situation_type = (
+            decision.situation.situation_type.value if decision.situation else ''
+        )
+        logger.info("Gentle suggestion: %s", message)
+
+        try:
+            from agi_os.notification_bridge import notify_user, NotificationUrgency
+            await notify_user(
+                message,
+                urgency=NotificationUrgency.LOW,
+                title="JARVIS Suggestion",
+                context={"situation_type": situation_type, "source": "intervention_engine"},
+            )
+        except Exception as e:
+            logger.debug("[IDE] Notification failed: %s", e)
+
+        return {"status": "delivered", "message": message, "level": "gentle_suggestion"}
+
     async def _execute_direct_recommendation(self, decision: InterventionDecision) -> Dict[str, Any]:
-        """Execute direct recommendation"""
-        
-        message = decision.intervention_content.get('message', '')
-        logger.info(f"Direct recommendation: {message}")
-        
-        # This would show a dialog with options
-        return {
-            'success': True,
-            'user_response': 'recommended',
-            'effectiveness_score': 0.8
-        }
-    
+        """Execute direct recommendation — deliver via notification bridge."""
+        message = decision.intervention_content.get(
+            'message', decision.reasoning or 'JARVIS has a recommendation.',
+        )
+        situation_type = (
+            decision.situation.situation_type.value if decision.situation else ''
+        )
+        logger.info("Direct recommendation: %s", message)
+
+        try:
+            from agi_os.notification_bridge import notify_user, NotificationUrgency
+            await notify_user(
+                message,
+                urgency=NotificationUrgency.NORMAL,
+                title="JARVIS Recommendation",
+                context={"situation_type": situation_type, "source": "intervention_engine"},
+            )
+        except Exception as e:
+            logger.debug("[IDE] Notification failed: %s", e)
+
+        return {"status": "delivered", "message": message, "level": "direct_recommendation"}
+
     async def _execute_proactive_assistance(self, decision: InterventionDecision) -> Dict[str, Any]:
-        """Execute proactive assistance"""
-        
-        message = decision.intervention_content.get('message', '')
+        """Execute proactive assistance — deliver via notification bridge."""
+        message = decision.intervention_content.get(
+            'message', decision.reasoning or 'JARVIS is taking proactive action.',
+        )
         options = decision.intervention_content.get('assistance_options', [])
-        
-        logger.info(f"Proactive assistance: {message}")
-        logger.info(f"Options: {', '.join(options)}")
-        
-        return {
-            'success': True,
-            'user_response': 'assisted',
-            'effectiveness_score': 0.9
-        }
-    
+        situation_type = (
+            decision.situation.situation_type.value if decision.situation else ''
+        )
+        if options:
+            message = f"{message} Options: {', '.join(str(o) for o in options)}"
+        logger.info("Proactive assistance: %s", message)
+
+        try:
+            from agi_os.notification_bridge import notify_user, NotificationUrgency
+            await notify_user(
+                message,
+                urgency=NotificationUrgency.HIGH,
+                title="JARVIS Proactive",
+                context={"situation_type": situation_type, "source": "intervention_engine"},
+            )
+        except Exception as e:
+            logger.debug("[IDE] Notification failed: %s", e)
+
+        return {"status": "delivered", "message": message, "level": "proactive_assistance"}
+
     async def _execute_autonomous_action(self, decision: InterventionDecision) -> Dict[str, Any]:
-        """Execute autonomous action"""
-        
+        """Execute autonomous action — deliver via notification bridge."""
         action_details = decision.intervention_content.get('action_details', {})
         confirm_first = decision.intervention_content.get('confirm_before_action', True)
-        
-        logger.info(f"Autonomous action: {action_details}")
-        
+        message = decision.intervention_content.get(
+            'message', decision.reasoning or f'JARVIS autonomous action: {action_details}',
+        )
+        situation_type = (
+            decision.situation.situation_type.value if decision.situation else ''
+        )
+        logger.info("Autonomous action: %s", action_details)
+
         if confirm_first:
-            # Would show confirmation dialog in real implementation
             logger.info("Would confirm action with user first")
-        
-        return {
-            'success': True,
-            'user_response': 'autonomous',
-            'effectiveness_score': 0.95
-        }
+
+        try:
+            from agi_os.notification_bridge import notify_user, NotificationUrgency
+            await notify_user(
+                message,
+                urgency=NotificationUrgency.URGENT,
+                title="JARVIS Autonomous Action",
+                context={"situation_type": situation_type, "source": "intervention_engine"},
+            )
+        except Exception as e:
+            logger.debug("[IDE] Notification failed: %s", e)
+
+        return {"status": "delivered", "message": message, "level": "autonomous_action"}
     
     def get_performance_metrics(self) -> Dict[str, Any]:
         """Get performance metrics"""

@@ -448,35 +448,70 @@ class InterventionOrchestrator:
         return True
 
     async def _deliver(self, intervention: Intervention) -> None:
-        """Deliver an intervention."""
+        """Deliver an intervention via multi-channel bridge.
+
+        v252.0: Primary delivery through notification_bridge.notify_user(),
+        with tts_callback as fallback. Preserves all state management.
+        """
+        # ── State management (MUST preserve) ──
         intervention.delivered = True
         intervention.delivered_at = time.time()
         self._stats["delivered"] += 1
-
-        # Update user state
         self._user_state.last_intervention = time.time()
         self._user_state.recent_interventions += 1
-
-        # Move to pending
         self._pending[intervention.intervention_id] = intervention
+        # ── End state management ──
 
-        # Notify callbacks
+        # PRIMARY: Multi-channel notification bridge
+        try:
+            from agi_os.notification_bridge import notify_user, NotificationUrgency
+
+            urgency_map = {
+                InterventionPriority.LOW: NotificationUrgency.LOW,
+                InterventionPriority.NORMAL: NotificationUrgency.NORMAL,
+                InterventionPriority.HIGH: NotificationUrgency.HIGH,
+                InterventionPriority.URGENT: NotificationUrgency.URGENT,
+            }
+            urgency = urgency_map.get(intervention.priority, NotificationUrgency.NORMAL)
+
+            await notify_user(
+                intervention.message,
+                urgency=urgency,
+                title="JARVIS Intervention",
+                context={
+                    "source": "orchestrator",
+                    "intervention_type": (
+                        intervention.intervention_type.value
+                        if hasattr(intervention.intervention_type, 'value')
+                        else str(intervention.intervention_type)
+                    ),
+                },
+            )
+        except Exception as e:
+            self.logger.debug("[ORCHESTRATOR] Bridge delivery failed, falling back to tts_callback: %s", e)
+
+            # FALLBACK: Legacy tts_callback (supervisor's runner_tts)
+            if self.tts_callback:
+                try:
+                    await self.tts_callback(intervention.message)
+                except Exception as e2:
+                    self.logger.debug("[ORCHESTRATOR] tts_callback also failed: %s", e2)
+
+        # Delivery callbacks (with async support)
         for callback in self._delivery_callbacks:
             try:
-                callback(intervention)
+                result = callback(intervention)
+                if asyncio.iscoroutine(result):
+                    await result
+                elif hasattr(result, '__await__'):
+                    await result  # type: ignore[misc]
             except Exception as e:
-                self.logger.error(f"[Intervention] Delivery callback error: {e}")
-
-        # Deliver via TTS if available
-        if self.tts_callback:
-            try:
-                await self.tts_callback(intervention.message)
-            except Exception as e:
-                self.logger.error(f"[Intervention] TTS delivery error: {e}")
+                self.logger.debug("[ORCHESTRATOR] Delivery callback failed: %s", e)
 
         self.logger.info(
-            f"[Intervention] Delivered: {intervention.intervention_type.name} - "
-            f"{intervention.message[:50]}..."
+            "[Intervention] Delivered: %s - %s...",
+            intervention.intervention_type.name,
+            intervention.message[:50],
         )
 
     # =========================================================================
@@ -705,6 +740,9 @@ async def start_intervention_orchestrator(
 
     if _orchestrator_instance is not None:
         return _orchestrator_instance
+
+    if config and not config.enabled:
+        logging.getLogger(__name__).warning("[ORCHESTRATOR] config.enabled=False — processor loop disabled")
 
     orchestrator = InterventionOrchestrator(
         config=config,

@@ -392,6 +392,15 @@ class AGIOSCoordinator:
             if runtime and hasattr(runtime, "stop"):
                 await _run_stop_step("agent runtime", runtime.stop)
 
+            # v252.0: Stop notification bridge (prevents zombie notifications during teardown).
+            async def _stop_notification_bridge():
+                try:
+                    from agi_os.notification_bridge import shutdown_notifications
+                    shutdown_notifications()
+                except ImportError:
+                    pass
+            await _run_stop_step("notification bridge", _stop_notification_bridge)
+
             # Stop singleton-managed components in reverse order.
             await _run_stop_step("action orchestrator", stop_action_orchestrator)
             await _run_stop_step("event stream", stop_event_stream)

@@ -1008,11 +1008,14 @@ class UnifiedAgentRuntime:
                 await self._check_timeouts()
                 await self._cleanup_completed_runners()
 
-                # Self-directed goal generation (less frequent)
+                # Self-directed goal generation + sub-threshold interventions (less frequent)
                 now = time.time()
                 if now - last_goal_gen >= self._goal_gen_interval:
                     last_goal_gen = now
-                    await self._maybe_generate_proactive_goal()
+                    # v252.0: Gather context once, share between both paths
+                    context = await self._gather_heartbeat_context()
+                    await self._maybe_generate_proactive_goal(context)
+                    await self._maybe_execute_sub_threshold_intervention(context)
                     # v241.0: Clean up expired cooldown entries
                     self._cleanup_proactive_cooldowns()
 
@@ -2453,12 +2456,55 @@ class UnifiedAgentRuntime:
                 goal, "terminal",
                 f"Goal {goal.status.value}: {goal.description[:60]}",
             )
+            # v252.0: Announce proactive goal result to user
+            try:
+                await self._announce_goal_result(goal)
+            except (asyncio.CancelledError, Exception) as e:
+                logger.debug("[RUNTIME] Goal announcement failed (non-fatal): %s", e)
             return
 
         await self._emit_progress(
             goal, "checkpointed",
             f"Goal checkpointed as {goal.status.value}: {goal.description[:60]}",
         )
+
+    async def _announce_goal_result(self, goal: Goal):
+        """Announce proactive goal completion/failure to the user.
+
+        Only announces goals with source="proactive". User-submitted
+        goals are implicitly tracked by the user.
+        v252.0
+        """
+        if goal.source != "proactive":
+            return
+        if goal.status == GoalStatus.CANCELLED:
+            return
+
+        from agi_os.notification_bridge import notify_user, NotificationUrgency
+
+        desc = goal.description[:120]
+        situation_type = goal.metadata.get("situation_type", "") if goal.metadata else ""
+        ctx = {"situation_type": situation_type, "source": "goal_complete"}
+
+        if goal.status == GoalStatus.COMPLETED:
+            summary = ""
+            if goal.steps:
+                last_result = goal.steps[-1].result
+                if last_result:
+                    summary = f" {str(last_result)[:100]}"
+            await notify_user(
+                f"Sir, I've completed: {desc}.{summary}",
+                urgency=NotificationUrgency.NORMAL,
+                title="JARVIS Goal Complete",
+                context=ctx,
+            )
+        elif goal.status in (GoalStatus.FAILED, GoalStatus.ABANDONED):
+            await notify_user(
+                f"I wasn't able to complete: {desc}",
+                urgency=NotificationUrgency.LOW,
+                title="JARVIS Goal Update",
+                context=ctx,
+            )
 
     async def _record_goal_trajectory(self, goal: Goal):
         """Record completed goal as training trajectory for Reactor-Core."""
@@ -2549,11 +2595,12 @@ class UnifiedAgentRuntime:
     # Self-Directed Goal Generation
     # ─────────────────────────────────────────────────────────
 
-    async def _maybe_generate_proactive_goal(self):
+    async def _maybe_generate_proactive_goal(self, context=None):
         """Check if the intervention engine suggests a proactive goal.
 
         v241.0: Per-situation-type cooldown deduplication and active-goal
         dedup prevent heartbeat flooding.
+        v252.0: Accepts pre-gathered context to avoid double collection.
         """
         try:
             from backend.autonomy.intervention_decision_engine import (
@@ -2561,8 +2608,9 @@ class UnifiedAgentRuntime:
             )
             engine = get_intervention_engine()
             if engine and hasattr(engine, 'generate_goal'):
-                # v240.0: Feed context to the heartbeat
-                context = await self._gather_heartbeat_context()
+                # v252.0: Use pre-gathered context if provided
+                if context is None:
+                    context = await self._gather_heartbeat_context()
                 goal_spec = await engine.generate_goal(context=context)
                 if goal_spec:
                     # ── v241.0: Deduplication guard ──────────
@@ -2593,8 +2641,75 @@ class UnifiedAgentRuntime:
                         goal_spec["description"][:60],
                         situation_type or "unknown",
                     )
+                    # v252.0: Announce goal submission to user
+                    try:
+                        from agi_os.notification_bridge import notify_user, NotificationUrgency
+                        severity = goal_spec.get("context", {}).get("severity", 0.5) if isinstance(goal_spec.get("context"), dict) else 0.5
+                        urgency = (
+                            NotificationUrgency.URGENT if severity >= 0.9
+                            else NotificationUrgency.NORMAL if severity >= 0.8
+                            else NotificationUrgency.LOW
+                        )
+                        await notify_user(
+                            f"Sir, I noticed something and I'm looking into it: {goal_spec['description'][:120]}",
+                            urgency=urgency,
+                            title="JARVIS Proactive",
+                            context={"situation_type": situation_type, "source": "goal_submit"},
+                        )
+                    except Exception:
+                        pass  # Never block goal generation
         except Exception as e:
             logger.debug("[AgentRuntime] Proactive goal generation failed: %s", e)
+
+    # ─────────────────────────────────────────────────────────
+    # v252.0: Sub-threshold Intervention Execution
+    # ─────────────────────────────────────────────────────────
+
+    async def _maybe_execute_sub_threshold_intervention(self, context: Dict):
+        """Execute notification-worthy interventions (below goal threshold).
+
+        The decision engine's evaluate_intervention_need() returns a single
+        Optional[InterventionDecision]. We filter by intervention_level:
+        - GENTLE_SUGGESTION, DIRECT_RECOMMENDATION -> notify (handled here)
+        - PROACTIVE_ASSISTANCE, AUTONOMOUS_ACTION -> goal (handled by _maybe_generate_proactive_goal)
+        - SILENT_MONITORING -> skip (returned as None by engine)
+        """
+        try:
+            from autonomy.intervention_decision_engine import (
+                get_intervention_engine, InterventionLevel,
+            )
+            engine = get_intervention_engine()
+            if not engine or not hasattr(engine, 'evaluate_intervention_need'):
+                return
+
+            decision = await engine.evaluate_intervention_need(context)
+            if decision is None:
+                return
+
+            # Skip goal-worthy levels — let _maybe_generate_proactive_goal() handle those
+            if decision.intervention_level in (
+                InterventionLevel.PROACTIVE_ASSISTANCE,
+                InterventionLevel.AUTONOMOUS_ACTION,
+            ):
+                return
+
+            # Cooldown dedup (reuse proactive cooldown infrastructure)
+            situation_type = (
+                decision.situation.situation_type.value
+                if decision.situation else ""
+            )
+            if situation_type and self._is_proactive_goal_cooled_down(situation_type):
+                return
+
+            # Execute the notification-worthy intervention
+            await engine.execute_intervention(decision)
+
+            # Record cooldown
+            if situation_type:
+                self._proactive_cooldowns[situation_type] = time.time()
+
+        except Exception as e:
+            logger.debug("[AgentRuntime] Sub-threshold intervention failed: %s", e)
 
     # ─────────────────────────────────────────────────────────
     # v240.0: Heartbeat Context Gathering
