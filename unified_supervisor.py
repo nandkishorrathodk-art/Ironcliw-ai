@@ -61851,7 +61851,7 @@ class JarvisSystemKernel:
             self._current_startup_progress = 85
             issue_collector.set_current_phase("Phase 6.5: AGI OS")
             issue_collector.set_current_zone("Zone 6.5")
-            agi_os_timeout = float(os.environ.get("JARVIS_AGI_OS_TIMEOUT", "60.0"))
+            agi_os_timeout = float(os.environ.get("JARVIS_AGI_OS_TIMEOUT", "90.0"))
             if self._startup_watchdog:
                 self._startup_watchdog.update_phase("agi_os", 85, operational_timeout=agi_os_timeout)
 
@@ -64705,6 +64705,19 @@ class JarvisSystemKernel:
                     "JARVIS_AGI_OS_INIT_TIMEOUT",
                     agi_os_operational_timeout + 30.0,
                 )
+                # Keep AGI init bounded below the phase-hold hard cap to avoid
+                # "active but no progress" false-stall loops when env values are
+                # oversized relative to global startup guardrails.
+                agi_os_init_timeout_cap = _get_env_float(
+                    "JARVIS_AGI_OS_INIT_TIMEOUT_CAP",
+                    max(60.0, TRINITY_PHASE_HOLD_HARD_CAP - 30.0),
+                )
+                if agi_os_init_timeout > agi_os_init_timeout_cap:
+                    self.logger.warning(
+                        f"[AGI-OS] Clamping init timeout from {agi_os_init_timeout:.1f}s "
+                        f"to {agi_os_init_timeout_cap:.1f}s (phase-hold guardrail)"
+                    )
+                    agi_os_init_timeout = agi_os_init_timeout_cap
 
                 # Voice announcement
                 if self._narrator and self.config.voice_enabled:
@@ -64738,12 +64751,18 @@ class JarvisSystemKernel:
                     # triggers the DMS 60s stall detector.
                     # =====================================================================
                     await self._broadcast_progress(86, "agi_os", "Starting AGI OS Coordinator...")
+                    self._mark_startup_activity("agi_os:coordinator_start", stage="agi_os")
 
                     # Sub-progress counter: 86.1 → 86.6 across coordinator phases
                     _agi_sub = {"n": 0}
 
                     async def _agi_os_progress(step: str, detail: str) -> None:
                         _agi_sub["n"] += 1
+                        _step = (step or "unknown").strip().replace(" ", "_").lower()[:64]
+                        self._mark_startup_activity(
+                            f"agi_os_progress:{_step}",
+                            stage="agi_os",
+                        )
                         # Broadcast sub-progress to keep DMS watchdog alive
                         # Progress stays within 86-87 range (allocated for agi_os)
                         await self._broadcast_progress(
@@ -64798,6 +64817,7 @@ class JarvisSystemKernel:
                         voice_comm = await asyncio.wait_for(
                             get_voice_communicator(), timeout=_verify_timeout,
                         )
+                        self._mark_startup_activity("agi_os:verify_voice", stage="agi_os")
                         if voice_comm:
                             self._agi_os_status["voice_communicator"] = True
                             self.logger.success("[AGI-OS] ✓ RealTimeVoiceCommunicator ready")
@@ -64814,6 +64834,7 @@ class JarvisSystemKernel:
                         approval_mgr = await asyncio.wait_for(
                             get_approval_manager(), timeout=_verify_timeout,
                         )
+                        self._mark_startup_activity("agi_os:verify_approval", stage="agi_os")
                         if approval_mgr:
                             self._agi_os_status["approval_manager"] = True
                             self.logger.success("[AGI-OS] ✓ VoiceApprovalManager ready")

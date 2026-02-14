@@ -275,24 +275,75 @@ class AGIOSCoordinator:
                 except Exception as e:
                     logger.debug("Progress callback error (non-fatal): %s", e)
 
-        # Initialize components in order, reporting progress after each phase
-        await self._init_agi_os_components()
-        await _report("agi_os_components", "Core components initialized")
+        # v253.1: Top-level AGI startup phases now use explicit per-phase
+        # bounded timeouts + heartbeat reporting. This prevents a single
+        # hanging sub-phase from holding supervisor startup indefinitely.
+        phase_timeouts = {
+            "agi_os_components": _env_float(
+                "JARVIS_AGI_OS_PHASE_COMPONENTS_TIMEOUT", 45.0
+            ),
+            "intelligence_systems": _env_float(
+                "JARVIS_AGI_OS_PHASE_INTELLIGENCE_TIMEOUT", 60.0
+            ),
+            "neural_mesh": _env_float(
+                "JARVIS_AGI_OS_PHASE_NEURAL_MESH_TIMEOUT", 90.0
+            ),
+            "hybrid_orchestrator": _env_float(
+                "JARVIS_AGI_OS_PHASE_HYBRID_TIMEOUT", 20.0
+            ),
+            "screen_analyzer": _env_float(
+                "JARVIS_AGI_OS_PHASE_SCREEN_TIMEOUT", 45.0
+            ),
+            "components_connected": _env_float(
+                "JARVIS_AGI_OS_PHASE_CONNECT_TIMEOUT", 45.0
+            ),
+        }
 
-        await self._init_intelligence_systems()
-        await _report("intelligence_systems", "Intelligence systems initialized")
+        async def _run_phase(
+            step_key: str,
+            success_detail: str,
+            operation: Callable[[], Awaitable[Any]],
+        ) -> None:
+            timeout_seconds = max(1.0, float(phase_timeouts.get(step_key, 30.0)))
+            await _report(step_key, f"Starting {step_key}")
+            await self._run_timed_init_step(
+                step_name=f"phase_{step_key}",
+                operation=operation,
+                timeout_seconds=timeout_seconds,
+            )
+            await _report(step_key, success_detail)
 
-        await self._init_neural_mesh()
-        await _report("neural_mesh", "Neural Mesh initialized")
-
-        await self._init_hybrid_orchestrator()
-        await _report("hybrid_orchestrator", "Hybrid orchestrator initialized")
-
-        await self._init_screen_analyzer()
-        await _report("screen_analyzer", "Screen analyzer initialized")
-
-        await self._connect_components()
-        await _report("components_connected", "All components connected")
+        # Initialize components in deterministic order
+        await _run_phase(
+            "agi_os_components",
+            "Core components initialized",
+            self._init_agi_os_components,
+        )
+        await _run_phase(
+            "intelligence_systems",
+            "Intelligence systems initialized",
+            self._init_intelligence_systems,
+        )
+        await _run_phase(
+            "neural_mesh",
+            "Neural Mesh initialized",
+            self._init_neural_mesh,
+        )
+        await _run_phase(
+            "hybrid_orchestrator",
+            "Hybrid orchestrator initialized",
+            self._init_hybrid_orchestrator,
+        )
+        await _run_phase(
+            "screen_analyzer",
+            "Screen analyzer initialized",
+            self._init_screen_analyzer,
+        )
+        await _run_phase(
+            "components_connected",
+            "All components connected",
+            self._connect_components,
+        )
 
         # Start health monitoring
         self._health_task = asyncio.create_task(
@@ -521,17 +572,35 @@ class AGIOSCoordinator:
         while still enforcing deterministic upper bounds per subsystem.
         """
         heartbeat_seconds = max(1.0, _env_float("JARVIS_AGI_OS_STEP_HEARTBEAT", 10.0))
+        cancel_grace_seconds = max(
+            0.5, _env_float("JARVIS_AGI_OS_CANCEL_GRACE_TIMEOUT", 5.0)
+        )
         started = time.monotonic()
         task = asyncio.create_task(operation(), name=f"agi_os_init_{step_name}")
+
+        async def _cancel_with_grace() -> None:
+            if task.done():
+                return
+            task.cancel()
+            try:
+                await asyncio.wait_for(task, timeout=cancel_grace_seconds)
+            except asyncio.CancelledError:
+                return
+            except asyncio.TimeoutError:
+                logger.warning(
+                    "Init step %s did not cancel within %.1fs",
+                    step_name,
+                    cancel_grace_seconds,
+                )
+            except Exception:
+                return
 
         try:
             while True:
                 elapsed = time.monotonic() - started
                 remaining = timeout_seconds - elapsed
                 if remaining <= 0:
-                    task.cancel()
-                    with contextlib.suppress(asyncio.CancelledError, Exception):
-                        await task
+                    await _cancel_with_grace()
                     raise asyncio.TimeoutError(
                         f"{step_name} initialization timed out after {timeout_seconds:.1f}s"
                     )
@@ -549,11 +618,11 @@ class AGIOSCoordinator:
                     step_name,
                     f"{step_name} initializing ({elapsed + wait_slice:.0f}s elapsed)",
                 )
+        except asyncio.CancelledError:
+            await _cancel_with_grace()
+            raise
         except Exception:
-            if not task.done():
-                task.cancel()
-                with contextlib.suppress(asyncio.CancelledError, Exception):
-                    await task
+            await _cancel_with_grace()
             raise
 
     async def _init_agi_os_components(self) -> None:
