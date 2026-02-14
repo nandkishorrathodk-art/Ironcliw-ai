@@ -69050,8 +69050,11 @@ class JarvisSystemKernel:
                             f"[Frontend] Ready on port {frontend_port} "
                             f"(PID: {self._frontend_process.pid})"
                         )
-                        # Stop loading server now that frontend is ready
-                        await self._stop_loading_server()
+                        # v252.2: Do NOT stop loading server here — the caller
+                        # (_phase_frontend_transition) handles Chrome redirect FIRST,
+                        # then stops the loading server. Killing it here leaves the
+                        # browser pointing at a dead port (ERR_CONNECTION_REFUSED)
+                        # until the redirect happens.
                         return True
 
                 except Exception:
