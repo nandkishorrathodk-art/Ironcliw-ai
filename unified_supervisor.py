@@ -54052,6 +54052,7 @@ class StartupWatchdog:
         self._phase_start_time: float = 0
         self._last_progress: int = 0
         self._last_progress_time: float = 0
+        self._last_progress_value_change_time: float = 0
         self._running = False
         self._watchdog_task: Optional[asyncio.Task] = None
         
@@ -54392,6 +54393,7 @@ class StartupWatchdog:
             old_phase = self._current_phase
             self._current_phase = phase_key
             self._phase_start_time = now
+            self._last_progress_value_change_time = now
             # v232.3: Reset progress tracking for new phase to prevent false regression.
             # Without this, the first update in a new phase (e.g., 71%) gets compared
             # against the last entry of the OLD phase (e.g., 100%) in _progress_history,
@@ -54450,6 +54452,7 @@ class StartupWatchdog:
         # Track progress value changes separately
         if _sanitized_progress != self._last_progress:
             self._last_progress = _sanitized_progress
+            self._last_progress_value_change_time = now
 
         # v232.2: Track progress history for rate/advancement detection
         self._progress_history.append((now, _sanitized_progress))
@@ -54472,6 +54475,11 @@ class StartupWatchdog:
             "phase_elapsed": now - self._phase_start_time if self._current_phase else 0,
             "last_progress": self._last_progress,
             "progress_stale_seconds": now - self._last_progress_time if self._last_progress_time else 0,
+            "progress_value_stale_seconds": (
+                now - self._last_progress_value_change_time
+                if self._last_progress_value_change_time
+                else 0
+            ),
             "stall_threshold": self._stall_threshold,
             "recovery_mode": self._recovery_mode,
             "warnings_issued": sum(self._warnings_issued.values()),
@@ -58569,6 +58577,8 @@ class JarvisSystemKernel:
         self._current_startup_phase: str = "initializing"  # Current startup phase name
         self._current_startup_progress: int = 0  # Base progress for heartbeat calculations
         self._heartbeat_last_sent_progress: int = 0  # Track monotonic progress enforcement
+        self._startup_activity_markers: Dict[str, float] = {}
+        self._startup_activity_sources: Dict[str, str] = {}
 
         # Voice narrator for startup feedback (v2.0)
         self._narrator: Optional[AsyncVoiceNarrator] = None
@@ -58679,6 +58689,48 @@ class JarvisSystemKernel:
             "instance_name": self.config.invincible_node_instance_name,
             "port": self.config.invincible_node_port,
         }
+
+    def _mark_startup_activity(self, source: str, stage: Optional[str] = None) -> None:
+        """
+        Record explicit startup activity for a phase.
+
+        This is intentionally separate from progress heartbeats. It should be
+        called by long-running operations that are actively doing work even when
+        coarse startup percentage remains flat.
+        """
+        phase = (stage or getattr(self, "_current_startup_phase", "") or "").strip()
+        if not phase:
+            return
+        now = time.time()
+        self._startup_activity_markers[phase] = now
+        self._startup_activity_sources[phase] = source or f"startup_activity:{phase}"
+
+    def _get_recent_startup_activity(
+        self,
+        stage: str,
+        window_seconds: float,
+    ) -> Tuple[float, str]:
+        """
+        Return the latest startup activity marker for a stage if it's recent.
+
+        Returns:
+            (timestamp, source) when activity is within the window, otherwise
+            (0.0, "none")
+        """
+        if not stage:
+            return 0.0, "none"
+
+        marker_ts = float(self._startup_activity_markers.get(stage, 0.0) or 0.0)
+        if marker_ts <= 0:
+            return 0.0, "none"
+
+        if (time.time() - marker_ts) > max(0.0, window_seconds):
+            return 0.0, "none"
+
+        marker_source = self._startup_activity_sources.get(
+            stage, f"startup_activity:{stage}"
+        )
+        return marker_ts, marker_source
 
     def connect_neural_mesh(self, mesh: Any) -> None:
         """
@@ -59818,6 +59870,8 @@ class JarvisSystemKernel:
         # remaining budget dynamically instead of using fixed timeouts.
         self._startup_entry_time_ref = _startup_entry_time
         self._startup_max_timeout = startup_max_timeout
+        self._startup_activity_markers.clear()
+        self._startup_activity_sources.clear()
 
         # v227.0: Honest progress state getter — no micro-increment masking.
         #
@@ -59873,10 +59927,32 @@ class JarvisSystemKernel:
                 activity_source = "model_loading"
                 activity_timestamp = now
 
-            # v255.0: Watchdog heartbeat is the authoritative startup liveness signal.
-            # If progress updates are still flowing into DMS for the current phase,
-            # treat startup as active even when coarse phase % is flat.
-            watchdog_recent_activity = False
+            # Explicit activity markers from long-running startup operations.
+            # These are emitted by the subsystem doing real work (e.g., backend
+            # health probes) and are not tied to progress heartbeat transport.
+            stage_activity_recent = False
+            try:
+                stage_activity_window = max(
+                    15.0, progress_controller.stall_threshold * 1.25
+                )
+                marker_ts, marker_source = self._get_recent_startup_activity(
+                    stage=stage,
+                    window_seconds=stage_activity_window,
+                )
+                if marker_ts > 0:
+                    stage_activity_recent = True
+                    active_subsystem_reasons.append(f"startup_activity:{stage}")
+                    if marker_ts > activity_timestamp:
+                        activity_timestamp = marker_ts
+                        activity_source = marker_source
+            except Exception:
+                pass
+
+            # Watchdog heartbeat != forward progress.
+            # We only treat the watchdog as activity if progress VALUE changed
+            # recently; plain heartbeats are tracked separately for diagnostics.
+            watchdog_recent_progress = False
+            watchdog_recent_heartbeat = False
             try:
                 startup_watchdog = getattr(self, '_startup_watchdog', None)
                 if startup_watchdog:
@@ -59884,16 +59960,32 @@ class JarvisSystemKernel:
                     watchdog_running = bool(status.get("running"))
                     watchdog_phase = status.get("current_phase")
                     stale_seconds = status.get("progress_stale_seconds")
+                    value_stale_seconds = status.get("progress_value_stale_seconds")
                     if watchdog_running and watchdog_phase and stale_seconds is not None:
                         stale_seconds = max(0.0, float(stale_seconds))
-                        watchdog_activity_window = max(10.0, progress_controller.stall_threshold * 0.9)
-                        if stale_seconds <= watchdog_activity_window:
-                            watchdog_recent_activity = True
-                            active_subsystem_reasons.append(f"startup_watchdog:{watchdog_phase}")
-                            watchdog_activity_ts = now - stale_seconds
+                        watchdog_heartbeat_window = max(
+                            10.0, progress_controller.stall_threshold * 0.9
+                        )
+                        if stale_seconds <= watchdog_heartbeat_window:
+                            watchdog_recent_heartbeat = True
+
+                        if value_stale_seconds is None:
+                            value_stale_seconds = stale_seconds
+                        value_stale_seconds = max(0.0, float(value_stale_seconds))
+                        watchdog_progress_window = max(
+                            15.0, progress_controller.stall_threshold * 1.25
+                        )
+                        if value_stale_seconds <= watchdog_progress_window:
+                            watchdog_recent_progress = True
+                            active_subsystem_reasons.append(
+                                f"startup_watchdog_progress:{watchdog_phase}"
+                            )
+                            watchdog_activity_ts = now - value_stale_seconds
                             if watchdog_activity_ts > activity_timestamp:
                                 activity_timestamp = watchdog_activity_ts
-                                activity_source = f"startup_watchdog:{watchdog_phase}"
+                                activity_source = (
+                                    f"startup_watchdog_progress:{watchdog_phase}"
+                                )
             except Exception:
                 pass
 
@@ -59906,7 +59998,13 @@ class JarvisSystemKernel:
                 if kernel_state == KernelState.STARTING_TRINITY:
                     trinity_ready = getattr(self, '_trinity_ready', {})
                     trinity_incomplete = not all(trinity_ready.values())
-                    if trinity_incomplete and (watchdog_recent_activity or model_active):
+                    trinity_stage_heartbeat = (stage == "trinity") and watchdog_recent_heartbeat
+                    if trinity_incomplete and (
+                        watchdog_recent_progress
+                        or stage_activity_recent
+                        or model_active
+                        or trinity_stage_heartbeat
+                    ):
                         trinity_coordinating = True
                         active_subsystem_reasons.append("trinity_components_starting")
                         if activity_timestamp <= 0:
@@ -63373,6 +63471,7 @@ class JarvisSystemKernel:
         with self.logger.section_start(LogSection.BACKEND, "Zone 6.1 | Phase 3: Backend"):
             # v211.0: Mark backend as "running" while starting
             self._update_component_status("backend", "running", "Starting backend server")
+            self._mark_startup_activity("backend_phase_start", stage="backend")
 
             if self.config.in_process_backend:
                 success = await self._start_backend_in_process()
@@ -63457,6 +63556,7 @@ class JarvisSystemKernel:
 
             # Wait for server to be ready
             for _ in range(30):  # 30 second timeout
+                self._mark_startup_activity("backend_in_process_wait", stage="backend")
                 if self._backend_server.started:
                     self.logger.success(f"[Kernel] Backend running at http://{self.config.backend_host}:{self.config.backend_port}")
                     return True
@@ -63557,6 +63657,7 @@ class JarvisSystemKernel:
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
+            self._mark_startup_activity("backend_subprocess_spawned", stage="backend")
 
             # Register with process manager
             if self._process_manager:
@@ -63598,6 +63699,7 @@ class JarvisSystemKernel:
             # Simple socket check using async_check_port
             start_time = time.time()
             while (time.time() - start_time) < timeout:
+                self._mark_startup_activity("backend_socket_health_probe", stage="backend")
                 try:
                     if ASYNC_STARTUP_UTILS_AVAILABLE and async_check_port is not None:
                         is_listening = await async_check_port(
@@ -63642,6 +63744,7 @@ class JarvisSystemKernel:
         # Phase 1: Wait for basic HTTP health
         self.logger.debug("[Kernel] Phase 1: Waiting for HTTP health endpoint...")
         while (time.time() - start_time) < timeout:
+            self._mark_startup_activity("backend_http_health_probe", stage="backend")
             try:
                 async with aiohttp.ClientSession() as session:  # type: ignore[union-attr]
                     async with session.get(health_url, timeout=5.0) as response:
@@ -63665,6 +63768,7 @@ class JarvisSystemKernel:
         
         self.logger.debug("[Kernel] Phase 2: Verifying WebSocket readiness...")
         while (time.time() - ws_start_time) < ws_timeout:
+            self._mark_startup_activity("backend_ws_readiness_probe", stage="backend")
             try:
                 async with aiohttp.ClientSession() as session:  # type: ignore[union-attr]
                     async with session.get(readiness_url, timeout=5.0) as response:
