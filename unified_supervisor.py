@@ -3766,10 +3766,27 @@ class IntelligentKernelTakeover:
         try:
             import psutil
 
+            # v252.3: Build set of current session's child PIDs to exclude
+            # Phase 0 starts the loading server BEFORE Phase 1 takeover runs.
+            # Without this exclusion, the takeover kills the loading server
+            # because it matches PROCESS_PATTERNS ("loading_server") and
+            # TRINITY_PORTS (8080), but isn't the lock holder PID.
+            current_children_pids: set = set()
+            try:
+                current_proc = psutil.Process(current_pid)
+                for child in current_proc.children(recursive=True):
+                    current_children_pids.add(child.pid)
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                pass
+
             # Strategy 1: Pattern matching on command lines
             for proc in psutil.process_iter(['pid', 'name', 'cmdline', 'status']):
                 try:
                     if proc.pid == current_pid:
+                        continue
+
+                    # v252.3: Skip children of current supervisor
+                    if proc.pid in current_children_pids:
                         continue
 
                     cmdline = " ".join(proc.info.get('cmdline') or [])
@@ -3797,6 +3814,9 @@ class IntelligentKernelTakeover:
                 for port in ports:
                     pid = await self._find_process_on_port(port)
                     if pid and pid != current_pid:
+                        # v252.3: Skip children of current supervisor
+                        if pid in current_children_pids:
+                            continue
                         # Check if already in orphans
                         if not any(o.pid == pid for o in orphans):
                             holder = self.startup_lock.get_current_holder()

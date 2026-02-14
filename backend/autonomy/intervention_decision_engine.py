@@ -38,7 +38,9 @@ from vision.intelligence.temporal_context_engine import TemporalContextEngine
 from vision.intelligence.goal_inference_system import GoalInferenceEngine
 from autonomy.autonomous_decision_engine import AutonomousDecisionEngine, AutonomousAction, ActionPriority, ActionCategory
 from core.memory_controller import MemoryController
-from core.dynamic_config_manager import DynamicConfigManager
+# v252.2: Removed phantom import `from core.dynamic_config_manager import DynamicConfigManager`
+# — module never existed. DynamicConfigManager was assigned (line ~810) but never read.
+# Intervention config is handled internally via InterventionConfig + _env_float/_env_int.
 
 logger = logging.getLogger(__name__)
 
@@ -807,7 +809,6 @@ class InterventionDecisionEngine:
         # Integration with existing systems
         self.state_intelligence = get_state_intelligence()
         self.memory_controller = MemoryController()
-        self.config_manager = DynamicConfigManager()
         
         # Decision cache and history
         self.decision_cache = {}
