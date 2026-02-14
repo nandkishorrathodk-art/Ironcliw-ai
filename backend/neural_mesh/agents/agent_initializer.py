@@ -27,6 +27,7 @@ from .predictive_planning_agent import PredictivePlanningAgent  # v6.2: Proactiv
 from .visual_monitor_agent import VisualMonitorAgent  # v10.6: VMSI - The Watcher
 from .goal_inference_agent import GoalInferenceAgent  # v2.7: Intent Understanding (formerly dormant)
 from .activity_recognition_agent import ActivityRecognitionAgent  # v2.7: Activity Context (formerly dormant)
+from .web_search_agent import WebSearchAgent  # v1.0: Structured internet research
 
 # v237.1: ComputerUseAgent already inherits BaseNeuralMeshAgent, zero-arg constructor
 try:
@@ -53,6 +54,7 @@ PRODUCTION_AGENTS: List[Type[BaseNeuralMeshAgent]] = [
     ContextTrackerAgent,
     ErrorAnalyzerAgent,
     PatternRecognitionAgent,
+    WebSearchAgent,
 
     # Proactive Intelligence ("The Psychic Brain")
     PredictivePlanningAgent,  # v6.2: Expands intents into parallel tasks

@@ -6156,15 +6156,12 @@ class UnifiedCommandProcessor:
         command_lower = command_text.lower()
         
         # =========================================================================
-        # ULTRA-FAST PATH: Direct web search execution
+        # ULTRA-FAST PATH: Web search via BrowsingAgent → fallback to open
         # =========================================================================
-        # For "search for X" commands, bypass ALL machinery and execute directly.
-        # This eliminates:
-        # - MacOSController instantiation
-        # - DynamicAppController instantiation (which runs system_profiler!)
-        # - Screen lock detection
-        # - Pipeline processing
-        # Result: <100ms execution vs potential 10+ second hangs
+        # v6.4: BrowsingAgent returns structured results via WebSearchExtractor
+        # (DuckDuckGo/Brave/Bing/Google/SearXNG — API-based, <500ms).
+        # Falls back to `open` subprocess (opens Google in browser) if unavailable.
+        # This still bypasses MacOSController/DynamicAppController/screen lock.
         # =========================================================================
         import re
         search_patterns = [
@@ -6173,40 +6170,13 @@ class UnifiedCommandProcessor:
             r"^look\s+up\s+(.+)$",
             r"^find\s+(.+)$",
         ]
-        
+
         for pattern in search_patterns:
             match = re.match(pattern, command_lower.strip())
             if match:
                 query = match.group(1).strip()
                 if query:
-                    logger.info(f"[SYSTEM] ⚡ ULTRA-FAST PATH: Direct web search for '{query}'")
-                    try:
-                        from urllib.parse import quote
-                        url = f"https://www.google.com/search?q={quote(query)}"
-                        
-                        # Direct subprocess execution - no intermediate layers
-                        process = await asyncio.create_subprocess_exec(
-                            "open", url,
-                            stdout=asyncio.subprocess.DEVNULL,
-                            stderr=asyncio.subprocess.DEVNULL,
-                        )
-                        await asyncio.wait_for(process.wait(), timeout=5.0)
-                        
-                        if process.returncode == 0:
-                            logger.info(f"[SYSTEM] ✅ Direct web search successful for '{query}'")
-                            return {
-                                "success": True,
-                                "response": f"Searching for {query}, Sir",
-                                "command_type": "web_search",
-                                "fast_path": "ultra_direct",
-                            }
-                        else:
-                            logger.warning(f"[SYSTEM] Direct open returned code {process.returncode}")
-                    except asyncio.TimeoutError:
-                        logger.warning(f"[SYSTEM] Direct open timed out for '{query}'")
-                    except Exception as e:
-                        logger.warning(f"[SYSTEM] Direct search failed: {e}")
-                    # Fall through to normal processing if direct fails
+                    return await self._execute_web_search(query)
 
         # Check if this is actually a voice unlock command misclassified as system
         if ("voice" in command_lower and "unlock" in command_lower) or (
@@ -6373,14 +6343,20 @@ class UnifiedCommandProcessor:
 
             elif command_type == "web_action":
                 # Handle web navigation and searches
+                # v6.4: BrowsingAgent-first for search, Playwright for navigation
                 action = params.get("action")
                 browser = target
 
                 if action == "search" and "query" in params:
-                    success, message = await macos_controller.web_search(params["query"], browser=browser)
-                    return {"success": success, "response": message}
+                    # Use unified search (same as ultra-fast path)
+                    return await self._execute_web_search(params["query"])
 
                 elif action == "navigate" and "url" in params:
+                    # Try BrowsingAgent for navigation (gets page title + content)
+                    browsing_result = await self._try_browsing_navigate(params["url"])
+                    if browsing_result:
+                        return browsing_result
+                    # Fallback: AppleScript
                     success, message = await macos_controller.open_url(params["url"], browser)
                     return {"success": success, "response": message}
 
@@ -6419,6 +6395,133 @@ class UnifiedCommandProcessor:
                 "success": False,
                 "response": f"Failed to execute system command: {str(e)}",
             }
+
+    # =========================================================================
+    # v6.4: BrowsingAgent integration methods
+    # =========================================================================
+
+    async def _execute_web_search(self, query: str) -> Dict[str, Any]:
+        """Unified web search: BrowsingAgent API → open subprocess fallback.
+
+        Three-tier fallback:
+        1. WebSearchExtractor via BrowsingAgent (structured results, <500ms)
+        2. open subprocess (opens browser, no content returned)
+        3. Error response
+
+        v6.4: Replaces the old ultra-fast path that only opened Google.
+        """
+        logger.info(f"[SEARCH] Web search for '{query}'")
+
+        # Tier 1: Try BrowsingAgent (structured API search)
+        try:
+            from browsing.browsing_agent import get_browsing_agent
+
+            agent = await asyncio.wait_for(get_browsing_agent(), timeout=5.0)
+            if agent:
+                search_timeout = float(os.environ.get("BROWSE_SEARCH_TIMEOUT", "10.0"))
+                result = await asyncio.wait_for(
+                    agent.execute_task({
+                        "action": "search",
+                        "query": query,
+                        "max_results": 5,
+                    }),
+                    timeout=search_timeout,
+                )
+                if result.get("success") and result.get("results"):
+                    formatted = self._format_search_results(result["results"])
+                    logger.info(
+                        f"[SEARCH] BrowsingAgent returned {result.get('count', len(result['results']))} "
+                        f"results via {result.get('provider', 'unknown')}"
+                    )
+                    return {
+                        "success": True,
+                        "response": formatted,
+                        "structured_results": result["results"],
+                        "source": "browsing_agent",
+                        "provider": result.get("provider", "unknown"),
+                        "command_type": "web_search",
+                    }
+        except asyncio.TimeoutError:
+            logger.warning(f"[SEARCH] BrowsingAgent timed out for '{query}'")
+        except ImportError:
+            logger.debug("[SEARCH] BrowsingAgent not available (browsing module not found)")
+        except Exception as e:
+            logger.debug(f"[SEARCH] BrowsingAgent unavailable: {e}")
+
+        # Tier 2: Fallback — open in browser (original ultra-fast path behavior)
+        try:
+            from urllib.parse import quote
+
+            url = f"https://www.google.com/search?q={quote(query)}"
+            process = await asyncio.create_subprocess_exec(
+                "open", url,
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.DEVNULL,
+            )
+            await asyncio.wait_for(process.wait(), timeout=5.0)
+
+            if process.returncode == 0:
+                logger.info(f"[SEARCH] Opened browser for '{query}'")
+                return {
+                    "success": True,
+                    "response": f"Searching for {query}, Sir",
+                    "command_type": "web_search",
+                    "fast_path": "browser_open",
+                }
+            else:
+                logger.warning(f"[SEARCH] open returned code {process.returncode}")
+        except asyncio.TimeoutError:
+            logger.warning(f"[SEARCH] Browser open timed out for '{query}'")
+        except Exception as e:
+            logger.warning(f"[SEARCH] Browser open failed: {e}")
+
+        return {"success": False, "response": f"Unable to search for '{query}'"}
+
+    def _format_search_results(self, results: List[Dict[str, Any]]) -> str:
+        """Format structured search results for voice/text response."""
+        if not results:
+            return "No results found."
+
+        lines = ["Here are the top results:"]
+        for i, r in enumerate(results[:5], 1):
+            title = r.get("title", "Untitled")
+            snippet = r.get("snippet", "")
+            url = r.get("url", "")
+            lines.append(f"{i}. {title}")
+            if snippet:
+                lines.append(f"   {snippet[:120]}")
+            if url:
+                lines.append(f"   {url}")
+        return "\n".join(lines)
+
+    async def _try_browsing_navigate(self, url: str) -> Optional[Dict[str, Any]]:
+        """Try to navigate via BrowsingAgent (gets page title). Returns None for fallback."""
+        try:
+            from browsing.browsing_agent import get_browsing_agent
+
+            agent = await asyncio.wait_for(get_browsing_agent(), timeout=5.0)
+            if agent and agent._playwright_available:
+                result = await asyncio.wait_for(
+                    agent.execute_task({"action": "navigate", "url": url}),
+                    timeout=float(os.environ.get("BROWSE_NAV_TIMEOUT", "15.0")),
+                )
+                if result.get("success"):
+                    title = result.get("title", url)
+                    return {
+                        "success": True,
+                        "response": f"Navigated to {title}",
+                        "page_title": title,
+                        "url": result.get("url", url),
+                        "source": "browsing_agent",
+                    }
+        except asyncio.TimeoutError:
+            logger.debug(f"[BROWSE] Navigation timed out for {url}")
+        except ImportError:
+            pass
+        except Exception as e:
+            logger.debug(f"[BROWSE] Navigation failed for {url}: {e}")
+
+        return None  # Signal: use fallback
 
     async def _handle_multi_tab_search(
         self, command_text: str, browser: Optional[str]

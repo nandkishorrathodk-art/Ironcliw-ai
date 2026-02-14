@@ -63,6 +63,7 @@ except ImportError:
 from pydantic import BaseModel as PydanticBaseModel, Field as PydanticField, validator
 
 from backend.core.resilience.atomic_file_ops import get_atomic_file_ops
+from backend.intelligence.web_research_service import get_web_research_service
 
 logger = logging.getLogger(__name__)
 
@@ -908,6 +909,169 @@ def jarvis_tool(
 # ============================================================================
 # Built-in Tools
 # ============================================================================
+
+class WebResearchTool(JARVISTool):
+    """Tool for structured live web search and synthesis."""
+
+    SUPPORTED_OPERATIONS: Tuple[str, ...] = (
+        "search",
+        "read_page",
+        "research",
+        "research_markdown",
+        "health",
+        "metrics",
+        "shutdown",
+    )
+
+    OPERATION_ALIASES: Dict[str, str] = {
+        "web_search": "search",
+        "search_web": "search",
+        "read": "read_page",
+        "web_read": "read_page",
+        "web_research": "research",
+        "report": "research_markdown",
+        "research_report": "research_markdown",
+        "get_health": "health",
+        "get_metrics": "metrics",
+        "close": "shutdown",
+        "stop": "shutdown",
+    }
+
+    def __init__(self, permission_manager: Optional[Any] = None):
+        metadata = ToolMetadata(
+            name="web_research",
+            description=(
+                "Search the live web, read pages, and synthesize structured reports "
+                "with source attribution"
+            ),
+            category=ToolCategory.NETWORK,
+            risk_level=ToolRiskLevel.LOW,
+            requires_permission=False,
+            timeout_seconds=90.0,
+            capabilities=[
+                "web_search",
+                "internet_research",
+                "source_reading",
+                "report_synthesis",
+            ],
+            tags=["web", "research", "search", "current_information"],
+        )
+        super().__init__(metadata, permission_manager)
+        self._service = get_web_research_service()
+
+    async def _execute(
+        self,
+        operation: str = "research",
+        query: Optional[str] = None,
+        url: Optional[str] = None,
+        max_results: Optional[int] = None,
+        max_sources: Optional[int] = None,
+        max_chars: Optional[int] = None,
+        include_types: Optional[Any] = None,
+        **kwargs
+    ) -> Dict[str, Any]:
+        await self._service.initialize()
+
+        op = (operation or kwargs.get("action") or kwargs.get("op") or "").strip().lower()
+        op = self.OPERATION_ALIASES.get(op, op)
+        if op not in self.SUPPORTED_OPERATIONS:
+            raise ValueError(
+                f"Unsupported operation '{op}'. Supported operations: {', '.join(self.SUPPORTED_OPERATIONS)}"
+            )
+
+        normalized_types = self._parse_type_filter(include_types or kwargs.get("result_types"))
+
+        if op == "search":
+            query_text = (query or kwargs.get("topic") or "").strip()
+            results = await self._service.search(
+                query=query_text,
+                max_results=max_results,
+                include_types=normalized_types,
+                use_cache=self._to_bool(kwargs.get("use_cache"), default=True),
+            )
+            return {
+                "operation": op,
+                "query": query_text,
+                "count": len(results),
+                "results": results,
+            }
+
+        if op == "read_page":
+            target_url = (url or kwargs.get("target_url") or "").strip()
+            result = await self._service.read_page(
+                url=target_url,
+                max_chars=max_chars,
+            )
+            return {
+                "operation": op,
+                "result": result,
+            }
+
+        if op == "research":
+            query_text = (query or kwargs.get("topic") or "").strip()
+            report = await self._service.research(
+                query=query_text,
+                max_results=max_results,
+                max_sources=max_sources,
+                include_types=normalized_types,
+            )
+            return {
+                "operation": op,
+                "query": query_text,
+                "report": report,
+            }
+
+        if op == "research_markdown":
+            query_text = (query or kwargs.get("topic") or "").strip()
+            report = await self._service.research(
+                query=query_text,
+                max_results=max_results,
+                max_sources=max_sources,
+                include_types=normalized_types,
+            )
+            return {
+                "operation": op,
+                "query": query_text,
+                "markdown": report.get("markdown_report", ""),
+                "report": report,
+            }
+
+        if op == "health":
+            return {"operation": op, "health": self._service.get_health()}
+
+        if op == "metrics":
+            return {"operation": op, "metrics": self._service.get_metrics()}
+
+        if op == "shutdown":
+            await self._service.shutdown()
+            return {"operation": op, "status": "shutdown_complete"}
+
+        raise RuntimeError(f"Unhandled operation: {op}")
+
+    @staticmethod
+    def _parse_type_filter(raw: Optional[Any]) -> Optional[List[str]]:
+        if raw is None:
+            return None
+        if isinstance(raw, (list, tuple, set)):
+            values = [str(item).strip() for item in raw if str(item).strip()]
+            return values or None
+        values = [token.strip() for token in str(raw).split(",") if token.strip()]
+        return values or None
+
+    @staticmethod
+    def _to_bool(value: Any, default: bool) -> bool:
+        if value is None:
+            return default
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str):
+            lowered = value.strip().lower()
+            if lowered in {"1", "true", "yes", "y", "on"}:
+                return True
+            if lowered in {"0", "false", "no", "n", "off"}:
+                return False
+        return bool(value)
+
 
 @dataclass(frozen=True)
 class FileSystemAccessPolicy:
@@ -1762,6 +1926,7 @@ def register_builtin_tools(registry: Optional[ToolRegistry] = None) -> int:
         SystemInfoTool(),
         CalculatorTool(),
         DateTimeTool(),
+        WebResearchTool(),
         FileSystemAgentTool(),
     ]
 

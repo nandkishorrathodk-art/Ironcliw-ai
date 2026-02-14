@@ -29,6 +29,7 @@ from .context_tracker_agent import ContextTrackerAgent
 from .error_analyzer_agent import ErrorAnalyzerAgent
 from .pattern_recognition_agent import PatternRecognitionAgent
 from .visual_monitor_agent import VisualMonitorAgent
+from .web_search_agent import WebSearchAgent
 
 from .agent_initializer import (
     AgentInitializer,
@@ -47,6 +48,7 @@ __all__ = [
     "ErrorAnalyzerAgent",
     "PatternRecognitionAgent",
     "VisualMonitorAgent",
+    "WebSearchAgent",
     # Initializer
     "AgentInitializer",
     "PRODUCTION_AGENTS",

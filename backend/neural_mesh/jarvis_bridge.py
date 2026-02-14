@@ -99,6 +99,11 @@ from .adapters.vision_adapter import (
     create_vision_cognitive_adapter,
     create_yabai_adapter,
 )
+from .adapters.browsing_adapter import (
+    BrowsingSystemAdapter,
+    BrowsingComponentType,
+    create_browsing_adapter,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -109,6 +114,7 @@ class SystemCategory(str, Enum):
     AUTONOMY = "autonomy"
     VOICE = "voice"
     VISION = "vision"  # v10.2: Vision Cognitive Loop
+    BROWSING = "browsing"  # v6.4: Structured web browsing
     DISPLAY = "display"
     CORE = "core"
     TOOLS = "tools"
@@ -124,6 +130,7 @@ class AgentDiscoveryConfig:
             SystemCategory.AUTONOMY,
             SystemCategory.VOICE,
             SystemCategory.VISION,  # v10.2: Vision Cognitive Loop
+            SystemCategory.BROWSING,  # v6.4: Structured web browsing
         }
     )
 
@@ -361,6 +368,12 @@ class JARVISNeuralMeshBridge:
                 self._discover_vision_agents(),
             ])
 
+        # Browsing agents (v6.4)
+        if SystemCategory.BROWSING in self._config.enabled_categories:
+            discovery_tasks.extend([
+                self._discover_browsing_agents(),
+            ])
+
         # Run discovery in parallel
         if discovery_tasks:
             await asyncio.gather(*discovery_tasks, return_exceptions=True)
@@ -463,6 +476,25 @@ class JARVISNeuralMeshBridge:
                 continue
             tasks.append(
                 self._try_register_agent(name, factory, {"agent_name": name}, "vision")
+            )
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+
+    async def _discover_browsing_agents(self) -> None:
+        """Discover and register browsing agents (v6.4).
+
+        v6.4: Structured web browsing via API search + Playwright.
+        """
+        browsing_agents = [
+            ("browsing_agent", create_browsing_adapter),
+        ]
+
+        tasks = []
+        for name, factory in browsing_agents:
+            if name in self._config.skip_agents:
+                continue
+            tasks.append(
+                self._try_register_agent(name, factory, {"agent_name": name}, "browsing")
             )
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
