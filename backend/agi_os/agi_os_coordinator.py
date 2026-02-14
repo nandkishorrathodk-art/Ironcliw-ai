@@ -255,6 +255,14 @@ class AGIOSCoordinator:
         self._started_at = datetime.now()
         logger.info("Starting AGI OS...")
 
+        # v252.1: Reset notification bridge for warm restarts (stop → start
+        # without process exit leaves _shutting_down=True permanently).
+        try:
+            from agi_os.notification_bridge import reset_notifications
+            reset_notifications()
+        except ImportError:
+            pass
+
         # v250.1: Store callback as instance attr so sub-methods can report
         # intra-phase progress. Without this, _init_agi_os_components() runs
         # 90+ seconds with zero DMS heartbeats → stall → rollback.

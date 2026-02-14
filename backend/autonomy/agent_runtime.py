@@ -2459,7 +2459,10 @@ class UnifiedAgentRuntime:
             # v252.0: Announce proactive goal result to user
             try:
                 await self._announce_goal_result(goal)
-            except (asyncio.CancelledError, Exception) as e:
+            except asyncio.CancelledError:
+                # v252.1 Fix: Re-raise CancelledError to preserve task cancellation semantics
+                raise
+            except Exception as e:
                 logger.debug("[RUNTIME] Goal announcement failed (non-fatal): %s", e)
             return
 
@@ -2665,6 +2668,8 @@ class UnifiedAgentRuntime:
     # v252.0: Sub-threshold Intervention Execution
     # ─────────────────────────────────────────────────────────
 
+    _SUB_THRESHOLD_TIMEOUT: float = _env_float("JARVIS_SUB_THRESHOLD_TIMEOUT", 15.0)
+
     async def _maybe_execute_sub_threshold_intervention(self, context: Dict):
         """Execute notification-worthy interventions (below goal threshold).
 
@@ -2673,9 +2678,14 @@ class UnifiedAgentRuntime:
         - GENTLE_SUGGESTION, DIRECT_RECOMMENDATION -> notify (handled here)
         - PROACTIVE_ASSISTANCE, AUTONOMOUS_ACTION -> goal (handled by _maybe_generate_proactive_goal)
         - SILENT_MONITORING -> skip (returned as None by engine)
+
+        v252.1: Uses backend.autonomy import path (matching _maybe_generate_proactive_goal)
+        to avoid dual-module singleton split.  Caps timing_delay to 2s and wraps the
+        entire execution in a timeout to prevent heartbeat stalls.
         """
         try:
-            from autonomy.intervention_decision_engine import (
+            # v252.1 Fix: Use backend.autonomy path to match existing imports
+            from backend.autonomy.intervention_decision_engine import (
                 get_intervention_engine, InterventionLevel,
             )
             engine = get_intervention_engine()
@@ -2701,13 +2711,29 @@ class UnifiedAgentRuntime:
             if situation_type and self._is_proactive_goal_cooled_down(situation_type):
                 return
 
-            # Execute the notification-worthy intervention
-            await engine.execute_intervention(decision)
+            # v252.1 Fix: Cap timing_delay to prevent heartbeat stall.
+            # execute_intervention() does asyncio.sleep(timing_delay) before
+            # dispatching.  In the heartbeat path we can't afford long waits.
+            from datetime import timedelta
+            max_delay = _env_float("JARVIS_SUB_THRESHOLD_MAX_DELAY", 2.0)
+            if decision.timing_delay.total_seconds() > max_delay:
+                decision.timing_delay = timedelta(seconds=max_delay)
+
+            # Outer timeout: entire execution must complete within budget
+            await asyncio.wait_for(
+                engine.execute_intervention(decision),
+                timeout=self._SUB_THRESHOLD_TIMEOUT,
+            )
 
             # Record cooldown
             if situation_type:
                 self._proactive_cooldowns[situation_type] = time.time()
 
+        except asyncio.TimeoutError:
+            logger.debug(
+                "[AgentRuntime] Sub-threshold intervention timed out (%.0fs cap)",
+                self._SUB_THRESHOLD_TIMEOUT,
+            )
         except Exception as e:
             logger.debug("[AgentRuntime] Sub-threshold intervention failed: %s", e)
 

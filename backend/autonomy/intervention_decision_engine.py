@@ -1341,7 +1341,14 @@ class InterventionDecisionEngine:
         }
     
     async def _execute_gentle_suggestion(self, decision: InterventionDecision) -> Dict[str, Any]:
-        """Execute gentle suggestion — deliver via notification bridge."""
+        """Execute gentle suggestion — deliver via notification bridge.
+
+        v252.1 Fix: Return dict MUST contain 'success', 'user_response',
+        and 'effectiveness_score' keys — execute_intervention() passes them
+        to effectiveness_learner.record_intervention_outcome(). Missing keys
+        cause the learner to record all deliveries as failures (score=0.0),
+        which trains the model to stop intervening entirely.
+        """
         message = decision.intervention_content.get(
             'message', decision.reasoning or 'JARVIS has a suggestion.',
         )
@@ -1350,9 +1357,10 @@ class InterventionDecisionEngine:
         )
         logger.info("Gentle suggestion: %s", message)
 
+        delivered = False
         try:
             from agi_os.notification_bridge import notify_user, NotificationUrgency
-            await notify_user(
+            delivered = await notify_user(
                 message,
                 urgency=NotificationUrgency.LOW,
                 title="JARVIS Suggestion",
@@ -1361,10 +1369,17 @@ class InterventionDecisionEngine:
         except Exception as e:
             logger.debug("[IDE] Notification failed: %s", e)
 
-        return {"status": "delivered", "message": message, "level": "gentle_suggestion"}
+        return {
+            'success': delivered,
+            'user_response': 'suggested',
+            'effectiveness_score': 0.7 if delivered else 0.0,
+        }
 
     async def _execute_direct_recommendation(self, decision: InterventionDecision) -> Dict[str, Any]:
-        """Execute direct recommendation — deliver via notification bridge."""
+        """Execute direct recommendation — deliver via notification bridge.
+
+        v252.1 Fix: Preserve caller-expected return keys (see gentle_suggestion).
+        """
         message = decision.intervention_content.get(
             'message', decision.reasoning or 'JARVIS has a recommendation.',
         )
@@ -1373,9 +1388,10 @@ class InterventionDecisionEngine:
         )
         logger.info("Direct recommendation: %s", message)
 
+        delivered = False
         try:
             from agi_os.notification_bridge import notify_user, NotificationUrgency
-            await notify_user(
+            delivered = await notify_user(
                 message,
                 urgency=NotificationUrgency.NORMAL,
                 title="JARVIS Recommendation",
@@ -1384,10 +1400,17 @@ class InterventionDecisionEngine:
         except Exception as e:
             logger.debug("[IDE] Notification failed: %s", e)
 
-        return {"status": "delivered", "message": message, "level": "direct_recommendation"}
+        return {
+            'success': delivered,
+            'user_response': 'recommended',
+            'effectiveness_score': 0.8 if delivered else 0.0,
+        }
 
     async def _execute_proactive_assistance(self, decision: InterventionDecision) -> Dict[str, Any]:
-        """Execute proactive assistance — deliver via notification bridge."""
+        """Execute proactive assistance — deliver via notification bridge.
+
+        v252.1 Fix: Preserve caller-expected return keys (see gentle_suggestion).
+        """
         message = decision.intervention_content.get(
             'message', decision.reasoning or 'JARVIS is taking proactive action.',
         )
@@ -1399,9 +1422,10 @@ class InterventionDecisionEngine:
             message = f"{message} Options: {', '.join(str(o) for o in options)}"
         logger.info("Proactive assistance: %s", message)
 
+        delivered = False
         try:
             from agi_os.notification_bridge import notify_user, NotificationUrgency
-            await notify_user(
+            delivered = await notify_user(
                 message,
                 urgency=NotificationUrgency.HIGH,
                 title="JARVIS Proactive",
@@ -1410,10 +1434,17 @@ class InterventionDecisionEngine:
         except Exception as e:
             logger.debug("[IDE] Notification failed: %s", e)
 
-        return {"status": "delivered", "message": message, "level": "proactive_assistance"}
+        return {
+            'success': delivered,
+            'user_response': 'assisted',
+            'effectiveness_score': 0.9 if delivered else 0.0,
+        }
 
     async def _execute_autonomous_action(self, decision: InterventionDecision) -> Dict[str, Any]:
-        """Execute autonomous action — deliver via notification bridge."""
+        """Execute autonomous action — deliver via notification bridge.
+
+        v252.1 Fix: Preserve caller-expected return keys (see gentle_suggestion).
+        """
         action_details = decision.intervention_content.get('action_details', {})
         confirm_first = decision.intervention_content.get('confirm_before_action', True)
         message = decision.intervention_content.get(
@@ -1427,9 +1458,10 @@ class InterventionDecisionEngine:
         if confirm_first:
             logger.info("Would confirm action with user first")
 
+        delivered = False
         try:
             from agi_os.notification_bridge import notify_user, NotificationUrgency
-            await notify_user(
+            delivered = await notify_user(
                 message,
                 urgency=NotificationUrgency.URGENT,
                 title="JARVIS Autonomous Action",
@@ -1438,7 +1470,11 @@ class InterventionDecisionEngine:
         except Exception as e:
             logger.debug("[IDE] Notification failed: %s", e)
 
-        return {"status": "delivered", "message": message, "level": "autonomous_action"}
+        return {
+            'success': delivered,
+            'user_response': 'autonomous',
+            'effectiveness_score': 0.95 if delivered else 0.0,
+        }
     
     def get_performance_metrics(self) -> Dict[str, Any]:
         """Get performance metrics"""
