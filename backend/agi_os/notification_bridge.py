@@ -376,7 +376,13 @@ def shutdown_notifications() -> None:
 
 
 def reset_notifications() -> None:
-    """Re-enable bridge after shutdown (for warm restarts without process exit)."""
+    """Re-enable bridge after shutdown (for warm restarts without process exit).
+
+    v253.1: Also clear history and dedup state to prevent stale data
+    from previous session bleeding into the new one.
+    """
     global _shutting_down
     _shutting_down = False
+    _notification_history.clear()
+    _recent_notifications.clear()
     logger.info("[NotifyBridge] Notification bridge reset (warm restart)")

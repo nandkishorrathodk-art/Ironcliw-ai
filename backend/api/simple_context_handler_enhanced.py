@@ -50,12 +50,12 @@ async def _get_owner_name() -> str:
     if _owner_name_cache is not None:
         return _owner_name_cache
 
-    # Try database first
+    # Try database first (v253.1: timeout to prevent infinite stall)
     try:
         from intelligence.learning_database import get_learning_database
 
-        db = await get_learning_database()
-        profiles = await db.get_all_speaker_profiles()
+        db = await asyncio.wait_for(get_learning_database(), timeout=5.0)
+        profiles = await asyncio.wait_for(db.get_all_speaker_profiles(), timeout=5.0)
         for profile in profiles:
             if profile.get("is_primary_user"):
                 full_name = profile.get("speaker_name", "")
@@ -257,7 +257,7 @@ class EnhancedSimpleContextHandler:
                     # UNLOCK (serialized via module-level lock — Gap #2 fix)
                     # ─────────────────────────────────────────────────────────
                     logger.info("[ENHANCED CONTEXT] Attempting to unlock screen...")
-                    unlock_success = await self._unlock_screen()
+                    unlock_success = await self._unlock_screen(speaker_name=speaker_name)
 
                     if unlock_success:
                         self._add_step(
@@ -482,7 +482,7 @@ class EnhancedSimpleContextHandler:
             logger.error(f"[ENHANCED CONTEXT] Screen lock check failed: {e}")
             return False
 
-    async def _unlock_screen(self) -> bool:
+    async def _unlock_screen(self, speaker_name: Optional[str] = None) -> bool:
         """Unlock the screen using MacOSKeychainUnlock singleton.
 
         Serialized via module-level _unlock_lock to prevent concurrent password
@@ -504,7 +504,7 @@ class EnhancedSimpleContextHandler:
 
                 unlock_service = await get_keychain_unlock_service()
                 result = await asyncio.wait_for(
-                    unlock_service.unlock_screen(verified_speaker="Derek"),
+                    unlock_service.unlock_screen(verified_speaker=speaker_name or "Derek"),
                     timeout=15.0,
                 )
 

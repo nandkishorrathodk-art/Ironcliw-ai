@@ -474,6 +474,12 @@ class MacOSKeychainUnlock:
                     logger.debug(f"Keychain query returned code {process.returncode}")
 
             except asyncio.TimeoutError:
+                # v253.1: Kill zombie subprocess on timeout
+                try:
+                    process.kill()
+                    await process.wait()
+                except Exception:
+                    pass
                 logger.warning(f"Keychain query timeout for {service_name} (attempt {attempt + 1})")
                 if attempt < KeychainServiceConfig.MAX_RETRIES:
                     await asyncio.sleep(
@@ -513,7 +519,16 @@ class MacOSKeychainUnlock:
             process = await asyncio.create_subprocess_exec(
                 *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
             )
-            stdout, stderr = await process.communicate()
+            # v253.1: Timeout to prevent infinite stall (was missing unlike query path)
+            try:
+                stdout, stderr = await asyncio.wait_for(
+                    process.communicate(), timeout=10.0,
+                )
+            except asyncio.TimeoutError:
+                process.kill()
+                await process.wait()
+                logger.error("Keychain store timed out after 10s")
+                return False
 
             if process.returncode == 0:
                 logger.info(f"Password stored in Keychain as '{self.keychain_item_name}'")

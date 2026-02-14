@@ -2627,8 +2627,6 @@ class UnifiedAgentRuntime:
                             return
                         if self._has_active_proactive_goal(situation_type):
                             return
-                        # Record BEFORE submit so failures don't cause immediate retry
-                        self._proactive_cooldowns[situation_type] = time.time()
                     # ── End dedup guard ──────────────────────
 
                     await self.submit_goal(
@@ -2639,6 +2637,13 @@ class UnifiedAgentRuntime:
                         source="proactive",
                         context=goal_spec.get("context"),
                     )
+
+                    # v253.1: Record cooldown AFTER successful submit.
+                    # Previously recorded before submit — failed submissions
+                    # would block retries for the entire cooldown period.
+                    if situation_type:
+                        self._proactive_cooldowns[situation_type] = time.time()
+
                     logger.info(
                         "[AgentRuntime] Proactive goal generated: %s (type=%s)",
                         goal_spec["description"][:60],
