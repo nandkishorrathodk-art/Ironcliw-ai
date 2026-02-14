@@ -145,9 +145,9 @@ class AdaptiveModelLifecycleManager:
 
         # Start background tasks
         self.background_tasks = [
-            asyncio.create_task(self._background_optimizer()),
-            asyncio.create_task(self._ram_monitor()),
-            asyncio.create_task(self._load_queue_processor()),
+            asyncio.create_task(self._background_optimizer(), name="model_lifecycle_optimizer"),
+            asyncio.create_task(self._ram_monitor(), name="model_lifecycle_ram_monitor"),
+            asyncio.create_task(self._load_queue_processor(), name="model_lifecycle_load_queue"),
         ]
 
         logger.info("✅ Model Lifecycle Manager background tasks started")
@@ -162,7 +162,11 @@ class AdaptiveModelLifecycleManager:
                 task.cancel()
 
         if self.background_tasks:
-            await asyncio.gather(*self.background_tasks, return_exceptions=True)
+            done, pending = await asyncio.wait(self.background_tasks, timeout=8.0)
+            if pending:
+                for task in pending:
+                    task.cancel()
+                await asyncio.gather(*pending, return_exceptions=True)
             self.background_tasks.clear()
 
         # Resolve any queued load futures so callers don't hang on shutdown.
@@ -240,15 +244,15 @@ class AdaptiveModelLifecycleManager:
         """Process model load requests from queue"""
         while self.is_running:
             try:
-                # Get next load request (with timeout to check is_running)
-                try:
-                    request = await asyncio.wait_for(self.load_queue.get(), timeout=1.0)
-                except asyncio.TimeoutError:
-                    continue
+                # Get next load request; shutdown is driven by task cancellation.
+                # Avoid wait_for(queue.get()) to prevent leaked anonymous Queue.get tasks.
+                request = await self.load_queue.get()
 
                 # Process load request
                 await self._process_load_request(request)
 
+            except asyncio.CancelledError:
+                break
             except Exception as e:
                 logger.error(f"Error in load queue processor: {e}")
                 await asyncio.sleep(1)
@@ -550,6 +554,8 @@ class AdaptiveModelLifecycleManager:
                             )
                             await self._archive_model(model_name)
 
+            except asyncio.CancelledError:
+                break
             except Exception as e:
                 logger.error(f"Error in background optimizer: {e}")
                 await asyncio.sleep(60)
@@ -581,6 +587,8 @@ class AdaptiveModelLifecycleManager:
                         ram_to_free = ram_status.total_gb * 0.2
                         await self._free_ram(backend, ram_to_free)
 
+            except asyncio.CancelledError:
+                break
             except Exception as e:
                 logger.error(f"Error in RAM monitor: {e}")
                 await asyncio.sleep(60)
@@ -665,3 +673,11 @@ def get_lifecycle_manager() -> AdaptiveModelLifecycleManager:
     if _lifecycle_manager is None:
         _lifecycle_manager = AdaptiveModelLifecycleManager()
     return _lifecycle_manager
+
+
+async def shutdown_lifecycle_manager() -> None:
+    """Stop and clear global lifecycle manager singleton."""
+    global _lifecycle_manager
+    if _lifecycle_manager is not None:
+        await _lifecycle_manager.stop()
+        _lifecycle_manager = None

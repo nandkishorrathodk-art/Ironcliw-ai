@@ -202,7 +202,12 @@ class AgentCommunicationBus:
 
     async def stop(self) -> None:
         """Stop the message bus gracefully."""
-        if not self._running:
+        if (
+            not self._running
+            and not self._processor_tasks
+            and self._cleanup_task is None
+            and self._deadletter_task is None
+        ):
             return
 
         self._running = False
@@ -220,7 +225,12 @@ class AgentCommunicationBus:
         all_tasks = self._processor_tasks + [
             t for t in (self._cleanup_task, self._deadletter_task) if t
         ]
-        await asyncio.gather(*all_tasks, return_exceptions=True)
+        if all_tasks:
+            done, pending = await asyncio.wait(all_tasks, timeout=5.0)
+            if pending:
+                for task in pending:
+                    task.cancel()
+                await asyncio.gather(*pending, return_exceptions=True)
 
         self._processor_tasks.clear()
         self._cleanup_task = None
@@ -535,19 +545,12 @@ class AgentCommunicationBus:
         queue = self._queues[priority]
         target_latency = self.config.latency_targets_ms.get(priority.value, 10.0)
 
-        # v2.7: Priority-based queue timeouts (match latency targets)
-        priority_timeouts = {
-            MessagePriority.CRITICAL: 0.001,  # 1ms
-            MessagePriority.HIGH: 0.005,      # 5ms
-            MessagePriority.NORMAL: 0.01,     # 10ms
-            MessagePriority.LOW: 0.05,        # 50ms
-        }
-        queue_timeout = priority_timeouts.get(priority, 0.01)
-
         while self._running:
             try:
-                # Get message from queue with priority-based timeout
-                message = await asyncio.wait_for(queue.get(), timeout=queue_timeout)
+                # Get message from queue; shutdown is driven by task cancellation.
+                # Avoid asyncio.wait_for(queue.get()) because it creates ephemeral
+                # internal Queue.get tasks that can survive late shutdown windows.
+                message = await queue.get()
 
                 start_time = time.perf_counter()
 
@@ -583,8 +586,6 @@ class AgentCommunicationBus:
                         target_latency,
                     )
 
-            except asyncio.TimeoutError:
-                continue
             except asyncio.CancelledError:
                 break
             except Exception as e:

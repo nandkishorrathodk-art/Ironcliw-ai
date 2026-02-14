@@ -193,20 +193,26 @@ class MetricsCollector:
 
         self._running = True
         self._aggregation_task = asyncio.create_task(
-            self._aggregation_loop()
+            self._aggregation_loop(),
+            name="metrics_aggregation",
         )
         logger.info("MetricsCollector started")
 
     async def stop(self) -> None:
         """Stop the metrics collector."""
+        if not self._running and self._aggregation_task is None:
+            return
+
         self._running = False
 
         if self._aggregation_task:
             self._aggregation_task.cancel()
             try:
-                await self._aggregation_task
-            except asyncio.CancelledError:
+                await asyncio.wait_for(self._aggregation_task, timeout=5.0)
+            except (asyncio.CancelledError, asyncio.TimeoutError):
                 pass
+            finally:
+                self._aggregation_task = None
 
         logger.info("MetricsCollector stopped")
 

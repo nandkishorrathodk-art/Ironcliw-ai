@@ -305,9 +305,11 @@ class SharedKnowledgeGraph:
         if self._cleanup_task:
             self._cleanup_task.cancel()
             try:
-                await self._cleanup_task
-            except asyncio.CancelledError:
+                await asyncio.wait_for(self._cleanup_task, timeout=5.0)
+            except (asyncio.CancelledError, asyncio.TimeoutError):
                 pass
+            finally:
+                self._cleanup_task = None
 
         # Persist graph
         if self._graph is not None and self.config.graph_persist_path:

@@ -249,7 +249,7 @@ class AgentRegistry:
 
     async def stop(self) -> None:
         """Stop the registry gracefully."""
-        if not self._running:
+        if not self._running and self._health_check_task is None:
             return
 
         self._running = False
@@ -257,12 +257,19 @@ class AgentRegistry:
         if self._health_check_task:
             self._health_check_task.cancel()
             try:
-                await self._health_check_task
-            except asyncio.CancelledError:
+                await asyncio.wait_for(self._health_check_task, timeout=5.0)
+            except (asyncio.CancelledError, asyncio.TimeoutError):
                 pass
+            finally:
+                self._health_check_task = None
 
         # Persist registry
-        await self._save_registry()
+        try:
+            await asyncio.wait_for(self._save_registry(), timeout=5.0)
+        except asyncio.TimeoutError:
+            logger.warning("Registry persistence timed out during stop")
+        except Exception as e:
+            logger.warning("Registry persistence failed during stop: %s", e)
 
         logger.info("AgentRegistry stopped")
 

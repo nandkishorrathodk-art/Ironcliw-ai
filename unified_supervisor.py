@@ -58600,6 +58600,7 @@ class JarvisSystemKernel:
 
         # v186.0: Dead Man's Switch for startup phase monitoring
         self._startup_watchdog: Optional[StartupWatchdog] = None
+        self._emergency_shutdown_task: Optional[asyncio.Task[None]] = None
 
         # v197.1: Browser crash monitor for system-wide crash tracking
         self._browser_crash_monitor: Optional[BrowserCrashMonitor] = None
@@ -59461,6 +59462,18 @@ class JarvisSystemKernel:
         except Exception as e:
             self.logger.debug(f"[Kernel] Hybrid orchestrator cleanup error: {e}")
 
+        # Stop global model lifecycle manager singleton in case it was started
+        # outside the HybridOrchestrator singleton path.
+        try:
+            try:
+                from intelligence.model_lifecycle_manager import shutdown_lifecycle_manager
+            except ImportError:
+                from backend.intelligence.model_lifecycle_manager import shutdown_lifecycle_manager
+            await asyncio.wait_for(shutdown_lifecycle_manager(), timeout=10.0)
+            self.logger.debug("[Kernel] Model lifecycle manager stopped")
+        except Exception as e:
+            self.logger.debug(f"[Kernel] Model lifecycle manager cleanup error: {e}")
+
         # Stop backend deterministically (in-process first, then subprocess fallback)
         if self._backend_server or self._backend_server_task:
             await self._stop_backend_in_process(
@@ -59644,10 +59657,24 @@ class JarvisSystemKernel:
         Provides idempotent access to emergency shutdown for external callers
         (e.g., finally blocks, signal handlers, CLI commands).
         """
-        if self._state == KernelState.SHUTTING_DOWN:
-            self.logger.debug("[Kernel] Emergency shutdown already in progress")
+        existing = self._emergency_shutdown_task
+        if existing and not existing.done():
+            self.logger.debug("[Kernel] Emergency shutdown already in progress; awaiting existing task")
+            await asyncio.shield(existing)
             return
-        await self._emergency_shutdown(reason=reason, expected=expected)
+
+        if self._state == KernelState.STOPPED:
+            return
+
+        self._emergency_shutdown_task = create_safe_task(
+            self._emergency_shutdown(reason=reason, expected=expected),
+            name="kernel-emergency-shutdown",
+        )
+        try:
+            await asyncio.shield(self._emergency_shutdown_task)
+        finally:
+            if self._emergency_shutdown_task and self._emergency_shutdown_task.done():
+                self._emergency_shutdown_task = None
 
     def _configure_system_mode(
         self,
@@ -70870,6 +70897,18 @@ class JarvisSystemKernel:
             except Exception as hy_err:
                 self.logger.debug(f"[Kernel] Hybrid orchestrator cleanup error: {hy_err}")
 
+            # Stop global model lifecycle manager singleton if it was started
+            # independently of the HybridOrchestrator singleton.
+            try:
+                try:
+                    from intelligence.model_lifecycle_manager import shutdown_lifecycle_manager
+                except ImportError:
+                    from backend.intelligence.model_lifecycle_manager import shutdown_lifecycle_manager
+                await asyncio.wait_for(shutdown_lifecycle_manager(), timeout=10.0)
+                self.logger.debug("[Kernel] Model lifecycle manager stopped")
+            except Exception as ml_err:
+                self.logger.debug(f"[Kernel] Model lifecycle manager cleanup error: {ml_err}")
+
             # Cancel background tasks (backend serve task is managed separately)
             background_tasks = [
                 task for task in self._background_tasks if task is not self._backend_server_task
@@ -77305,19 +77344,45 @@ async def async_main(args: argparse.Namespace) -> int:
                     expected_finally_shutdown = (
                         kernel._state == KernelState.SHUTTING_DOWN and exit_code in (0, 130)
                     )
+                    finally_shutdown_timeout = max(
+                        5.0,
+                        float(os.environ.get("JARVIS_FINALLY_SHUTDOWN_TIMEOUT", "120.0")),
+                    )
                     await asyncio.wait_for(
-                        kernel.emergency_shutdown(
-                            reason=f"finally_guard:{kernel._state.value}",
-                            expected=expected_finally_shutdown,
+                        asyncio.shield(
+                            kernel.emergency_shutdown(
+                                reason=f"finally_guard:{kernel._state.value}",
+                                expected=expected_finally_shutdown,
+                            )
                         ),
-                        timeout=5.0,
+                        timeout=finally_shutdown_timeout,
                     )
                 except asyncio.CancelledError:
                     # Late-loop cancellation can happen during interpreter teardown.
                     # Continue best-effort cleanup without crashing the process.
                     exit_code = 130
                     kernel.logger.warning("[Kernel] Emergency shutdown cancelled during final cleanup")
-                except (asyncio.TimeoutError, Exception) as cleanup_err:
+                except asyncio.TimeoutError:
+                    kernel.logger.error(
+                        "[Kernel] Emergency shutdown exceeded finally timeout; "
+                        "running forced pending-task drain"
+                    )
+                    try:
+                        current_task = asyncio.current_task()
+                        pending = [
+                            task for task in asyncio.all_tasks()
+                            if task is not current_task and not task.done()
+                        ]
+                        for task in pending:
+                            task.cancel()
+                        if pending:
+                            await asyncio.wait_for(
+                                asyncio.gather(*pending, return_exceptions=True),
+                                timeout=5.0,
+                            )
+                    except Exception as drain_err:
+                        kernel.logger.debug(f"[Kernel] Forced task drain error: {drain_err}")
+                except Exception as cleanup_err:
                     kernel.logger.error(f"[Kernel] Emergency shutdown error: {cleanup_err}")
 
             # Step 2: Release startup lock if still held

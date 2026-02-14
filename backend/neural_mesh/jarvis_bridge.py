@@ -317,7 +317,8 @@ class JARVISNeuralMeshBridge:
 
     async def stop(self) -> None:
         """Stop the bridge and all agents gracefully."""
-        if not self._running:
+        has_pending_startup = any(not task.done() for task in self._startup_tasks)
+        if not self._running and not has_pending_startup and self._coordinator is None:
             return
 
         logger.info("Stopping JARVIS Neural Mesh Bridge...")
@@ -327,6 +328,9 @@ class JARVISNeuralMeshBridge:
             for task in self._startup_tasks:
                 if not task.done():
                     task.cancel()
+            if self._startup_tasks:
+                await asyncio.gather(*self._startup_tasks, return_exceptions=True)
+            self._startup_tasks.clear()
 
             # Stop coordinator (will stop all agents)
             if self._coordinator:

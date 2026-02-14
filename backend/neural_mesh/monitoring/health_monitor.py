@@ -254,6 +254,9 @@ class HealthMonitor:
 
     async def stop(self) -> None:
         """Stop the health monitor."""
+        if not self._running and not self._check_tasks and self._cleanup_task is None:
+            return
+
         self._running = False
 
         # Cancel all check tasks
@@ -261,7 +264,14 @@ class HealthMonitor:
             task.cancel()
 
         if self._check_tasks:
-            await asyncio.gather(*self._check_tasks.values(), return_exceptions=True)
+            done, pending = await asyncio.wait(
+                list(self._check_tasks.values()),
+                timeout=5.0,
+            )
+            if pending:
+                for task in pending:
+                    task.cancel()
+                await asyncio.gather(*pending, return_exceptions=True)
 
         self._check_tasks.clear()
 
@@ -269,9 +279,11 @@ class HealthMonitor:
         if self._cleanup_task:
             self._cleanup_task.cancel()
             try:
-                await self._cleanup_task
-            except asyncio.CancelledError:
+                await asyncio.wait_for(self._cleanup_task, timeout=5.0)
+            except (asyncio.CancelledError, asyncio.TimeoutError):
                 pass
+            finally:
+                self._cleanup_task = None
 
         logger.info("HealthMonitor stopped")
 
