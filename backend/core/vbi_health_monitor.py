@@ -89,7 +89,10 @@ def _env_float(key: str, default: float) -> float:
 # v2.1.0: Startup grace period for component health assessment.
 # During this window, initialization failures (network not ready, model loading, etc.)
 # are capped at DEGRADED instead of escalating to UNHEALTHY/CRITICAL.
-VBI_COMPONENT_GRACE_PERIOD = _env_float("VBI_COMPONENT_GRACE_PERIOD", 60.0)
+# v253.4: Increased from 60s to 180s. At 60s, grace expired at the exact same
+# moment as ECAPA's 60s timeout — causing immediate healthy → unhealthy.
+# 180s covers: ECAPA timeout (60s) + model loading + normal startup margin.
+VBI_COMPONENT_GRACE_PERIOD = _env_float("VBI_COMPONENT_GRACE_PERIOD", 180.0)
 
 
 # Type variables for generic components
@@ -917,12 +920,13 @@ class HeartbeatManager:
         # Track components that have never sent a heartbeat (don't warn about these)
         self._never_heartbeat: Set[ComponentType] = set()
         # v149.2: Startup grace period - don't mark stale until after this
+        # v253.4: Synced with VBI_COMPONENT_GRACE_PERIOD instead of hardcoded 60s.
+        # HeartbeatManager grace must be >= ComponentHealthState grace, otherwise
+        # stale callbacks fire while component grace is still active — a race.
         self._started_at: Optional[float] = None
-        self._startup_grace_seconds: float = 60.0  # 60s grace period for startup
-        # Track which components have been logged as stale to avoid spam
-        self._stale_logged: Set[ComponentType] = set()
-        # Track components that have never sent a heartbeat (don't warn about these)
-        self._never_heartbeat: Set[ComponentType] = set()
+        self._startup_grace_seconds: float = _env_float(
+            "VBI_HEARTBEAT_STARTUP_GRACE", VBI_COMPONENT_GRACE_PERIOD
+        )
 
     async def start(self) -> None:
         """Start the heartbeat manager."""
@@ -1366,6 +1370,14 @@ class VBIHealthMonitor:
         self._running = True
         self._started_at = time.time()
 
+        # v253.4: Reset component grace period start to NOW.
+        # ComponentHealthState.created_at is set at __init__ time (construction),
+        # but the monitor may be constructed well before start() is called.
+        # Grace period should measure from when monitoring actually begins.
+        for health in self._component_health.values():
+            health.created_at = self._started_at
+            health._grace_expired_handled = False
+
         # Start sub-components
         await self._operation_tracker.start()
         await self._heartbeat_manager.start()
@@ -1524,18 +1536,31 @@ class VBIHealthMonitor:
         v250.0: Respect ComponentHealthState grace period. During startup,
         stale heartbeats are expected (components loading ML models, connecting
         to databases, etc.). Cap at DEGRADED during grace — never UNHEALTHY.
-        This prevents the healthy→unhealthy transition within 90s of startup
-        that cascaded into agi_os phase stall.
+
+        v253.4: After grace expires, distinguish startup-stale from runtime-stale.
+        A component that NEVER succeeded (e.g. ECAPA timed out during init and
+        was skipped) should stay DEGRADED — marking it UNHEALTHY implies it was
+        working and then broke, which triggers false alarms. Only components that
+        demonstrated functionality and THEN went stale are truly UNHEALTHY.
         """
         health = self._component_health.get(component)
         if health:
             if health.in_grace_period:
                 # During grace: cap at DEGRADED — stale heartbeats are expected
                 # while heavy components (ECAPA, CloudSQL) are still loading.
-                # _update_health_level() already caps at DEGRADED during grace,
-                # but this callback path bypassed it entirely (the original bug).
+                health.health_level = HealthLevel.DEGRADED
+            elif not health._had_success_during_grace and health.total_operations == 0:
+                # v253.4: Component never succeeded and has no operations recorded.
+                # It likely timed out during init and was skipped. This is NOT
+                # a runtime failure — it's a startup skip. Cap at DEGRADED.
+                if health.health_level != HealthLevel.DEGRADED:
+                    logger.info(
+                        f"[VBIHealthMonitor] {component.value} stale after grace but "
+                        f"never succeeded — capping at DEGRADED (startup skip, not runtime failure)"
+                    )
                 health.health_level = HealthLevel.DEGRADED
             else:
+                # Component was previously operational and went stale — genuine failure
                 health.health_level = HealthLevel.UNHEALTHY
 
         await self._emit_event("heartbeat_stale", {"component": component.value})

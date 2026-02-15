@@ -1547,7 +1547,8 @@ class UnifiedVoiceCacheManager:
             
             # Try HybridDatabaseSync first (most reliable)
             try:
-                hybrid_sync = HybridDatabaseSync()
+                # v253.4: Use singleton to avoid spawning duplicate background tasks
+                hybrid_sync = HybridDatabaseSync.get_instance()
                 await asyncio.wait_for(hybrid_sync.initialize(), timeout=10.0)
                 
                 if hybrid_sync.is_initialized:

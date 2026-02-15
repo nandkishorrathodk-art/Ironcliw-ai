@@ -53,9 +53,9 @@ logger = logging.getLogger(__name__)
 # 1. First-time model downloads from HuggingFace can be slow
 # 2. Model loading is CPU-intensive and varies by hardware
 # 3. This happens once at startup, not on user requests
-PREWARM_TIMEOUT = 120.0  # Total timeout for all model prewarming
-WHISPER_PREWARM_TIMEOUT = 60.0  # Timeout for Whisper model specifically
-ECAPA_PREWARM_TIMEOUT = 60.0  # Timeout for ECAPA-TDNN + SpeechBrain models
+PREWARM_TIMEOUT = float(os.environ.get("JARVIS_PREWARM_TIMEOUT", "120.0"))
+WHISPER_PREWARM_TIMEOUT = float(os.environ.get("JARVIS_WHISPER_PREWARM_TIMEOUT", "60.0"))
+ECAPA_PREWARM_TIMEOUT = float(os.environ.get("JARVIS_ECAPA_PREWARM_TIMEOUT", "60.0"))
 
 # Environment variable to skip prewarming (for faster dev restarts)
 SKIP_PREWARM_ENV = "JARVIS_SKIP_MODEL_PREWARM"

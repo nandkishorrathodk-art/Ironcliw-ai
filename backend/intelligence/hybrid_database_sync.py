@@ -1126,6 +1126,14 @@ class HybridDatabaseSync:
         self._shutdown = False
         self._start_time = time.time()
 
+        # v253.5: Concurrency guard for cache warming — prevents 3+ concurrent
+        # _warm_cache_on_reconnection() calls from health_check_loop, speaker
+        # verification bootstrap, and unified_voice_cache_manager all firing
+        # simultaneously at startup, each timing out independently (triple
+        # "Cache staleness check timed out" log spam + wasted CloudSQL connections).
+        self._cache_warming_in_progress = False
+        self._background_tasks: set = set()  # Strong refs prevent GC
+
         # Health tracking
         self.cloudsql_healthy = False
         self.last_health_check = datetime.now()
@@ -1633,7 +1641,21 @@ class HybridDatabaseSync:
         - Updates both SQLite and FAISS cache
         - Non-blocking background operation
         - v18.0: Overall timeout protection to prevent long connection holds
+        - v253.5: Concurrency guard prevents duplicate warming from multiple
+          startup paths (health_check_loop, speaker verification, voice cache manager)
         """
+        # v253.5: Skip if another warming operation is already in progress.
+        # At startup, 3 paths trigger this simultaneously:
+        # 1. _health_check_loop() line 2018 (periodic) or 2055 (reconnection)
+        # 2. speaker_verification_service bootstrap_from_cloud_sql()
+        # 3. unified_voice_cache_manager bootstrap_from_cloudsql()
+        # Without this guard, all 3 independently timeout on _check_cache_staleness()
+        # when CloudSQL isn't ready, producing triple WARNING logs.
+        if self._cache_warming_in_progress:
+            logger.debug("[v253.5] Cache warming already in progress — skipping duplicate")
+            return
+        self._cache_warming_in_progress = True
+
         # v112.0: Increased timeout for robustness
         CACHE_WARM_TIMEOUT = float(os.getenv("CACHE_WARM_TIMEOUT_SECONDS", "60.0"))
 
@@ -1677,6 +1699,8 @@ class HybridDatabaseSync:
             raise
         except Exception as e:
             logger.error(f"❌ Cache warming failed: {e}")
+        finally:
+            self._cache_warming_in_progress = False
 
     async def _check_cache_staleness(self) -> bool:
         """
@@ -2015,7 +2039,9 @@ class HybridDatabaseSync:
                     time_since_refresh = (datetime.now() - last_cache_refresh).seconds
                     if time_since_refresh > cache_refresh_interval:
                         logger.info("🔄 Periodic cache refresh triggered")
-                        asyncio.create_task(self._warm_cache_on_reconnection())
+                        task = asyncio.create_task(self._warm_cache_on_reconnection())
+                        self._background_tasks.add(task)
+                        task.add_done_callback(self._background_tasks.discard)
                         last_cache_refresh = datetime.now()
                     continue
 
@@ -2052,10 +2078,14 @@ class HybridDatabaseSync:
                         logger.info("✅ CloudSQL reconnected - warming cache and syncing")
 
                         # CRITICAL: Warm voice profile cache on reconnection
-                        asyncio.create_task(self._warm_cache_on_reconnection())
+                        task = asyncio.create_task(self._warm_cache_on_reconnection())
+                        self._background_tasks.add(task)
+                        task.add_done_callback(self._background_tasks.discard)
 
                         # Trigger immediate sync of pending changes
-                        asyncio.create_task(self._reconcile_pending_syncs())
+                        task2 = asyncio.create_task(self._reconcile_pending_syncs())
+                        self._background_tasks.add(task2)
+                        task2.add_done_callback(self._background_tasks.discard)
 
                 # Health check ping - use connection_manager (not cloudsql_pool which doesn't exist)
                 elif self.connection_manager is not None:
@@ -2079,14 +2109,27 @@ class HybridDatabaseSync:
                                 await conn.fetchval("SELECT 1")
                             self.last_health_check = datetime.now()
                     except Exception as e:
-                        # v112.0: Don't log "Connection refused" at warning level during startup
-                        # This is expected when CloudSQL proxy isn't ready
+                        # v112.0: Don't log expected startup errors at warning level.
                         # v236.3: Use repr() fallback — some asyncpg exceptions have empty str()
+                        # v253.4: Added ConnectionDoesNotExistError — stale proxy connections
+                        # from a previous session. The proxy kept its connection pool but
+                        # the server-side connections were closed. Expected on restart.
                         error_str = str(e) or repr(e)
-                        if "Connection refused" in error_str or "Errno 61" in error_str:
-                            logger.debug(f"[HybridSync v112.0] CloudSQL connection refused (proxy not ready)")
+                        error_type = type(e).__name__
+                        _is_startup_expected = (
+                            "Connection refused" in error_str
+                            or "Errno 61" in error_str
+                            or "ConnectionDoesNotExistError" in error_type
+                            or "connection was closed" in error_str
+                            or "InterfaceError" in error_type
+                        )
+                        if _is_startup_expected:
+                            logger.debug(
+                                f"[HybridSync v253.4] CloudSQL health check: {error_type} "
+                                f"(stale/unavailable connection — will retry)"
+                            )
                         else:
-                            logger.warning(f"⚠️  CloudSQL health check failed ({type(e).__name__}): {e!r}")
+                            logger.warning(f"⚠️  CloudSQL health check failed ({error_type}): {e!r}")
                         self.cloudsql_healthy = False
                         self.metrics.cloudsql_available = False
 

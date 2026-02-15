@@ -410,11 +410,6 @@ class CrossRepoStateInitializer:
             self._jarvis_state.status = StateStatus.READY
             await self._write_jarvis_state()
 
-            # Start background tasks
-            self._running = True
-            self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
-            self._state_update_task = asyncio.create_task(self._state_update_loop())
-
             self._initialized = True
             logger.info("[CrossRepoState] ✅ Initialization complete")
             logger.info(f"[CrossRepoState]    Directory: {self.config.base_dir}")
@@ -432,6 +427,15 @@ class CrossRepoStateInitializer:
                     "capabilities": self._jarvis_state.capabilities,
                 }
             ))
+
+            # v253.4: Start background tasks AFTER all init state writes and
+            # event emission complete. Previously spawned before emit_event(),
+            # causing _state_update_loop() and _heartbeat_loop() to immediately
+            # contend for vbia_state and heartbeat locks with the init-path
+            # writes → 10s timeout on vbia_state, 5s timeout on heartbeat.
+            self._running = True
+            self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
+            self._state_update_task = asyncio.create_task(self._state_update_loop())
 
             return True
 
@@ -1027,6 +1031,11 @@ class CrossRepoStateInitializer:
         """Background task that emits heartbeats (thread-safe)."""
         logger.info("[CrossRepoState] Heartbeat loop started")
 
+        # v253.4: Initial delay — don't acquire locks on the very first iteration.
+        # Without this, the heartbeat loop fires immediately after create_task()
+        # and contends with any post-initialize() callers using the same locks.
+        await asyncio.sleep(self.config.heartbeat_interval_seconds)
+
         while self._running:
             try:
                 # v6.4: Update heartbeat file with distributed lock for atomic read-modify-write
@@ -1090,8 +1099,12 @@ class CrossRepoStateInitializer:
 
         while self._running:
             try:
-                await self._write_jarvis_state()
+                # v253.4: Sleep FIRST — don't write state on the very first iteration.
+                # initialize() already wrote state (line 411) right before spawning
+                # this task. An immediate re-write would contend for the vbia_state
+                # lock with any post-initialize() caller.
                 await asyncio.sleep(self.config.state_update_interval_seconds)
+                await self._write_jarvis_state()
 
             except asyncio.CancelledError:
                 break

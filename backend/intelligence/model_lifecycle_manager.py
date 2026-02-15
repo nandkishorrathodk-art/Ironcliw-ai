@@ -20,6 +20,7 @@ Zero hardcoding - all thresholds and policies from config
 
 import asyncio
 import logging
+import os
 import time
 from collections import defaultdict
 from dataclasses import dataclass
@@ -162,7 +163,8 @@ class AdaptiveModelLifecycleManager:
                 task.cancel()
 
         if self.background_tasks:
-            done, pending = await asyncio.wait(self.background_tasks, timeout=8.0)
+            _shutdown_timeout = float(os.getenv("MODEL_LIFECYCLE_SHUTDOWN_TIMEOUT", "8.0"))
+            done, pending = await asyncio.wait(self.background_tasks, timeout=_shutdown_timeout)
             if pending:
                 for task in pending:
                     task.cancel()

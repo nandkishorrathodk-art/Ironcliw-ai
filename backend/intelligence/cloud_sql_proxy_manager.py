@@ -2310,13 +2310,45 @@ WantedBy=default.target
 
         # Try actual database connection with retry logic
         # GCP CloudSQL instances may need time to wake up from auto-suspend
-        conn = None
-        cursor = None
-        max_retries = 3
-        base_timeout = 10  # Increased from 5 to handle slow wakeups
+        #
+        # v253.5: psycopg2.connect() is SYNCHRONOUS and blocks the event loop.
+        # With 3 retries × 10-20s connect_timeout, worst case = 51s of event loop
+        # blocking. During this time, asyncio.wait_for() CANNOT fire its timeout
+        # (CancelledError only delivered when event loop regains control). This caused
+        # the enterprise phase to appear stuck for 264.1s because:
+        # 1. psycopg2.connect(timeout=10s) blocks event loop for 10s
+        # 2. Other parallel enterprise services can't progress
+        # 3. DMS watchdog can't check progress (also needs event loop)
+        # 4. After all retries, cumulative blocking cascades with other services
+        #
+        # Fix: Move psycopg2 connect+query to asyncio.to_thread() so the event
+        # loop stays responsive and asyncio.wait_for() can actually cancel.
+        max_retries = int(os.environ.get("CLOUDSQL_HEALTH_MAX_RETRIES", "3"))
+        base_timeout = int(os.environ.get("CLOUDSQL_HEALTH_BASE_TIMEOUT", "10"))
         last_error = None
 
+        def _sync_connect_and_query(port, database, user, password, timeout):
+            """Synchronous psycopg2 connect + SELECT 1, run in thread."""
+            conn = psycopg2.connect(
+                host='127.0.0.1',
+                port=port,
+                database=database,
+                user=user,
+                password=password,
+                connect_timeout=timeout,
+            )
+            try:
+                cursor = conn.cursor()
+                cursor.execute("SELECT 1")
+                cursor.fetchone()
+                cursor.close()
+            except Exception:
+                conn.close()
+                raise
+            return conn
+
         try:
+            conn = None
             for attempt in range(max_retries):
                 try:
                     # v224.0: Use effective_port (respects dynamic port fallback)
@@ -2324,19 +2356,15 @@ WantedBy=default.target
                     # Exponential backoff for timeout: 10s, 15s, 20s
                     timeout = base_timeout + (attempt * 5)
 
-                    conn = psycopg2.connect(
-                        host='127.0.0.1',
-                        port=port,
-                        database=self.config['cloud_sql'].get('database', 'postgres'),
-                        user=self.config['cloud_sql'].get('user', 'postgres'),
-                        password=self.config['cloud_sql'].get('password', ''),
-                        connect_timeout=timeout
+                    # v253.5: Run in thread to avoid blocking event loop
+                    conn = await asyncio.to_thread(
+                        _sync_connect_and_query,
+                        port,
+                        self.config['cloud_sql'].get('database', 'postgres'),
+                        self.config['cloud_sql'].get('user', 'postgres'),
+                        self.config['cloud_sql'].get('password', ''),
+                        timeout,
                     )
-
-                    # Execute test query
-                    cursor = conn.cursor()
-                    cursor.execute("SELECT 1")
-                    cursor.fetchone()
 
                     # Success!
                     current_time = datetime.now()
@@ -2364,22 +2392,10 @@ WantedBy=default.target
                         wait_time = (attempt + 1) * 2  # 2s, 4s
                         logger.debug(f"[CLOUDSQL] Connection attempt {attempt + 1} failed, retrying in {wait_time}s: {e}")
                         await asyncio.sleep(wait_time)
-                        # Close failed connection if any
-                        if cursor:
-                            try:
-                                cursor.close()
-                            except Exception:
-                                pass
-                        if conn:
-                            try:
-                                conn.close()
-                            except Exception:
-                                pass
-                        conn = None
-                        cursor = None
                     else:
                         # Final attempt failed, raise the error
-                        raise last_error
+                        if last_error:
+                            raise last_error
 
         except Exception as e:
             logger.error(f"[CLOUDSQL] ❌ Connection failed: {e}")
@@ -2416,12 +2432,8 @@ WantedBy=default.target
                         logger.error("[CLOUDSQL] ❌ AUTO-HEAL: Reconnection failed")
 
         finally:
-            # CRITICAL: Always close cursor and connection to prevent leaks
-            if cursor:
-                try:
-                    cursor.close()
-                except Exception:
-                    pass
+            # CRITICAL: Always close connection to prevent leaks
+            # v253.5: cursor is now closed inside _sync_connect_and_query()
             if conn:
                 try:
                     conn.close()
@@ -2774,14 +2786,19 @@ WantedBy=default.target
         try:
             # v224.0: Use effective_port (respects dynamic port fallback)
             port = self.effective_port
-            conn = psycopg2.connect(
-                host='127.0.0.1',
-                port=port,
-                database=self.config['cloud_sql'].get('database', 'postgres'),
-                user=self.config['cloud_sql'].get('user', 'postgres'),
-                password=self.config['cloud_sql'].get('password', ''),
-                connect_timeout=5
-            )
+
+            # v253.5: Run synchronous psycopg2 connect in thread to avoid blocking event loop
+            def _sync_connect_profiles():
+                return psycopg2.connect(
+                    host='127.0.0.1',
+                    port=port,
+                    database=self.config['cloud_sql'].get('database', 'postgres'),
+                    user=self.config['cloud_sql'].get('user', 'postgres'),
+                    password=self.config['cloud_sql'].get('password', ''),
+                    connect_timeout=5,
+                )
+
+            conn = await asyncio.to_thread(_sync_connect_profiles)
 
             cursor = conn.cursor()
 

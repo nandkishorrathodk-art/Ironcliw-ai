@@ -1040,8 +1040,10 @@ async def get_voice_profile_health():
         try:
             from intelligence.hybrid_database_sync import HybridDatabaseSync
             
-            # Check if singleton exists
-            sync = HybridDatabaseSync()
+            # v253.4: Use singleton — HybridDatabaseSync() creates a new instance
+            # with its own _metrics_loop() background task. Three such calls caused
+            # triple metrics logging.
+            sync = HybridDatabaseSync.get_instance()
             if sync.is_initialized:
                 sync_status = await sync.get_voice_profile_sync_status()
                 health["hybrid_sync"] = sync_status
@@ -1120,8 +1122,9 @@ async def trigger_voice_profile_sync(force: bool = False):
         try:
             from intelligence.hybrid_database_sync import HybridDatabaseSync
             
-            sync = HybridDatabaseSync()
-            
+            # v253.4: Use singleton (see line 1044 comment)
+            sync = HybridDatabaseSync.get_instance()
+
             if not sync.is_initialized:
                 await sync.initialize()
             

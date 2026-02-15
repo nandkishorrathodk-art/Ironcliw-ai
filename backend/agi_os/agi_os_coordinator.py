@@ -1855,29 +1855,54 @@ class AGIOSCoordinator:
                 logger.exception("Health monitor error: %s", e)
 
     async def _check_component_health(self) -> None:
-        """Check health of all components."""
+        """Check health of all components.
+
+        v253.4: Use _update_component_health() helper instead of direct dict access.
+        When _run_phase() times out, it kills the init function before the function
+        can register its component_status entry → KeyError. The component instance
+        variable (e.g. self._neural_mesh) may already be set from an earlier init
+        step, so the `if self._xxx:` guard passes but the status key doesn't exist.
+        """
         # Event stream
         if self._event_stream:
             stats = self._event_stream.get_stats()
-            self._component_status['events'].healthy = stats.get('running', False)
+            self._update_component_health('events', stats.get('running', False))
 
         # Voice
         if self._voice:
             status = self._voice.get_status()
-            self._component_status['voice'].healthy = status.get('running', False)
+            self._update_component_health('voice', status.get('running', False))
 
         # Orchestrator
         if self._action_orchestrator:
             stats = self._action_orchestrator.get_stats()
-            self._component_status['orchestrator'].healthy = stats.get('state') == 'running'
+            self._update_component_health('orchestrator', stats.get('state') == 'running')
 
         # Neural Mesh
         if self._neural_mesh:
             try:
                 health = await self._neural_mesh.health_check()
-                self._component_status['neural_mesh'].healthy = health.get('status') == 'healthy'
+                self._update_component_health('neural_mesh', health.get('status') == 'healthy')
             except Exception:
-                self._component_status['neural_mesh'].healthy = False
+                self._update_component_health('neural_mesh', False)
+
+    def _update_component_health(self, name: str, healthy: bool) -> None:
+        """Update a component's health status, auto-creating the entry if missing.
+
+        v253.4: When _run_phase() times out, it kills the init function before it
+        can register self._component_status[name]. The component instance variable
+        may already be partially set, so the health check proceeds but the dict
+        key is missing → KeyError. This helper ensures the entry exists.
+        """
+        status = self._component_status.get(name)
+        if status is None:
+            self._component_status[name] = ComponentStatus(
+                name=name,
+                available=True,
+                healthy=healthy,
+            )
+        else:
+            status.healthy = healthy
 
     # ============== Public API ==============
 
