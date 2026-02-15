@@ -481,7 +481,7 @@ class IntegrationOrchestrator:
             )
             
             return {
-                'state': state_result.get('state', 'unknown'),
+                'state': state_result.get('detected_state', state_result.get('state', 'unknown')),
                 'confidence': state_result.get('confidence', 0.0),
                 'scene_graph': state_result.get('scene_graph', {}),
                 'temporal_context': state_result.get('temporal_context', {})
@@ -550,7 +550,8 @@ class IntegrationOrchestrator:
 
         # Check bloom filter first
         if self.components['bloom_filter']:
-            if self.components['bloom_filter'].check_duplicate(cache_key):
+            is_dup, _ = self.components['bloom_filter'].check_and_add(cache_key)
+            if is_dup:
                 # Check semantic cache
                 if self.components['semantic_cache'] is None:
                     try:

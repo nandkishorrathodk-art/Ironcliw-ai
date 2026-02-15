@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import os
 import subprocess
 import logging
 import time
@@ -211,11 +212,12 @@ class RealTimeVoiceCommunicator:
     def _discover_voices(self) -> None:
         """Discover available system voices."""
         try:
+            _voice_discover_timeout = float(os.getenv("JARVIS_VOICE_DISCOVER_TIMEOUT", "15"))
             result = subprocess.run(
                 ['say', '-v', '?'],
                 capture_output=True,
                 text=True,
-                timeout=5
+                timeout=_voice_discover_timeout
             )
 
             for line in result.stdout.split('\n'):

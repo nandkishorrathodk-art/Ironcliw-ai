@@ -1018,8 +1018,39 @@ class CloudSQLConnection:
         if CloudSQLConnection._circuit_breaker is None:
             CloudSQLConnection._circuit_breaker = CloudSQLCircuitBreaker()
 
+    def _is_connection_released_to_pool(self, error: Exception) -> bool:
+        """
+        Detect if the connection has been permanently released back to the pool.
+
+        When the underlying asyncpg connection has been released back to the pool
+        (e.g., due to proxy death triggering pool cleanup, or pool termination),
+        the connection object is permanently unusable. Retrying on the same
+        connection will always fail with the same error.
+
+        In this case, we must NOT retry -- instead, raise immediately so the
+        caller (CloudDatabaseAdapter.connection()) can fall back to SQLite
+        or acquire a new connection.
+        """
+        error_text = str(error).lower()
+        # asyncpg raises InterfaceError with this specific message when
+        # a method is called on a connection that was already released
+        permanent_markers = (
+            "released back to the pool",
+            "not connected",
+            "connection is closed",
+        )
+        if any(marker in error_text for marker in permanent_markers):
+            return True
+
+        return False
+
     def _is_retryable_connection_error(self, error: Exception) -> bool:
         """Classify transient transport/connection errors that should be retried."""
+        # Never retry if connection has been released back to the pool --
+        # the connection object is permanently dead, retrying on it is futile.
+        if self._is_connection_released_to_pool(error):
+            return False
+
         if isinstance(error, (ConnectionError, OSError, asyncio.InvalidStateError)):
             return True
 
@@ -1039,7 +1070,6 @@ class CloudSQLConnection:
 
         error_text = str(error).lower()
         transient_markers = (
-            "connection is closed",
             "connection was closed",
             "connection closed in the middle of operation",
             "connection reset by peer",
@@ -1163,9 +1193,18 @@ class CloudSQLConnection:
                                 f"(connection error): {type(e).__name__}: {e}"
                             )
                     else:
-                        # Unexpected errors - log but don't retry (likely query error)
+                        # Non-retryable error. Either the connection is permanently
+                        # dead (released back to pool), or it's a query-level error.
+                        # Don't retry -- raise immediately so the adapter's
+                        # connection() fallback can handle it.
                         last_exception = e
-                        logger.error(f"[v19.0] Unexpected error on {operation}: {type(e).__name__}: {e}")
+                        if self._is_connection_released_to_pool(e):
+                            logger.debug(
+                                f"[v19.1] Connection released back to pool during {operation}: "
+                                f"{type(e).__name__}: {e}. Not retrying (connection is dead)."
+                            )
+                        else:
+                            logger.error(f"[v19.0] Unexpected error on {operation}: {type(e).__name__}: {e}")
                         raise
 
             # All retries exhausted

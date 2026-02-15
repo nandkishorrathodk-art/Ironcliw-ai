@@ -277,16 +277,20 @@ class IntelligentModelSelector:
 
     async def _find_capable_models(self, query_context: QueryContext) -> List[ModelDefinition]:
         """Find all models capable of handling the query"""
-        capable_models = set()
+        # Use a dict keyed by model name for deduplication instead of a set,
+        # which avoids relying on ModelDefinition.__hash__ (unhashable in some
+        # runtime configurations where @dataclass sets __hash__ = None).
+        capable_models: Dict[str, ModelDefinition] = {}
 
         # Find models for each required capability
         for capability in query_context.required_capabilities:
             models = self.registry.get_models_for_capability(capability)
-            capable_models.update(models)
+            for model in models:
+                capable_models[model.name] = model
 
         # Filter out models that can't be deployed
         viable_models = []
-        for model in capable_models:
+        for model in capable_models.values():
             # Check if model supports ALL required capabilities
             if not all(
                 model.supports_capability(cap) for cap in query_context.required_capabilities

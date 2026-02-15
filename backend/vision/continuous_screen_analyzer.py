@@ -673,12 +673,24 @@ Be concise but thorough.'''
         }
         
         result = await self.vision_handler.describe_screen(params)
-        
+
+        # describe_screen() may return a dict (claude_vision_analyzer_main)
+        # or an object with .success/.description/.data attributes
+        # (VisionActionResult from vision_action_handler). Handle both.
+        if isinstance(result, dict):
+            _success = result.get('success', False)
+            _description = result.get('description', '') if _success else ''
+            _raw_data = result.get('data', {})
+        else:
+            _success = getattr(result, 'success', False)
+            _description = getattr(result, 'description', '') if _success else ''
+            _raw_data = getattr(result, 'data', {}) if hasattr(result, 'data') else {}
+
         analysis = {
-            'success': result.success,
-            'description': result.description if result.success else '',
+            'success': _success,
+            'description': _description,
             'timestamp': time.time(),
-            'raw_data': result.data if hasattr(result, 'data') else {}
+            'raw_data': _raw_data if isinstance(_raw_data, dict) else {}
         }
         
         # Cache with size tracking
@@ -1131,10 +1143,18 @@ Be concise but thorough.'''
                 return None
         
         result = await self.vision_handler.describe_screen(params)
-        
-        if result.success:
+
+        # Handle both dict and object return types from describe_screen()
+        if isinstance(result, dict):
+            _success = result.get('success', False)
+            _description = result.get('description', '')
+        else:
+            _success = getattr(result, 'success', False)
+            _description = getattr(result, 'description', '')
+
+        if _success:
             # Parse the weather info
-            weather_info = self._extract_weather_info(result.description)
+            weather_info = self._extract_weather_info(_description)
             return weather_info
         
         return None

@@ -79,9 +79,15 @@ class PerformanceProfile:
     unload_seconds: float = 5.0  # RAM → Disk
 
 
-@dataclass
+@dataclass(eq=False)
 class ModelDefinition:
-    """Complete definition of a model"""
+    """Complete definition of a model
+
+    Note: eq=False prevents @dataclass from generating __eq__ (which would
+    implicitly set __hash__ = None on a non-frozen dataclass). We define
+    both __eq__ and __hash__ explicitly below so that ModelDefinition
+    instances can safely be used in sets and as dict keys, keyed by name.
+    """
 
     name: str
     display_name: str
@@ -142,6 +148,12 @@ class ModelDefinition:
     def __hash__(self) -> int:
         """Hash by name so ModelDefinition can be used in sets and as dict keys"""
         return hash(self.name)
+
+    def __repr__(self) -> str:
+        return (
+            f"ModelDefinition(name={self.name!r}, type={self.model_type!r}, "
+            f"state={self.current_state.value!r})"
+        )
 
 
 class ModelRegistry:

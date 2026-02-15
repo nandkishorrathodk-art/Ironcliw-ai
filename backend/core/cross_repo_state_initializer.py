@@ -955,31 +955,61 @@ class CrossRepoStateInitializer:
     # =========================================================================
 
     async def _write_jarvis_state(self) -> None:
-        """Write JARVIS state to vbia_state.json (thread-safe)."""
+        """Write JARVIS state to vbia_state.json (thread-safe).
+
+        v254.0: REMOVED RobustFileLock from this method.
+        Root cause of 46s lock hold: During startup, the event loop and default
+        ThreadPoolExecutor are saturated. The RobustFileLock (fcntl.flock) was
+        acquired, then ``run_in_executor`` for the actual write was queued but
+        couldn't run for tens of seconds because all executor threads were busy
+        with model loading, health checks, etc. The file lock remained held the
+        entire time, blocking ALL other tasks that needed vbia_state.
+
+        Additionally, dual-module namespace (``core.cross_repo_state_initializer``
+        vs ``backend.core.cross_repo_state_initializer``) created TWO singleton
+        instances, each with its own background loops, both competing for the
+        SAME POSIX file lock.
+
+        The fix: ``_write_file_sync`` already uses atomic temp-file + os.rename,
+        which is atomic on POSIX same-filesystem. For a pure state broadcast
+        (complete overwrite, not read-modify-write), this atomicity guarantee
+        is sufficient. No cross-process file lock is needed. The in-process
+        ``_state_write_lock`` (asyncio.Lock) prevents intra-instance races.
+
+        The ``run_in_executor`` call is also wrapped in a timeout to prevent
+        thread pool saturation from stalling this method indefinitely.
+        """
         state_file = self._state_files["vbia_state"]
 
         # v236.3: Pre-serialize OUTSIDE lock to minimize hold time.
-        # During startup, event loop saturation delays aiofiles completion,
-        # keeping the lock held for tens of seconds. Pre-serializing and using
-        # a synchronous write reduces lock scope to just the I/O.
         self._jarvis_state.last_update = datetime.now().isoformat()
         _serialized = json.dumps(asdict(self._jarvis_state), indent=2)
 
-        # v6.5: Guard against None lock manager
-        # Serialize local writes to prevent same-process lock storms and timeouts.
+        # v254.0: Configurable timeout for executor write (default 5s).
+        # If the default ThreadPoolExecutor is saturated (startup), this prevents
+        # the method from blocking indefinitely.
+        _executor_write_timeout = _get_env_float(
+            "JARVIS_STATE_WRITE_TIMEOUT", 5.0
+        )
+
+        # Serialize local writes to prevent same-process write interleaving.
         async with self._state_write_lock:
             loop = asyncio.get_running_loop()
-            if self._lock_manager is None:
-                logger.debug("[CrossRepoState] Writing state without lock (manager not initialized)")
-                await loop.run_in_executor(None, self._write_file_sync, str(state_file), _serialized)
-                return
-            # v6.4: Use RobustFileLock (fcntl.flock-based, fixes temp file race conditions)
-            async with RobustFileLock("vbia_state", source="jarvis") as acquired:
-                if not acquired:
-                    logger.warning("Could not acquire vbia_state lock")
-                    return
-                # v236.3: Synchronous write in executor — bypasses aiofiles thread pool
-                await loop.run_in_executor(None, self._write_file_sync, str(state_file), _serialized)
+            try:
+                await asyncio.wait_for(
+                    loop.run_in_executor(
+                        None, self._write_file_sync, str(state_file), _serialized
+                    ),
+                    timeout=_executor_write_timeout,
+                )
+            except asyncio.TimeoutError:
+                logger.warning(
+                    f"[CrossRepoState] vbia_state write timed out after "
+                    f"{_executor_write_timeout}s (executor saturated) — "
+                    f"skipping this cycle"
+                )
+            except OSError as e:
+                logger.warning(f"[CrossRepoState] vbia_state write failed: {e}")
 
     async def update_jarvis_status(self, status: StateStatus, metrics: Optional[Dict[str, Any]] = None) -> None:
         """
@@ -1525,7 +1555,33 @@ class CrossRepoStateInitializer:
 # Global Singleton
 # =============================================================================
 
+# v254.0: Dual-module singleton protection.
+# Python's dual-module aliasing (``core.cross_repo_state_initializer`` vs
+# ``backend.core.cross_repo_state_initializer``) creates separate
+# ``sys.modules`` entries, each with its own module-level globals.  This means
+# ``_cross_repo_initializer`` exists TWICE, and two independent singleton
+# instances get created — each with its own background loops that compete for
+# the same POSIX file lock on vbia_state.json.
+#
+# Fix: Store the singleton in a process-global location that is immune to
+# module namespace duplication.  We use ``os.environ`` as a sentinel to detect
+# whether *any* namespace already created the singleton, and store the actual
+# instance on a well-known attribute of the ``sys`` module.
 _cross_repo_initializer: Optional[CrossRepoStateInitializer] = None
+
+_SINGLETON_ATTR = "_jarvis_cross_repo_initializer_instance"
+
+
+def _get_cross_namespace_singleton() -> Optional[CrossRepoStateInitializer]:
+    """Retrieve the singleton from the process-global store, if it exists."""
+    import sys as _sys
+    return getattr(_sys, _SINGLETON_ATTR, None)
+
+
+def _set_cross_namespace_singleton(instance: CrossRepoStateInitializer) -> None:
+    """Store the singleton in a process-global location."""
+    import sys as _sys
+    setattr(_sys, _SINGLETON_ATTR, instance)
 
 
 async def get_cross_repo_initializer(
@@ -1533,6 +1589,11 @@ async def get_cross_repo_initializer(
 ) -> CrossRepoStateInitializer:
     """
     Get or create the global cross-repo state initializer.
+
+    v254.0: Uses process-global storage (``sys`` module attribute) to prevent
+    dual-module namespace from creating duplicate singletons.  Both
+    ``core.cross_repo_state_initializer`` and
+    ``backend.core.cross_repo_state_initializer`` now share the same instance.
 
     Args:
         config: Optional configuration (only used on first call)
@@ -1542,10 +1603,25 @@ async def get_cross_repo_initializer(
     """
     global _cross_repo_initializer
 
-    if _cross_repo_initializer is None:
-        _cross_repo_initializer = CrossRepoStateInitializer(config)
+    # Fast path: module-local cache
+    if _cross_repo_initializer is not None:
+        return _cross_repo_initializer
 
-    return _cross_repo_initializer
+    # Check if another module namespace already created the singleton
+    existing = _get_cross_namespace_singleton()
+    if existing is not None:
+        _cross_repo_initializer = existing
+        logger.debug(
+            "[CrossRepoState v254.0] Reusing singleton from other module namespace"
+        )
+        return existing
+
+    # First creation — store in both locations
+    instance = CrossRepoStateInitializer(config)
+    _cross_repo_initializer = instance
+    _set_cross_namespace_singleton(instance)
+    logger.debug("[CrossRepoState v254.0] Created new singleton instance")
+    return instance
 
 
 async def initialize_cross_repo_state(
@@ -1571,9 +1647,16 @@ async def shutdown_cross_repo_state() -> None:
     """Shutdown the cross-repo state system."""
     global _cross_repo_initializer
 
-    if _cross_repo_initializer:
-        await _cross_repo_initializer.shutdown()
-        _cross_repo_initializer = None
+    # v254.0: Also check cross-namespace singleton
+    instance = _cross_repo_initializer or _get_cross_namespace_singleton()
+    if instance:
+        await instance.shutdown()
+
+    _cross_repo_initializer = None
+    # Clear the cross-namespace store
+    import sys as _sys
+    if hasattr(_sys, _SINGLETON_ATTR):
+        delattr(_sys, _SINGLETON_ATTR)
 
 
 async def initialize_all_repos_coordinated(

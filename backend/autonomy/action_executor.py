@@ -517,7 +517,7 @@ class ActionExecutor:
         Returns:
             Dictionary with prepared response requiring user confirmation
         """
-        app = action.params['app']
+        app = action.params.get('app', action.target or 'unknown')
         message_preview = action.params.get('message_preview', '')
         suggested_response = action.params.get('suggested_response', '')
         

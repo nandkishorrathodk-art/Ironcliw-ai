@@ -64919,9 +64919,16 @@ class JarvisSystemKernel:
                 # Previously: operational=60, init=90 — neural mesh alone could
                 # take 300s (3 inner steps × 90-120s each), guaranteeing timeout.
                 agi_os_operational_timeout = _get_env_float("JARVIS_AGI_OS_TIMEOUT", 90.0)
+                # v254.0: Raised default init timeout from operational+30 (120s)
+                # to 260s.  The AGI OS coordinator has 6 phases summing to ~200s
+                # (components 20 + intelligence 45 + neural_mesh 75 + hybrid 5 +
+                # screen_analyzer 25 + connect 10 + reserves ~18 + overhead).
+                # At 120s the coordinator only received 110s of budget, triggering
+                # aggressive scaling (225s→102s) that starved neural_mesh and
+                # caused SystemEventMonitor, Ghost Hands, and Bridge timeouts.
                 agi_os_init_timeout = _get_env_float(
                     "JARVIS_AGI_OS_INIT_TIMEOUT",
-                    agi_os_operational_timeout + 30.0,
+                    260.0,
                 )
                 # Keep AGI init bounded below the phase-hold hard cap to avoid
                 # "active but no progress" false-stall loops when env values are

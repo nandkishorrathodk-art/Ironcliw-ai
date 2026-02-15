@@ -7906,23 +7906,41 @@ async def get_startup_progress():
 # recovery and telemetry.
 # =============================================================================
 
+_audio_error_log_state: dict = {}  # error_code -> {"count": int, "last_logged": float}
+_AUDIO_ERROR_LOG_INTERVAL = float(os.environ.get("JARVIS_AUDIO_ERROR_LOG_INTERVAL", "300"))  # 5 min
+
 @app.post("/audio/ml/error")
 async def audio_ml_error(request: dict):
     """
     Receive and process audio errors from frontend for ML-based recovery.
-    
+
     This endpoint receives error telemetry from the frontend MLAudioHandler
     and can optionally return ML-recommended recovery strategies.
     """
+    import time as _time
     from datetime import datetime
-    
+
     error_code = request.get("error_code", "unknown")
     browser = request.get("browser", "unknown")
     session_duration = request.get("session_duration", 0)
     permission_state = request.get("permission_state", "unknown")
     retry_count = request.get("retry_count", 0)
-    
-    logger.info(f"🎤 Audio error reported: {error_code} (browser={browser}, permission={permission_state})")
+
+    # Rate-limit logging for repetitive errors (e.g. Chrome permission denied)
+    _now = _time.time()
+    _state = _audio_error_log_state.get(error_code)
+    if _state is None:
+        _audio_error_log_state[error_code] = {"count": 1, "last_logged": _now}
+        logger.info(f"Audio error reported: {error_code} (browser={browser}, permission={permission_state})")
+    else:
+        _state["count"] += 1
+        if _now - _state["last_logged"] >= _AUDIO_ERROR_LOG_INTERVAL:
+            logger.info(
+                f"Audio error reported: {error_code} (browser={browser}, permission={permission_state}) "
+                f"[{_state['count']} occurrences since last log]"
+            )
+            _state["count"] = 0
+            _state["last_logged"] = _now
     
     # Generate recovery strategy based on error type
     strategy = None
