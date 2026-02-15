@@ -3099,34 +3099,48 @@ class UnifiedLogger:
         with self._log_lock:
             print(json.dumps(log_entry))
 
-    def debug(self, message: str, **kwargs) -> None:
+    def _format_msg(self, message: str, args: tuple) -> str:
+        """Apply printf-style formatting if positional args are given.
+
+        v253.2: Makes UnifiedLogger API-compatible with logging.Logger
+        so callers can use either f-strings or printf-style %s formatting.
+        """
+        if args:
+            try:
+                return message % args
+            except (TypeError, ValueError):
+                # Malformed format string — log as-is with args appended
+                return f"{message} {args}"
+        return message
+
+    def debug(self, message: str, *args, **kwargs) -> None:
         """Debug level logging (only in verbose mode)."""
         if self._verbose:
-            self._log(LogLevel.DEBUG, message, **kwargs)
+            self._log(LogLevel.DEBUG, self._format_msg(message, args), **kwargs)
 
-    def info(self, message: str, **kwargs) -> None:
+    def info(self, message: str, *args, **kwargs) -> None:
         """Info level logging."""
-        self._log(LogLevel.INFO, message, **kwargs)
+        self._log(LogLevel.INFO, self._format_msg(message, args), **kwargs)
 
-    def success(self, message: str, **kwargs) -> None:
+    def success(self, message: str, *args, **kwargs) -> None:
         """Success level logging."""
-        self._log(LogLevel.SUCCESS, f"✓ {message}", **kwargs)
+        self._log(LogLevel.SUCCESS, f"✓ {self._format_msg(message, args)}", **kwargs)
 
-    def warning(self, message: str, **kwargs) -> None:
+    def warning(self, message: str, *args, **kwargs) -> None:
         """Warning level logging."""
-        self._log(LogLevel.WARNING, f"⚠ {message}", **kwargs)
+        self._log(LogLevel.WARNING, f"⚠ {self._format_msg(message, args)}", **kwargs)
 
-    def error(self, message: str, **kwargs) -> None:
+    def error(self, message: str, *args, **kwargs) -> None:
         """Error level logging."""
-        self._log(LogLevel.ERROR, f"✗ {message}", **kwargs)
+        self._log(LogLevel.ERROR, f"✗ {self._format_msg(message, args)}", **kwargs)
 
-    def critical(self, message: str, **kwargs) -> None:
+    def critical(self, message: str, *args, **kwargs) -> None:
         """Critical level logging."""
-        self._log(LogLevel.CRITICAL, f"🔥 {message}", **kwargs)
+        self._log(LogLevel.CRITICAL, f"🔥 {self._format_msg(message, args)}", **kwargs)
 
-    def phase(self, message: str, **kwargs) -> None:
+    def phase(self, message: str, *args, **kwargs) -> None:
         """Phase announcement logging."""
-        self._log(LogLevel.PHASE, f"▸ {message}", **kwargs)
+        self._log(LogLevel.PHASE, f"▸ {self._format_msg(message, args)}", **kwargs)
 
     # ═══════════════════════════════════════════════════════════════════════════
     # METRICS & SUMMARY
@@ -28693,17 +28707,17 @@ class ObservabilityPipeline:
             return span.trace_id
         return None
 
-    def debug(self, message: str, **kwargs) -> None:
-        self.log("DEBUG", message, **kwargs)
+    def debug(self, message: str, *args, **kwargs) -> None:
+        self.log("DEBUG", message % args if args else message, **kwargs)
 
-    def info(self, message: str, **kwargs) -> None:
-        self.log("INFO", message, **kwargs)
+    def info(self, message: str, *args, **kwargs) -> None:
+        self.log("INFO", message % args if args else message, **kwargs)
 
-    def warning(self, message: str, **kwargs) -> None:
-        self.log("WARNING", message, **kwargs)
+    def warning(self, message: str, *args, **kwargs) -> None:
+        self.log("WARNING", message % args if args else message, **kwargs)
 
-    def error(self, message: str, **kwargs) -> None:
-        self.log("ERROR", message, **kwargs)
+    def error(self, message: str, *args, **kwargs) -> None:
+        self.log("ERROR", message % args if args else message, **kwargs)
 
     # === Export ===
 
