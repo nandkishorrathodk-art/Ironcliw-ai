@@ -1492,26 +1492,25 @@ class AGIOSCoordinator:
                 max(3.0, _sa_budget * 0.35),
             )
 
-            def _build_handler() -> Any:
-                if degraded_mode:
-                    # Degraded startup profile: prioritize stability over throughput.
-                    degraded_cfg = VisionConfig(
-                        enable_video_streaming=False,
-                        prefer_video_over_screenshots=False,
-                        max_concurrent_requests=int(
-                            _env_float(
-                                "JARVIS_AGI_OS_SCREEN_DEGRADED_MAX_CONCURRENCY", 2.0
-                            )
-                        ),
-                    )
-                    return ClaudeVisionAnalyzer(api_key=api_key, config=degraded_cfg)
-                return ClaudeVisionAnalyzer(api_key=api_key)
-
-            loop = asyncio.get_running_loop()
-            vision_handler = await asyncio.wait_for(
-                loop.run_in_executor(None, _build_handler),
-                timeout=construct_timeout,
-            )
+            # v253.6: Run constructor directly on event loop — NOT in executor.
+            # ClaudeVisionAnalyzer.__init__() creates asyncio.Semaphore() which
+            # calls asyncio.get_event_loop() internally (Python 3.9). Running in
+            # a ThreadPoolExecutor thread causes "no current event loop in thread
+            # 'asyncio_2'" RuntimeError. The constructor is pure object setup with
+            # no blocking I/O, so threading is unnecessary.
+            if degraded_mode:
+                degraded_cfg = VisionConfig(
+                    enable_video_streaming=False,
+                    prefer_video_over_screenshots=False,
+                    max_concurrent_requests=int(
+                        _env_float(
+                            "JARVIS_AGI_OS_SCREEN_DEGRADED_MAX_CONCURRENCY", 2.0
+                        )
+                    ),
+                )
+                vision_handler = ClaudeVisionAnalyzer(api_key=api_key, config=degraded_cfg)
+            else:
+                vision_handler = ClaudeVisionAnalyzer(api_key=api_key)
 
             # v237.3: Permission pre-check — test capture before starting monitoring.
             # macOS requires Screen Recording permission for Quartz/CGDisplay capture.

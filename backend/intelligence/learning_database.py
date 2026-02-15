@@ -3684,9 +3684,10 @@ class JARVISLearningDatabase:
                 # Collections already created by _init_chromadb_sync
 
             except Exception as chroma_error:
-                # Check if it's a schema error
-                if "no such column" in str(chroma_error).lower():
-                    logger.warning(f"ChromaDB schema mismatch detected: {chroma_error}")
+                # Check if it's a schema or tenant corruption error
+                _err_str = str(chroma_error).lower()
+                if "no such column" in _err_str or "tenant" in _err_str:
+                    logger.warning(f"ChromaDB schema/tenant mismatch detected: {chroma_error}")
                     logger.info("Resetting ChromaDB to fix schema issue...")
 
                     # v121.0: Reset and recreate using thread to avoid blocking
