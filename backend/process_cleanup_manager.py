@@ -2847,6 +2847,12 @@ class ProcessCleanupManager:
             self._handle_circuit_breaker_trip
         )
 
+        # v255.0: CPU pressure handler
+        self.event_trigger.register_handler(
+            CleanupEventType.CPU_PRESSURE,
+            self._handle_cpu_pressure
+        )
+
         logger.debug("Registered cleanup event handlers")
 
     def _handle_memory_pressure(self, event: CleanupEvent) -> None:
@@ -2898,6 +2904,22 @@ class ProcessCleanupManager:
             )
         except Exception as e:
             logger.debug(f"Could not report relief completion: {e}")
+
+    def _handle_cpu_pressure(self, event: CleanupEvent) -> None:
+        """Handle CPU pressure event — v255.0 observation stub.
+
+        Previously emitted but unhandled. Logs metrics and updates
+        health monitor. Future v255.1 will connect to GCP offload.
+        """
+        cpu_percent = event.data.get('cpu_percent', 0)
+        _threshold = float(os.getenv("JARVIS_CPU_PRESSURE_OFFLOAD_THRESHOLD", "95.0"))
+
+        if cpu_percent >= _threshold:
+            logger.warning("CPU pressure: %.1f%% — GCP offload recommended", cpu_percent)
+        else:
+            logger.info("CPU pressure: %.1f%% — monitoring", cpu_percent)
+
+        self.health_monitor.metrics.current_cpu_usage_percent = cpu_percent / 100
 
     def _schedule_memory_relief(self, memory_percent: float) -> None:
         """

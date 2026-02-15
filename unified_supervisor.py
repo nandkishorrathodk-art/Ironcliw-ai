@@ -60528,6 +60528,39 @@ class JarvisSystemKernel:
                 pass
 
         # =====================================================================
+        # v255.0: RESOURCE PRE-FLIGHT — activate IntelligentResourceOrchestrator
+        # validate_and_optimize() is 100% local (psutil, shutil, socket localhost)
+        # — no GCP/network calls. Determines startup_mode before any phase runs.
+        # =====================================================================
+        _resource_check_timeout = _get_env_float("JARVIS_RESOURCE_CHECK_TIMEOUT", 1.5)
+        try:
+            _ro = IntelligentResourceOrchestrator(self.config)
+            _rs = await asyncio.wait_for(
+                _ro.validate_and_optimize(), timeout=_resource_check_timeout
+            )
+            self._startup_resource_status = _rs
+            _startup_mem_mode = _rs.startup_mode or "local_full"
+            os.environ["JARVIS_STARTUP_MEMORY_MODE"] = _startup_mem_mode
+            if _rs.is_cloud_mode:
+                self._update_component_status(
+                    "resources", "cloud_mode",
+                    detail=f"Memory: {_rs.memory_available_gb:.1f}GB",
+                )
+            for _rec in _rs.recommendations:
+                _unified_logger.info("[ResourceOrchestrator] %s", _rec)
+        except asyncio.TimeoutError:
+            _unified_logger.warning(
+                "[ResourceOrchestrator] Timed out after %.1fs — defaulting to local_full",
+                _resource_check_timeout,
+            )
+            os.environ["JARVIS_STARTUP_MEMORY_MODE"] = "local_full"
+        except Exception as _ro_err:
+            _unified_logger.debug(
+                "[ResourceOrchestrator] %s — defaulting to local_full", _ro_err
+            )
+            os.environ["JARVIS_STARTUP_MEMORY_MODE"] = "local_full"
+
+        # =====================================================================
         # v181.0: PHASE -1: CLEAN SLATE - Crash Recovery & State Cleanup
         # =====================================================================
         # This MUST run BEFORE any other phase to ensure a clean starting state.
@@ -60652,7 +60685,48 @@ class JarvisSystemKernel:
         # v229.0: Determine if cloud inference should replace local pre-warm
         _skip_local_prewarm = False
         _skip_reason = ""
-        
+
+        # v255.0: OOM Prevention Bridge — proactive memory check before heavy init.
+        # Uses auto_offload=False to avoid GCP network calls during pre-flight.
+        # Only overrides JARVIS_STARTUP_MEMORY_MODE if OOM Bridge decision is MORE
+        # severe than the current mode set by the ResourceOrchestrator (Step 1).
+        _oom_preflight_timeout = _get_env_float("JARVIS_OOM_PREFLIGHT_TIMEOUT", 3.0)
+        self._startup_memory_decision = None
+        try:
+            from core.gcp_oom_prevention_bridge import check_memory_before_heavy_init
+            _oom_result = await asyncio.wait_for(
+                check_memory_before_heavy_init(
+                    component="startup_pipeline",
+                    estimated_mb=3000,
+                    auto_offload=False,
+                ),
+                timeout=_oom_preflight_timeout,
+            )
+            self._startup_memory_decision = _oom_result
+            # Severity ordering: local_full < local_optimized < sequential < cloud_first < cloud_only < minimal
+            _SEVERITY = {
+                "local_full": 0, "local_optimized": 1, "sequential": 2,
+                "cloud_first": 3, "cloud_only": 4, "minimal": 5,
+            }
+            _current_mode = os.environ.get("JARVIS_STARTUP_MEMORY_MODE", "local_full")
+            _current_sev = _SEVERITY.get(_current_mode, 0)
+
+            if not _oom_result.can_proceed_locally:
+                _new_mode = "cloud_first"
+                if _SEVERITY.get(_new_mode, 0) > _current_sev:
+                    os.environ["JARVIS_STARTUP_MEMORY_MODE"] = _new_mode
+                _skip_local_prewarm = True
+                _skip_reason = (
+                    f"oom_bridge: {_oom_result.decision.value} "
+                    f"(avail={_oom_result.available_ram_gb:.1f}GB)"
+                )
+            elif _oom_result.decision.value == "degraded":
+                _new_mode = "sequential"
+                if _SEVERITY.get(_new_mode, 0) > _current_sev:
+                    os.environ["JARVIS_STARTUP_MEMORY_MODE"] = _new_mode
+        except (asyncio.TimeoutError, ImportError, Exception) as _oom_err:
+            _unified_logger.debug("[OOMBridge] Pre-flight unavailable: %s", _oom_err)
+
         if self.config.trinity_enabled and os.getenv("JARVIS_EARLY_PRIME_PREWARM", "true").lower() == "true":
             # Check golden image + GCP indicators
             _use_golden_image = os.getenv("JARVIS_GCP_USE_GOLDEN_IMAGE", "false").lower() == "true"
@@ -65032,6 +65106,7 @@ class JarvisSystemKernel:
                             start_agi_os(
                                 progress_callback=_agi_os_progress,
                                 startup_budget_seconds=startup_budget_seconds,
+                                memory_mode=os.getenv("JARVIS_STARTUP_MEMORY_MODE", "local_full"),  # v255.0
                             ),
                             name="kernel_agi_os_startup",
                         )

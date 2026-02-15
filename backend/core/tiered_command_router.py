@@ -1076,6 +1076,16 @@ class TieredCommandRouter:
         Returns:
             Execution result dict
         """
+        # v255.0: Graceful fallback when neural mesh deferred due to memory pressure
+        if os.environ.get("JARVIS_NEURAL_MESH_DEFERRED") == "true":
+            logger.info("[TieredRouter] Workspace command skipped: neural mesh deferred (memory pressure)")
+            return {
+                "success": False,
+                "error": "Workspace commands are temporarily unavailable — neural mesh was deferred due to memory pressure. "
+                         "The system will load these capabilities after startup completes, or you can restart with more available RAM.",
+                "deferred": True,
+            }
+
         try:
             # Use router-level cached agent first (survives dual-module aliasing)
             agent = self._workspace_agent
@@ -1088,10 +1098,13 @@ class TieredCommandRouter:
                     self._workspace_agent = agent
 
             if not agent:
-                logger.error("[TieredRouter] GoogleWorkspaceAgent not available")
+                _deferred = os.environ.get("JARVIS_NEURAL_MESH_DEFERRED") == "true"
+                _reason = "deferred due to memory pressure" if _deferred else "not initialized"
+                logger.warning("[TieredRouter] GoogleWorkspaceAgent %s", _reason)
                 return {
                     "success": False,
-                    "error": "GoogleWorkspaceAgent not available",
+                    "error": f"GoogleWorkspaceAgent {_reason}. Workspace commands unavailable.",
+                    "deferred": _deferred,
                 }
 
             # Prepare workspace context

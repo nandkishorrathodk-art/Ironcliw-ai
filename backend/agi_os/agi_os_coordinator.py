@@ -240,7 +240,12 @@ class AGIOSCoordinator:
         """Get component status dictionary."""
         return self._component_status
 
-    async def start(self, progress_callback=None, startup_budget_seconds: Optional[float] = None) -> None:
+    async def start(
+        self,
+        progress_callback=None,
+        startup_budget_seconds: Optional[float] = None,
+        memory_mode: Optional[str] = None,
+    ) -> None:
         """
         Start the AGI OS.
 
@@ -254,6 +259,11 @@ class AGIOSCoordinator:
                 the 60s stall threshold.
             startup_budget_seconds: Optional total AGI startup budget. When
                 provided, per-phase timeouts are scaled to fit this budget.
+            memory_mode: Optional startup memory mode from resource orchestrator.
+                v255.0: Propagated from supervisor's pre-flight checks. Values:
+                local_full, local_optimized, sequential, cloud_first, cloud_only, minimal.
+                Used by _init_agi_os_components() and _init_neural_mesh() to adapt
+                loading strategy under memory pressure.
         """
         if self._state == AGIOSState.ONLINE:
             logger.warning("AGI OS already online")
@@ -261,7 +271,9 @@ class AGIOSCoordinator:
 
         self._state = AGIOSState.INITIALIZING
         self._started_at = datetime.now()
-        logger.info("Starting AGI OS...")
+        # v255.0: Store memory mode for use by component and neural mesh guards
+        self._memory_mode = memory_mode or os.getenv("JARVIS_STARTUP_MEMORY_MODE", "local_full")
+        logger.info("Starting AGI OS... (memory_mode=%s)", self._memory_mode)
 
         # v252.1: Reset notification bridge for warm restarts (stop → start
         # without process exit leaves _shutting_down=True permanently).
@@ -924,6 +936,33 @@ class AGIOSCoordinator:
         Each component's failure is isolated — one hanging getter doesn't
         block the others. Progress is reported as each component finishes.
         """
+        # v255.0: Memory guard — adapt component init based on memory pressure
+        _force_sequential = False
+        _skip_optional = False
+        try:
+            import psutil as _psutil_guard
+            _vm = _psutil_guard.virtual_memory()
+            _avail_mb = _vm.available / (1024 * 1024)
+            _guard_min = _env_float("JARVIS_AGI_OS_COMPONENTS_GUARD_MIN_MB", 2000.0)
+            _guard_seq = _env_float("JARVIS_AGI_OS_COMPONENTS_GUARD_SEQUENTIAL_MB", 3000.0)
+            _mem_mode = getattr(self, '_memory_mode', 'local_full')
+
+            if _avail_mb <= _guard_min or _mem_mode == "minimal":
+                logger.warning(
+                    "Components guard: critical memory (%.0fMB, mode=%s) — skipping optional",
+                    _avail_mb, _mem_mode,
+                )
+                _skip_optional = True
+                _force_sequential = True
+            elif _avail_mb < _guard_seq or _mem_mode == "sequential":
+                logger.warning(
+                    "Components guard: low memory (%.0fMB, mode=%s) — sequential mode",
+                    _avail_mb, _mem_mode,
+                )
+                _force_sequential = True
+        except Exception:
+            pass
+
         _comp_timeout_base = _env_float("JARVIS_AGI_OS_COMPONENT_TIMEOUT", 15.0)
 
         # v253.3: Read the scaled phase budget. When the supervisor passes a
@@ -998,39 +1037,60 @@ class AGIOSCoordinator:
             ))
 
         # Lazy-import components (import inside factory lambda)
-        async def _get_notification_monitor():
-            from macos_helper.notification_monitor import get_notification_monitor
-            return await get_notification_monitor(auto_start=True)
+        # v255.0: Optional components (notification, system_event, ghost_hands,
+        # ghost_display) are skipped under critical memory pressure to reduce
+        # peak RAM usage during init.
+        if not _skip_optional:
+            async def _get_notification_monitor():
+                from macos_helper.notification_monitor import get_notification_monitor
+                return await get_notification_monitor(auto_start=True)
 
-        async def _get_system_event_monitor():
-            from macos_helper.system_event_monitor import get_system_event_monitor
-            return await get_system_event_monitor(auto_start=True)
+            async def _get_system_event_monitor():
+                from macos_helper.system_event_monitor import get_system_event_monitor
+                return await get_system_event_monitor(auto_start=True)
 
-        async def _get_ghost_hands():
-            from ghost_hands.orchestrator import get_ghost_hands
-            return await get_ghost_hands()
+            async def _get_ghost_hands():
+                from ghost_hands.orchestrator import get_ghost_hands
+                return await get_ghost_hands()
 
-        coros.append(_init_one(
-            "notification_monitor", "NotificationMonitor", _get_notification_monitor,
-        ))
-        coros.append(_init_one(
-            "system_event_monitor", "SystemEventMonitor", _get_system_event_monitor,
-        ))
-        coros.append(_init_one(
-            "ghost_hands", "Ghost Hands", _get_ghost_hands,
-        ))
+            coros.append(_init_one(
+                "notification_monitor", "NotificationMonitor", _get_notification_monitor,
+            ))
+            coros.append(_init_one(
+                "system_event_monitor", "SystemEventMonitor", _get_system_event_monitor,
+            ))
+            coros.append(_init_one(
+                "ghost_hands", "Ghost Hands", _get_ghost_hands,
+            ))
 
-        # Ghost Display is synchronous — wrap in _init_one with is_async=False
-        def _get_ghost_display():
-            from vision.yabai_space_detector import get_ghost_manager
-            return get_ghost_manager()
+            # Ghost Display is synchronous — wrap in _init_one with is_async=False
+            def _get_ghost_display():
+                from vision.yabai_space_detector import get_ghost_manager
+                return get_ghost_manager()
 
-        coros.append(_init_one(
-            "ghost_display", "Ghost Display", _get_ghost_display, is_async=False,
-        ))
+            coros.append(_init_one(
+                "ghost_display", "Ghost Display", _get_ghost_display, is_async=False,
+            ))
+        else:
+            for _skipped in ("notification_monitor", "system_event_monitor", "ghost_hands", "ghost_display"):
+                self._component_status[_skipped] = ComponentStatus(
+                    name=_skipped, available=False, error="Skipped: memory pressure",
+                )
+                logger.info("Skipped %s (memory pressure)", _skipped)
 
-        # ── Run ALL components in parallel ──
-        results = await asyncio.gather(*coros, return_exceptions=True)
+        # ── Run components (parallel by default, sequential under memory pressure) ──
+        if _force_sequential:
+            # v255.0: Sequential mode under memory pressure. Preserves
+            # return_exceptions=True semantics: collect exceptions, don't abort.
+            logger.info("Component init: sequential mode (%d coros)", len(coros))
+            results = []
+            for _coro in coros:
+                try:
+                    results.append(await _coro)
+                except Exception as _seq_err:
+                    results.append(_seq_err)
+        else:
+            results = await asyncio.gather(*coros, return_exceptions=True)
 
         # ── Map results to instance variables ──
         result_map: Dict[str, Any] = {}
@@ -1289,6 +1349,43 @@ class AGIOSCoordinator:
           bridge:      30%   (important but non-fatal)
         """
         try:
+            # v255.0: Memory guard — defer neural mesh under memory pressure
+            _mem_mode = getattr(self, '_memory_mode', 'local_full')
+            if _mem_mode in ("minimal", "cloud_only"):
+                logger.info("Neural Mesh deferred: memory_mode=%s", _mem_mode)
+                self._component_status['neural_mesh'] = ComponentStatus(
+                    name='neural_mesh', available=False,
+                    error=f"Deferred: {_mem_mode}",
+                )
+                os.environ["JARVIS_NEURAL_MESH_DEFERRED"] = "true"
+                return
+
+            _skip_bridge = False
+            try:
+                import psutil as _psutil_nm
+                _avail_mb = _psutil_nm.virtual_memory().available / (1024 * 1024)
+                _nm_min = _env_float("JARVIS_AGI_OS_NEURAL_MESH_GUARD_MIN_MB", 1800.0)
+                _nm_bridge = _env_float("JARVIS_AGI_OS_NEURAL_MESH_GUARD_BRIDGE_MB", 2500.0)
+                if _avail_mb <= _nm_min:
+                    logger.warning(
+                        "Neural Mesh deferred: low memory (%.0fMB <= %.0fMB)",
+                        _avail_mb, _nm_min,
+                    )
+                    self._component_status['neural_mesh'] = ComponentStatus(
+                        name='neural_mesh', available=False,
+                        error=f"Deferred: {_avail_mb:.0f}MB",
+                    )
+                    os.environ["JARVIS_NEURAL_MESH_DEFERRED"] = "true"
+                    return
+                elif _avail_mb < _nm_bridge:
+                    logger.warning(
+                        "Neural Mesh: skipping bridge (%.0fMB < %.0fMB)",
+                        _avail_mb, _nm_bridge,
+                    )
+                    _skip_bridge = True
+            except Exception:
+                pass
+
             # Total budget for all neural mesh init steps.
             # Default 75s — capped to the phase timeout (also 75s by default).
             # v254.0: Supervisor outer timeout raised to 260s, so the phase
@@ -1342,21 +1439,25 @@ class AGIOSCoordinator:
             # The bridge is the last step — giving it a fixed percentage
             # meant overruns in Steps 1-2 could starve it. Now it gets
             # everything that's left (typically 40-50s after Steps 1-2).
+            # v255.0: Skipped under moderate memory pressure (_skip_bridge).
             n_adapters = 0
-            try:
-                from neural_mesh import start_jarvis_neural_mesh
-                bridge_timeout = min(
-                    _env_float("JARVIS_AGI_OS_NEURAL_BRIDGE_TIMEOUT", _remaining()),
-                    _remaining(),
-                )
-                self._jarvis_bridge = await self._run_timed_init_step(
-                    "neural_mesh_bridge",
-                    start_jarvis_neural_mesh,
-                    timeout_seconds=bridge_timeout,
-                )
-                n_adapters = len(self._jarvis_bridge.registered_agents) if hasattr(self._jarvis_bridge, 'registered_agents') else 0
-            except Exception as bridge_exc:
-                logger.warning("JARVIS Neural Mesh Bridge failed (mesh still running): %s", bridge_exc)
+            if _skip_bridge:
+                logger.info("Neural Mesh Bridge skipped (memory pressure)")
+            else:
+                try:
+                    from neural_mesh import start_jarvis_neural_mesh
+                    bridge_timeout = min(
+                        _env_float("JARVIS_AGI_OS_NEURAL_BRIDGE_TIMEOUT", _remaining()),
+                        _remaining(),
+                    )
+                    self._jarvis_bridge = await self._run_timed_init_step(
+                        "neural_mesh_bridge",
+                        start_jarvis_neural_mesh,
+                        timeout_seconds=bridge_timeout,
+                    )
+                    n_adapters = len(self._jarvis_bridge.registered_agents) if hasattr(self._jarvis_bridge, 'registered_agents') else 0
+                except Exception as bridge_exc:
+                    logger.warning("JARVIS Neural Mesh Bridge failed (mesh still running): %s", bridge_exc)
 
             total = len(self._neural_mesh.get_all_agents()) if hasattr(self._neural_mesh, 'get_all_agents') else n_production + n_adapters
             elapsed = time.monotonic() - budget_start
@@ -2242,6 +2343,7 @@ async def get_agi_os() -> AGIOSCoordinator:
 async def start_agi_os(
     progress_callback=None,
     startup_budget_seconds: Optional[float] = None,
+    memory_mode: Optional[str] = None,
 ) -> AGIOSCoordinator:
     """
     Get and start the global AGI OS coordinator.
@@ -2251,6 +2353,8 @@ async def start_agi_os(
             forwarded to AGIOSCoordinator.start() for DMS progress reporting.
         startup_budget_seconds: Optional total startup budget passed through to
             AGIOSCoordinator.start().
+        memory_mode: Optional startup memory mode from supervisor pre-flight.
+            v255.0: Propagated to AGIOSCoordinator.start() for memory guards.
 
     Returns:
         The started AGIOSCoordinator instance
@@ -2260,6 +2364,7 @@ async def start_agi_os(
         await agi.start(
             progress_callback=progress_callback,
             startup_budget_seconds=startup_budget_seconds,
+            memory_mode=memory_mode,
         )
     return agi
 

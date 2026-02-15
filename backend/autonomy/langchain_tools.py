@@ -535,22 +535,30 @@ class NeuralMeshAgentTool(JARVISTool):
 
     def __init__(
         self,
-        agent,  # BaseNeuralMeshAgent (untyped to avoid circular import)
+        agent,  # BaseNeuralMeshAgent (untyped to avoid circular import) — may be None for deferred mesh
         capability: str,
         category: ToolCategory = ToolCategory.INTEGRATION,
         risk_level: ToolRiskLevel = ToolRiskLevel.LOW,
         timeout_seconds: float = 30.0,
     ):
-        tool_name = f"mesh:{agent.agent_name}:{capability}"
+        # Null-guard: agent may be None when neural mesh init was deferred (e.g. memory pressure)
+        if agent is not None:
+            agent_name = getattr(agent, "agent_name", "unknown")
+            agent_type = getattr(agent, "agent_type", "unknown")
+        else:
+            agent_name = "deferred"
+            agent_type = "deferred"
+
+        tool_name = f"mesh:{agent_name}:{capability}"
         metadata = ToolMetadata(
             name=tool_name,
-            description=f"[Neural Mesh] {capability} via {agent.agent_name}",
+            description=f"[Neural Mesh] {capability} via {agent_name}",
             category=category,
             risk_level=risk_level,
             requires_permission=False,
             timeout_seconds=timeout_seconds,
             capabilities=[capability],
-            tags=["neural_mesh", agent.agent_type, agent.agent_name],
+            tags=["neural_mesh", agent_type, agent_name],
         )
         super().__init__(metadata)
         self._agent = agent
@@ -558,6 +566,8 @@ class NeuralMeshAgentTool(JARVISTool):
 
     async def _execute(self, **kwargs) -> Any:
         """Delegate to the mesh agent's execute_task method."""
+        if self._agent is None:
+            return {"error": "Agent unavailable — neural mesh deferred", "deferred": True}
         payload = {"action": self._capability, **kwargs}
         return await self._agent.execute_task(payload)
 
