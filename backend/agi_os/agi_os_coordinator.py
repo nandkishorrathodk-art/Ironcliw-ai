@@ -2116,12 +2116,38 @@ async def start_agi_os(
 
 
 async def stop_agi_os() -> None:
-    """Stop the global AGI OS coordinator."""
+    """Stop the global AGI OS coordinator and mesh singletons."""
     global _agi_os
 
-    if _agi_os is not None:
-        await _agi_os.stop()
-        _agi_os = None
+    coordinator = _agi_os
+    _agi_os = None
+
+    if coordinator is not None:
+        await coordinator.stop()
+
+    # v257.0: AGI teardown must also stop global Neural Mesh singletons.
+    # AGIOSCoordinator.stop() handles its owned coordinator instance, but
+    # standalone mesh bridge/monitoring singletons may still be active and can
+    # leak background tasks into loop shutdown.
+    try:
+        try:
+            from neural_mesh import stop_jarvis_neural_mesh, stop_neural_mesh
+        except ImportError:
+            from backend.neural_mesh import stop_jarvis_neural_mesh, stop_neural_mesh
+
+        mesh_stop_timeout = max(
+            1.0,
+            _env_float("AGI_OS_GLOBAL_MESH_STOP_TIMEOUT", 20.0),
+        )
+        await asyncio.wait_for(stop_jarvis_neural_mesh(), timeout=mesh_stop_timeout)
+        await asyncio.wait_for(stop_neural_mesh(), timeout=mesh_stop_timeout)
+    except asyncio.TimeoutError:
+        logger.warning(
+            "Timed out stopping global Neural Mesh singletons after %.1fs",
+            mesh_stop_timeout,
+        )
+    except Exception as mesh_err:
+        logger.debug("Global Neural Mesh singleton teardown skipped: %s", mesh_err)
 
 
 if __name__ == "__main__":

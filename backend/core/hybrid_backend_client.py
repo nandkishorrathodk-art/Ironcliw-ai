@@ -318,13 +318,37 @@ class HybridBackendClient:
         logger.info("Stopping hybrid backend client...")
 
         if self.health_check_task:
-            self.health_check_task.cancel()
-            try:
-                await self.health_check_task
-            except asyncio.CancelledError:
-                pass
+            health_task = self.health_check_task
+            self.health_check_task = None
 
-        await self.client.aclose()
+            task_loop_closed = False
+            try:
+                task_loop_closed = health_task.get_loop().is_closed()
+            except Exception:
+                task_loop_closed = False
+
+            if task_loop_closed:
+                logger.debug(
+                    "Skipping backend health task cancellation: task loop already closed"
+                )
+            elif not health_task.done():
+                try:
+                    health_task.cancel()
+                    await asyncio.wait_for(health_task, timeout=5.0)
+                except (asyncio.CancelledError, asyncio.TimeoutError):
+                    pass
+                except RuntimeError as e:
+                    if "Event loop is closed" in str(e):
+                        logger.debug(
+                            "Skipping backend health task await: event loop closed"
+                        )
+                    else:
+                        raise
+
+        try:
+            await asyncio.wait_for(self.client.aclose(), timeout=5.0)
+        except asyncio.TimeoutError:
+            logger.warning("Timed out closing HybridBackendClient HTTP client")
 
     async def _health_check_loop(self, interval: int):
         """Periodic health check loop with timeout protection."""

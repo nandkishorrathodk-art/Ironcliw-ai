@@ -62325,31 +62325,79 @@ class JarvisSystemKernel:
                 except Exception:
                     pass
 
+            # v257.0: Completion hooks are optional. Bound their runtime so
+            # startup can never hang at 100% waiting on narration/event sinks.
+            completion_step_timeout = max(
+                0.25,
+                _get_env_float("JARVIS_STARTUP_COMPLETION_STEP_TIMEOUT", 8.0),
+            )
+            completion_total_timeout = max(
+                completion_step_timeout,
+                _get_env_float("JARVIS_STARTUP_COMPLETION_TOTAL_TIMEOUT", 20.0),
+            )
+            completion_deadline = time.monotonic() + completion_total_timeout
+
+            async def _run_completion_hook(
+                name: str,
+                hook_factory: Callable[[], Awaitable[Any]],
+            ) -> None:
+                remaining = completion_deadline - time.monotonic()
+                if remaining <= 0:
+                    self.logger.warning(
+                        "[Kernel] Skipping completion hook '%s': completion budget exhausted "
+                        "(%.1fs)",
+                        name,
+                        completion_total_timeout,
+                    )
+                    return
+
+                hook_timeout = max(0.1, min(completion_step_timeout, remaining))
+                try:
+                    hook_coro = hook_factory()
+                    await asyncio.wait_for(hook_coro, timeout=hook_timeout)
+                except asyncio.TimeoutError:
+                    self.logger.warning(
+                        "[Kernel] Completion hook '%s' timed out after %.1fs "
+                        "(startup continues)",
+                        name,
+                        hook_timeout,
+                    )
+                except asyncio.CancelledError:
+                    raise
+                except Exception as hook_err:
+                    self.logger.debug(
+                        "[Kernel] Completion hook '%s' failed: %s",
+                        name,
+                        hook_err,
+                    )
+
             # Voice narrator startup complete announcement
             if self._narrator:
-                try:
-                    await self._narrator.narrate_startup_complete(duration_sec=startup_duration)
-                except Exception as narr_err:
-                    self.logger.debug(f"[Narrator] Startup complete announcement failed: {narr_err}")
+                await _run_completion_hook(
+                    "async_narrator.startup_complete",
+                    lambda: self._narrator.narrate_startup_complete(
+                        duration_sec=startup_duration,
+                    ),
+                )
 
             # v223.0: Rich startup narrator completion with service details
             if BACKEND_NARRATOR_FUNCS_AVAILABLE and _narrate_backend_complete:
-                try:
-                    await _narrate_backend_complete(
+                await _run_completion_hook(
+                    "startup_narrator.complete",
+                    lambda: _narrate_backend_complete(
                         f"All systems online in {startup_duration:.1f} seconds"
-                    )
-                except Exception:
-                    pass
+                    ),
+                )
 
             # v223.0: Emit orchestrator startup complete event
             if ORCHESTRATOR_NARRATOR_AVAILABLE and emit_orchestrator_event:
-                try:
-                    await emit_orchestrator_event(
+                await _run_completion_hook(
+                    "orchestrator_narrator.startup_complete",
+                    lambda: emit_orchestrator_event(
                         OrchestratorEvent.STARTUP_COMPLETE,
                         elapsed_seconds=startup_duration,
-                    )
-                except Exception:
-                    pass
+                    ),
+                )
 
             return 0
 
