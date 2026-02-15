@@ -70770,8 +70770,15 @@ class JarvisSystemKernel:
             capped_progress = min(progress, phase_ceiling + 14)  # +14 = max heartbeat drift
             self._current_progress = max(current, capped_progress)
         elif stage == "complete" and progress == 100:
-            # Explicit "startup complete" — allow 100% through
-            self._current_progress = 100
+            # v253.2: Only finalize _current_progress=100 when
+            # _current_startup_phase is actually "complete" (set at line 62338).
+            # The first "complete" broadcast (line 62215) is sent for the
+            # loading page UI BEFORE finalization (verification, health
+            # report, banner, completion hooks). Prematurely setting 100%
+            # starts the ProgressController's post_complete_grace timer,
+            # causing a COMPLETION STALL timeout if finalization > 45s.
+            if getattr(self, '_current_startup_phase', '') == "complete":
+                self._current_progress = 100
         # else: runtime status (degraded, ready, invincible_node) — don't touch _current_progress
 
         # v251.0: Update DMS independently of loading-server transport.
