@@ -186,7 +186,7 @@ class NeuralMeshCoordinator:
         but does not start background tasks.
         """
         if self._initialized:
-            logger.warning("Coordinator already initialized")
+            logger.debug("Coordinator already initialized — skipping duplicate init")
             return
 
         logger.info("Initializing Neural Mesh system...")
@@ -867,6 +867,8 @@ async def get_neural_mesh() -> NeuralMeshCoordinator:
     Get the global Neural Mesh coordinator.
 
     Creates and initializes the coordinator if not already done.
+    Uses env-var guard to prevent dual-module aliasing from creating
+    duplicate singletons (backend.neural_mesh vs neural_mesh).
 
     Returns:
         The global NeuralMeshCoordinator instance
@@ -876,6 +878,12 @@ async def get_neural_mesh() -> NeuralMeshCoordinator:
     if _coordinator is None:
         _coordinator = NeuralMeshCoordinator()
     if not _coordinator._initialized:
+        # v253.6: Env-var guard against dual-module aliasing
+        _env_flag = "_JARVIS_NEURAL_MESH_COORD_INITIALIZED"
+        if os.environ.get(_env_flag):
+            logger.debug("Coordinator initialized by other module namespace — skipping")
+            return _coordinator
+        os.environ[_env_flag] = "1"
         await _coordinator.initialize()
 
     return _coordinator

@@ -72393,7 +72393,7 @@ class JarvisSystemKernel:
         # Step 1/6: ML Engine Registry
         try:
             from voice_unlock.ml_engine_registry import get_ml_registry, ensure_ecapa_available
-            registry = get_ml_registry()
+            registry = await get_ml_registry()
             result["ml_registry_tested"] = True
             self.logger.info("[ECAPA]   Step 1/6: ML Engine Registry ✓")
         except asyncio.CancelledError:
