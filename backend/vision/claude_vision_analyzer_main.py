@@ -936,6 +936,11 @@ class ClaudeVisionAnalyzer:
             enable_realtime: Enable real-time monitoring capabilities (default: True)
             use_intelligent_selection: Use intelligent model selection (default: True)
         """
+        # Initialize optional component attributes early to keep object lifecycle safe,
+        # even if partial initialization or teardown paths call component methods.
+        self.screen_sharing = None
+        self._screen_sharing_config = {"enabled": False}
+
         # Load configuration
         if config:
             self.config = config
@@ -1043,6 +1048,18 @@ class ClaudeVisionAnalyzer:
         logger.info(
             f"Initialized ClaudeVisionAnalyzer with config: {self.config.to_dict()}"
         )
+
+    def _is_screen_sharing_enabled(self) -> bool:
+        """Safely determine whether screen sharing is enabled."""
+        config = getattr(self, "_screen_sharing_config", None)
+        if isinstance(config, dict):
+            return bool(config.get("enabled", False))
+        analyzer_config = getattr(self, "config", None)
+        return bool(getattr(analyzer_config, "enable_screen_sharing", False))
+
+    def _get_screen_sharing_component(self):
+        """Safely access the screen sharing component across lifecycle states."""
+        return getattr(self, "screen_sharing", None)
 
     def _init_enhanced_components(self):
         """Initialize all enhanced memory-optimized components"""
@@ -2233,7 +2250,8 @@ class ClaudeVisionAnalyzer:
 
     async def get_screen_sharing(self):
         """Get screen sharing manager with lazy loading"""
-        if self.screen_sharing is None and self._screen_sharing_config["enabled"]:
+        screen_sharing = self._get_screen_sharing_component()
+        if screen_sharing is None and self._is_screen_sharing_enabled():
             try:
                 from .screen_sharing_module import ScreenSharingManager
 
@@ -2259,11 +2277,12 @@ class ClaudeVisionAnalyzer:
 
             except ImportError as e:
                 logger.warning(f"Could not import screen sharing: {e}")
-        return self.screen_sharing
+        return self._get_screen_sharing_component()
 
     async def _handle_memory_warning_for_sharing(self, data: Dict[str, Any]):
         """Handle memory warning from continuous analyzer for screen sharing"""
-        if self.screen_sharing and self.screen_sharing.is_sharing:
+        screen_sharing = self._get_screen_sharing_component()
+        if screen_sharing and screen_sharing.is_sharing:
             # Reduce screen sharing quality when memory is low
             logger.warning(f"Memory warning received: {data}")
             # Screen sharing will automatically adjust based on its own monitoring
@@ -6165,8 +6184,9 @@ For this query, provide a helpful response that leverages the multi-space inform
         cleanup_tasks = []
 
         # Stop screen sharing if active
-        if self.screen_sharing and self.screen_sharing.is_sharing:
-            cleanup_tasks.append(self.screen_sharing.stop_sharing())
+        screen_sharing = self._get_screen_sharing_component()
+        if screen_sharing and screen_sharing.is_sharing:
+            cleanup_tasks.append(screen_sharing.stop_sharing())
 
         # Stop video streaming if active
         if (
@@ -6640,8 +6660,9 @@ For this query, provide a helpful response that leverages the multi-space inform
                 "simplified_vision"
             ] = self.simplified_vision.get_performance_stats()
 
-        if self.screen_sharing:
-            stats["components"]["screen_sharing"] = self.screen_sharing.get_metrics()
+        screen_sharing = self._get_screen_sharing_component()
+        if screen_sharing:
+            stats["components"]["screen_sharing"] = screen_sharing.get_metrics()
 
         if hasattr(self, "video_streaming") and self.video_streaming:
             stats["components"]["video_streaming"] = self.video_streaming.get_metrics()
@@ -6767,17 +6788,19 @@ For this query, provide a helpful response that leverages the multi-space inform
 
     async def stop_screen_sharing(self) -> Dict[str, Any]:
         """Stop screen sharing"""
-        if self.screen_sharing:
-            await self.screen_sharing.stop_sharing()
+        screen_sharing = self._get_screen_sharing_component()
+        if screen_sharing:
+            await screen_sharing.stop_sharing()
             return {"success": True, "message": "Screen sharing stopped"}
         return {"success": False, "error": "Screen sharing not active"}
 
     async def get_screen_sharing_status(self) -> Dict[str, Any]:
         """Get current screen sharing status"""
-        if self.screen_sharing:
+        screen_sharing = self._get_screen_sharing_component()
+        if screen_sharing:
             return {
-                "active": self.screen_sharing.is_sharing,
-                "metrics": self.screen_sharing.get_metrics(),
+                "active": screen_sharing.is_sharing,
+                "metrics": screen_sharing.get_metrics(),
             }
         return {"active": False, "metrics": None}
 
@@ -6785,16 +6808,18 @@ For this query, provide a helpful response that leverages the multi-space inform
         self, peer_id: str, offer: Optional[Dict] = None
     ) -> Dict[str, Any]:
         """Add a peer to screen sharing session"""
-        if not self.screen_sharing or not self.screen_sharing.is_sharing:
+        screen_sharing = self._get_screen_sharing_component()
+        if not screen_sharing or not screen_sharing.is_sharing:
             return {"success": False, "error": "Screen sharing not active"}
 
-        success = await self.screen_sharing.add_peer(peer_id, offer)
+        success = await screen_sharing.add_peer(peer_id, offer)
         return {"success": success, "peer_id": peer_id}
 
     async def remove_screen_sharing_peer(self, peer_id: str) -> Dict[str, Any]:
         """Remove a peer from screen sharing session"""
-        if self.screen_sharing:
-            await self.screen_sharing.remove_peer(peer_id)
+        screen_sharing = self._get_screen_sharing_component()
+        if screen_sharing:
+            await screen_sharing.remove_peer(peer_id)
             return {"success": True, "peer_id": peer_id}
         return {"success": False, "error": "Screen sharing not active"}
 
@@ -8203,14 +8228,13 @@ Provide a clear summary of the current state."""
         logger.info(f"Adjusting preference for {category.value} by {adjustment}")
 
     def __del__(self):
-        """Cleanup on deletion"""
-        self.executor.shutdown(wait=False)
-        # Schedule async cleanup
-        try:
-            asyncio.create_task(self.cleanup_all_components())
-        except RuntimeError:
-            # Event loop might be closed
-            pass
+        """Best-effort synchronous cleanup on deletion."""
+        executor = getattr(self, "executor", None)
+        if executor is not None:
+            try:
+                executor.shutdown(wait=False)
+            except Exception:
+                pass
 
     # Vision Intelligence Methods
 

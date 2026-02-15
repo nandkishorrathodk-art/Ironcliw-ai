@@ -341,13 +341,31 @@ class NeuralMeshCoordinator:
 
         # Cancel health monitor
         if self._health_task:
-            self._health_task.cancel()
+            health_task = self._health_task
+            self._health_task = None
+            task_loop_closed = False
             try:
-                await self._health_task
-            except asyncio.CancelledError:
-                pass
-            finally:
-                self._health_task = None
+                task_loop_closed = health_task.get_loop().is_closed()
+            except Exception:
+                task_loop_closed = False
+
+            if task_loop_closed:
+                logger.debug(
+                    "Skipping Neural Mesh health task cancellation: task loop already closed"
+                )
+            elif not health_task.done():
+                try:
+                    health_task.cancel()
+                    await health_task
+                except asyncio.CancelledError:
+                    pass
+                except RuntimeError as e:
+                    if "Event loop is closed" in str(e):
+                        logger.debug(
+                            "Skipping Neural Mesh health task await: event loop closed"
+                        )
+                    else:
+                        raise
 
         async def _stop_agent(agent: BaseNeuralMeshAgent) -> None:
             try:
@@ -386,6 +404,14 @@ class NeuralMeshCoordinator:
                     name,
                     component_stop_timeout,
                 )
+            except RuntimeError as e:
+                if "Event loop is closed" in str(e):
+                    logger.debug(
+                        "Skipping %s stop: event loop already closed during shutdown",
+                        name,
+                    )
+                else:
+                    logger.exception("Error stopping %s: %s", name, e)
             except Exception as e:
                 logger.exception("Error stopping %s: %s", name, e)
 

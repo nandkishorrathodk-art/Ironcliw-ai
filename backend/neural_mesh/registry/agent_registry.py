@@ -16,6 +16,7 @@ Memory Footprint: ~5MB for 60 agents
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import os
@@ -255,19 +256,44 @@ class AgentRegistry:
         self._running = False
 
         if self._health_check_task:
-            self._health_check_task.cancel()
-            try:
-                await asyncio.wait_for(self._health_check_task, timeout=5.0)
-            except (asyncio.CancelledError, asyncio.TimeoutError):
-                pass
-            finally:
-                self._health_check_task = None
+            health_task = self._health_check_task
+            self._health_check_task = None
+
+            # Singleton registries can outlive event-loop lifecycles.
+            # If the task belongs to a previously closed loop, cancellation
+            # will raise RuntimeError("Event loop is closed").
+            task_loop_closed = False
+            with contextlib.suppress(Exception):
+                task_loop_closed = health_task.get_loop().is_closed()
+
+            if task_loop_closed:
+                logger.debug(
+                    "Skipping registry health task cancellation: task loop already closed"
+                )
+            elif not health_task.done():
+                try:
+                    health_task.cancel()
+                    await asyncio.wait_for(health_task, timeout=5.0)
+                except (asyncio.CancelledError, asyncio.TimeoutError):
+                    pass
+                except RuntimeError as e:
+                    if "Event loop is closed" in str(e):
+                        logger.debug(
+                            "Skipping registry health task await: event loop closed during stop"
+                        )
+                    else:
+                        raise
 
         # Persist registry
         try:
             await asyncio.wait_for(self._save_registry(), timeout=5.0)
         except asyncio.TimeoutError:
             logger.warning("Registry persistence timed out during stop")
+        except RuntimeError as e:
+            if "Event loop is closed" in str(e):
+                logger.debug("Skipping registry persistence: event loop closed during stop")
+            else:
+                raise
         except Exception as e:
             logger.warning("Registry persistence failed during stop: %s", e)
 
