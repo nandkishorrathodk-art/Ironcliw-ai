@@ -989,13 +989,32 @@ class AgentRegistry:
         """Add callback for agent status change events."""
         self._on_status_change_callbacks.append(callback)
 
+    def remove_status_change(
+        self,
+        callback: Callable[[AgentInfo, AgentStatus], Any],
+    ) -> bool:
+        """Remove a previously registered status change callback.
+
+        v253.4: Prevents callback accumulation across warm restarts.
+        Returns True if the callback was found and removed.
+        """
+        try:
+            self._on_status_change_callbacks.remove(callback)
+            return True
+        except ValueError:
+            return False
+
     async def _fire_status_change(
         self,
         agent_info: AgentInfo,
         old_status: AgentStatus,
     ) -> None:
-        """Fire status change callbacks."""
-        for callback in self._on_status_change_callbacks:
+        """Fire status change callbacks.
+
+        v253.4: Snapshot the callback list before iterating to prevent
+        RuntimeError if a callback triggers remove_status_change().
+        """
+        for callback in list(self._on_status_change_callbacks):
             try:
                 result = callback(agent_info, old_status)
                 if asyncio.iscoroutine(result):

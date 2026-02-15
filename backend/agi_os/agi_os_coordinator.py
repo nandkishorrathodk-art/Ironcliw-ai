@@ -215,6 +215,11 @@ class AGIOSCoordinator:
         # v251.2: Strong refs prevent GC of fire-and-forget tasks
         self._background_tasks: set = set()
 
+        # v253.4: Track registered callbacks for cleanup on stop()
+        self._agent_status_callback: Optional[Any] = None
+        self._agent_status_registry: Optional[Any] = None
+        self._approval_callback: Optional[Any] = None
+
         # Statistics
         self._stats = {
             'uptime_seconds': 0,
@@ -615,34 +620,61 @@ class AGIOSCoordinator:
                         else:
                             raise
 
+            # v253.4: Unregister approval callback before stopping event stream.
+            if self._approval_callback and self._approval_manager:
+                try:
+                    if hasattr(self._approval_manager, 'remove_approval_callback'):
+                        self._approval_manager.remove_approval_callback(
+                            self._approval_callback,
+                        )
+                except Exception as e:
+                    logger.debug("Approval callback cleanup failed: %s", e)
+                self._approval_callback = None
+
             # v237.2: Stop event bridge first (unsubscribes from bus + event stream).
             if self._event_bridge:
                 await _run_stop_step("event bridge", self._event_bridge.stop)
 
-            # v237.3: Stop macOS monitors via instance .stop() — NOT singleton destructors.
+            # v253.4: Parallel monitor shutdown. Components were initialized in
+            # parallel (v253.3 asyncio.gather) but stopped sequentially — taking
+            # up to 64s worst case (8 × 8s timeout). Now independent monitors
+            # stop in parallel: time = max(individual) instead of sum(individual).
+            #
+            # Group 1 (fully independent): notification_monitor, system_event_monitor,
+            #   screen_analyzer — no ordering constraints between them.
+            # Group 2 (ordered): Ghost Display THEN Ghost Hands (v237.4 dependency).
+            _parallel_stops = []
+
             if self._notification_monitor:
-                await _run_stop_step("NotificationMonitor", self._notification_monitor.stop)
+                _parallel_stops.append(
+                    _run_stop_step("NotificationMonitor", self._notification_monitor.stop)
+                )
 
             if self._system_event_monitor:
-                await _run_stop_step("SystemEventMonitor", self._system_event_monitor.stop)
-
-            # v237.4: Stop Ghost Display before Ghost Hands.
-            if self._ghost_display and hasattr(self._ghost_display, 'cleanup'):
-                await _run_stop_step("Ghost Display", self._ghost_display.cleanup)
-
-            if self._ghost_hands:
-                ghost_stop_step, ghost_stop_method = _resolve_stop_callable(
-                    self._ghost_hands, ["stop", "shutdown", "cleanup", "close"]
+                _parallel_stops.append(
+                    _run_stop_step("SystemEventMonitor", self._system_event_monitor.stop)
                 )
-                if ghost_stop_step:
-                    await _run_stop_step(
-                        f"Ghost Hands ({ghost_stop_method})",
-                        ghost_stop_step,
-                    )
 
-            # v237.3: Stop screen analyzer before event stream shutdown.
             if self._screen_analyzer and hasattr(self._screen_analyzer, 'stop_monitoring'):
-                await _run_stop_step("screen analyzer", self._screen_analyzer.stop_monitoring)
+                _parallel_stops.append(
+                    _run_stop_step("screen analyzer", self._screen_analyzer.stop_monitoring)
+                )
+
+            # Ghost Display → Ghost Hands (ordered) wrapped as a single coroutine
+            async def _stop_ghost_pair():
+                if self._ghost_display and hasattr(self._ghost_display, 'cleanup'):
+                    await _run_stop_step("Ghost Display", self._ghost_display.cleanup)
+                if self._ghost_hands:
+                    _gs, _gm = _resolve_stop_callable(
+                        self._ghost_hands, ["stop", "shutdown", "cleanup", "close"]
+                    )
+                    if _gs:
+                        await _run_stop_step(f"Ghost Hands ({_gm})", _gs)
+
+            _parallel_stops.append(_stop_ghost_pair())
+
+            if _parallel_stops:
+                await asyncio.gather(*_parallel_stops, return_exceptions=True)
 
             runtime = self._resolve_agent_runtime()
             if runtime and hasattr(runtime, "stop"):
@@ -656,32 +688,58 @@ class AGIOSCoordinator:
                     timeout=hybrid_stop_timeout,
                 )
 
-            # Stop owner identity / voice verification services if present.
+            # v253.4: Parallel shutdown of identity/verification/notification services.
+            _svc_stops = []
+
             if self._owner_identity and hasattr(self._owner_identity, "shutdown"):
-                await _run_stop_step("Owner Identity Service", self._owner_identity.shutdown)
-            speaker_stop_step, speaker_stop_method = _resolve_stop_callable(
+                _svc_stops.append(
+                    _run_stop_step("Owner Identity Service", self._owner_identity.shutdown)
+                )
+
+            _spk_step, _spk_method = _resolve_stop_callable(
                 self._speaker_verification,
                 ["shutdown", "stop", "cleanup", "close"],
             )
-            if speaker_stop_step:
-                await _run_stop_step(
-                    f"Speaker Verification Service ({speaker_stop_method})",
-                    speaker_stop_step,
+            if _spk_step:
+                _svc_stops.append(
+                    _run_stop_step(
+                        f"Speaker Verification Service ({_spk_method})", _spk_step,
+                    )
                 )
 
-            # v252.0: Stop notification bridge (prevents zombie notifications during teardown).
             async def _stop_notification_bridge():
                 try:
                     from agi_os.notification_bridge import shutdown_notifications
                     shutdown_notifications()
                 except ImportError:
                     pass
-            await _run_stop_step("notification bridge", _stop_notification_bridge)
+            _svc_stops.append(_run_stop_step("notification bridge", _stop_notification_bridge))
 
-            # Stop singleton-managed components in reverse order.
-            await _run_stop_step("action orchestrator", stop_action_orchestrator)
-            await _run_stop_step("event stream", stop_event_stream)
-            await _run_stop_step("voice communicator", stop_voice_communicator)
+            if _svc_stops:
+                await asyncio.gather(*_svc_stops, return_exceptions=True)
+
+            # v253.4: Parallel singleton teardown (independent of each other).
+            await asyncio.gather(
+                _run_stop_step("action orchestrator", stop_action_orchestrator),
+                _run_stop_step("event stream", stop_event_stream),
+                _run_stop_step("voice communicator", stop_voice_communicator),
+                return_exceptions=True,
+            )
+
+            # v253.4: Unregister agent status callback BEFORE stopping bridge/mesh.
+            # The callback holds refs to bridge_ref and registry — must be removed
+            # before those objects are torn down to prevent use-after-free and
+            # callback accumulation across warm restarts.
+            if self._agent_status_callback and self._agent_status_registry:
+                try:
+                    if hasattr(self._agent_status_registry, 'remove_status_change'):
+                        self._agent_status_registry.remove_status_change(
+                            self._agent_status_callback,
+                        )
+                except Exception as e:
+                    logger.debug("Agent status callback cleanup failed: %s", e)
+                self._agent_status_callback = None
+                self._agent_status_registry = None
 
             # v237.0: Stop JARVIS Bridge (stops adapter agents, cancels startup tasks).
             if self._jarvis_bridge:
@@ -708,6 +766,10 @@ class AGIOSCoordinator:
             self._screen_analyzer = None
             self._ghost_hands = None
             self._ghost_display = None
+            # v253.4: Clear callback refs (defensive — should be None already)
+            self._agent_status_callback = None
+            self._agent_status_registry = None
+            self._approval_callback = None
             self._state = AGIOSState.OFFLINE
             logger.info("AGI OS stopped")
 
@@ -1548,6 +1610,8 @@ class AGIOSCoordinator:
                 task.add_done_callback(self._background_tasks.discard)
 
             self._approval_manager.on_approval(on_approval)
+            # v253.4: Store reference for cleanup on stop()
+            self._approval_callback = on_approval
 
         # v237.2: Wire Neural Mesh ↔ ProactiveEventStream bidirectional bridge
         if self._neural_mesh and self._event_stream:
@@ -1667,6 +1731,9 @@ class AGIOSCoordinator:
                                 )
 
                     agent_registry.on_status_change(_on_agent_status_change)
+                    # v253.4: Store references for cleanup on stop()
+                    self._agent_status_callback = _on_agent_status_change
+                    self._agent_status_registry = agent_registry
                     logger.info("[MeshToolLifecycle] Health-aware tool lifecycle active")
 
             except Exception as e:
@@ -1737,11 +1804,18 @@ class AGIOSCoordinator:
         await self._voice.speak(greeting, mode=VoiceMode.NORMAL)
 
     def _determine_health_state(self) -> AGIOSState:
-        """Determine overall health state."""
+        """Determine overall health state.
+
+        v253.4: Fixed else branch — returned DEGRADED when core components
+        were down, masking actual OFFLINE state. Correct mapping:
+          all available + core OK  → ONLINE
+          some missing  + core OK  → DEGRADED (can still serve commands)
+          core components down     → OFFLINE  (cannot serve commands)
+        """
         available = sum(1 for s in self._component_status.values() if s.available)
         total = len(self._component_status)
 
-        # Core components that must be available
+        # Core components that must be available for useful operation
         core_available = all(
             self._component_status.get(name, ComponentStatus(name=name, available=False)).available
             for name in ['voice', 'events', 'orchestrator']
@@ -1749,10 +1823,10 @@ class AGIOSCoordinator:
 
         if available == total and core_available:
             return AGIOSState.ONLINE
-        elif available > 0 and core_available:
+        elif core_available:
             return AGIOSState.DEGRADED
         else:
-            return AGIOSState.DEGRADED
+            return AGIOSState.OFFLINE
 
     async def _health_monitor_loop(self) -> None:
         """Background task for health monitoring."""

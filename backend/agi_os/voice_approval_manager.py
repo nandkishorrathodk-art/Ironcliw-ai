@@ -745,7 +745,7 @@ class VoiceApprovalManager:
             self._history = self._history[-self._max_history:]
 
         # Fire callbacks
-        for callback in self._approval_callbacks:
+        for callback in list(self._approval_callbacks):  # v253.4: snapshot
             try:
                 callback(request, response)
             except Exception as e:
@@ -803,6 +803,21 @@ class VoiceApprovalManager:
     ) -> None:
         """Register a callback for approval decisions."""
         self._approval_callbacks.append(callback)
+
+    def remove_approval_callback(
+        self,
+        callback: Callable[[ApprovalRequest, ApprovalResponse], None]
+    ) -> bool:
+        """Remove a previously registered approval callback.
+
+        v253.4: Prevents callback accumulation across warm restarts.
+        Returns True if the callback was found and removed.
+        """
+        try:
+            self._approval_callbacks.remove(callback)
+            return True
+        except ValueError:
+            return False
 
     def get_stats(self) -> Dict[str, Any]:
         """Get approval statistics."""
