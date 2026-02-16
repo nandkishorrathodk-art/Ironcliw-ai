@@ -65178,6 +65178,17 @@ class JarvisSystemKernel:
                     )
                     agi_os_init_timeout = agi_os_init_timeout_cap
 
+                # v258.3: Synchronize DMS timeout with actual init timeout.
+                # Previously, DMS was registered with JARVIS_AGI_OS_TIMEOUT (90s)
+                # at Phase 6.5 entry (line 62139), giving a DMS limit of 90+30=120s.
+                # But the actual init runs up to JARVIS_AGI_OS_INIT_TIMEOUT (270s).
+                # This disconnect caused DMS TIMEOUT at 120-180s while init still
+                # had 90+ seconds remaining.
+                if self._startup_watchdog:
+                    self._startup_watchdog.register_phase_timeout(
+                        "agi_os", agi_os_init_timeout
+                    )
+
                 # Voice announcement
                 if self._narrator and self.config.voice_enabled:
                     await self._narrator.speak(
@@ -65212,8 +65223,8 @@ class JarvisSystemKernel:
                     await self._broadcast_progress(86, "agi_os", "Starting AGI OS Coordinator...")
                     self._mark_startup_activity("agi_os:coordinator_start", stage="agi_os")
 
-                    # Sub-progress counter: 86.1 → 86.6 across coordinator phases
-                    _agi_sub = {"n": 0}
+                    # Sub-progress counter + start time for time-based progress
+                    _agi_sub = {"n": 0, "t0": time.monotonic()}
                     _agi_progress_broadcast_timeout = max(
                         0.1,
                         _get_env_float(
@@ -65228,12 +65239,23 @@ class JarvisSystemKernel:
                             f"agi_os_progress:{_step}",
                             stage="agi_os",
                         )
-                        # Broadcast sub-progress to keep DMS watchdog alive
-                        # Progress stays within 86-87 range (allocated for agi_os)
+                        # v258.3: Time-based progress within 86-87 range.
+                        # Previously always broadcast 86 — ProgressController only
+                        # counts progress when value increases (progress_pct >
+                        # last_progress_pct), so after the initial 85→86 advancement
+                        # all subsequent calls were invisible to stall detection.
+                        _elapsed = time.monotonic() - _agi_sub["t0"]
+                        _frac = min(1.0, _elapsed / max(1.0, agi_os_init_timeout))
+                        _sub_progress = min(87, 86 + int(_frac * 2))
+                        # v258.3: DMS heartbeat — without this, DMS _last_progress_time
+                        # was NEVER updated during AGI OS init.  Only update_phase()
+                        # sets it; _mark_startup_activity and _broadcast_progress do not.
+                        if self._startup_watchdog:
+                            self._startup_watchdog.update_phase("agi_os", _sub_progress)
                         try:
                             await asyncio.wait_for(
                                 self._broadcast_progress(
-                                    86, "agi_os", f"AGI OS [{step}]: {detail}"
+                                    _sub_progress, "agi_os", f"AGI OS [{step}]: {detail}"
                                 ),
                                 timeout=_agi_progress_broadcast_timeout,
                             )
@@ -65294,6 +65316,9 @@ class JarvisSystemKernel:
                             )
                             if startup_task in done:
                                 self._agi_os = startup_task.result()
+                                # v258.3: Advance progress after coordinator started
+                                if self._startup_watchdog:
+                                    self._startup_watchdog.update_phase("agi_os", 87)
                                 break
 
                             elapsed = time.monotonic() - startup_started
@@ -65301,10 +65326,17 @@ class JarvisSystemKernel:
                                 "agi_os:startup_wait",
                                 stage="agi_os",
                             )
+                            # v258.3: Time-based progress within 86-88 range.
+                            # Covers the full AGI OS init duration (up to 270s).
+                            _frac = min(1.0, elapsed / max(1.0, agi_os_init_timeout))
+                            _progress = min(88, 86 + int(_frac * 3))
+                            # v258.3: DMS heartbeat — prevents TIMEOUT during long init.
+                            if self._startup_watchdog:
+                                self._startup_watchdog.update_phase("agi_os", _progress)
                             try:
                                 await asyncio.wait_for(
                                     self._broadcast_progress(
-                                        86,
+                                        _progress,
                                         "agi_os",
                                         f"Starting AGI OS Coordinator... ({elapsed:.0f}s elapsed)",
                                     ),
