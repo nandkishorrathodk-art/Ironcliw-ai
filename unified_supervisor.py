@@ -20894,7 +20894,22 @@ class PersistentConversationMemoryAgent:
         if self._running:
             return True
 
+        # v258.2: CPU-aware timeout extension — under high CPU pressure,
+        # the 8s default is insufficient for DB queries even when parallelized.
         boot_timeout = max(1.0, min(self._boot_load_timeout, self._init_timeout))
+        try:
+            from backend.core.async_system_metrics import get_cpu_percent
+            _cpu = await get_cpu_percent()
+        except Exception:
+            _cpu = 0.0
+        if _cpu > 90.0:
+            _boot_max = float(os.getenv("JARVIS_MEMORY_BOOT_MAX_TIMEOUT", "16.0"))
+            boot_timeout = min(_boot_max, self._init_timeout)
+            self._logger.info(
+                "[MemoryAgent] CPU %.0f%% — extended boot timeout to %.0fs",
+                _cpu, boot_timeout,
+            )
+
         boot_task = create_safe_task(
             self._load_boot_context(),
             name="memory-agent-boot-load-initial",
@@ -21320,18 +21335,63 @@ class PersistentConversationMemoryAgent:
         return await get_learning_database(config={"enable_ml_features": False})
 
     async def _load_boot_context(self) -> None:
-        """Load historical conversational context + preferences on startup."""
+        """Load historical conversational context + preferences on startup.
+
+        v258.2: Parallelized DB queries via asyncio.gather() and added per-query
+        timeouts.  Under 99.2% CPU pressure, sequential queries exceeded the 8s
+        boot_load_timeout.  Since get_recent_interactions() and get_preferences()
+        are independent READ-ONLY SELECTs, they can safely run concurrently.
+        In PostgreSQL mode each gets its own pool connection; in SQLite mode they
+        serialize internally but still benefit from reduced Python overhead.
+        """
+        _per_query_timeout = float(
+            os.getenv("JARVIS_MEMORY_BOOT_QUERY_TIMEOUT", "6.0")
+        )
+
         learning_db = await self._get_learning_db()
 
-        interactions = await learning_db.get_recent_interactions(
-            limit=self._boot_interaction_limit,
-            significant_only=True,
+        # v258.2: Parallel DB queries — independent read-only SELECTs
+        async def _fetch_interactions():
+            return await asyncio.wait_for(
+                learning_db.get_recent_interactions(
+                    limit=self._boot_interaction_limit,
+                    significant_only=True,
+                ),
+                timeout=_per_query_timeout,
+            )
+
+        async def _fetch_preferences():
+            return await asyncio.wait_for(
+                learning_db.get_preferences(
+                    category=None,
+                    min_confidence=self._min_preference_confidence,
+                    limit=self._boot_preference_limit,
+                ),
+                timeout=_per_query_timeout,
+            )
+
+        results = await asyncio.gather(
+            _fetch_interactions(),
+            _fetch_preferences(),
+            return_exceptions=True,
         )
-        preferences = await learning_db.get_preferences(
-            category=None,
-            min_confidence=self._min_preference_confidence,
-            limit=self._boot_preference_limit,
-        )
+
+        # Unpack results — treat per-query timeouts as empty results, not failures
+        if isinstance(results[0], BaseException):
+            self._logger.warning(
+                "[MemoryAgent] Boot interactions query failed: %s", results[0]
+            )
+            interactions = []
+        else:
+            interactions = results[0]
+
+        if isinstance(results[1], BaseException):
+            self._logger.warning(
+                "[MemoryAgent] Boot preferences query failed: %s", results[1]
+            )
+            preferences = []
+        else:
+            preferences = results[1]
 
         # Keep payload bounded for cross-repo snapshot handoff.
         interaction_preview = [
@@ -21368,7 +21428,13 @@ class PersistentConversationMemoryAgent:
             },
         }
 
-        await self._publish_state_snapshot()
+        # v258.2: Fire-and-forget state snapshot — Trinity handoff is not
+        # boot-critical and should not consume the tight boot_load_timeout
+        # budget.  The snapshot will complete asynchronously.
+        create_safe_task(
+            self._publish_state_snapshot(),
+            name="memory-agent-boot-snapshot",
+        )
 
     async def _publish_state_snapshot(self) -> None:
         """Publish current memory snapshot to a Trinity-shared state file."""
@@ -61939,13 +62005,26 @@ class JarvisSystemKernel:
                     f"(max extended={max_possible_extended:.0f}s + 120s buffer)"
                 )
             if self.config.trinity_enabled:
+                # v258.2: Wrap narrator calls in timeouts — previously unbounded awaits
+                # that could block indefinitely if TTS engine hangs, preventing
+                # _phase_trinity() from starting and the heartbeat from being created.
+                _narrator_timeout = _get_env_float("JARVIS_TRINITY_NARRATOR_TIMEOUT", 10.0)
                 if self._narrator:
-                    await self._narrator.narrate_phase_start("trinity")
+                    try:
+                        await asyncio.wait_for(
+                            self._narrator.narrate_phase_start("trinity"),
+                            timeout=_narrator_timeout,
+                        )
+                    except (asyncio.TimeoutError, Exception):
+                        pass  # Non-fatal — TTS timeout doesn't block startup
                 # v223.0: Rich startup narrator for Trinity phase
                 if self._startup_narrator:
                     try:
-                        await self._startup_narrator.announce_trinity_init()
-                    except Exception:
+                        await asyncio.wait_for(
+                            self._startup_narrator.announce_trinity_init(),
+                            timeout=_narrator_timeout,
+                        )
+                    except (asyncio.TimeoutError, Exception):
                         pass
                 # v223.0: Emit orchestrator event for Trinity startup
                 if ORCHESTRATOR_NARRATOR_AVAILABLE and emit_orchestrator_event:
@@ -66728,13 +66807,17 @@ class JarvisSystemKernel:
                 dashboard = get_live_dashboard()
                 dashboard.update_component("jarvis-prime", status="starting")
                 dashboard.update_component("reactor-core", status="starting")
-                
-                # v188.0: Start heartbeat task for long-running operations
+
+                # v258.2: Start heartbeat IMMEDIATELY — before startup_lock_context.
+                # Previously started at line 66733 (after dashboard), but the orchestrator's
+                # 4 sequential steps (lock/hardware/GCP/cross-repo = up to 90s) ran BEFORE
+                # any DMS updates, causing false "STALLED: No progress for 279.4s" detection.
+                # The heartbeat must be alive BEFORE any potentially blocking operations.
                 heartbeat_task = create_safe_task(
                     _trinity_heartbeat_loop(),
                     name="trinity-dms-heartbeat"
                 )
-                self.logger.debug("[Trinity] 💓 DMS heartbeat started")
+                self.logger.debug("[Trinity] DMS heartbeat started")
 
                 # v180.0: Diagnostic checkpoint
                 if DIAGNOSTICS_AVAILABLE and log_startup_checkpoint:
@@ -66815,8 +66898,28 @@ class JarvisSystemKernel:
                         # v200.0: Create orchestrator instance
                         orchestrator = ProcessOrchestrator()
 
+                        # v258.2: Progress callback for startup_lock_context steps.
+                        # The orchestrator's 4 sequential steps (lock, hardware, GCP,
+                        # cross-repo) can take up to 90s total. Without this callback,
+                        # the DMS sees zero progress updates during this time, causing
+                        # false STALL detection even though the heartbeat task is running.
+                        # The callback provides SYNCHRONOUS progress updates (called from
+                        # the event loop thread) that complement the async heartbeat.
+                        def _orch_progress_callback(pct: int, step: str) -> None:
+                            if self._startup_watchdog:
+                                trinity_heartbeat_progress["current"] = max(
+                                    trinity_heartbeat_progress["current"], pct
+                                )
+                                self._startup_watchdog.update_phase("trinity", pct)
+                                self.logger.debug(
+                                    f"[Trinity] Orchestrator step: {step} (progress={pct})"
+                                )
+
                         self.logger.info("[Trinity] Acquiring cross-repo startup lock...")
-                        async with orchestrator.startup_lock_context(spawn_processes=False) as ctx:
+                        async with orchestrator.startup_lock_context(
+                            spawn_processes=False,
+                            progress_callback=_orch_progress_callback,
+                        ) as ctx:
                             self.logger.success("[Trinity] Cross-repo startup lock acquired")
 
                             # v198.2: Sync manual progress with heartbeat tracker

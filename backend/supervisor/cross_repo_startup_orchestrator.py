@@ -7889,6 +7889,7 @@ class ProcessOrchestrator:
     async def startup_lock_context(
         self,
         spawn_processes: bool = True,
+        progress_callback: Optional[Callable[[int, str], None]] = None,
     ) -> AsyncIterator["ProcessOrchestrator"]:
         """
         v200.0: Async context manager for startup with cross-repo lock.
@@ -7900,6 +7901,11 @@ class ProcessOrchestrator:
             spawn_processes: If False, orchestrator does NOT spawn any processes;
                            TrinityIntegrator will be the sole spawner (unified_supervisor path).
                            If True, orchestrator spawns processes (legacy/run_supervisor path).
+            progress_callback: v258.2: Optional callback(progress_pct, step_name) called
+                             after each orchestration step to keep external watchdogs
+                             (DMS) alive. Without this, the 4 sequential steps (lock,
+                             hardware, GCP, cross-repo = up to 90s) produce zero
+                             DMS heartbeats, causing false STALL detection.
 
         Yields:
             Self (ProcessOrchestrator instance) for use within the context.
@@ -7916,6 +7922,14 @@ class ProcessOrchestrator:
         self._spawn_processes = spawn_processes
         _ctx_start = time.time()
 
+        def _report_progress(pct: int, step: str) -> None:
+            """v258.2: Report progress to external watchdog (DMS)."""
+            if progress_callback is not None:
+                try:
+                    progress_callback(pct, step)
+                except Exception:
+                    pass  # Best-effort — never block orchestrator for callback errors
+
         # 1. Acquire cross-repo lock
         acquired = await self._acquire_startup_lock()
         if not acquired:
@@ -7924,6 +7938,7 @@ class ProcessOrchestrator:
                 "Another supervisor instance may be running."
             )
         logger.info(f"[v256.0] Orchestrator step 1/4: lock acquired ({time.time() - _ctx_start:.1f}s)")
+        _report_progress(66, "lock_acquired")
 
         try:
             # 2. Re-enforce hardware environment
@@ -7939,6 +7954,7 @@ class ProcessOrchestrator:
                     "cloud offloading may be incorrectly disabled if real hardware is CAPABLE."
                 )
             logger.info(f"[v256.0] Orchestrator step 2/4: hardware assessed ({time.time() - _ctx_start:.1f}s)")
+            _report_progress(67, "hardware_assessed")
 
             # 3. GCP pre-warm (if enabled based on hardware assessment)
             # v256.1: Added timeout — GCP SDK init can block under network issues
@@ -7952,6 +7968,7 @@ class ProcessOrchestrator:
                         "skipping. GCP offloading may be delayed."
                     )
             logger.info(f"[v256.0] Orchestrator step 3/4: GCP prewarm checked ({time.time() - _ctx_start:.1f}s)")
+            _report_progress(67, "gcp_prewarm_checked")
 
             # 4. Initialize cross_repo state (respects spawn_processes flag)
             # v256.0: Added timeout — _initialize_cross_repo_state() calls DLM operations
@@ -7977,6 +7994,7 @@ class ProcessOrchestrator:
                 except Exception as _dlm_err:
                     logger.debug(f"[v256.1] DLM cleanup after timeout: {_dlm_err}")
             logger.info(f"[v256.0] Orchestrator step 4/4: cross-repo state initialized ({time.time() - _ctx_start:.1f}s)")
+            _report_progress(68, "cross_repo_initialized")
 
             yield self
 
