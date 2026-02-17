@@ -263,6 +263,12 @@ class ReactorCoreClient:
         self._last_failure_reason: Optional[str] = None
         self._health_check_interval_multiplier: float = 1.0
 
+        # v2.1: Training readiness state (enriched health monitoring)
+        self._training_ready: bool = False
+        self._reactor_phase: str = "unknown"
+        self._trinity_connected: bool = False
+        self._active_job_id: Optional[str] = None
+
     async def initialize(self) -> bool:
         """
         Initialize the client and establish connection.
@@ -369,6 +375,22 @@ class ReactorCoreClient:
                 timeout=adaptive_timeout,
             ) as response:
                 if response.status == 200:
+                    # v2.1: Parse training readiness from response body
+                    try:
+                        health_data = await response.json()
+                        prev_phase = self._reactor_phase
+                        self._training_ready = health_data.get("training_ready", False)
+                        self._reactor_phase = health_data.get("phase", "unknown")
+                        self._trinity_connected = health_data.get("trinity_connected", False)
+                        # Log phase transitions
+                        if prev_phase != self._reactor_phase:
+                            logger.info(
+                                f"[ReactorClient] Reactor-Core phase: {prev_phase} -> {self._reactor_phase} "
+                                f"(training_ready={self._training_ready})"
+                            )
+                    except Exception:
+                        pass  # Don't fail health check if JSON parsing fails
+
                     self._last_health_check = datetime.now()
                     self._consecutive_failures = 0
                     self._consecutive_successes += 1
@@ -487,6 +509,11 @@ class ReactorCoreClient:
     def is_online(self) -> bool:
         """Check if Reactor-Core is currently online."""
         return self._is_online
+
+    @property
+    def is_training_ready(self) -> bool:
+        """Whether Reactor-Core is online AND training subsystem is ready."""
+        return self._is_online and self._training_ready
 
     @property
     def is_initialized(self) -> bool:
@@ -1002,6 +1029,42 @@ class ReactorCoreClient:
         self._requests_failed += 1
         return None
 
+    async def _check_and_auto_trigger(self) -> None:
+        """
+        v2.1: Check experience count and auto-trigger training if threshold met.
+
+        Called from health monitor loop after each successful health check.
+        Guards:
+        - Auto-trigger must be enabled
+        - Reactor-Core must be training-ready (is_training_ready)
+        - No active training job (_active_job_id is None)
+        - Experience count must meet threshold
+        - Minimum interval enforced by trigger_training()
+        """
+        if not self.config.auto_trigger_enabled:
+            return
+        if not self.is_training_ready:
+            return
+        if self._active_job_id:
+            return
+
+        try:
+            count = await self.get_experience_count()
+            if count >= self.config.experience_threshold:
+                logger.info(
+                    f"[ReactorClient] Auto-trigger: {count} experiences "
+                    f">= threshold {self.config.experience_threshold}"
+                )
+                job = await self.trigger_training(
+                    experience_count=count,
+                    priority=TrainingPriority.NORMAL,
+                )
+                if job:
+                    self._active_job_id = job.job_id
+                    logger.info(f"[ReactorClient] Auto-triggered job: {job.job_id}")
+        except Exception as e:
+            logger.warning(f"[ReactorClient] Auto-trigger check error: {e}")
+
     async def _health_monitor_loop(self) -> None:
         """
         v2.0: Adaptive background health monitoring loop.
@@ -1021,6 +1084,10 @@ class ReactorCoreClient:
                 await asyncio.sleep(adaptive_interval)
 
                 healthy = await self.health_check()
+
+                if healthy:
+                    # v2.1: Check experience count and auto-trigger training
+                    await self._check_and_auto_trigger()
 
                 if not healthy:
                     # v2.0: Increase interval on failures (back off)

@@ -7,7 +7,7 @@ asyncio_mode = auto in pytest.ini -- no @pytest.mark.asyncio required.
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -158,3 +158,169 @@ class TestOtherEndpointPaths:
         # /api/scout/topics has no known Reactor-Core route;
         # This test documents the current path.
         assert path == "/api/scout/topics"
+
+
+# =========================================================================
+# Helpers -- mock response builder for health-check tests
+# =========================================================================
+
+def _make_health_response(status: int, json_data: dict = None, json_error: Exception = None):
+    """Build a mock aiohttp response that works with ``async with session.get(...) as r:``."""
+    resp = AsyncMock()
+    resp.status = status
+    if json_error is not None:
+        resp.json = AsyncMock(side_effect=json_error)
+    elif json_data is not None:
+        resp.json = AsyncMock(return_value=json_data)
+    else:
+        resp.json = AsyncMock(return_value={})
+    # Make it usable as ``async with session.get(...) as resp:``
+    resp.__aenter__ = AsyncMock(return_value=resp)
+    resp.__aexit__ = AsyncMock(return_value=False)
+    return resp
+
+
+def _wire_session_get(session: MagicMock, response) -> None:
+    """Wire ``session.get(...)`` so it returns *response* as a sync context-manager result.
+
+    ``health_check()`` does ``async with self._session.get(url, timeout=...) as r:``.
+    ``session.get(...)`` is a plain call (NOT awaited) that must return an async
+    context manager.  Using ``MagicMock(return_value=response)`` ensures the call
+    returns *response* synchronously; the response already has ``__aenter__`` /
+    ``__aexit__`` configured.
+    """
+    session.get = MagicMock(return_value=response)
+
+
+@pytest.fixture
+def mock_session() -> MagicMock:
+    """Standalone mock aiohttp session for health-check tests."""
+    return MagicMock()
+
+
+# =========================================================================
+# Tests -- Health Check Enrichment (v2.1)
+# =========================================================================
+
+class TestHealthCheckEnrichment:
+    """Verify health check parses training readiness from response body."""
+
+    async def test_health_check_parses_training_ready(self, client, mock_session):
+        """Health check should store training_ready from response JSON."""
+        response = _make_health_response(200, json_data={
+            "status": "healthy",
+            "phase": "ready",
+            "training_ready": True,
+            "trinity_connected": True,
+        })
+        _wire_session_get(mock_session, response)
+        client._session = mock_session
+
+        result = await client.health_check()
+        assert result is True
+        assert client._training_ready is True
+        assert client._reactor_phase == "ready"
+        assert client._trinity_connected is True
+
+    async def test_health_check_stores_phase_on_not_ready(self, client, mock_session):
+        """Health check should store phase even when training not ready."""
+        response = _make_health_response(200, json_data={
+            "status": "starting",
+            "phase": "initializing",
+            "training_ready": False,
+            "trinity_connected": False,
+        })
+        _wire_session_get(mock_session, response)
+        client._session = mock_session
+
+        result = await client.health_check()
+        assert result is True  # HTTP 200 = healthy regardless of training_ready
+        assert client._training_ready is False
+        assert client._reactor_phase == "initializing"
+
+    async def test_is_training_ready_property(self, client):
+        """is_training_ready should require both online and training_ready."""
+        client._training_ready = True
+        client._is_online = True
+        assert client.is_training_ready is True
+
+        client._is_online = False
+        assert client.is_training_ready is False
+
+        client._is_online = True
+        client._training_ready = False
+        assert client.is_training_ready is False
+
+    async def test_health_check_survives_json_parse_failure(self, client, mock_session):
+        """Health check should not fail if response JSON is unparseable."""
+        response = _make_health_response(200, json_error=Exception("Invalid JSON"))
+        _wire_session_get(mock_session, response)
+        client._session = mock_session
+
+        result = await client.health_check()
+        assert result is True  # Should still succeed (HTTP 200)
+        assert client._training_ready is False  # Unchanged from default
+
+
+# =========================================================================
+# Tests -- Health Monitor Auto-Trigger (v2.1)
+# =========================================================================
+
+class TestHealthMonitorAutoTrigger:
+    """Verify health monitor checks experience count and triggers training."""
+
+    async def test_monitor_triggers_training_when_threshold_met(self, client):
+        client._training_ready = True
+        client._is_online = True
+        client.config.auto_trigger_enabled = True
+        client.config.experience_threshold = 100
+        client._active_job_id = None
+
+        with patch.object(client, 'get_experience_count', new_callable=AsyncMock, return_value=150):
+            with patch.object(client, 'trigger_training', new_callable=AsyncMock) as mock_trigger:
+                mock_trigger.return_value = MagicMock(job_id="test-job")
+                await client._check_and_auto_trigger()
+                mock_trigger.assert_called_once()
+        assert client._active_job_id == "test-job"
+
+    async def test_monitor_skips_trigger_when_not_training_ready(self, client):
+        client._training_ready = False
+        client._is_online = True
+        client.config.auto_trigger_enabled = True
+        client._active_job_id = None
+
+        with patch.object(client, 'get_experience_count', new_callable=AsyncMock) as mock_count:
+            await client._check_and_auto_trigger()
+            mock_count.assert_not_called()
+
+    async def test_monitor_skips_trigger_when_below_threshold(self, client):
+        client._training_ready = True
+        client._is_online = True
+        client.config.auto_trigger_enabled = True
+        client.config.experience_threshold = 100
+        client._active_job_id = None
+
+        with patch.object(client, 'get_experience_count', new_callable=AsyncMock, return_value=50):
+            with patch.object(client, 'trigger_training', new_callable=AsyncMock) as mock_trigger:
+                await client._check_and_auto_trigger()
+                mock_trigger.assert_not_called()
+
+    async def test_monitor_skips_trigger_when_job_active(self, client):
+        client._training_ready = True
+        client._is_online = True
+        client.config.auto_trigger_enabled = True
+        client._active_job_id = "existing-job"
+
+        with patch.object(client, 'get_experience_count', new_callable=AsyncMock) as mock_count:
+            await client._check_and_auto_trigger()
+            mock_count.assert_not_called()
+
+    async def test_monitor_skips_trigger_when_auto_disabled(self, client):
+        client._training_ready = True
+        client._is_online = True
+        client.config.auto_trigger_enabled = False
+        client._active_job_id = None
+
+        with patch.object(client, 'get_experience_count', new_callable=AsyncMock) as mock_count:
+            await client._check_and_auto_trigger()
+            mock_count.assert_not_called()

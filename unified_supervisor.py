@@ -22777,24 +22777,21 @@ class DataFlywheelManager:
             await self._trigger_training()
 
     async def _trigger_training(self) -> bool:
-        """Trigger a training job on Reactor Core."""
+        """Trigger a training job on Reactor Core via ReactorCoreClient."""
+        # v2.1: Use ReactorCoreClient instead of raw HTTP
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    f"{self._reactor_core_url}/api/training/trigger",
-                    json={
-                        "source": "data_flywheel",
-                        "experience_dir": str(self._experience_dir),
-                        "batch_count": self._stats["batches_flushed"],
-                    },
-                    timeout=aiohttp.ClientTimeout(total=30),
-                ) as resp:
-                    if resp.status == 200:
-                        self._stats["training_jobs_triggered"] += 1
-                        self._stats["last_training_trigger"] = datetime.now().isoformat()
-                        return True
-        except Exception:
-            pass
+            from backend.clients.reactor_core_client import check_and_trigger_training, TrainingPriority
+            job = await check_and_trigger_training(
+                experience_count=self._stats.get("total_queued", 0),
+                priority=TrainingPriority.NORMAL,
+            )
+            if job:
+                logger.info(f"[DataFlywheel] Training triggered via ReactorCoreClient: {job.job_id}")
+                self._stats["training_jobs_triggered"] += 1
+                self._stats["last_training_trigger"] = datetime.now().isoformat()
+                return True
+        except Exception as e:
+            logger.warning(f"[DataFlywheel] Training trigger failed: {e}")
         return False
 
     def get_stats(self) -> Dict[str, Any]:
@@ -59742,6 +59739,23 @@ class JarvisSystemKernel:
         except Exception as e:
             self.logger.debug(f"[Kernel] Model lifecycle manager cleanup error: {e}")
 
+        # v239.0: Shutdown Reactor Core
+        if getattr(self, '_reactor_core_watcher', None):
+            try:
+                from backend.autonomy.reactor_core_watcher import stop_reactor_core_watcher
+                await asyncio.wait_for(stop_reactor_core_watcher(), timeout=5.0)
+                self.logger.info("[Kernel] Reactor Core watcher stopped")
+            except Exception:
+                pass
+
+        if getattr(self, '_reactor_core_active', False):
+            try:
+                from backend.autonomy.reactor_core_integration import shutdown_reactor_core
+                await asyncio.wait_for(shutdown_reactor_core(), timeout=5.0)
+                self.logger.info("[Kernel] Reactor Core pipeline stopped")
+            except Exception:
+                pass
+
         # Stop backend deterministically (in-process first, then subprocess fallback)
         if self._backend_server or self._backend_server_task:
             await self._stop_backend_in_process(
@@ -62485,6 +62499,36 @@ class JarvisSystemKernel:
                     }
                 }
             )
+
+            # v239.0: Activate Reactor Core training pipeline
+            try:
+                from backend.autonomy.reactor_core_integration import (
+                    initialize_reactor_core,
+                    shutdown_reactor_core,
+                )
+                _rc_ok = await asyncio.wait_for(initialize_reactor_core(), timeout=30.0)
+                if _rc_ok:
+                    self._reactor_core_active = True
+                    add_dashboard_log("Reactor Core pipeline activated", "INFO")
+                else:
+                    add_dashboard_log("Reactor Core pipeline unavailable (non-fatal)", "WARN")
+            except asyncio.TimeoutError:
+                add_dashboard_log("Reactor Core init timed out (30s) — skipping", "WARN")
+            except ImportError:
+                pass
+            except Exception as e:
+                self.logger.debug(f"Reactor Core init error: {e}")
+
+            # v239.0: Start auto-deploy watcher for Reactor Core outputs
+            try:
+                from backend.autonomy.reactor_core_watcher import start_reactor_core_watcher
+                _watcher = await start_reactor_core_watcher()
+                self._reactor_core_watcher = _watcher
+                if hasattr(_watcher, '_watch_task') and _watcher._watch_task:
+                    self._background_tasks.append(_watcher._watch_task)
+                add_dashboard_log("Reactor Core watcher active", "INFO")
+            except Exception as e:
+                self.logger.debug(f"Reactor Core watcher error: {e}")
 
             # Phase 6: Enterprise Services (Zone 6.4)
             self._current_startup_phase = "enterprise"
@@ -78665,6 +78709,47 @@ async def async_main(args: argparse.Namespace) -> int:
             print(f"[Kernel] Error in finally cleanup: {final_err}")
 
 
+def _generate_launchd_plist() -> str:
+    """v239.0: Generate launchd plist with dynamically resolved paths."""
+    project_root = Path(__file__).parent.resolve()
+    python_path = sys.executable
+    log_dir = Path.home() / ".jarvis" / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+
+    return f"""<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.jarvis.supervisor</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>{python_path}</string>
+        <string>{project_root / 'unified_supervisor.py'}</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>{project_root}</string>
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
+    <key>ThrottleInterval</key>
+    <integer>30</integer>
+    <key>StandardOutPath</key>
+    <string>{log_dir / 'supervisor-stdout.log'}</string>
+    <key>StandardErrorPath</key>
+    <string>{log_dir / 'supervisor-stderr.log'}</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin:{Path(python_path).parent}</string>
+    </dict>
+</dict>
+</plist>"""
+
+
 def main() -> int:
     """
     Main entry point for JARVIS Unified System Kernel.
@@ -78673,6 +78758,31 @@ def main() -> int:
 
     v119.0: Enterprise-grade exit handling with guaranteed process termination.
     """
+    # v239.0: Watchdog install/uninstall (runs before full init)
+    if "--install-watchdog" in sys.argv:
+        import subprocess as _sp
+        plist_content = _generate_launchd_plist()
+        plist_path = Path.home() / "Library" / "LaunchAgents" / "com.jarvis.supervisor.plist"
+        plist_path.parent.mkdir(parents=True, exist_ok=True)
+        plist_path.write_text(plist_content)
+        result = _sp.run(["launchctl", "load", str(plist_path)], capture_output=True, text=True)
+        if result.returncode != 0:
+            print(f"Warning: launchctl load failed: {result.stderr.strip()}")
+        else:
+            print(f"Watchdog installed: {plist_path}")
+        sys.exit(0)
+
+    if "--uninstall-watchdog" in sys.argv:
+        import subprocess as _sp
+        plist_path = Path.home() / "Library" / "LaunchAgents" / "com.jarvis.supervisor.plist"
+        if plist_path.exists():
+            _sp.run(["launchctl", "unload", str(plist_path)], capture_output=True, text=True)
+            plist_path.unlink()
+            print("Watchdog uninstalled")
+        else:
+            print("No watchdog installed")
+        sys.exit(0)
+
     # v253.8: Enable faulthandler for deadlock diagnosis.
     # Send SIGUSR1 to dump all thread tracebacks: kill -SIGUSR1 <pid>
     import faulthandler
