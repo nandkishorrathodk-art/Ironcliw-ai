@@ -1159,6 +1159,23 @@ class TrinityHealthMonitor:
         health_data["source_repo"] = "jarvis-body"
         health_data["sync_version"] = "117.5"
 
+        # v258.4: Include supervisor health from shared Neural Mesh health state.
+        # The health_monitor_agent writes sys._jarvis_health_state with overall
+        # system health, agent statuses, and resource metrics. GIL-atomic read.
+        import sys as _sys
+        _shared_health = getattr(_sys, '_jarvis_health_state', None)
+        if isinstance(_shared_health, dict):
+            _ts = _shared_health.get("timestamp", 0)
+            if time.time() - _ts <= 120.0:
+                health_data["supervisor_health"] = {
+                    "overall_status": _shared_health.get("overall_status", "unknown"),
+                    "is_startup": _shared_health.get("is_startup", False),
+                    "source": _shared_health.get("source", "unknown"),
+                    "cpu_percent": _shared_health.get("system", {}).get("cpu_percent", 0),
+                    "memory_percent": _shared_health.get("system", {}).get("memory_percent", 0),
+                    "agent_count": len(_shared_health.get("agents", {})),
+                }
+
         status_files = [
             self.config.trinity_dir / "health_status.json",  # Original
             Path.home() / ".jarvis" / "trinity" / "state" / "health.json",  # Cross-repo

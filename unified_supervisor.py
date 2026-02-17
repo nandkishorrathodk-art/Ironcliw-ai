@@ -2346,6 +2346,57 @@ def _get_env_float(key: str, default: float) -> float:
 
 
 # =============================================================================
+# v258.4: TRINITY IPC SYSTEM PHASE PUBLISHER
+# =============================================================================
+# Atomically publishes system phase (startup/runtime/shutdown) to
+# ~/.jarvis/trinity/state/system_phase.json so cross-repo components
+# (J-Prime, Reactor Core) can know the supervisor's current lifecycle state.
+# =============================================================================
+
+def _publish_system_phase_to_trinity(phase: str, extra: Optional[Dict[str, Any]] = None) -> None:
+    """v258.4: Atomically publish system phase to Trinity IPC.
+
+    Writes to ~/.jarvis/trinity/state/system_phase.json so cross-repo
+    components (J-Prime, Reactor Core) can know startup vs runtime state.
+    Uses atomic tmp+os.replace for corruption-free writes.
+    """
+    import tempfile
+    _state_dir = os.path.expanduser("~/.jarvis/trinity/state")
+    _phase_file = os.path.join(_state_dir, "system_phase.json")
+    try:
+        os.makedirs(_state_dir, exist_ok=True)
+        _data = {
+            "phase": phase,
+            "timestamp": time.time(),
+            "pid": os.getpid(),
+        }
+        if extra:
+            _data.update(extra)
+        # Also update sys attribute for in-process consumers
+        sys._jarvis_system_phase = _data  # type: ignore[attr-defined]
+        # Atomic write
+        _fd, _tmp = tempfile.mkstemp(dir=_state_dir, suffix=".tmp")
+        try:
+            with os.fdopen(_fd, 'w') as f:
+                json.dump(_data, f)
+            os.replace(_tmp, _phase_file)
+        except Exception:
+            try:
+                os.unlink(_tmp)
+            except OSError:
+                pass
+            raise
+    except Exception as e:
+        # Non-fatal - log at debug, don't crash startup
+        try:
+            logging.getLogger("jarvis.supervisor").debug(
+                f"[v258.4] Failed to publish system phase '{phase}': {e}"
+            )
+        except Exception:
+            pass
+
+
+# =============================================================================
 # CLI BOX DRAWING UTILITY (v201.4)
 # =============================================================================
 # Centralized, ANSI-aware box drawing for all CLI dashboards.
@@ -13117,9 +13168,38 @@ class IntelligentResourceOrchestrator:
     # v258.3: Planned workload estimates for predictive capacity planning.
     # These are used to predict post-startup RAM, not just current snapshot.
     _MACOS_BASE_CONSUMPTION_GB = float(os.getenv("JARVIS_MACOS_BASE_GB", "5.0"))
-    _PLANNED_ML_WORKLOAD_GB = float(os.getenv("JARVIS_PLANNED_ML_GB", "4.6"))
-    # Total: whisper_medium(2.0) + speechbrain(0.3) + ecapa(0.2) + pytorch(0.5)
+    _PLANNED_ML_WORKLOAD_GB_FALLBACK = float(os.getenv("JARVIS_PLANNED_ML_GB", "4.6"))
+    # Static fallback: whisper_medium(2.0) + speechbrain(0.3) + ecapa(0.2) + pytorch(0.5)
     #        + transformers(0.3) + neural_mesh(0.8) + warmup(0.5) = 4.6GB
+
+    # v258.4: Components whose memory the AdaptiveMemoryEstimator tracks.
+    # get_total_estimate() returns MB from learned history if available.
+    _ML_WORKLOAD_COMPONENTS = [
+        "whisper_medium", "speechbrain", "neural_mesh",
+        "startup_initialization",
+    ]
+
+    @property
+    def _PLANNED_ML_WORKLOAD_GB(self) -> float:
+        """v258.4: Dynamic ML workload estimate from AdaptiveMemoryEstimator.
+
+        Uses learned memory history when available, falls back to static
+        estimate (4.6GB) when no history exists. This replaces the static
+        class variable with a property that improves over time.
+        """
+        try:
+            from backend.core.gcp_oom_prevention_bridge import get_adaptive_estimator
+            _estimator = get_adaptive_estimator()
+            _total_mb = _estimator.get_total_estimate(self._ML_WORKLOAD_COMPONENTS)
+            if _total_mb > 0:
+                _total_gb = _total_mb / 1024.0
+                # Sanity bounds: 50% to 200% of static fallback
+                _min_gb = self._PLANNED_ML_WORKLOAD_GB_FALLBACK * 0.5
+                _max_gb = self._PLANNED_ML_WORKLOAD_GB_FALLBACK * 2.0
+                return max(_min_gb, min(_max_gb, _total_gb))
+        except Exception:
+            pass
+        return self._PLANNED_ML_WORKLOAD_GB_FALLBACK
 
     def _check_arm64_simd(self) -> bool:
         """Check if ARM64 SIMD optimizations are available."""
@@ -51128,15 +51208,32 @@ class HealthAggregator:
             await self._check_status_change(subsystem_id, health)
 
         # Calculate overall status
+        # v258.4: Added "elevated" (CPU-only, self-recovering) between healthy/degraded
         degraded_count = sum(1 for h in subsystem_health.values() if h.status == "degraded")
         unhealthy_count = sum(1 for h in subsystem_health.values() if h.status == "unhealthy")
+        elevated_count = sum(1 for h in subsystem_health.values() if h.status == "elevated")
 
         if unhealthy_count > 0:
             overall_status = "unhealthy"
         elif degraded_count > 0:
             overall_status = "degraded"
+        elif elevated_count > 0:
+            overall_status = "elevated"
         else:
             overall_status = "healthy"
+
+        # v258.4: Consult shared health state from Neural Mesh health monitor
+        import sys as _sys
+        _shared_h = getattr(_sys, '_jarvis_health_state', None)
+        if isinstance(_shared_h, dict):
+            _shared_ts = _shared_h.get("timestamp", 0)
+            if time.time() - _shared_ts <= 120.0:
+                _shared_status = _shared_h.get("overall_status", "healthy")
+                _severity = {"healthy": 0, "elevated": 1, "degraded": 2, "unhealthy": 3, "critical": 4}
+                _agg_sev = _severity.get(overall_status, 0)
+                _shared_sev = _severity.get(_shared_status, 0)
+                if _shared_sev > _agg_sev:
+                    overall_status = _shared_status if _shared_status != "critical" else "unhealthy"
 
         total_response_time = sum(h.response_time_ms for h in subsystem_health.values())
 
@@ -59479,6 +59576,9 @@ class JarvisSystemKernel:
         )
         self._state = KernelState.SHUTTING_DOWN
 
+        # v258.4: Publish shutdown phase to Trinity IPC for cross-repo consumers.
+        _publish_system_phase_to_trinity("shutdown", {"reason": reason, "expected": expected})
+
         # v181.0: Write crash marker for next startup
         # v205.0: Use asyncio.to_thread to avoid blocking the event loop
         # v242.5: Enriched with diagnostic context (JSON) for crash forensics
@@ -60574,11 +60674,8 @@ class JarvisSystemKernel:
         # v258.3: Set unified system phase signal — enables all components
         # (health monitor, resource orchestrator, VBI) to know the system is
         # in startup phase and suppress transient metric-based degradation.
-        sys._jarvis_system_phase = {  # type: ignore[attr-defined]
-            "phase": "startup",
-            "started_at": time.time(),
-            "pid": os.getpid(),
-        }
+        # v258.4: Also publish to Trinity IPC for cross-repo consumers.
+        _publish_system_phase_to_trinity("startup", {"started_at": time.time()})
         os.environ["JARVIS_STARTUP_TIMESTAMP"] = str(time.time())
 
         try:
@@ -60649,7 +60746,7 @@ class JarvisSystemKernel:
         # validate_and_optimize() is 100% local (psutil, shutil, socket localhost)
         # — no GCP/network calls. Determines startup_mode before any phase runs.
         # =====================================================================
-        _resource_check_timeout = _get_env_float("JARVIS_RESOURCE_CHECK_TIMEOUT", 1.5)
+        _resource_check_timeout = _get_env_float("JARVIS_RESOURCE_CHECK_TIMEOUT", 3.0)
         try:
             _ro = IntelligentResourceOrchestrator(self.config)
             _rs = await asyncio.wait_for(
@@ -60752,6 +60849,38 @@ class JarvisSystemKernel:
                     )
             except Exception as _reeval_err:
                 self.logger.debug("[ModeReeval] %s failed: %s", phase_label, _reeval_err)
+
+        # =====================================================================
+        # v258.4 (P1-7): LOADED COMPONENTS REGISTRY
+        # =====================================================================
+        # Tracks what components loaded WHERE (local vs cloud) so mode
+        # re-evaluation doesn't create inconsistent state. If mode escalates
+        # from local_full to cloud_first after ML models already loaded locally,
+        # the registry prevents redundant cloud loading of those components.
+        # =====================================================================
+        _loaded_components: Dict[str, str] = {}  # component_name → "local" | "cloud"
+
+        def _register_loaded_component(name: str, location: str) -> None:
+            """Register a component as loaded at a specific location."""
+            _loaded_components[name] = location
+            # Publish via env var for cross-component visibility (JSON dict)
+            os.environ["JARVIS_LOADED_COMPONENTS"] = json.dumps(_loaded_components)
+
+        def _is_loaded_locally(name: str) -> bool:
+            """Check if a component is already loaded locally."""
+            return _loaded_components.get(name) == "local"
+
+        def _get_loaded_summary() -> Dict[str, int]:
+            """Get count of components by location."""
+            _local = sum(1 for v in _loaded_components.values() if v == "local")
+            _cloud = sum(1 for v in _loaded_components.values() if v == "cloud")
+            return {"local": _local, "cloud": _cloud, "total": len(_loaded_components)}
+
+        # Store on self for access from phase methods
+        self._register_loaded_component = _register_loaded_component
+        self._is_loaded_locally = _is_loaded_locally
+        self._get_loaded_summary = _get_loaded_summary
+        self._loaded_components = _loaded_components
 
         # =====================================================================
         # v181.0: PHASE -1: CLEAN SLATE - Crash Recovery & State Cleanup
@@ -60949,19 +61078,34 @@ class JarvisSystemKernel:
                         except Exception:
                             pass  # Not reachable via IP
 
-                    # Strategy 2: Check if gcloud CLI is accessible
+                    # Strategy 2: Pure-Python GCP credential check (v258.4)
+                    # Replaces `gcloud auth print-access-token` subprocess to avoid
+                    # fork pressure (the exact problem this probe detects).
                     try:
-                        proc = await asyncio.create_subprocess_exec(
-                            "gcloud", "auth", "print-access-token",
-                            stdout=asyncio.subprocess.PIPE,
-                            stderr=asyncio.subprocess.PIPE,
+                        def _check_gcp_creds_sync() -> bool:
+                            """Check GCP credentials via google-auth library (no subprocess)."""
+                            try:
+                                import google.auth
+                                import google.auth.transport.requests
+                                credentials, project = google.auth.default()
+                                if credentials and project:
+                                    return True
+                                # Try refreshing to confirm validity
+                                request = google.auth.transport.requests.Request()
+                                credentials.refresh(request)
+                                return credentials.valid
+                            except Exception:
+                                return False
+
+                        _gcp_cred_ok = await asyncio.wait_for(
+                            asyncio.get_event_loop().run_in_executor(
+                                None, _check_gcp_creds_sync
+                            ),
+                            timeout=3.0,
                         )
-                        _, _ = await asyncio.wait_for(
-                            proc.communicate(), timeout=3.0
-                        )
-                        if proc.returncode == 0:
+                        if _gcp_cred_ok:
                             return True
-                    except (FileNotFoundError, asyncio.TimeoutError):
+                    except (asyncio.TimeoutError, Exception):
                         pass
 
                     return False
@@ -62704,12 +62848,12 @@ class JarvisSystemKernel:
 
             # v258.3: Transition system phase to runtime — components stop
             # suppressing transient CPU/memory alerts.
-            sys._jarvis_system_phase = {  # type: ignore[attr-defined]
-                "phase": "runtime",
+            # v258.4: Also publish to Trinity IPC for cross-repo consumers.
+            _publish_system_phase_to_trinity("runtime", {
                 "started_at": getattr(sys, '_jarvis_system_phase', {}).get("started_at", time.time()),
                 "runtime_at": time.time(),
-                "pid": os.getpid(),
-            }
+                "startup_duration": startup_duration,
+            })
 
             # v197.3/v204.0: Stop the startup progress heartbeat
             self._current_startup_phase = "complete"
@@ -69237,6 +69381,45 @@ class JarvisSystemKernel:
                     recovery_stats["files_cleared"] += stale_cleaned
 
             # =================================================================
+            # STEP 1d: Clean stale signal files from previous session (v258.4)
+            # =================================================================
+            # Signal files (cpu_pressure.json, system_phase.json) persist across
+            # crashes and could mislead consumers on fresh start. These are
+            # transient coordination files, not persistent state — safe to remove
+            # unconditionally at startup.
+            try:
+                _signals_dir = os.path.expanduser("~/.jarvis/signals")
+                if os.path.isdir(_signals_dir):
+                    import glob as _glob_mod
+                    _signal_files = _glob_mod.glob(os.path.join(_signals_dir, "*.json"))
+                    _sig_cleaned = 0
+                    for _sf in _signal_files:
+                        try:
+                            os.unlink(_sf)
+                            _sig_cleaned += 1
+                        except OSError:
+                            pass
+                    if _sig_cleaned:
+                        self.logger.debug(f"[CleanSlate] Cleaned {_sig_cleaned} stale signal files")
+                        recovery_stats["files_cleared"] += _sig_cleaned
+                        recovery_stats["actions_taken"].append(f"cleaned_{_sig_cleaned}_signal_files")
+            except Exception as e:
+                self.logger.debug(f"[CleanSlate] Signal cleanup error: {e}")
+
+            # Also clean stale Trinity state files (system_phase.json)
+            try:
+                _trinity_state_dir = os.path.expanduser("~/.jarvis/trinity/state")
+                if os.path.isdir(_trinity_state_dir):
+                    _phase_file = os.path.join(_trinity_state_dir, "system_phase.json")
+                    if os.path.exists(_phase_file):
+                        os.unlink(_phase_file)
+                        self.logger.debug("[CleanSlate] Cleaned stale system_phase.json")
+                        recovery_stats["files_cleared"] += 1
+                        recovery_stats["actions_taken"].append("cleaned_system_phase")
+            except Exception as e:
+                self.logger.debug(f"[CleanSlate] Trinity state cleanup error: {e}")
+
+            # =================================================================
             # STEP 2: Clean up orphaned semaphores
             # =================================================================
             if GRACEFUL_SHUTDOWN_AVAILABLE and cleanup_orphaned_semaphores:
@@ -71719,6 +71902,9 @@ class JarvisSystemKernel:
         """
         self._state = KernelState.SHUTTING_DOWN
         self.logger.info("[Kernel] Initiating shutdown...")
+
+        # v258.4: Publish shutdown phase to Trinity IPC for cross-repo consumers.
+        _publish_system_phase_to_trinity("shutdown")
 
         # v249.0: Emit shutdown start event
         shutdown_reason = self._signal_handler.shutdown_reason or "unknown"

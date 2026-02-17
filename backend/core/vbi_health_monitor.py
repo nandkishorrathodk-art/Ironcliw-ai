@@ -1710,6 +1710,30 @@ class VBIHealthMonitor:
         self._event_callbacks.append(callback)
 
     # =========================================================================
+    # Shared Health State Integration (v258.4)
+    # =========================================================================
+
+    def _get_shared_health_state(self) -> Optional[Dict[str, Any]]:
+        """v258.4: Read shared health state from Neural Mesh health monitor.
+
+        The health_monitor_agent writes sys._jarvis_health_state with overall
+        system health, agent statuses, and resource metrics. This uses
+        GIL-atomic sys attribute access (no locks needed).
+
+        Returns:
+            Shared health dict if fresh (within 120s TTL), else None.
+        """
+        import sys as _sys
+        state = getattr(_sys, '_jarvis_health_state', None)
+        if not isinstance(state, dict):
+            return None
+        # Check freshness (120s TTL)
+        ts = state.get("timestamp", 0)
+        if time.time() - ts > 120.0:
+            return None
+        return state
+
+    # =========================================================================
     # Health Query API
     # =========================================================================
 
@@ -1742,14 +1766,14 @@ class VBIHealthMonitor:
         else:
             overall = HealthLevel.UNKNOWN
 
-        return {
+        health = {
             "overall_health": overall.value,
             "is_healthy": overall in (HealthLevel.OPTIMAL, HealthLevel.HEALTHY),
             "uptime_seconds": time.time() - (self._started_at or time.time()),
             "timestamp": datetime.utcnow().isoformat(),
             "components": {
-                ct.value: health.to_dict()
-                for ct, health in self._component_health.items()
+                ct.value: health_state.to_dict()
+                for ct, health_state in self._component_health.items()
             },
             "circuit_breakers": {
                 ct.value: cb.get_status()
@@ -1761,6 +1785,23 @@ class VBIHealthMonitor:
             "operation_stats": self._operation_tracker.get_stats(),
             "fallback_chains": self._fallback_orchestrator.get_all_stats(),
         }
+
+        # v258.4: Enrich with shared health state from Neural Mesh health monitor
+        _shared = self._get_shared_health_state()
+        if _shared:
+            health["shared_system_health"] = {
+                "overall_status": _shared.get("overall_status", "unknown"),
+                "is_startup": _shared.get("is_startup", False),
+                "cpu_percent": _shared.get("system", {}).get("cpu_percent", 0),
+                "memory_percent": _shared.get("system", {}).get("memory_percent", 0),
+                "agent_count": len(_shared.get("agents", {})),
+            }
+            # If system is degraded/critical, flag stress for consumers
+            _sys_status = _shared.get("overall_status", "healthy")
+            if _sys_status in ("degraded", "critical"):
+                health["system_stress_detected"] = True
+
+        return health
 
     def get_component_health(self, component: ComponentType) -> Optional[ComponentHealthState]:
         """Get health state for a specific component."""

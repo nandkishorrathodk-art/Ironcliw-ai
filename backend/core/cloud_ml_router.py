@@ -577,6 +577,46 @@ class CloudMLRouter:
         # Select backend based on startup decision
         backend = self._current_backend
 
+        # v258.4: Runtime health-aware routing override.
+        # If the Neural Mesh health monitor reports system degraded/critical,
+        # OR if the CPU pressure signal file indicates sustained pressure,
+        # prefer cloud routing to reduce local CPU/memory load.
+        import sys as _sys
+        _shared = getattr(_sys, '_jarvis_health_state', None)
+        _system_stressed = False
+        if isinstance(_shared, dict):
+            _ts = _shared.get("timestamp", 0)
+            if time.time() - _ts <= 60.0:
+                _sys_status = _shared.get("overall_status", "healthy")
+                if _sys_status in ("degraded", "critical"):
+                    _system_stressed = True
+
+        # Also check cross-process CPU pressure signal (from supervisor)
+        if not _system_stressed and backend == MLBackend.LOCAL:
+            try:
+                import json as _json
+                _cpu_sig = os.path.expanduser("~/.jarvis/signals/cpu_pressure.json")
+                if os.path.exists(_cpu_sig):
+                    with open(_cpu_sig) as _f:
+                        _cpu_data = _json.load(_f)
+                    if time.time() - _cpu_data.get("timestamp", 0) <= 60.0:
+                        if _cpu_data.get("cpu_percent", 0) >= 95.0:
+                            _system_stressed = True
+            except Exception:
+                pass
+
+        if _system_stressed and backend == MLBackend.LOCAL:
+                    _cpu = _shared.get("system", {}).get("cpu_percent", 0)
+                    _mem = _shared.get("system", {}).get("memory_percent", 0)
+                    # Only override to cloud if GCP infrastructure is available
+                    if self._gcp_ml_endpoint or (CLOUD_ECAPA_CLIENT_AVAILABLE and self._cloud_ecapa_client):
+                        logger.info(
+                            "[v258.4] System health %s (cpu=%.0f%%, mem=%.0f%%) "
+                            "— routing to cloud to reduce local load",
+                            _sys_status, _cpu, _mem,
+                        )
+                        backend = MLBackend.GCP_CLOUD
+
         # Process request
         try:
             if backend == MLBackend.GCP_CLOUD:
