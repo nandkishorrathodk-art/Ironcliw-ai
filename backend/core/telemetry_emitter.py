@@ -211,6 +211,7 @@ class TelemetryEvent:
     source: str = "jarvis_agent"
     retry_count: int = 0
     created_at: float = field(default_factory=time.time)
+    correlation_id: str = field(default_factory=lambda: str(uuid.uuid4()))
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -221,6 +222,7 @@ class TelemetryEvent:
             "source": self.source,
             "retry_count": self.retry_count,
             "created_at": self.created_at,
+            "correlation_id": self.correlation_id,
         }
 
     @classmethod
@@ -233,6 +235,7 @@ class TelemetryEvent:
             source=data.get("source", "jarvis_agent"),
             retry_count=data.get("retry_count", 0),
             created_at=data.get("created_at", time.time()),
+            correlation_id=data.get("correlation_id", str(uuid.uuid4())),
         )
 
 
