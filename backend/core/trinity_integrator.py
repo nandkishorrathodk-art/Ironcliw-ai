@@ -9059,20 +9059,25 @@ class TrinityUltraCoordinator:
                 return False, None, metadata
 
             # Apply backpressure
-            acquired, delay_ms = await self._backpressure.acquire(timeout or 30.0)
+            bp_timeout = timeout or 30.0
+            acquired, delay_ms = await self._backpressure.acquire(bp_timeout)
             if not acquired:
                 metadata["backpressure_dropped"] = True
                 metadata["delay_ms"] = delay_ms
                 await circuit.record_failure(delay_ms)
                 return False, None, metadata
 
-            # Execute with timeout
+            # v241.0: Execute with asyncio.shield() to prevent task cancellation.
+            # Inner layers use deadline-based cooperative timeout and self-terminate.
+            # The wait_for is a safety net — shield prevents it from destroying
+            # LLM work in progress when it fires.
+            effective_timeout = timeout or 120.0
             start = time.time()
             try:
-                if timeout:
-                    result = await asyncio.wait_for(operation(), timeout=timeout)
-                else:
-                    result = await operation()
+                task = asyncio.ensure_future(operation())
+                result = await asyncio.wait_for(
+                    asyncio.shield(task), timeout=effective_timeout
+                )
 
                 latency_ms = (time.time() - start) * 1000
                 await circuit.record_success(latency_ms)
@@ -9083,6 +9088,8 @@ class TrinityUltraCoordinator:
                 return True, result, metadata
 
             except asyncio.TimeoutError:
+                # v241.0: Shield prevents task cancellation — it may still complete
+                # in the background. But we treat it as a timeout for the caller.
                 latency_ms = (time.time() - start) * 1000
                 await circuit.record_failure(latency_ms)
                 await self._backpressure.release(latency_ms)

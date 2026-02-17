@@ -8436,135 +8436,114 @@ def _get_diagnostic_recommendation(checks: dict) -> str:
 
 
 # Audio endpoints for frontend compatibility - Robust, async, intelligent TTS
-@app.post("/audio/speak")
-async def audio_speak_post(request: dict):
-    """
-    Robust audio speak endpoint with intelligent fallback chain.
-    Never returns 503 - always provides audio response.
 
-    Fallback chain:
-    1. JARVIS Voice API (if available)
-    2. Async TTS Handler with caching
-    3. Direct macOS `say` command
-    4. Silent audio (absolute last resort)
-    """
-    from fastapi.responses import Response
-    import asyncio
-    import struct
-    import tempfile
-    import os
 
-    text = request.get("text", "")
-    if not text:
-        # Return minimal silent audio for empty text
-        return _generate_silent_audio_response()
+async def _try_jarvis_api_tts(jarvis_api, request):
+    """v241.0: TTS Strategy 1 — JARVIS Voice API with 4s individual timeout."""
+    try:
+        return await asyncio.wait_for(jarvis_api.speak(request), timeout=4.0)
+    except asyncio.CancelledError:
+        logger.debug("[TTS] JARVIS Voice API cancelled (race lost)")
+        raise  # Re-raise so asyncio.wait() handles it
+    except Exception as e:
+        logger.debug(f"[TTS] JARVIS Voice API failed: {e}")
+        return None
 
-    # === Strategy 1: Try JARVIS Voice API (primary) ===
-    voice = components.get("voice", {})
-    jarvis_api = voice.get("jarvis_api")
 
-    if jarvis_api:
-        try:
-            logger.debug(f"[TTS] Trying JARVIS Voice API for: {text[:50]}...")
-            return await asyncio.wait_for(jarvis_api.speak(request), timeout=15.0)
-        except asyncio.TimeoutError:
-            logger.warning("[TTS] JARVIS Voice API timed out, falling back")
-        except Exception as e:
-            logger.warning(f"[TTS] JARVIS Voice API failed: {e}, falling back")
-
-    # === Strategy 2: Try Async TTS Handler (cached, fast) ===
+async def _try_async_tts(text):
+    """v241.0: TTS Strategy 2 — Async TTS Handler (cached macOS say) with 4.5s timeout."""
+    _tmp_path = None
     try:
         from api.async_tts_handler import generate_speech_async
+        from fastapi.responses import Response
 
-        logger.debug(f"[TTS] Trying Async TTS Handler for: {text[:50]}...")
         audio_path, content_type = await asyncio.wait_for(
-            generate_speech_async(text, voice="Daniel"),
-            timeout=30.0
+            generate_speech_async(text, voice="Daniel"), timeout=4.5
         )
-
-        # Read and return the audio file
+        _tmp_path = audio_path
         with open(audio_path, "rb") as f:
             audio_data = f.read()
-
         return Response(
             content=audio_data,
             media_type=content_type,
             headers={
-                "Content-Disposition": f"inline; filename=jarvis_speech.mp3",
+                "Content-Disposition": "inline; filename=jarvis_speech.mp3",
                 "Cache-Control": "public, max-age=3600",
                 "Access-Control-Allow-Origin": "*",
             },
         )
-    except ImportError:
-        logger.info("[TTS] Async TTS Handler not available, falling back")
-    except asyncio.TimeoutError:
-        logger.warning("[TTS] Async TTS Handler timed out, falling back")
+    except asyncio.CancelledError:
+        # Clean up temp file if subprocess spawned before cancellation
+        if _tmp_path:
+            try:
+                os.unlink(_tmp_path)
+            except OSError:
+                pass
+        logger.debug("[TTS] Async TTS cancelled (race lost)")
+        raise
     except Exception as e:
-        logger.warning(f"[TTS] Async TTS Handler failed: {e}, falling back")
+        logger.debug(f"[TTS] Async TTS failed: {e}")
+        return None
 
-    # === Strategy 3: Direct macOS `say` command ===
+
+@app.post("/audio/speak")
+async def audio_speak_post(request: dict):
+    """
+    v241.0: Robust audio speak endpoint with PARALLEL strategy race.
+    Never returns 503 - always provides audio response.
+
+    Strategies 1 (JARVIS Voice API) and 2 (Async TTS Handler) race
+    concurrently with a 5s global ceiling. On failure, returns silent
+    audio immediately — frontend falls back to browser speechSynthesis.
+    """
+    from fastapi.responses import Response
+
+    text = request.get("text", "")
+    if not text:
+        return _generate_silent_audio_response()
+
+    # Build candidate tasks for parallel race
+    tasks = {}
+
+    voice = components.get("voice", {})
+    jarvis_api_inst = voice.get("jarvis_api")
+    if jarvis_api_inst:
+        tasks["jarvis_api"] = asyncio.create_task(_try_jarvis_api_tts(jarvis_api_inst, request))
+
     try:
-        logger.debug(f"[TTS] Trying direct macOS say command for: {text[:50]}...")
+        from api.async_tts_handler import generate_speech_async  # noqa: F401
+        tasks["async_tts"] = asyncio.create_task(_try_async_tts(text))
+    except ImportError:
+        logger.debug("[TTS] Async TTS Handler not available")
 
-        with tempfile.NamedTemporaryFile(suffix=".aiff", delete=False) as tmp:
-            tmp_path = tmp.name
+    if not tasks:
+        logger.warning("[TTS] No TTS strategies available, returning silent audio")
+        return _generate_silent_audio_response()
 
-        # Use macOS say command with Daniel voice
-        proc = await asyncio.create_subprocess_exec(
-            "say", "-v", "Daniel", "-r", "160", "-o", tmp_path, text,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE
-        )
-        await asyncio.wait_for(proc.communicate(), timeout=30.0)
+    # Race all strategies with 5s global timeout
+    GLOBAL_TTS_TIMEOUT = 5.0
+    done, pending = await asyncio.wait(
+        tasks.values(),
+        timeout=GLOBAL_TTS_TIMEOUT,
+        return_when=asyncio.FIRST_COMPLETED,
+    )
 
-        if proc.returncode != 0:
-            raise Exception("say command failed")
+    # Cancel any still-running tasks
+    for task in pending:
+        task.cancel()
 
-        # Try to convert to MP3 with ffmpeg
-        mp3_path = tmp_path.replace(".aiff", ".mp3")
-        media_type = "audio/mpeg"
-
+    # Return first successful result
+    for task in done:
         try:
-            ffmpeg_proc = await asyncio.create_subprocess_exec(
-                "ffmpeg", "-i", tmp_path, "-acodec", "mp3", "-ab", "96k",
-                "-ar", "22050", mp3_path, "-y",
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
-            )
-            await asyncio.wait_for(ffmpeg_proc.communicate(), timeout=30.0)
-
-            if ffmpeg_proc.returncode == 0:
-                with open(mp3_path, "rb") as f:
-                    audio_data = f.read()
-                os.unlink(tmp_path)
-                os.unlink(mp3_path)
-            else:
-                raise Exception("ffmpeg conversion failed")
+            result = task.result()
+            if result is not None:
+                return result
         except Exception:
-            # Use AIFF directly if conversion fails
-            with open(tmp_path, "rb") as f:
-                audio_data = f.read()
-            media_type = "audio/aiff"
-            os.unlink(tmp_path)
-            if os.path.exists(mp3_path):
-                os.unlink(mp3_path)
+            continue
 
-        return Response(
-            content=audio_data,
-            media_type=media_type,
-            headers={
-                "Content-Disposition": "inline; filename=jarvis_speech.mp3",
-                "Cache-Control": "no-cache",
-                "Access-Control-Allow-Origin": "*",
-            },
-        )
-    except asyncio.TimeoutError:
-        logger.error("[TTS] Direct say command timed out")
-    except Exception as e:
-        logger.error(f"[TTS] Direct say command failed: {e}")
-
-    # === Strategy 4: Silent audio (absolute last resort) ===
-    logger.warning("[TTS] All TTS methods failed, returning silent audio")
+    # All failed or timed out — return silent audio.
+    # Frontend will use browser speechSynthesis as final fallback.
+    logger.warning("[TTS] All TTS strategies failed/timed out, returning silent audio")
     return _generate_silent_audio_response()
 
 

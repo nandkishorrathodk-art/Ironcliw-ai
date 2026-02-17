@@ -1186,7 +1186,8 @@ class UnifiedCommandProcessor:
         }
 
     async def process_command(
-        self, command_text: str, websocket=None, audio_data: bytes = None, speaker_name: str = None
+        self, command_text: str, websocket=None, audio_data: bytes = None,
+        speaker_name: str = None, deadline: Optional[float] = None,
     ) -> Dict[str, Any]:
         """Process any command through unified pipeline with FULL context awareness including voice authentication"""
         logger.info(f"[UNIFIED] Processing with context awareness: '{command_text}'")
@@ -2164,7 +2165,7 @@ class UnifiedCommandProcessor:
             if command_type == CommandType.COMPOUND:
                 return await self._handle_compound_command(cmd, context=context)
             else:
-                return await self._execute_command(command_type, cmd, websocket, context=context)
+                return await self._execute_command(command_type, cmd, websocket, context=context, deadline=deadline)
 
         # Step 7: Process through context-aware handler with voice authentication
         logger.info(f"[UNIFIED] Processing through context-aware handler...")
@@ -3557,6 +3558,7 @@ class UnifiedCommandProcessor:
         command_text: str,
         websocket=None,
         context: Dict[str, Any] = None,
+        deadline: Optional[float] = None,
     ) -> Dict[str, Any]:
         """
         v88.0: Execute command with ultra protection stack.
@@ -3570,11 +3572,13 @@ class UnifiedCommandProcessor:
         # v88.0: Use ultra coordinator protection if available
         ultra_coord = await _get_ultra_coordinator()
         if ultra_coord:
-            timeout = float(os.getenv("JARVIS_COMMAND_EXECUTION_TIMEOUT", "120.0"))
+            # v241.0: Cap ultra coordinator timeout to remaining deadline budget
+            from core.prime_router import compute_remaining
+            timeout = compute_remaining(deadline, float(os.getenv("JARVIS_COMMAND_EXECUTION_TIMEOUT", "120.0")))
             success, result, metadata = await ultra_coord.execute_with_protection(
                 component=f"command_{command_type.value}",
                 operation=lambda: self._execute_command_internal(
-                    command_type, command_text, websocket, context
+                    command_type, command_text, websocket, context, deadline=deadline
                 ),
                 timeout=timeout,
             )
@@ -3607,6 +3611,7 @@ class UnifiedCommandProcessor:
         command_text: str,
         websocket=None,
         context: Dict[str, Any] = None,
+        deadline: Optional[float] = None,
     ) -> Dict[str, Any]:
         """v88.0: Internal command execution (called by protection wrapper)"""
 
@@ -4699,6 +4704,7 @@ class UnifiedCommandProcessor:
                         command_text,
                         query_context,
                         classified_query=_classified_query,
+                        deadline=deadline,  # v241.0
                     )
 
                     logger.info(f"[UNIFIED] ✅ Query response from {result.get('source', 'unknown')}")

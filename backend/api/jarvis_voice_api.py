@@ -3660,6 +3660,7 @@ class JARVISVoiceAPI:
                             websocket,
                             audio_data=self.last_audio_data,
                             speaker_name=self.last_speaker_name,
+                            deadline=deadline,  # v241.0
                         )
 
                         logger.info(f"[JARVIS API] Command result: {result}")

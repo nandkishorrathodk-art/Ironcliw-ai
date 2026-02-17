@@ -395,6 +395,7 @@ async def handle_query(
     command: str,
     context: Optional[Dict[str, Any]] = None,
     classified_query=None,
+    deadline: Optional[float] = None,
 ) -> Dict[str, Any]:
     """
     Handle a natural language query with Trinity-aware routing.
@@ -470,6 +471,7 @@ async def handle_query(
                 max_tokens=params.max_tokens,
                 temperature=params.temperature,
                 context=conversation_context if conversation_context else None,
+                deadline=deadline,  # v241.0
                 **gen_kwargs,
             )
 
@@ -509,6 +511,7 @@ async def handle_query(
                         max_tokens=retry_params.max_tokens,
                         temperature=retry_params.temperature,
                         context=conversation_context if conversation_context else None,
+                        deadline=deadline,  # v241.0
                     )
                     content = retry_response.content
                     logger.info(

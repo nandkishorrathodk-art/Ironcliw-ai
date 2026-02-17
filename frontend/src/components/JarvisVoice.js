@@ -2318,14 +2318,17 @@ const JarvisVoice = () => {
           // sendTextCommand even after a valid response arrived.
           activeRequestIdRef.current = null;
 
-          // v238.0: Client-side degenerate response filter.
-          // If the model returned only punctuation/whitespace (e.g., "..."),
-          // don't display or speak it — let the zombie fallback try again.
-          const stripped = (data.response || '').replace(/[\s.,!?…]+/g, '');
-          if (stripped.length === 0) {
+          // v241.0: Client-side degenerate response filter.
+          // Requires at least one alphanumeric character to be considered valid.
+          // "..." → no alphanumeric → suppressed (prevents "full stop" TTS)
+          // "Hello" → has alphanumeric → valid
+          const hasContent = /[a-zA-Z0-9]/.test(data.response || '');
+          if (!hasContent && (data.response || '').length > 0) {
             console.warn(`[WS] Degenerate command_response suppressed: "${data.response}"`);
-            // Re-arm the zombie by restoring activeRequestIdRef
-            activeRequestIdRef.current = cmdRequestId;
+            // Re-arm the zombie by restoring activeRequestIdRef (only if no retry in flight)
+            if (!zombieRetryInFlightRef.current) {
+              activeRequestIdRef.current = cmdRequestId;
+            }
             break;
           }
 
@@ -2376,12 +2379,11 @@ const JarvisVoice = () => {
           return;
         }
 
-        // v238.0: Suppress degenerate responses before TTS (defense-in-depth).
-        // Check BEFORE clearing activeRequestIdRef — if degenerate, don't clear
-        // the ref so the zombie timeout can fire and retry.
+        // v241.0: Suppress degenerate responses before TTS (defense-in-depth).
+        // Requires at least one alphanumeric character.
         const respResponseText = data.text || data.response || '';
-        const respStripped = respResponseText.replace(/[\s.,!?…]+/g, '');
-        if (respStripped.length === 0 && respResponseText.length > 0) {
+        const respHasContent = /[a-zA-Z0-9]/.test(respResponseText);
+        if (!respHasContent && respResponseText.length > 0) {
           console.warn(`[WS] Degenerate response suppressed: "${respResponseText}"`);
           // Don't clear activeRequestIdRef — let zombie retry
           break;
@@ -4833,10 +4835,13 @@ const JarvisVoice = () => {
         // The first response to arrive clears activeRequestIdRef; the second is dropped.
         const zombieRequestId = requestId;
         setTimeout(() => {
-          // Only fire if this request is still the active one (hasn't been superseded)
-          if (activeRequestIdRef.current === zombieRequestId) {
+          // v241.0: Only fire if this request is still active AND no retry is already in flight
+          if (activeRequestIdRef.current === zombieRequestId && !zombieRetryInFlightRef.current) {
             console.warn('[WS] No response after 10s - trying parallel REST fallback (WS still open)');
-            sendTextCommand(command);
+            zombieRetryInFlightRef.current = true;
+            sendTextCommand(command).finally(() => {
+              zombieRetryInFlightRef.current = false;
+            });
           }
         }, 10000);
       } catch (sendError) {
@@ -5709,6 +5714,9 @@ const JarvisVoice = () => {
 
   const playAudioUsingPost = async (text, onStartCallback = null) => {
     console.log('[JARVIS Audio] POST: Attempting to play audio via POST');
+    // v241.0: 8s AbortController — backend should respond in <5s, 3s margin
+    const controller = new AbortController();
+    const fetchTimeout = setTimeout(() => controller.abort(), 8000);
     try {
       const apiUrl = API_URL || configService.getApiUrl() || inferUrls().API_BASE_URL;
       const response = await fetch(`${apiUrl}/audio/speak`, {
@@ -5716,8 +5724,10 @@ const JarvisVoice = () => {
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ text })
+        body: JSON.stringify({ text }),
+        signal: controller.signal,
       });
+      clearTimeout(fetchTimeout);
 
       console.log('[JARVIS Audio] POST: Response status:', response.status);
       console.log('[JARVIS Audio] POST: Content-Type:', response.headers.get('content-type'));
@@ -5732,14 +5742,17 @@ const JarvisVoice = () => {
         const audio2 = new Audio(audioUrl);
         audio2.volume = 1.0;
 
-        setIsJarvisSpeaking(true);
-        isSpeakingRef.current = true;
         // 🔇 SELF-VOICE SUPPRESSION v2: PAUSE recognition (POST method)
         pauseRecognitionForSpeech(text);
         recordSpokenText(text);
 
         audio2.onplay = () => {
           console.log('[JARVIS Audio] POST: Playback started');
+          // v241.0: NOW set speaking state (audio is actually playing)
+          clearTimeout(fetchTimeoutRef.current);
+          fetchingAudioRef.current = false;
+          setIsJarvisSpeaking(true);
+          isSpeakingRef.current = true;
           // Call the callback when audio ACTUALLY starts playing (perfect sync!)
           if (onStartCallback && typeof onStartCallback === 'function') {
             console.log('[JARVIS Audio] Calling start callback - text will appear NOW');
@@ -5751,6 +5764,8 @@ const JarvisVoice = () => {
           console.log('[JARVIS Audio] POST: Playback completed');
           setIsJarvisSpeaking(false);
           isSpeakingRef.current = false;
+          fetchingAudioRef.current = false;
+          stopSpeechWatchdog();
           // 🔇 SELF-VOICE SUPPRESSION: Record when speaking ended
           recordSpeakingEnded();
           resumeRecognitionAfterSpeech();
@@ -5769,6 +5784,8 @@ const JarvisVoice = () => {
           }
           setIsJarvisSpeaking(false);
           isSpeakingRef.current = false;
+          fetchingAudioRef.current = false;
+          stopSpeechWatchdog();
           // 🔇 SELF-VOICE SUPPRESSION: Record when speaking ended (even on error)
           recordSpeakingEnded();
           resumeRecognitionAfterSpeech();
@@ -5783,12 +5800,19 @@ const JarvisVoice = () => {
         throw new Error(`Audio generation failed: ${response.status}`);
       }
     } catch (postError) {
-      console.error('[JARVIS Audio] POST: Failed:', postError);
+      clearTimeout(fetchTimeout);
+      if (postError.name === 'AbortError') {
+        console.warn('[JARVIS Audio] POST: Fetch timed out after 8s');
+      } else {
+        console.error('[JARVIS Audio] POST: Failed:', postError);
+      }
       setIsJarvisSpeaking(false);
       isSpeakingRef.current = false;
+      fetchingAudioRef.current = false;
+      stopSpeechWatchdog();
       // 🔇 SELF-VOICE SUPPRESSION: Record when speaking ended (even on error)
       recordSpeakingEnded();
-          resumeRecognitionAfterSpeech();
+      resumeRecognitionAfterSpeech();
       // Process next in queue even after error
       setTimeout(() => processNextInSpeechQueue(), 200);
     }
@@ -5799,6 +5823,17 @@ const JarvisVoice = () => {
   // Speech queue to prevent overlapping
   const speechQueueRef = useRef([]);
   const isSpeakingRef = useRef(false);
+  // v241.0: Separate fetch-in-progress guard from speaking lock
+  const fetchingAudioRef = useRef(false);
+  const fetchTimeoutRef = useRef(null);  // 10s fetch-phase guard
+  // v241.0: Speech watchdog — detects stuck isSpeakingRef
+  const speechWatchdogRef = useRef(null);
+  const speechStartTimeRef = useRef(0);
+  const MAX_SPEECH_DURATION_MS = 30000;   // 30s max for any single utterance
+  const WATCHDOG_CHECK_INTERVAL_MS = 3000; // Check every 3s
+  const SPEECH_QUEUE_TTL_MS = 45000;       // 45s matches WS timeout budget
+  // v241.0: Zombie retry dedup
+  const zombieRetryInFlightRef = useRef(false);
 
   // ============================================================
   // 🔇 SELF-VOICE SUPPRESSION SYSTEM
@@ -5919,7 +5954,25 @@ const JarvisVoice = () => {
   };
 
   const processNextInSpeechQueue = async () => {
-    if (speechQueueRef.current.length === 0 || isSpeakingRef.current) {
+    // v241.0: Also block on fetchingAudioRef to prevent overlapping fetches
+    if (speechQueueRef.current.length === 0 || isSpeakingRef.current || fetchingAudioRef.current) {
+      return;
+    }
+
+    // v241.0: Skip expired items (TTL = 45s)
+    while (speechQueueRef.current.length > 0) {
+      const item = speechQueueRef.current[0];
+      const age = Date.now() - (item.enqueuedAt || 0);
+      if (item.enqueuedAt && age > SPEECH_QUEUE_TTL_MS) {
+        const itemText = typeof item === 'string' ? item : (item.text || '');
+        console.warn(`[JARVIS Audio] Queue item expired (${(age/1000).toFixed(1)}s old): "${itemText.substring(0, 50)}..."`);
+        speechQueueRef.current.shift();
+        continue;
+      }
+      break;
+    }
+
+    if (speechQueueRef.current.length === 0) {
       return;
     }
 
@@ -5942,6 +5995,54 @@ const JarvisVoice = () => {
     // Reset speaking states
     setIsJarvisSpeaking(false);
     isSpeakingRef.current = false;
+    // v241.0: Reset fetch guard and watchdog
+    fetchingAudioRef.current = false;
+    clearTimeout(fetchTimeoutRef.current);
+    stopSpeechWatchdog();
+  };
+
+  // v241.0: Speech watchdog — detects stuck isSpeakingRef and force-resets
+  const startSpeechWatchdog = () => {
+    if (speechWatchdogRef.current) {
+      clearInterval(speechWatchdogRef.current);
+    }
+    speechStartTimeRef.current = Date.now();
+
+    speechWatchdogRef.current = setInterval(() => {
+      if (!isSpeakingRef.current && !fetchingAudioRef.current) {
+        clearInterval(speechWatchdogRef.current);
+        speechWatchdogRef.current = null;
+        return;
+      }
+
+      const elapsed = Date.now() - speechStartTimeRef.current;
+      if (elapsed > MAX_SPEECH_DURATION_MS) {
+        console.error(
+          `[JARVIS Audio] WATCHDOG: Speech stuck for ${elapsed}ms ` +
+          `(isSpeaking=${isSpeakingRef.current}, fetching=${fetchingAudioRef.current}). ` +
+          `Force-resetting.`
+        );
+        setIsJarvisSpeaking(false);
+        isSpeakingRef.current = false;
+        fetchingAudioRef.current = false;
+        clearTimeout(fetchTimeoutRef.current);
+        if ('speechSynthesis' in window) {
+          window.speechSynthesis.cancel();
+        }
+        recordSpeakingEnded();
+        resumeRecognitionAfterSpeech();
+        clearInterval(speechWatchdogRef.current);
+        speechWatchdogRef.current = null;
+        setTimeout(() => processNextInSpeechQueue(), 200);
+      }
+    }, WATCHDOG_CHECK_INTERVAL_MS);
+  };
+
+  const stopSpeechWatchdog = () => {
+    if (speechWatchdogRef.current) {
+      clearInterval(speechWatchdogRef.current);
+      speechWatchdogRef.current = null;
+    }
   };
 
   const speakResponse = async (text, updateDisplay = true) => {
@@ -5954,7 +6055,7 @@ const JarvisVoice = () => {
     console.log('[JARVIS Audio] Current speaking state:', isJarvisSpeaking);
 
     // Add to speech queue instead of skipping
-    speechQueueRef.current.push({ text, callback: null });
+    speechQueueRef.current.push({ text, callback: null, enqueuedAt: Date.now() });
 
     // Process queue if not already speaking
     if (!isSpeakingRef.current) {
@@ -5966,7 +6067,7 @@ const JarvisVoice = () => {
     console.log('[JARVIS Audio] Speaking response with callback:', text.substring(0, 100) + '...');
 
     // Add to speech queue with callback
-    speechQueueRef.current.push({ text, callback: onStartCallback });
+    speechQueueRef.current.push({ text, callback: onStartCallback, enqueuedAt: Date.now() });
 
     // Process queue if not already speaking
     if (!isSpeakingRef.current) {
@@ -5976,8 +6077,8 @@ const JarvisVoice = () => {
 
   const speakResponseInternal = async (text, onStartCallback = null) => {
     // Prevent overlapping speech
-    if (isSpeakingRef.current) {
-      console.log('[JARVIS Audio] Already speaking, adding to queue');
+    if (isSpeakingRef.current || fetchingAudioRef.current) {
+      console.log('[JARVIS Audio] Already speaking or fetching, adding to queue');
       return;
     }
 
@@ -6014,8 +6115,23 @@ const JarvisVoice = () => {
         return;
       }
 
-      setIsJarvisSpeaking(true);
-      isSpeakingRef.current = true;
+      // v241.0: Set fetch guard (NOT isSpeakingRef — that blocks the queue).
+      // isSpeakingRef will be set in onplay callback when audio actually starts.
+      fetchingAudioRef.current = true;
+      startSpeechWatchdog();
+      // 10s fetch-phase guard — if onplay hasn't fired, reset and process next
+      fetchTimeoutRef.current = setTimeout(() => {
+        if (fetchingAudioRef.current) {
+          console.warn('[JARVIS Audio] Fetch-phase stuck >10s, resetting');
+          fetchingAudioRef.current = false;
+          setIsJarvisSpeaking(false);
+          isSpeakingRef.current = false;
+          stopSpeechWatchdog();
+          recordSpeakingEnded();
+          resumeRecognitionAfterSpeech();
+          setTimeout(() => processNextInSpeechQueue(), 200);
+        }
+      }, 10000);
 
       // 🔇 SELF-VOICE SUPPRESSION v2: PAUSE recognition and record text
       pauseRecognitionForSpeech(sanitizedText);
@@ -6047,6 +6163,11 @@ const JarvisVoice = () => {
 
         audio.onplay = () => {
           console.log('[JARVIS Audio] GET method playback started');
+          // v241.0: NOW set speaking state (audio is actually playing)
+          clearTimeout(fetchTimeoutRef.current);
+          fetchingAudioRef.current = false;
+          setIsJarvisSpeaking(true);
+          isSpeakingRef.current = true;
           // Call the callback when audio ACTUALLY starts playing (perfect sync!)
           if (onStartCallback && typeof onStartCallback === 'function') {
             console.log('[JARVIS Audio] Calling start callback - text will appear NOW');
@@ -6058,6 +6179,8 @@ const JarvisVoice = () => {
           console.log('[JARVIS Audio] GET method playback completed');
           setIsJarvisSpeaking(false);
           isSpeakingRef.current = false;
+          fetchingAudioRef.current = false;
+          stopSpeechWatchdog();
           // 🔇 SELF-VOICE SUPPRESSION: Record when speaking ended
           recordSpeakingEnded();
           resumeRecognitionAfterSpeech();
@@ -6067,6 +6190,7 @@ const JarvisVoice = () => {
 
         audio.onerror = async (e) => {
           console.error('[JARVIS Audio] GET audio error:', e);
+          clearTimeout(fetchTimeoutRef.current);
           if (audio.error) {
             console.error('[JARVIS Audio] Error details:', {
               code: audio.error.code,
@@ -6101,9 +6225,12 @@ const JarvisVoice = () => {
       });
       setIsJarvisSpeaking(false);
       isSpeakingRef.current = false;
+      fetchingAudioRef.current = false;
+      clearTimeout(fetchTimeoutRef.current);
+      stopSpeechWatchdog();
       // 🔇 SELF-VOICE SUPPRESSION: Record when speaking ended (even on error)
       recordSpeakingEnded();
-          resumeRecognitionAfterSpeech();
+      resumeRecognitionAfterSpeech();
       // Process next in queue even after error
       setTimeout(() => processNextInSpeechQueue(), 200);
 
@@ -6171,6 +6298,8 @@ const JarvisVoice = () => {
 
         utterance.onstart = () => {
           console.log('[JARVIS Audio] Browser speech synthesis started');
+          clearTimeout(fetchTimeoutRef.current);
+          fetchingAudioRef.current = false;
           setIsJarvisSpeaking(true);
           isSpeakingRef.current = true;
           // 🔇 SELF-VOICE SUPPRESSION v2: PAUSE recognition (browser synthesis)
@@ -6186,6 +6315,8 @@ const JarvisVoice = () => {
           console.log('[JARVIS Audio] Browser speech completed');
           setIsJarvisSpeaking(false);
           isSpeakingRef.current = false;
+          fetchingAudioRef.current = false;
+          stopSpeechWatchdog();
           // 🔇 SELF-VOICE SUPPRESSION: Record when speaking ended
           recordSpeakingEnded();
           resumeRecognitionAfterSpeech();
@@ -6196,6 +6327,8 @@ const JarvisVoice = () => {
           console.error('[JARVIS Audio] Browser speech error:', e);
           setIsJarvisSpeaking(false);
           isSpeakingRef.current = false;
+          fetchingAudioRef.current = false;
+          stopSpeechWatchdog();
           // 🔇 SELF-VOICE SUPPRESSION: Record when speaking ended (even on error)
           recordSpeakingEnded();
           resumeRecognitionAfterSpeech();
