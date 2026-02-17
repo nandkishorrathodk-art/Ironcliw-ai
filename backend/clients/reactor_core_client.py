@@ -57,6 +57,19 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from backend.clients.experience_scorer import WeightedExperienceTracker
 
+# v2.3: Resource-aware training gate -- import MemoryQuantizer with graceful degradation
+try:
+    from backend.core.memory_quantizer import MemoryTier as _MemoryTier
+    _MEMORY_QUANTIZER_AVAILABLE = True
+except ImportError:
+    _MemoryTier = None  # type: ignore[assignment,misc]
+    _MEMORY_QUANTIZER_AVAILABLE = False
+
+# v2.3: Module-level reference to the MemoryQuantizer singleton.
+# Populated lazily on first use from backend.core.memory_quantizer._memory_quantizer_instance.
+# Having it here allows tests to patch "backend.clients.reactor_core_client._memory_quantizer_instance".
+_memory_quantizer_instance = None
+
 logger = logging.getLogger(__name__)
 
 
@@ -1062,9 +1075,66 @@ class ReactorCoreClient:
         self._requests_failed += 1
         return None
 
+    def _get_memory_tier_name(self) -> str:
+        """
+        v2.3: Get the current memory tier name from MemoryQuantizer.
+
+        Returns the tier name (e.g. "ABUNDANT", "CRITICAL") as a string.
+        If MemoryQuantizer is unavailable or errored, returns "ABUNDANT"
+        (graceful degradation -- allow training).
+        """
+        global _memory_quantizer_instance
+
+        if not _MEMORY_QUANTIZER_AVAILABLE:
+            return "ABUNDANT"
+
+        # Lazily resolve the singleton from the memory_quantizer module
+        if _memory_quantizer_instance is None:
+            try:
+                from backend.core import memory_quantizer as _mq_mod
+                _memory_quantizer_instance = _mq_mod._memory_quantizer_instance
+            except Exception:
+                pass
+
+        if _memory_quantizer_instance is None:
+            return "ABUNDANT"
+
+        try:
+            tier = _memory_quantizer_instance.current_tier
+            return tier.name if hasattr(tier, "name") else str(tier)
+        except Exception as e:
+            logger.debug(f"[ReactorClient] Failed to read memory tier: {e}")
+            return "ABUNDANT"
+
+    @staticmethod
+    def _resolve_tier_behavior(tier_name: str) -> str:
+        """
+        v2.3: Resolve what behavior to take for a given memory tier.
+
+        Returns one of: "full", "reduced", "defer", "skip".
+
+        All behaviors are configurable via environment variables:
+        - REACTOR_ABUNDANT_BEHAVIOR   (default: full)
+        - REACTOR_OPTIMAL_BEHAVIOR    (default: full)
+        - REACTOR_ELEVATED_BEHAVIOR   (default: reduced)
+        - REACTOR_CONSTRAINED_BEHAVIOR (default: defer)
+        - REACTOR_CRITICAL_BEHAVIOR   (default: skip)
+        - REACTOR_EMERGENCY_BEHAVIOR  (default: skip)
+        """
+        defaults = {
+            "ABUNDANT": "full",
+            "OPTIMAL": "full",
+            "ELEVATED": "reduced",
+            "CONSTRAINED": "defer",
+            "CRITICAL": "skip",
+            "EMERGENCY": "skip",
+        }
+        env_key = f"REACTOR_{tier_name.upper()}_BEHAVIOR"
+        return os.getenv(env_key, defaults.get(tier_name.upper(), "full"))
+
     async def _check_and_auto_trigger(self) -> None:
         """
-        v2.2: Check experience count OR weighted score and auto-trigger training.
+        v2.3: Check experience count OR weighted score and auto-trigger training.
 
         Called from health monitor loop after each successful health check.
 
@@ -1077,6 +1147,7 @@ class ReactorCoreClient:
         - Reactor-Core must be training-ready (is_training_ready)
         - No active training job (_active_job_id is None)
         - Minimum interval enforced by trigger_training()
+        - v2.3: Resource-aware memory gate (MemoryQuantizer tier check)
         """
         # v2.1: Circuit breaker guard - skip if open after repeated failures
         if self._training_circuit_breaker and not await self._training_circuit_breaker.can_execute():
@@ -1102,13 +1173,46 @@ class ReactorCoreClient:
                     if weighted_trigger
                     else f"count={count}>={self.config.experience_threshold}"
                 )
-                logger.info(
-                    f"[ReactorClient] Auto-trigger: {trigger_reason} "
-                    f"(count={count}, weighted={self._experience_tracker.cumulative_score:.1f})"
-                )
+
+                # v2.3: Resource-aware training gate -- check memory tier
+                tier_name = self._get_memory_tier_name()
+                behavior = self._resolve_tier_behavior(tier_name)
+
+                if behavior == "skip":
+                    logger.info(
+                        f"[ReactorClient] Training SKIPPED: memory tier {tier_name} "
+                        f"(behavior={behavior}). System resources too low."
+                    )
+                    return
+
+                if behavior == "defer":
+                    logger.info(
+                        f"[ReactorClient] Training DEFERRED to Night Shift: "
+                        f"memory tier {tier_name} (behavior={behavior}). "
+                        f"trigger_reason={trigger_reason}"
+                    )
+                    return
+
+                # Build metadata for trigger
+                trigger_metadata: Optional[Dict[str, Any]] = None
+                if behavior == "reduced":
+                    trigger_metadata = {"reduced_batch": True}
+                    logger.info(
+                        f"[ReactorClient] Auto-trigger (reduced batch): {trigger_reason} "
+                        f"memory_tier={tier_name} "
+                        f"(count={count}, weighted={self._experience_tracker.cumulative_score:.1f})"
+                    )
+                else:
+                    logger.info(
+                        f"[ReactorClient] Auto-trigger: {trigger_reason} "
+                        f"memory_tier={tier_name} "
+                        f"(count={count}, weighted={self._experience_tracker.cumulative_score:.1f})"
+                    )
+
                 job = await self.trigger_training(
                     experience_count=count,
                     priority=TrainingPriority.NORMAL,
+                    metadata=trigger_metadata,
                 )
                 if job:
                     self._active_job_id = job.job_id

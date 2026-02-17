@@ -7,6 +7,7 @@ asyncio_mode = auto in pytest.ini -- no @pytest.mark.asyncio required.
 
 from __future__ import annotations
 
+import os
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -450,3 +451,249 @@ class TestTrainingCircuitBreaker:
                     await client._poll_active_job()
 
         mock_cb.record_success.assert_called_once()
+
+
+# =========================================================================
+# Tests -- Resource-Aware Training Gate (v2.3)
+# =========================================================================
+
+class TestResourceAwareTrainingGate:
+    """Verify _check_and_auto_trigger respects system memory tier."""
+
+    def _setup_trigger_ready(self, client: ReactorCoreClient, count: int = 150):
+        """Helper: put client into a state where auto-trigger would fire
+        if not blocked by memory gate.  Returns mock_trigger for assertions."""
+        client._training_ready = True
+        client._is_online = True
+        client.config.auto_trigger_enabled = True
+        client.config.experience_threshold = 100
+        client._active_job_id = None
+        # Disable circuit breaker for these tests
+        client._training_circuit_breaker = None
+
+    # ----- ABUNDANT / OPTIMAL: full training --------------------------------
+
+    async def test_abundant_allows_full_training(self, client):
+        """ABUNDANT tier should allow training with no restrictions."""
+        self._setup_trigger_ready(client)
+
+        mock_tier = MagicMock()
+        mock_tier.name = "ABUNDANT"
+
+        mock_quantizer = MagicMock()
+        mock_quantizer.current_tier = mock_tier
+
+        with patch.object(client, 'get_experience_count', new_callable=AsyncMock, return_value=150):
+            with patch.object(client, 'trigger_training', new_callable=AsyncMock) as mock_trigger:
+                mock_trigger.return_value = MagicMock(job_id="job-abundant")
+                with patch(
+                    "backend.clients.reactor_core_client._memory_quantizer_instance",
+                    mock_quantizer,
+                ):
+                    await client._check_and_auto_trigger()
+
+                mock_trigger.assert_called_once()
+                # Should NOT pass reduced_batch metadata
+                call_kwargs = mock_trigger.call_args
+                metadata = call_kwargs.kwargs.get("metadata") if call_kwargs.kwargs else None
+                assert metadata is None or metadata.get("reduced_batch") is not True
+
+    async def test_optimal_allows_full_training(self, client):
+        """OPTIMAL tier should allow training with no restrictions."""
+        self._setup_trigger_ready(client)
+
+        mock_tier = MagicMock()
+        mock_tier.name = "OPTIMAL"
+
+        mock_quantizer = MagicMock()
+        mock_quantizer.current_tier = mock_tier
+
+        with patch.object(client, 'get_experience_count', new_callable=AsyncMock, return_value=150):
+            with patch.object(client, 'trigger_training', new_callable=AsyncMock) as mock_trigger:
+                mock_trigger.return_value = MagicMock(job_id="job-optimal")
+                with patch(
+                    "backend.clients.reactor_core_client._memory_quantizer_instance",
+                    mock_quantizer,
+                ):
+                    await client._check_and_auto_trigger()
+
+                mock_trigger.assert_called_once()
+
+    # ----- ELEVATED: reduced batch ------------------------------------------
+
+    async def test_elevated_triggers_with_reduced_batch(self, client):
+        """ELEVATED tier should trigger training with reduced_batch=True metadata."""
+        self._setup_trigger_ready(client)
+
+        mock_tier = MagicMock()
+        mock_tier.name = "ELEVATED"
+
+        mock_quantizer = MagicMock()
+        mock_quantizer.current_tier = mock_tier
+
+        with patch.object(client, 'get_experience_count', new_callable=AsyncMock, return_value=150):
+            with patch.object(client, 'trigger_training', new_callable=AsyncMock) as mock_trigger:
+                mock_trigger.return_value = MagicMock(job_id="job-elevated")
+                with patch(
+                    "backend.clients.reactor_core_client._memory_quantizer_instance",
+                    mock_quantizer,
+                ):
+                    await client._check_and_auto_trigger()
+
+                mock_trigger.assert_called_once()
+                call_kwargs = mock_trigger.call_args
+                metadata = call_kwargs.kwargs.get("metadata")
+                assert metadata is not None
+                assert metadata.get("reduced_batch") is True
+
+    # ----- CONSTRAINED: defer to Night Shift --------------------------------
+
+    async def test_constrained_defers_training(self, client):
+        """CONSTRAINED tier should defer training (not trigger)."""
+        self._setup_trigger_ready(client)
+
+        mock_tier = MagicMock()
+        mock_tier.name = "CONSTRAINED"
+
+        mock_quantizer = MagicMock()
+        mock_quantizer.current_tier = mock_tier
+
+        with patch.object(client, 'get_experience_count', new_callable=AsyncMock, return_value=150):
+            with patch.object(client, 'trigger_training', new_callable=AsyncMock) as mock_trigger:
+                with patch(
+                    "backend.clients.reactor_core_client._memory_quantizer_instance",
+                    mock_quantizer,
+                ):
+                    await client._check_and_auto_trigger()
+
+                mock_trigger.assert_not_called()
+
+    # ----- CRITICAL / EMERGENCY: skip entirely ------------------------------
+
+    async def test_critical_skips_training(self, client):
+        """CRITICAL tier should skip training entirely."""
+        self._setup_trigger_ready(client)
+
+        mock_tier = MagicMock()
+        mock_tier.name = "CRITICAL"
+
+        mock_quantizer = MagicMock()
+        mock_quantizer.current_tier = mock_tier
+
+        with patch.object(client, 'get_experience_count', new_callable=AsyncMock, return_value=150):
+            with patch.object(client, 'trigger_training', new_callable=AsyncMock) as mock_trigger:
+                with patch(
+                    "backend.clients.reactor_core_client._memory_quantizer_instance",
+                    mock_quantizer,
+                ):
+                    await client._check_and_auto_trigger()
+
+                mock_trigger.assert_not_called()
+
+    async def test_emergency_skips_training(self, client):
+        """EMERGENCY tier should skip training entirely."""
+        self._setup_trigger_ready(client)
+
+        mock_tier = MagicMock()
+        mock_tier.name = "EMERGENCY"
+
+        mock_quantizer = MagicMock()
+        mock_quantizer.current_tier = mock_tier
+
+        with patch.object(client, 'get_experience_count', new_callable=AsyncMock, return_value=150):
+            with patch.object(client, 'trigger_training', new_callable=AsyncMock) as mock_trigger:
+                with patch(
+                    "backend.clients.reactor_core_client._memory_quantizer_instance",
+                    mock_quantizer,
+                ):
+                    await client._check_and_auto_trigger()
+
+                mock_trigger.assert_not_called()
+
+    # ----- Graceful degradation: MemoryQuantizer unavailable ----------------
+
+    async def test_no_quantizer_allows_training(self, client):
+        """When MemoryQuantizer is not available, training should proceed (assume ABUNDANT)."""
+        self._setup_trigger_ready(client)
+
+        with patch.object(client, 'get_experience_count', new_callable=AsyncMock, return_value=150):
+            with patch.object(client, 'trigger_training', new_callable=AsyncMock) as mock_trigger:
+                mock_trigger.return_value = MagicMock(job_id="job-no-quantizer")
+                with patch(
+                    "backend.clients.reactor_core_client._memory_quantizer_instance",
+                    None,
+                ):
+                    await client._check_and_auto_trigger()
+
+                mock_trigger.assert_called_once()
+
+    # ----- Below threshold: memory gate should not even be consulted --------
+
+    async def test_below_threshold_skips_without_memory_check(self, client):
+        """Below experience threshold, training should not trigger regardless of memory tier."""
+        self._setup_trigger_ready(client)
+
+        mock_tier = MagicMock()
+        mock_tier.name = "ABUNDANT"
+
+        mock_quantizer = MagicMock()
+        mock_quantizer.current_tier = mock_tier
+
+        with patch.object(client, 'get_experience_count', new_callable=AsyncMock, return_value=50):
+            with patch.object(client, 'trigger_training', new_callable=AsyncMock) as mock_trigger:
+                with patch(
+                    "backend.clients.reactor_core_client._memory_quantizer_instance",
+                    mock_quantizer,
+                ):
+                    await client._check_and_auto_trigger()
+
+                mock_trigger.assert_not_called()
+
+    # ----- Configurable tier behavior via env var ---------------------------
+
+    async def test_elevated_behavior_configurable(self, client):
+        """ELEVATED tier behavior should be configurable - can be set to 'defer' instead of 'reduced'."""
+        self._setup_trigger_ready(client)
+
+        mock_tier = MagicMock()
+        mock_tier.name = "ELEVATED"
+
+        mock_quantizer = MagicMock()
+        mock_quantizer.current_tier = mock_tier
+
+        with patch.object(client, 'get_experience_count', new_callable=AsyncMock, return_value=150):
+            with patch.object(client, 'trigger_training', new_callable=AsyncMock) as mock_trigger:
+                with patch(
+                    "backend.clients.reactor_core_client._memory_quantizer_instance",
+                    mock_quantizer,
+                ):
+                    with patch.dict(os.environ, {"REACTOR_ELEVATED_BEHAVIOR": "defer"}):
+                        await client._check_and_auto_trigger()
+
+                mock_trigger.assert_not_called()
+
+    async def test_constrained_behavior_configurable(self, client):
+        """CONSTRAINED tier behavior should be configurable - can be set to 'reduced' instead of 'defer'."""
+        self._setup_trigger_ready(client)
+
+        mock_tier = MagicMock()
+        mock_tier.name = "CONSTRAINED"
+
+        mock_quantizer = MagicMock()
+        mock_quantizer.current_tier = mock_tier
+
+        with patch.object(client, 'get_experience_count', new_callable=AsyncMock, return_value=150):
+            with patch.object(client, 'trigger_training', new_callable=AsyncMock) as mock_trigger:
+                mock_trigger.return_value = MagicMock(job_id="job-reduced-constrained")
+                with patch(
+                    "backend.clients.reactor_core_client._memory_quantizer_instance",
+                    mock_quantizer,
+                ):
+                    with patch.dict(os.environ, {"REACTOR_CONSTRAINED_BEHAVIOR": "reduced"}):
+                        await client._check_and_auto_trigger()
+
+                mock_trigger.assert_called_once()
+                call_kwargs = mock_trigger.call_args
+                metadata = call_kwargs.kwargs.get("metadata")
+                assert metadata is not None
+                assert metadata.get("reduced_batch") is True
