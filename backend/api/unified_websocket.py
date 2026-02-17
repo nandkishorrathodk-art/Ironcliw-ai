@@ -1148,9 +1148,10 @@ class UnifiedWebSocketManager:
 
                 # Create properly typed command object
                 command_obj = JARVISCommand(text=command_text, audio_data=audio_data)
-                # v241.0: Set deadline for legacy handler
+                # v242.0: Set deadline for legacy handler (with headroom subtracted once)
                 import time as _time_ws_legacy
-                command_obj.deadline = _time_ws_legacy.monotonic() + 45.0
+                from core.prime_router import _DEADLINE_HEADROOM_S
+                command_obj.deadline = _time_ws_legacy.monotonic() + 45.0 - _DEADLINE_HEADROOM_S
 
                 result = await jarvis_api.process_command(command_obj)
 
@@ -1785,12 +1786,15 @@ class UnifiedWebSocketManager:
                                 base_timeout = float(os.getenv("WS_SURVEILLANCE_TIMEOUT", "90.0"))
                                 logger.info(f"[WS] 👁️ Surveillance command detected - using {base_timeout}s timeout")
                             else:
-                                # Standard commands use shorter timeout
-                                base_timeout = float(os.getenv("WS_COMMAND_TIMEOUT", "45.0"))
+                                # v242.0: Dynamic timeout — GCP inference needs more budget
+                                _gcp_active = bool(os.environ.get("JARVIS_INVINCIBLE_NODE_IP"))
+                                _default_timeout = "60.0" if _gcp_active else "45.0"
+                                base_timeout = float(os.getenv("WS_COMMAND_TIMEOUT", _default_timeout))
 
-                            # v241.0: Set monotonic deadline on the command object.
-                            # Inner layers read this and self-terminate cooperatively.
-                            command_obj.deadline = _time_ws.monotonic() + base_timeout
+                            # v242.0: Deduct headroom ONCE at deadline creation.
+                            # Inner layers use compute_remaining() without per-layer subtraction.
+                            from core.prime_router import _DEADLINE_HEADROOM_S
+                            command_obj.deadline = _time_ws.monotonic() + base_timeout - _DEADLINE_HEADROOM_S
                             
                             # ===========================================================
                             # PROGRESS CALLBACK SYSTEM - Real-time frontend updates

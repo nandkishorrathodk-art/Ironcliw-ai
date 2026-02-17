@@ -8441,7 +8441,12 @@ def _get_diagnostic_recommendation(checks: dict) -> str:
 async def _try_jarvis_api_tts(jarvis_api, request):
     """v241.0: TTS Strategy 1 — JARVIS Voice API with 4s individual timeout."""
     try:
-        return await asyncio.wait_for(jarvis_api.speak(request), timeout=4.0)
+        result = await asyncio.wait_for(jarvis_api.speak(request), timeout=4.0)
+        # v242.0: Inject X-TTS-Status header into response from jarvis_api.speak()
+        if result is not None and hasattr(result, 'headers'):
+            result.headers["X-TTS-Status"] = "ok"
+            result.headers["Access-Control-Expose-Headers"] = "X-TTS-Status"
+        return result
     except asyncio.CancelledError:
         logger.debug("[TTS] JARVIS Voice API cancelled (race lost)")
         raise  # Re-raise so asyncio.wait() handles it
@@ -8470,6 +8475,8 @@ async def _try_async_tts(text):
                 "Content-Disposition": "inline; filename=jarvis_speech.mp3",
                 "Cache-Control": "public, max-age=3600",
                 "Access-Control-Allow-Origin": "*",
+                "X-TTS-Status": "ok",  # v242.0: Signal successful TTS to frontend
+                "Access-Control-Expose-Headers": "X-TTS-Status",
             },
         )
     except asyncio.CancelledError:
@@ -8548,13 +8555,13 @@ async def audio_speak_post(request: dict):
 
 
 def _generate_silent_audio_response():
-    """Generate a minimal silent WAV audio response"""
+    """v242.0: Generate silent WAV with X-TTS-Status: silent header.
+    Duration 0.5s (was 0.1s) so browser onplay/onended fire reliably."""
     from fastapi.responses import Response
     import struct
 
-    # Generate a simple WAV header with 0.1 second of silence
     sample_rate = 44100
-    duration = 0.1
+    duration = 0.5  # v242.0: 0.5s (Gap F fix — 0.1s too fast for reliable events)
     num_samples = int(sample_rate * duration)
 
     # WAV header
@@ -8584,6 +8591,8 @@ def _generate_silent_audio_response():
         headers={
             "Content-Disposition": "inline; filename=silence.wav",
             "Access-Control-Allow-Origin": "*",
+            "X-TTS-Status": "silent",  # v242.0: Frontend detects this → browser speechSynthesis
+            "Access-Control-Expose-Headers": "X-TTS-Status",
         },
     )
 

@@ -7936,15 +7936,17 @@ class AdaptiveCircuitBreaker:
         """Whether circuit is closed (allowing requests)."""
         return self._state == self.CLOSED
 
-    async def record_success(self, latency_ms: float) -> None:
-        """Record successful call and update metrics."""
+    async def record_success(self, latency_ms: float, is_fallback: bool = False) -> None:
+        """Record successful call and update metrics.
+        v242.0: is_fallback=True excludes cloud fallback latency from EMA (Gap C)."""
         async with self._lock:
             self._success_count += 1
 
-            # Update exponential moving average
-            self._latency_ema = (
-                self._alpha * latency_ms + (1 - self._alpha) * self._latency_ema
-            )
+            # v242.0: Only update latency EMA for non-fallback responses
+            if not is_fallback:
+                self._latency_ema = (
+                    self._alpha * latency_ms + (1 - self._alpha) * self._latency_ema
+                )
 
             # Record metrics
             await self._record_metrics(latency_ms, success=True)
@@ -8991,6 +8993,9 @@ class TrinityUltraCoordinator:
         self._initialized = False
         self._lock = asyncio.Lock()
 
+        # v242.0: Shielded task registry for cleanup (Gap A)
+        self._shielded_tasks: Dict[str, asyncio.Task] = {}
+
         logger.info(f"[TrinityUltra] v{self.TRINITY_ULTRA_VERSION} coordinator created")
 
     async def initialize(self) -> None:
@@ -9015,6 +9020,35 @@ class TrinityUltraCoordinator:
 
             self._initialized = True
             logger.info(f"[TrinityUltra] v{self.TRINITY_ULTRA_VERSION} initialized")
+
+    # v242.0: Shielded task management (Gap A + Gap K)
+    def _register_shielded_task(self, component: str, task: asyncio.Task) -> None:
+        """Track shielded task. Cancels previous orphan for same component."""
+        old = self._shielded_tasks.pop(component, None)
+        if old and not old.done():
+            old.cancel()
+        self._shielded_tasks[component] = task
+
+    async def _cleanup_shielded_task(self, component: str, task: asyncio.Task, grace_s: float) -> None:
+        """Wait grace period then cancel if still running."""
+        try:
+            await asyncio.wait_for(asyncio.shield(task), timeout=grace_s)
+        except (asyncio.TimeoutError, asyncio.CancelledError, Exception):
+            if not task.done():
+                task.cancel()
+                logger.info(f"[UltraCoord] v242.0 Cancelled orphan shielded task for {component}")
+        finally:
+            self._shielded_tasks.pop(component, None)
+
+    def cancel_all_shielded_tasks(self) -> int:
+        """Cancel all orphaned tasks (called on endpoint swap, Gap K)."""
+        count = 0
+        for comp, task in list(self._shielded_tasks.items()):
+            if not task.done():
+                task.cancel()
+                count += 1
+        self._shielded_tasks.clear()
+        return count
 
     async def execute_with_protection(
         self,
@@ -9075,12 +9109,15 @@ class TrinityUltraCoordinator:
             start = time.time()
             try:
                 task = asyncio.ensure_future(operation())
+                self._register_shielded_task(component, task)  # v242.0
                 result = await asyncio.wait_for(
                     asyncio.shield(task), timeout=effective_timeout
                 )
 
                 latency_ms = (time.time() - start) * 1000
-                await circuit.record_success(latency_ms)
+                # v242.0: Exclude fallback latency from EMA (Gap C)
+                is_fallback = getattr(result, 'fallback_used', False) if result else False
+                await circuit.record_success(latency_ms, is_fallback=is_fallback)
                 await self._backpressure.release(latency_ms)
 
                 metadata["latency_ms"] = latency_ms
@@ -9090,6 +9127,9 @@ class TrinityUltraCoordinator:
             except asyncio.TimeoutError:
                 # v241.0: Shield prevents task cancellation — it may still complete
                 # in the background. But we treat it as a timeout for the caller.
+                # v242.0: Schedule cleanup with grace period (Gap A)
+                _grace = float(os.getenv("JARVIS_SHIELD_GRACE_S", "10.0"))
+                asyncio.ensure_future(self._cleanup_shielded_task(component, task, _grace))
                 latency_ms = (time.time() - start) * 1000
                 await circuit.record_failure(latency_ms)
                 await self._backpressure.release(latency_ms)

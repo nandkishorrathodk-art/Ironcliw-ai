@@ -1397,6 +1397,16 @@ class UnifiedCommandProcessor:
         has_monitoring_keyword = any(k in command_lower for k in monitoring_keywords)
         has_surveillance_structure = any(p in command_lower for p in surveillance_patterns)
 
+        # v242.0 Gap J: Negative patterns prevent misclassification.
+        # "look for information" is NOT surveillance. "watch all Chrome windows for changes" IS.
+        _non_surv_kw = os.getenv(
+            "JARVIS_NON_SURVEILLANCE_KEYWORDS",
+            "youtube,video,movie,show,episode,series,stream,play,recipe,flight,"
+            "hotel,restaurant,information,tutorial,guide,how to,what is,explain"
+        ).split(",")
+        _non_surv_kw = [k.strip() for k in _non_surv_kw if k.strip()]
+        _has_non_surv_context = any(k in command_lower for k in _non_surv_kw)
+
         # Try main grammar pattern
         has_multi_target = bool(re.search(god_mode_pattern, command_lower, re.IGNORECASE))
         matched_pattern = god_mode_pattern if has_multi_target else None
@@ -1414,10 +1424,12 @@ class UnifiedCommandProcessor:
         is_surveillance_command = False
         detection_reason = None
 
-        if has_monitoring_keyword and has_surveillance_structure:
+        # v242.0: monitoring+structure requires non-surveillance context check
+        if has_monitoring_keyword and has_surveillance_structure and not _has_non_surv_context:
             is_surveillance_command = True
             detection_reason = "monitoring_keyword + surveillance_structure"
         elif has_monitoring_keyword and has_multi_target:
+            # Multi-target (God Mode) is strong enough signal on its own
             is_surveillance_command = True
             detection_reason = "monitoring_keyword + multi_target (God Mode)"
 
@@ -3866,7 +3878,19 @@ class UnifiedCommandProcessor:
                 # - Examples: "watch Chrome FOR ball", "monitor windows WHEN error"
                 has_monitoring_keyword = any(k in command_lower for k in monitoring_keywords)
                 has_surveillance_structure = any(p in command_lower for p in surveillance_patterns)
-                is_surveillance_command = has_monitoring_keyword and has_surveillance_structure
+
+                # v242.0 Gap J: Negative patterns prevent misclassification
+                _non_surv_kw2 = os.getenv(
+                    "JARVIS_NON_SURVEILLANCE_KEYWORDS",
+                    "youtube,video,movie,show,episode,series,stream,play,recipe,flight,"
+                    "hotel,restaurant,information,tutorial,guide,how to,what is,explain"
+                ).split(",")
+                _non_surv_kw2 = [k.strip() for k in _non_surv_kw2 if k.strip()]
+                _has_non_surv2 = any(k in command_lower for k in _non_surv_kw2)
+
+                is_surveillance_command = (
+                    has_monitoring_keyword and has_surveillance_structure and not _has_non_surv2
+                )
 
                 # Grammar-Based Multi-Target Detection (AGGRESSIVE!)
                 # No hardcoded app names - matches grammatical structure
@@ -3882,7 +3906,7 @@ class UnifiedCommandProcessor:
                             )
                             break
 
-                # If monitoring keyword + grammar pattern detected = surveillance
+                # If monitoring keyword + grammar pattern detected = surveillance (strong signal)
                 if has_monitoring_keyword and has_multi_target:
                     is_surveillance_command = True
 

@@ -64,28 +64,43 @@ logger = logging.getLogger(__name__)
 # Inner layers self-terminate before the outer deadline, preventing destructive
 # asyncio.wait_for() cancellations.
 
-_LAYER_HEADROOM_S = 0.5  # v241.0: 0.5s per layer (prevents headroom compounding across 5 layers)
+# v242.0: Headroom subtracted ONCE at deadline creation (unified_websocket.py).
+# Inner layers just compute (deadline - now). No per-layer compounding.
+try:
+    _DEADLINE_HEADROOM_S = float(os.getenv("JARVIS_DEADLINE_HEADROOM_S", "2.0"))
+except ValueError:
+    _DEADLINE_HEADROOM_S = 2.0
 
 
 def compute_remaining(deadline: Optional[float], own_timeout: float) -> float:
-    """Effective timeout = min(own_timeout, deadline_remaining - headroom).
-    Returns >= 0.5 to prevent instant-timeout."""
+    """Effective timeout = min(own_timeout, deadline_remaining). Returns >= 0.5."""
     if deadline is None:
         return own_timeout
-    remaining = deadline - time.monotonic() - _LAYER_HEADROOM_S
+    remaining = deadline - time.monotonic()
     return max(min(own_timeout, remaining), 0.5)
 
 
-class _LocalCircuitBreaker:
-    """v241.0: Prevents routing to dead local tier. Cold-starts with 5s probe."""
-    PROBE_TIMEOUT_S = 5.0  # Short timeout for first probe to unknown backend
+class _EndpointAwareCircuitBreaker:
+    """v242.0: Endpoint-aware circuit breaker. Resets on endpoint change."""
 
     def __init__(self, threshold: int = 2, recovery_s: float = 30.0):
-        self._failures = 0
         self._threshold = threshold
         self._recovery_s = recovery_s
+        self._failures = 0
         self._last_failure = 0.0
         self._state = "cold"  # cold | closed | open | half_open
+        self._endpoint_id: Optional[str] = None
+        self._endpoint_promoted = False
+
+    def reset_for_endpoint(self, endpoint_id: str, health_checked: bool) -> None:
+        """Reset state on endpoint change. health_checked=True skips cold probe."""
+        self._failures = 0
+        self._last_failure = 0.0
+        self._endpoint_id = endpoint_id
+        self._endpoint_promoted = health_checked
+        self._state = "closed" if health_checked else "cold"
+        logger.info(f"[PrimeRouter] v242.0 Circuit reset for {endpoint_id} "
+                     f"(state={'closed' if health_checked else 'cold'})")
 
     def can_execute(self) -> bool:
         if self._state in ("closed", "cold"):
@@ -98,21 +113,28 @@ class _LocalCircuitBreaker:
         return True  # half_open
 
     def get_timeout_override(self, default_timeout: float) -> float:
-        """Return short probe timeout in cold/half_open state."""
-        if self._state in ("cold", "half_open"):
-            return min(self.PROBE_TIMEOUT_S, default_timeout)
+        """Probe timeout only for cold/half_open on NON-promoted endpoints."""
+        if self._state in ("cold", "half_open") and not self._endpoint_promoted:
+            probe_s = _get_env_float("PRIME_PROBE_TIMEOUT_S", 5.0)
+            return min(probe_s, default_timeout)
         return default_timeout
 
     def record_success(self):
         self._failures = 0
         self._state = "closed"
 
-    def record_failure(self):
+    def record_failure(self, endpoint_id: Optional[str] = None):
+        """Record failure. Discards stale failures from old endpoints."""
+        if endpoint_id and self._endpoint_id and endpoint_id != self._endpoint_id:
+            logger.debug(f"[PrimeRouter] v242.0 Discarding stale failure "
+                          f"(from={endpoint_id}, current={self._endpoint_id})")
+            return
         self._failures += 1
         self._last_failure = time.monotonic()
         if self._state == "cold" or self._failures >= self._threshold:
             self._state = "open"
-            logger.info(f"[PrimeRouter] v241.0 Local circuit OPEN after {self._failures} failures")
+            logger.info(f"[PrimeRouter] v242.0 Circuit OPEN after {self._failures} failures "
+                         f"(endpoint={self._endpoint_id})")
 
 
 # =============================================================================
@@ -263,8 +285,8 @@ class PrimeRouter:
         self._gcp_promoted = False
         self._gcp_host: Optional[str] = None
         self._gcp_port: Optional[int] = None
-        # v241.0: Local circuit breaker (cold-start with 5s probe)
-        self._local_circuit = _LocalCircuitBreaker()
+        # v242.0: Endpoint-aware circuit breaker (resets on endpoint change)
+        self._local_circuit = _EndpointAwareCircuitBreaker()
 
     async def initialize(self) -> None:
         """Initialize the router and its clients."""
@@ -323,27 +345,27 @@ class PrimeRouter:
         return self._cloud_client
 
     def _decide_route(self) -> RoutingDecision:
-        """Decide which backend to route to."""
-        # Check if Prime is available
+        """v242.0: GCP-promoted routes to GCP_PRIME (120s timeout, no probe)."""
         prime_available = (
             self._prime_client is not None and
             self._prime_client.is_available
         )
 
-        # v241.0: Check local circuit breaker before routing to hybrid/local
+        # v242.0: Check local circuit breaker before routing to hybrid/local
         local_circuit_ok = self._local_circuit.can_execute()
 
-        if self._config.prefer_local and prime_available and local_circuit_ok:
-            return RoutingDecision.HYBRID  # Try local first, fallback to cloud
-        elif prime_available and local_circuit_ok:
-            # v232.0: Distinguish GCP from local for metrics/logging
-            if self._gcp_promoted:
-                return RoutingDecision.GCP_PRIME
-            return RoutingDecision.LOCAL_PRIME
-        elif self._config.enable_cloud_fallback:
-            return RoutingDecision.CLOUD_CLAUDE
-        else:
+        if not prime_available or not local_circuit_ok:
+            if self._config.enable_cloud_fallback:
+                return RoutingDecision.CLOUD_CLAUDE
             return RoutingDecision.DEGRADED
+
+        # v242.0: GCP-promoted goes directly to GCP_PRIME (no HYBRID probe)
+        if self._gcp_promoted:
+            return RoutingDecision.GCP_PRIME
+
+        if self._config.prefer_local:
+            return RoutingDecision.HYBRID
+        return RoutingDecision.LOCAL_PRIME
 
     # -----------------------------------------------------------------
     # v232.0: Late-arriving GCP VM promotion
@@ -374,6 +396,19 @@ class PrimeRouter:
             self._gcp_promoted = True
             self._gcp_host = host
             self._gcp_port = port
+            # v242.0: Reset circuit for health-checked GCP endpoint (skips cold probe)
+            self._local_circuit.reset_for_endpoint(
+                endpoint_id=f"gcp:{host}:{port}", health_checked=True
+            )
+            # v242.0 Gap K: Cancel orphaned tasks from old endpoint
+            try:
+                _uc = await _get_ultra_coordinator()
+                if _uc:
+                    cancelled = _uc.cancel_all_shielded_tasks()
+                    if cancelled:
+                        logger.info(f"[PrimeRouter] v242.0 Cancelled {cancelled} orphan tasks on GCP promotion")
+            except Exception:
+                pass  # Never break promotion for cleanup
             logger.info("[PrimeRouter] v232.0: GCP VM promotion successful, routing updated")
         else:
             self._gcp_promoted = False
@@ -396,6 +431,10 @@ class PrimeRouter:
             self._gcp_promoted = False
             self._gcp_host = None
             self._gcp_port = None
+            # v242.0: Reset circuit for local endpoint (cold probe for unverified local)
+            self._local_circuit.reset_for_endpoint(
+                endpoint_id="local", health_checked=False
+            )
             logger.info("[PrimeRouter] v232.0: Demoted from GCP VM to local Prime")
         return success
 
@@ -503,9 +542,34 @@ class PrimeRouter:
                     prompt, system_prompt, context, max_tokens, temperature,
                     deadline=deadline, **kwargs
                 )
-            elif routing in (RoutingDecision.LOCAL_PRIME, RoutingDecision.GCP_PRIME):
-                # v235.4: GCP_PRIME uses same PrimeClient (URL already points to GCP VM).
-                # Both route through _generate_local — the client handles endpoint resolution.
+            elif routing == RoutingDecision.GCP_PRIME:
+                # v242.0: GCP path with proper timeout + cloud fallback + circuit recording
+                try:
+                    _gcp_eff = compute_remaining(deadline, self._config.gcp_timeout)
+                    response = await asyncio.wait_for(
+                        self._generate_local(
+                            prompt, system_prompt, context, max_tokens, temperature, **kwargs
+                        ),
+                        timeout=_gcp_eff,
+                    )
+                    self._local_circuit.record_success()
+                except Exception as e:
+                    self._local_circuit.record_failure(
+                        endpoint_id=f"gcp:{self._gcp_host}:{self._gcp_port}" if self._gcp_host else None
+                    )
+                    logger.warning(f"[PrimeRouter] v242.0 GCP_PRIME failed, fallback to cloud: {e}")
+                    if not self._config.enable_cloud_fallback:
+                        raise
+                    _cloud_eff = compute_remaining(deadline, self._config.cloud_timeout)
+                    response = await asyncio.wait_for(
+                        self._generate_cloud(
+                            prompt, system_prompt, context, max_tokens, temperature, **kwargs
+                        ),
+                        timeout=_cloud_eff,
+                    )
+                    response.fallback_used = True
+                    response.metadata["fallback_reason"] = str(e)
+            elif routing == RoutingDecision.LOCAL_PRIME:
                 response = await self._generate_local(
                     prompt, system_prompt, context, max_tokens, temperature, **kwargs
                 )
@@ -577,7 +641,9 @@ class PrimeRouter:
             self._local_circuit.record_success()
             return response
         except Exception as e:
-            self._local_circuit.record_failure()
+            self._local_circuit.record_failure(
+                endpoint_id=f"gcp:{self._gcp_host}:{self._gcp_port}" if self._gcp_promoted else "local"
+            )
             logger.warning(f"[PrimeRouter] Local generation failed, falling back to cloud: {e}")
 
             if not self._config.enable_cloud_fallback:

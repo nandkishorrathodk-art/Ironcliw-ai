@@ -5733,6 +5733,14 @@ const JarvisVoice = () => {
       console.log('[JARVIS Audio] POST: Content-Type:', response.headers.get('content-type'));
 
       if (response.ok) {
+        // v242.0: Detect silent WAV via X-TTS-Status header (Disease 5 root fix)
+        const ttsStatus = response.headers.get('X-TTS-Status');
+        if (ttsStatus === 'silent') {
+          console.warn('[JARVIS Audio] Backend TTS failed (X-TTS-Status: silent), '
+            + 'falling back to browser speechSynthesis');
+          throw new Error('TTS_SILENT_FALLBACK');
+        }
+
         // Get audio data as blob
         const blob = await response.blob();
         console.log('[JARVIS Audio] POST: Received audio blob:', blob.size, 'bytes');
