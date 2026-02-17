@@ -521,7 +521,7 @@ class ReactorCoreClient:
             return None
 
         try:
-            data = await self._request("GET", "/api/pipeline/state")
+            data = await self._request("GET", "/api/v1/pipeline/state")
             return data
         except Exception as e:
             logger.warning(f"[ReactorClient] Failed to get pipeline state: {e}")
@@ -625,7 +625,7 @@ class ReactorCoreClient:
             return False
 
         try:
-            data = await self._request("POST", f"/api/v1/jobs/{job_id}/cancel")
+            data = await self._request("POST", f"/api/v1/training/cancel/{job_id}")
             return data.get("cancelled", False) if data else False
         except Exception as e:
             logger.error(f"[ReactorClient] Cancel training error: {e}")
@@ -645,7 +645,7 @@ class ReactorCoreClient:
             return None
 
         try:
-            data = await self._request("GET", f"/api/v1/jobs/{job_id}")
+            data = await self._request("GET", f"/api/v1/training/job/{job_id}")
             if data:
                 return TrainingJob.from_dict(data)
             return None
@@ -676,7 +676,7 @@ class ReactorCoreClient:
             if status_filter:
                 params["status"] = status_filter
 
-            data = await self._request("GET", "/api/v1/jobs", params=params)
+            data = await self._request("GET", "/api/v1/training/history", params=params)
             if data and isinstance(data, list):
                 return [TrainingJob.from_dict(job) for job in data]
             return []

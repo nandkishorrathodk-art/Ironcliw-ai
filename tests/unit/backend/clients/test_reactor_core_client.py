@@ -32,12 +32,10 @@ def client() -> ReactorCoreClient:
     c = ReactorCoreClient(ReactorCoreConfig())
     c._is_online = True
     c._session = AsyncMock()  # fake session, won't be used directly
-    c._requests_sent = 0
+    c._requests_made = 0
     c._requests_failed = 0
     c._last_trigger_time = None
     c._training_triggers = 0
-    c._callbacks = {}
-    c._bridge_dir = None
     return c
 
 
@@ -112,9 +110,7 @@ class TestOtherEndpointPaths:
 
         call_args = client._request.call_args
         _method, path = call_args[0][0], call_args[0][1]
-        # /api/pipeline/state does not match any known Reactor-Core route;
-        # This test documents the current path.
-        assert path == "/api/pipeline/state"
+        assert path == "/api/v1/pipeline/state"
 
     async def test_cancel_training_path(self, client: ReactorCoreClient):
         client._request = AsyncMock(return_value={"cancelled": True})
@@ -124,7 +120,7 @@ class TestOtherEndpointPaths:
         call_args = client._request.call_args
         method, path = call_args[0][0], call_args[0][1]
         assert method == "POST"
-        assert path == "/api/v1/jobs/job-abc/cancel"
+        assert path == "/api/v1/training/cancel/job-abc"
 
     async def test_get_training_job_path(self, client: ReactorCoreClient):
         client._request = AsyncMock(return_value={
@@ -139,7 +135,7 @@ class TestOtherEndpointPaths:
         call_args = client._request.call_args
         method, path = call_args[0][0], call_args[0][1]
         assert method == "GET"
-        assert path == "/api/v1/jobs/job-abc"
+        assert path == "/api/v1/training/job/job-abc"
 
     async def test_get_training_history_path(self, client: ReactorCoreClient):
         client._request = AsyncMock(return_value=[])
@@ -149,7 +145,7 @@ class TestOtherEndpointPaths:
         call_args = client._request.call_args
         method, path = call_args[0][0], call_args[0][1]
         assert method == "GET"
-        assert path == "/api/v1/jobs"
+        assert path == "/api/v1/training/history"
 
     async def test_add_learning_topic_path(self, client: ReactorCoreClient):
         client._request = AsyncMock(return_value={"added": True})
