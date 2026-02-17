@@ -20914,19 +20914,46 @@ class IntelligenceRegistry:
         return self._managers.get(name)
 
     async def initialize_all(self) -> Dict[str, bool]:
-        """Initialize all registered managers."""
-        results: Dict[str, bool] = {}
+        """Initialize all registered managers in parallel with per-manager timeouts.
 
-        for name, manager in self._managers.items():
+        v260.0: Changed from sequential to parallel via asyncio.gather().
+        Each manager gets an individual timeout (env-var configurable) so one
+        hanging manager cannot block the entire intelligence phase.
+        """
+        _per_mgr_timeout = _get_env_float("JARVIS_INTEL_MANAGER_TIMEOUT", 30.0)
+        results: Dict[str, bool] = {}
+        names = list(self._managers.keys())
+        managers = list(self._managers.values())
+
+        async def _init_one(name: str, mgr: "IntelligenceManagerBase") -> bool:
             try:
-                results[name] = await manager.initialize()
+                return await asyncio.wait_for(mgr.initialize(), timeout=_per_mgr_timeout)
+            except asyncio.TimeoutError:
+                self._logger.warning(f"{name}: initialization timed out ({_per_mgr_timeout:.0f}s)")
+                return False
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                self._logger.error(f"{name} initialization error: {e}")
+                return False
+
+        gather_results = await asyncio.gather(
+            *[_init_one(n, m) for n, m in zip(names, managers)],
+            return_exceptions=True,
+        )
+
+        for name, result in zip(names, gather_results):
+            if isinstance(result, asyncio.CancelledError):
+                raise result
+            elif isinstance(result, BaseException):
+                self._logger.error(f"{name} initialization raised: {result}")
+                results[name] = False
+            else:
+                results[name] = bool(result)
                 if results[name]:
                     self._logger.success(f"{name}: initialized")
                 else:
                     self._logger.warning(f"{name}: initialization failed")
-            except Exception as e:
-                self._logger.error(f"{name} initialization error: {e}")
-                results[name] = False
 
         self._initialized = True
         return results
@@ -62148,8 +62175,9 @@ class JarvisSystemKernel:
             add_dashboard_log("Starting Phase 4: Intelligence Layer", "INFO")
             issue_collector.set_current_phase("Phase 4: Intelligence")
             issue_collector.set_current_zone("Zone 4")
-            # v192.0: Register intelligence operational timeout with DMS
-            intelligence_timeout = float(os.environ.get("JARVIS_INTELLIGENCE_TIMEOUT", "90.0"))
+            # v260.0: Harmonized intelligence timeout — PhaseConfig says 120s,
+            # env var default was 90s (mismatch). Now both use 120s default.
+            intelligence_timeout = _get_env_float("JARVIS_INTELLIGENCE_TIMEOUT", 120.0)
             if self._startup_watchdog:
                 self._startup_watchdog.update_phase("intelligence", 50, operational_timeout=intelligence_timeout)
             if self._narrator:
@@ -62160,7 +62188,26 @@ class JarvisSystemKernel:
             _t0_in = time.time()
             self._emit_event(SupervisorEventType.PHASE_START, "Phase: Intelligence", phase="intelligence", correlation_id=_cid_in)
 
-            if not await self._phase_intelligence():
+            # v260.0: Outer timeout on intelligence phase — previously relied solely
+            # on DMS watchdog heartbeats which only fire every 5s. Direct timeout
+            # provides clean CancelledError propagation and resource cleanup.
+            _intel_ok = False
+            try:
+                _intel_ok = await asyncio.wait_for(
+                    self._phase_intelligence(),
+                    timeout=intelligence_timeout,
+                )
+            except asyncio.TimeoutError:
+                self.logger.warning(
+                    f"[Kernel] Intelligence phase timed out ({intelligence_timeout:.0f}s) "
+                    f"— continuing without ML features"
+                )
+            except asyncio.CancelledError:
+                raise
+            except Exception as _intel_err:
+                self.logger.warning(f"[Kernel] Intelligence phase failed: {_intel_err}")
+
+            if not _intel_ok:
                 # Non-fatal - continue without intelligence
                 issue_collector.add_warning(
                     "Intelligence layer failed - continuing without ML features",
@@ -62233,6 +62280,10 @@ class JarvisSystemKernel:
             self._current_startup_phase = "two_tier"
             self._current_startup_progress = 56
             issue_collector.set_current_zone("Zone 4.5")
+            # v260.0: Double-clear model_loading_state before two_tier. The v242.3
+            # cleanup at line 62228 covers the normal path, but if intelligence phase
+            # timeout cancels before reaching it, the active flag may leak.
+            update_dashboard_model_loading(active=False)
             two_tier_timeout = float(os.environ.get("JARVIS_TWO_TIER_TIMEOUT", "60.0"))
             if self._startup_watchdog:
                 self._startup_watchdog.update_phase("two_tier", 55, operational_timeout=two_tier_timeout)
@@ -64679,6 +64730,11 @@ class JarvisSystemKernel:
 
         Non-fatal: startup continues in degraded mode if this fails.
         """
+        # v260.0: Shutdown gate
+        if self._state in (KernelState.SHUTTING_DOWN, KernelState.FAILED):
+            self.logger.info("[Kernel] Agent Runtime skipped — kernel shutting down")
+            return
+
         try:
             from backend.autonomy.agent_runtime import (
                 UnifiedAgentRuntime,
@@ -64730,7 +64786,16 @@ class JarvisSystemKernel:
         - Goal inference engine
         - Hybrid intelligence coordinator
         - Persistent conversation memory agent
+
+        v260.0: Added CancelledError handler for clean resource cleanup.
+        Added shutdown gate at entry. Managers initialized in parallel
+        with per-manager timeouts (via initialize_all()).
         """
+        # v260.0: Shutdown gate — don't start if kernel is shutting down
+        if self._state in (KernelState.SHUTTING_DOWN, KernelState.FAILED):
+            self.logger.info("[Kernel] Intelligence phase skipped — kernel shutting down")
+            return False
+
         self._state = KernelState.STARTING_INTELLIGENCE
         self._update_component_status("intelligence", "running", "Initializing intelligence layer")
 
@@ -64748,7 +64813,7 @@ class JarvisSystemKernel:
                 self._intelligence_registry.register(goal_engine)
                 self._intelligence_registry.register(coordinator)
 
-                # Initialize all
+                # Initialize all (v260.0: parallel with per-manager timeout)
                 results = await self._intelligence_registry.initialize_all()
 
                 ready_count = sum(1 for v in results.values() if v)
@@ -64870,6 +64935,15 @@ class JarvisSystemKernel:
                 else:
                     self._update_component_status("intelligence", "error", "No intelligence components initialized")
                 return ready_count > 0
+
+            except asyncio.CancelledError:
+                # v260.0: Clean shutdown — clear partial state so two_tier doesn't
+                # inherit stale references or half-initialized managers.
+                self.logger.info("[Kernel] Intelligence phase cancelled — cleaning up partial state")
+                self._intelligence_registry = None
+                self._model_serving = None
+                self._update_component_status("intelligence", "cancelled", "Phase cancelled")
+                raise
 
             except Exception as e:
                 self.logger.warning(f"[Kernel] Intelligence initialization failed: {e}")
@@ -65144,9 +65218,17 @@ class JarvisSystemKernel:
 
         On failure: Log warning and continue (graceful degradation)
 
+        v260.0: Added shutdown gate, intermediate progress tick during
+        parallel gather to prevent stall detection false positives.
+
         Returns:
             True if at least watchdog initialized, False otherwise
         """
+        # v260.0: Shutdown gate
+        if self._state in (KernelState.SHUTTING_DOWN, KernelState.FAILED):
+            self.logger.info("[TwoTier] Skipped — kernel shutting down")
+            return False
+
         if not self.config.two_tier_security_enabled:
             self.logger.info("[TwoTier] Two-Tier Security disabled via config")
             self._update_component_status("two_tier", "skipped", "Disabled via config")
@@ -65167,6 +65249,9 @@ class JarvisSystemKernel:
 
                 # --- Step 1 closure: Agentic Watchdog (independent) ---
                 async def _init_watchdog() -> None:
+                    # v260.0: Shutdown gate
+                    if self._state in (KernelState.SHUTTING_DOWN, KernelState.FAILED):
+                        return
                     await self._broadcast_progress(56, "two_tier_watchdog", "Starting Agentic Watchdog...")
                     try:
                         from core.agentic_watchdog import (
@@ -65209,6 +65294,9 @@ class JarvisSystemKernel:
 
                 # --- Step 2 closure: VBIA Adapter (must finish before Step 4) ---
                 async def _init_vbia() -> None:
+                    # v260.0: Shutdown gate
+                    if self._state in (KernelState.SHUTTING_DOWN, KernelState.FAILED):
+                        return
                     await self._broadcast_progress(57, "two_tier_vbia", "Initializing VBIA Adapter...")
                     try:
                         from core.tiered_vbia_adapter import (
@@ -65244,6 +65332,9 @@ class JarvisSystemKernel:
 
                 # --- Step 3 closure: Cross-Repo State (independent) ---
                 async def _init_cross_repo() -> None:
+                    # v260.0: Shutdown gate
+                    if self._state in (KernelState.SHUTTING_DOWN, KernelState.FAILED):
+                        return
                     await self._broadcast_progress(58, "cross_repo_init", "Initializing Cross-Repo State...")
                     try:
                         from core.cross_repo_state_initializer import (
@@ -65290,6 +65381,9 @@ class JarvisSystemKernel:
 
                 # --- Step 4 closure: Tiered Command Router (depends on Step 2) ---
                 async def _init_router() -> None:
+                    # v260.0: Shutdown gate
+                    if self._state in (KernelState.SHUTTING_DOWN, KernelState.FAILED):
+                        return
                     await self._broadcast_progress(59, "two_tier_router", "Initializing Tiered Command Router...")
                     try:
                         from core.tiered_command_router import (
@@ -65371,13 +65465,57 @@ class JarvisSystemKernel:
                 # --- v256.0: Parallel execution ---
                 # time = max(Step1, Step2+Step4, Step3) instead of Step1+Step2+Step3+Step4
                 await self._broadcast_progress(56, "two_tier_parallel", "Initializing Two-Tier components (parallel)...")
+
+                # v260.0: Progress heartbeat during parallel gather to prevent
+                # DMS stall detection false positives. The gather can take 30-60s
+                # with no progress updates, which exceeds the 60s stall threshold.
+                _gather_done = asyncio.Event()
+
+                async def _progress_heartbeat() -> None:
+                    """Emit periodic progress ticks while gather is running.
+
+                    v260.0: Both DMS watchdog AND ProgressController need updates.
+                    The watchdog uses update_phase() for its own stale detection.
+                    The ProgressController checks _current_startup_progress for
+                    PHASE_HOLD_HARD_CAP — without advancing this, progress stays
+                    flat at 58% for 300s+ triggering TRUE STALL.
+                    """
+                    _tick = 0
+                    while not _gather_done.is_set():
+                        try:
+                            await asyncio.wait_for(_gather_done.wait(), timeout=15.0)
+                            break  # Event was set
+                        except asyncio.TimeoutError:
+                            _tick += 1
+                            # Advance both DMS watchdog and kernel progress counter.
+                            # Progress goes 56→57→58→59 (capped at 59, step 5 takes 60).
+                            _micro_progress = 56 + min(_tick, 3)
+                            if self._startup_watchdog:
+                                self._startup_watchdog.update_phase(
+                                    "two_tier", _micro_progress,
+                                    operational_timeout=_get_env_float("JARVIS_TWO_TIER_TIMEOUT", 60.0),
+                                )
+                            # v260.0: Advance kernel progress counter so
+                            # ProgressController sees movement (resets PHASE_HOLD timer)
+                            self._current_startup_progress = _micro_progress
+
+                _heartbeat_task = asyncio.ensure_future(_progress_heartbeat())
+
                 # v256.1: Inspect gather results for unexpected exceptions (R1-#1, R2-#7)
-                _gather_results = await asyncio.gather(
-                    _init_watchdog(),           # Step 1 (independent)
-                    _chain_vbia_then_router(),  # Step 2 → Step 4 (dependency chain)
-                    _init_cross_repo(),         # Step 3 (independent)
-                    return_exceptions=True,
-                )
+                try:
+                    _gather_results = await asyncio.gather(
+                        _init_watchdog(),           # Step 1 (independent)
+                        _chain_vbia_then_router(),  # Step 2 → Step 4 (dependency chain)
+                        _init_cross_repo(),         # Step 3 (independent)
+                        return_exceptions=True,
+                    )
+                finally:
+                    _gather_done.set()
+                    _heartbeat_task.cancel()
+                    try:
+                        await _heartbeat_task
+                    except asyncio.CancelledError:
+                        pass
                 for _i, _res in enumerate(_gather_results):
                     if isinstance(_res, BaseException):
                         _step_names = ["watchdog", "vbia+router", "cross_repo"]
@@ -65399,6 +65537,12 @@ class JarvisSystemKernel:
                 # to ensure the runner is initialized before wiring. This fixes the
                 # "router or runner unavailable" warning.
                 # =====================================================================
+                # v260.0: Shutdown gate before expensive runner creation
+                if self._state in (KernelState.SHUTTING_DOWN, KernelState.FAILED):
+                    self.logger.info("[TwoTier] Step 5 skipped — kernel shutting down")
+                    self._update_component_status("two_tier", "cancelled", "Shutdown during init")
+                    return False
+
                 await self._broadcast_progress(60, "two_tier_wiring", "Wiring Tier 2 → AgenticTaskRunner...")
 
                 try:
@@ -68997,19 +69141,31 @@ class JarvisSystemKernel:
                 return True
 
             elif phase == "intelligence":
-                # v187.0: Intelligence layer is non-critical and fast
-                # If it's timing out, just mark as successful and continue
+                # v260.0: Intelligence is non-critical. Don't re-try if shutting down.
+                if self._state in (KernelState.SHUTTING_DOWN, KernelState.FAILED):
+                    self.logger.info("[DMS] Intelligence restart skipped — kernel shutting down")
+                    return True
                 self.logger.info("[DMS] Intelligence layer restart - marking as successful")
                 if self._intelligence_registry:
                     try:
-                        # Reinitialize intelligence managers
-                        results = await self._intelligence_registry.initialize_all()
+                        # v260.0: Re-init with timeout (was unbounded)
+                        _dms_intel_timeout = _get_env_float("JARVIS_DMS_INTEL_RESTART_TIMEOUT", 30.0)
+                        results = await asyncio.wait_for(
+                            self._intelligence_registry.initialize_all(),
+                            timeout=_dms_intel_timeout,
+                        )
                         ready_count = sum(1 for v in results.values() if v)
                         self.logger.info(f"[DMS] Intelligence re-initialized: {ready_count}/{len(results)}")
                         return True
+                    except asyncio.TimeoutError:
+                        self.logger.warning(
+                            f"[DMS] Intelligence restart timed out ({_dms_intel_timeout:.0f}s)"
+                        )
+                        return True
+                    except asyncio.CancelledError:
+                        raise
                     except Exception as e:
                         self.logger.warning(f"[DMS] Intelligence restart failed: {e}")
-                        # Still return True - intelligence is non-critical
                         return True
                 return True
 
