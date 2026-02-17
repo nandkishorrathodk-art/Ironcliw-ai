@@ -57,6 +57,38 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from backend.clients.experience_scorer import WeightedExperienceTracker
 
+# v2.4: TrinityEventBus integration -- emit structured events at pipeline stages
+try:
+    from backend.core.trinity_event_bus import (
+        TrinityEvent,
+        RepoType as _RepoType,
+        EventPriority as _EventPriority,
+        get_event_bus_if_exists,
+    )
+    _TRINITY_BUS_AVAILABLE = True
+except ImportError:
+    _TRINITY_BUS_AVAILABLE = False
+    TrinityEvent = None  # type: ignore[assignment,misc]
+    _RepoType = None  # type: ignore[assignment,misc]
+    _EventPriority = None  # type: ignore[assignment,misc]
+    get_event_bus_if_exists = None  # type: ignore[assignment,misc]
+
+
+def _get_event_bus():
+    """
+    v2.4: Get the TrinityEventBus instance if available and running.
+
+    Returns None if the bus module is not importable or the bus is not running.
+    This is a module-level function so tests can patch it easily.
+    """
+    if not _TRINITY_BUS_AVAILABLE or get_event_bus_if_exists is None:
+        return None
+    try:
+        return get_event_bus_if_exists()
+    except Exception:
+        return None
+
+
 # v2.3: Resource-aware training gate -- import MemoryQuantizer with graceful degradation
 try:
     from backend.core.memory_quantizer import MemoryTier as _MemoryTier
@@ -303,6 +335,9 @@ class ReactorCoreClient:
 
         # v2.2: Quality-weighted experience tracker for smarter auto-trigger
         self._experience_tracker: WeightedExperienceTracker = WeightedExperienceTracker()
+
+        # v2.4: Map job_id -> start event_id for causation chaining
+        self._job_start_event_ids: Dict[str, str] = {}
 
     async def initialize(self) -> bool:
         """
@@ -662,6 +697,15 @@ class ReactorCoreClient:
 
                 # Write to cross-repo bridge
                 await self._write_bridge_event("training_triggered", job.to_dict())
+
+                # v2.4: Publish to TrinityEventBus
+                start_event_id = await self._publish_bus_event(
+                    topic="training.started",
+                    payload=job.to_dict(),
+                    correlation_id=job.job_id,
+                )
+                if start_event_id:
+                    self._job_start_event_ids[job.job_id] = start_event_id
 
                 return job
             else:
@@ -1178,6 +1222,18 @@ class ReactorCoreClient:
                 tier_name = self._get_memory_tier_name()
                 behavior = self._resolve_tier_behavior(tier_name)
 
+                # v2.4: Emit gate.evaluated event for observability
+                await self._publish_bus_event(
+                    topic="gate.evaluated",
+                    payload={
+                        "memory_tier": tier_name,
+                        "behavior": behavior,
+                        "trigger_reason": trigger_reason,
+                        "experience_count": count,
+                        "weighted_score": self._experience_tracker.cumulative_score,
+                    },
+                )
+
                 if behavior == "skip":
                     logger.info(
                         f"[ReactorClient] Training SKIPPED: memory tier {tier_name} "
@@ -1246,6 +1302,14 @@ class ReactorCoreClient:
                 )
                 await self._emit_event("training_completed", job_data)
                 await self._write_bridge_event("training_completed", job_data)
+                # v2.4: Publish to TrinityEventBus
+                causation_id = self._job_start_event_ids.pop(self._active_job_id, "")
+                await self._publish_bus_event(
+                    topic="training.completed",
+                    payload=job_data,
+                    correlation_id=self._active_job_id,
+                    causation_id=causation_id,
+                )
                 # v2.1: Record success in circuit breaker
                 if self._training_circuit_breaker:
                     await self._training_circuit_breaker.record_success()
@@ -1258,6 +1322,14 @@ class ReactorCoreClient:
                 )
                 await self._emit_event("training_failed", job_data)
                 await self._write_bridge_event("training_failed", job_data)
+                # v2.4: Publish to TrinityEventBus
+                causation_id = self._job_start_event_ids.pop(self._active_job_id, "")
+                await self._publish_bus_event(
+                    topic="training.failed",
+                    payload=job_data,
+                    correlation_id=self._active_job_id,
+                    causation_id=causation_id,
+                )
                 # v2.1: Record failure in circuit breaker
                 if self._training_circuit_breaker:
                     await self._training_circuit_breaker.record_failure(
@@ -1313,6 +1385,47 @@ class ReactorCoreClient:
                 break
             except Exception as e:
                 logger.warning(f"[ReactorClient] Health monitor error: {e}")
+
+    async def _publish_bus_event(
+        self,
+        topic: str,
+        payload: Dict[str, Any],
+        correlation_id: str = "",
+        causation_id: str = "",
+    ) -> Optional[str]:
+        """
+        v2.4: Publish a structured event to TrinityEventBus.
+
+        Silently returns None if the bus is unavailable or publish fails.
+
+        Args:
+            topic: Event topic (e.g. "training.started").
+            payload: Event payload data.
+            correlation_id: Correlation ID for distributed tracing (typically job_id).
+            causation_id: ID of the event that caused this one.
+
+        Returns:
+            The event_id if published, None otherwise.
+        """
+        bus = _get_event_bus()
+        if bus is None:
+            return None
+
+        try:
+            event = TrinityEvent(
+                topic=topic,
+                source=_RepoType.JARVIS,
+                priority=_EventPriority.NORMAL,
+                payload=payload,
+                correlation_id=correlation_id,
+                causation_id=causation_id,
+            )
+            event_id = await bus.publish(event)
+            logger.debug(f"[ReactorClient] Bus event published: {topic} (id={event.event_id[:8]})")
+            return event.event_id
+        except Exception as e:
+            logger.debug(f"[ReactorClient] Bus event publish failed: {e}")
+            return None
 
     async def _emit_event(self, event_type: str, data: Optional[Dict[str, Any]] = None) -> None:
         """Emit event to registered callbacks."""
