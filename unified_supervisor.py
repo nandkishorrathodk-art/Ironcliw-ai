@@ -13114,6 +13114,13 @@ class IntelligentResourceOrchestrator:
         self._cloud_activated = False
         self._arm64_available = self._check_arm64_simd()
 
+    # v258.3: Planned workload estimates for predictive capacity planning.
+    # These are used to predict post-startup RAM, not just current snapshot.
+    _MACOS_BASE_CONSUMPTION_GB = float(os.getenv("JARVIS_MACOS_BASE_GB", "5.0"))
+    _PLANNED_ML_WORKLOAD_GB = float(os.getenv("JARVIS_PLANNED_ML_GB", "4.6"))
+    # Total: whisper_medium(2.0) + speechbrain(0.3) + ecapa(0.2) + pytorch(0.5)
+    #        + transformers(0.3) + neural_mesh(0.8) + warmup(0.5) = 4.6GB
+
     def _check_arm64_simd(self) -> bool:
         """Check if ARM64 SIMD optimizations are available."""
         try:
@@ -13149,28 +13156,66 @@ class IntelligentResourceOrchestrator:
         total_gb = memory_result["total_gb"]
         memory_pressure = memory_result["pressure"]
 
-        # === INTELLIGENT MEMORY HANDLING ===
-        if available_gb < self.CRITICAL_THRESHOLD_GB:
-            self._logger.warning(f"⚠️  CRITICAL: Only {available_gb:.1f}GB available!")
-            errors.append(f"Critical memory: {available_gb:.1f}GB (need {self.CRITICAL_THRESHOLD_GB}GB)")
-            recommendations.append("🔴 Consider closing applications or using GCP cloud mode")
+        # v258.3: PREDICTIVE capacity planning — not just "how much is free now?"
+        # but "will we have enough AFTER loading all planned ML models?"
+        # On a 16GB M1 Mac, macOS claims ~4-5GB, leaving ~11GB.
+        # After ML loading (4.6GB), only ~6.4GB remains — borderline.
+        _predicted_post_load_gb = available_gb - self._PLANNED_ML_WORKLOAD_GB
+        _effective_available = max(0.0, _predicted_post_load_gb)
 
-        elif available_gb < self.CLOUD_THRESHOLD_GB:
-            warnings.append(f"Low memory: {available_gb:.1f}GB available")
-            recommendations.append("☁️  Cloud-First Mode recommended: GCP will handle ML processing")
-            recommendations.append("💰 Estimated cost: ~$0.029/hour (Spot VM)")
+        # === CPU-AWARE ROUTING (v258.3) ===
+        # CPU pressure should be a routing signal, not just a recommendation.
+        # High CPU means ML loading will be slow AND starve other components.
+        cpu_count, load_avg = cpu_result
+        _cpu_pressure = False
+        if load_avg and load_avg[0] > cpu_count * 0.8:
+            _cpu_pressure = True
+            warnings.append(f"High CPU load: {load_avg[0]:.1f} (cores: {cpu_count})")
+
+        # === INTELLIGENT MEMORY + CPU HANDLING (v258.3) ===
+        if available_gb < self.CRITICAL_THRESHOLD_GB:
+            self._logger.warning(f"CRITICAL: Only {available_gb:.1f}GB available!")
+            errors.append(f"Critical memory: {available_gb:.1f}GB (need {self.CRITICAL_THRESHOLD_GB}GB)")
+            recommendations.append("Consider closing applications or using GCP cloud mode")
+            self._startup_mode = "cloud_only"
+
+        elif _effective_available < self.CRITICAL_THRESHOLD_GB or (available_gb < self.CLOUD_THRESHOLD_GB):
+            # Predicted post-load RAM would be critical, OR current RAM already low
+            warnings.append(
+                f"Predictive: {available_gb:.1f}GB now, ~{_effective_available:.1f}GB after ML load"
+            )
+            recommendations.append("Cloud-First Mode: GCP handles ML (predicted post-load RAM too low)")
             self._startup_mode = "cloud_first"
 
-        elif available_gb < self.OPTIMIZE_THRESHOLD_GB:
-            recommendations.append("💡 Moderate memory - light optimization recommended")
+        elif _cpu_pressure and _effective_available < self.OPTIMIZE_THRESHOLD_GB:
+            # CPU already high AND predicted post-load RAM is tight
+            warnings.append(
+                f"CPU pressure ({load_avg[0]:.1f}) + tight predicted RAM ({_effective_available:.1f}GB)"
+            )
+            recommendations.append("Cloud-First Mode: CPU pressure + limited predicted RAM")
+            self._startup_mode = "cloud_first"
+
+        elif _effective_available < self.OPTIMIZE_THRESHOLD_GB:
+            recommendations.append(
+                f"Predicted post-load: {_effective_available:.1f}GB — light optimization"
+            )
+            self._startup_mode = "local_optimized"
+
+        elif _cpu_pressure:
+            # Enough RAM but CPU is already hot — optimize to reduce contention
+            recommendations.append(
+                f"Sufficient RAM but CPU pressure ({load_avg[0]:.1f}) — optimized loading"
+            )
             self._startup_mode = "local_optimized"
 
         else:
-            recommendations.append(f"✅ Sufficient memory ({available_gb:.1f}GB) - Full local mode")
+            recommendations.append(
+                f"Sufficient: {available_gb:.1f}GB now, ~{_effective_available:.1f}GB after ML"
+            )
             self._startup_mode = "local_full"
 
             if self._arm64_available:
-                recommendations.append("⚡ ARM64 SIMD optimizations available (40-50x faster ML)")
+                recommendations.append("ARM64 SIMD optimizations available (40-50x faster ML)")
 
         # === INTELLIGENT PORT HANDLING ===
         ports_available, ports_in_use, port_actions = ports_result
@@ -13184,12 +13229,6 @@ class IntelligentResourceOrchestrator:
             errors.append(f"Insufficient disk: {disk_result:.1f}GB available")
         elif disk_result < 5.0:
             warnings.append(f"Low disk: {disk_result:.1f}GB available")
-
-        # === CPU ANALYSIS ===
-        cpu_count, load_avg = cpu_result
-        if load_avg and load_avg[0] > cpu_count * 0.8:
-            warnings.append(f"High CPU load: {load_avg[0]:.1f} (cores: {cpu_count})")
-            recommendations.append("💡 Consider cloud offloading for CPU-intensive tasks")
 
         return ResourceStatus(
             memory_available_gb=available_gb,
@@ -54081,13 +54120,14 @@ class StartupWatchdog:
         "trinity": PhaseConfig("Trinity", 480.0, 65, 85, "restart"),
         # v236.1: enterprise progress_start fixed from 75→80 to match actual update_phase(80)
         "enterprise": PhaseConfig("Enterprise", 120.0, 80, 85, "diagnostic"),
+        # v258.3: Ghost Display moved before AGI OS to avoid CPU contention with ML loading
+        # v240.0: Ghost Display — software-defined virtual display via BetterDisplay
+        "ghost_display": PhaseConfig("Ghost Display", 45.0, 85, 86, "diagnostic"),
         # v236.1: AGI OS phase — autonomous features initialization
         # Timeout 90s = 60s operational (JARVIS_AGI_OS_TIMEOUT) + 30s DMS buffer.
         # register_phase_timeout() will overwrite with computed value, but this
         # provides the correct fallback if operational_timeout is not passed.
-        "agi_os": PhaseConfig("AGI OS", 90.0, 85, 88, "diagnostic"),  # v240.0: narrowed from 85-90
-        # v240.0: Ghost Display — software-defined virtual display via BetterDisplay
-        "ghost_display": PhaseConfig("Ghost Display", 45.0, 88, 90, "diagnostic"),
+        "agi_os": PhaseConfig("AGI OS", 90.0, 86, 90, "diagnostic"),  # v258.3: 85-88 → 86-90
         # v250.0: Visual Pipeline — Ghost Hands, N-Optic Nerve, Ferrari Engine lifecycle
         "visual_pipeline": PhaseConfig("Visual Pipeline", 60.0, 90, 93, "diagnostic"),
         # v236.1: frontend progress_start fixed from 85→90 to avoid overlap with agi_os
@@ -60618,6 +60658,9 @@ class JarvisSystemKernel:
             self._startup_resource_status = _rs
             _startup_mem_mode = _rs.startup_mode or "local_full"
             os.environ["JARVIS_STARTUP_MEMORY_MODE"] = _startup_mem_mode
+            # v258.3 (GCP-5): Share measured memory snapshot with OOM bridge
+            # so it doesn't re-measure (race condition between two psutil calls).
+            os.environ["JARVIS_MEASURED_AVAILABLE_GB"] = f"{_rs.memory_available_gb:.2f}"
             if _rs.is_cloud_mode:
                 self._update_component_status(
                     "resources", "cloud_mode",
@@ -60642,6 +60685,73 @@ class JarvisSystemKernel:
                 "[ResourceOrchestrator] %s — defaulting to local_optimized", _ro_err
             )
             os.environ["JARVIS_STARTUP_MEMORY_MODE"] = "local_optimized"
+
+        # =====================================================================
+        # v258.3 (Gap GCP-2): STARTUP MODE RE-EVALUATION HELPER
+        # =====================================================================
+        # The initial JARVIS_STARTUP_MEMORY_MODE decision is made before Phase 0.
+        # Memory conditions can change during startup (apps closing, GC freeing
+        # RAM, or conversely ML models eating RAM). This helper re-measures and
+        # upgrades/downgrades the mode at strategic phase boundaries.
+        # =====================================================================
+        _REEVAL_SEVERITY = {
+            "local_full": 0, "local_optimized": 1, "sequential": 2,
+            "cloud_first": 3, "cloud_only": 4, "minimal": 5,
+        }
+
+        async def _reevaluate_startup_mode(phase_label: str) -> None:
+            """Re-evaluate startup mode at a phase boundary.
+
+            Only changes mode if the measured memory significantly differs from
+            the original decision. Uses the same thresholds as ResourceOrchestrator.
+            """
+            try:
+                import psutil
+                _mem = psutil.virtual_memory()
+                _avail_gb = _mem.available / (1024**3)
+                _current = os.environ.get("JARVIS_STARTUP_MEMORY_MODE", "local_full")
+                _current_sev = _REEVAL_SEVERITY.get(_current, 0)
+
+                # Same thresholds as IntelligentResourceOrchestrator
+                _critical = float(os.getenv("JARVIS_CRITICAL_THRESHOLD_GB", "2.0"))
+                _cloud = float(os.getenv("JARVIS_CLOUD_THRESHOLD_GB", "6.0"))
+                _optimize = float(os.getenv("JARVIS_OPTIMIZE_THRESHOLD_GB", "4.0"))
+                _planned_ml = float(os.getenv("JARVIS_PLANNED_ML_GB", "4.6"))
+                _predicted = max(0.0, _avail_gb - _planned_ml)
+
+                # Determine what mode SHOULD be based on current conditions
+                if _avail_gb < _critical:
+                    _ideal = "cloud_only"
+                elif _predicted < _critical or _avail_gb < _cloud:
+                    _ideal = "cloud_first"
+                elif _predicted < _optimize:
+                    _ideal = "local_optimized"
+                else:
+                    _ideal = "local_full"
+
+                _ideal_sev = _REEVAL_SEVERITY.get(_ideal, 0)
+
+                # Only change if significantly different (at least 1 severity level)
+                if abs(_ideal_sev - _current_sev) >= 1 and _ideal != _current:
+                    _direction = "upgraded" if _ideal_sev < _current_sev else "downgraded"
+                    self.logger.info(
+                        "[ModeReeval] %s: %s %s → %s (avail=%.1fGB, predicted=%.1fGB)",
+                        phase_label, _direction, _current, _ideal, _avail_gb, _predicted,
+                    )
+                    os.environ["JARVIS_STARTUP_MEMORY_MODE"] = _ideal
+                    # Update shared measurement for downstream consumers
+                    os.environ["JARVIS_MEASURED_AVAILABLE_GB"] = f"{_avail_gb:.2f}"
+                    add_dashboard_log(
+                        f"Mode {_direction}: {_current} → {_ideal} "
+                        f"(avail={_avail_gb:.1f}GB)", "INFO"
+                    )
+                else:
+                    self.logger.debug(
+                        "[ModeReeval] %s: mode %s still correct (avail=%.1fGB)",
+                        phase_label, _current, _avail_gb,
+                    )
+            except Exception as _reeval_err:
+                self.logger.debug("[ModeReeval] %s failed: %s", phase_label, _reeval_err)
 
         # =====================================================================
         # v181.0: PHASE -1: CLEAN SLATE - Crash Recovery & State Cleanup
@@ -60809,6 +60919,146 @@ class JarvisSystemKernel:
                     os.environ["JARVIS_STARTUP_MEMORY_MODE"] = _new_mode
         except (asyncio.TimeoutError, ImportError, Exception) as _oom_err:
             _unified_logger.debug("[OOMBridge] Pre-flight unavailable: %s", _oom_err)
+
+        # =====================================================================
+        # v258.3 (Gap 9): GCP AVAILABILITY PROBE
+        # =====================================================================
+        # When cloud_first/cloud_only mode is selected, verify GCP is actually
+        # reachable BEFORE committing. Without this probe, the system commits
+        # to cloud mode with no inference if GCP is down.
+        # =====================================================================
+        _startup_mode_now = os.environ.get("JARVIS_STARTUP_MEMORY_MODE", "local_full")
+        self._gcp_probe_passed = False
+        if _startup_mode_now in ("cloud_first", "cloud_only"):
+            _gcp_probe_timeout = _get_env_float("JARVIS_GCP_PROBE_TIMEOUT", 5.0)
+            try:
+                async def _probe_gcp_availability() -> bool:
+                    """Quick GCP reachability probe. Tries invincible node, then project."""
+                    # Strategy 1: Check invincible node IP if configured
+                    _node_ip = os.environ.get("JARVIS_INVINCIBLE_NODE_IP")
+                    if _node_ip:
+                        try:
+                            import aiohttp
+                            async with aiohttp.ClientSession() as session:
+                                async with session.get(
+                                    f"http://{_node_ip}:8002/health",
+                                    timeout=aiohttp.ClientTimeout(total=3.0),
+                                ) as resp:
+                                    if resp.status in (200, 503):
+                                        return True  # Reachable (503 = loading but alive)
+                        except Exception:
+                            pass  # Not reachable via IP
+
+                    # Strategy 2: Check if gcloud CLI is accessible
+                    try:
+                        proc = await asyncio.create_subprocess_exec(
+                            "gcloud", "auth", "print-access-token",
+                            stdout=asyncio.subprocess.PIPE,
+                            stderr=asyncio.subprocess.PIPE,
+                        )
+                        _, _ = await asyncio.wait_for(
+                            proc.communicate(), timeout=3.0
+                        )
+                        if proc.returncode == 0:
+                            return True
+                    except (FileNotFoundError, asyncio.TimeoutError):
+                        pass
+
+                    return False
+
+                _gcp_reachable = await asyncio.wait_for(
+                    _probe_gcp_availability(), timeout=_gcp_probe_timeout
+                )
+
+                if _gcp_reachable:
+                    self._gcp_probe_passed = True
+                    self.logger.info(
+                        "[GCPProbe] GCP reachable — %s mode confirmed", _startup_mode_now
+                    )
+                else:
+                    # GCP unreachable — fall back to local
+                    _fallback = "local_optimized" if _startup_mode_now == "cloud_first" else "local_full"
+                    self.logger.warning(
+                        "[GCPProbe] GCP unreachable — falling back from %s to %s",
+                        _startup_mode_now, _fallback,
+                    )
+                    os.environ["JARVIS_STARTUP_MEMORY_MODE"] = _fallback
+                    _startup_mode_now = _fallback
+                    add_dashboard_log(
+                        f"GCP unreachable — fell back to {_fallback}", "WARNING"
+                    )
+            except asyncio.TimeoutError:
+                self.logger.warning(
+                    "[GCPProbe] Probe timed out (%.0fs) — assuming GCP unreachable, "
+                    "falling back to local_optimized", _gcp_probe_timeout
+                )
+                os.environ["JARVIS_STARTUP_MEMORY_MODE"] = "local_optimized"
+                _startup_mode_now = "local_optimized"
+            except Exception as _probe_err:
+                self.logger.debug("[GCPProbe] Probe failed: %s", _probe_err)
+
+        # =====================================================================
+        # v258.3 (Gap 10): PROACTIVE SPOT VM WARM
+        # =====================================================================
+        # When cloud_first mode is confirmed reachable but no invincible node
+        # is running, start a Spot VM warm immediately so it's ready when needed.
+        # Without this, the Spot VM doesn't start until Trinity phase (~Phase 5),
+        # adding 30-60s of wait time when inference is needed.
+        # =====================================================================
+        self._early_spot_vm_task: Optional[asyncio.Task] = None
+        if (self._gcp_probe_passed
+                and _startup_mode_now in ("cloud_first", "cloud_only")
+                and not os.environ.get("JARVIS_INVINCIBLE_NODE_IP")):
+            _spot_warm_timeout = _get_env_float("JARVIS_SPOT_VM_WARM_TIMEOUT", 30.0)
+
+            async def _proactive_spot_vm_warm():
+                """Start Spot VM immediately so it's ready when Trinity reaches GCP."""
+                try:
+                    from core.gcp_vm_manager import GCPVMManager
+                    _vm_mgr = GCPVMManager()
+                    await _vm_mgr.initialize()
+
+                    import psutil
+                    _mem = psutil.virtual_memory()
+                    _mem_snapshot = {
+                        "available_gb": _mem.available / (1024**3),
+                        "total_gb": _mem.total / (1024**3),
+                        "percent": _mem.percent,
+                    }
+
+                    should_create, reason, confidence = await _vm_mgr.should_create_vm(
+                        _mem_snapshot, trigger_reason="proactive_startup_warm"
+                    )
+                    if should_create and confidence >= 0.5:
+                        self.logger.info(
+                            "[EarlySpot] Proactively warming Spot VM: %s (confidence: %.0f%%)",
+                            reason, confidence * 100,
+                        )
+                        add_dashboard_log("Proactive Spot VM warm started", "INFO")
+                        vm_result = await asyncio.wait_for(
+                            _vm_mgr.create_vm(trigger_reason="proactive_startup"),
+                            timeout=_spot_warm_timeout,
+                        )
+                        if vm_result:
+                            self.logger.info("[EarlySpot] Spot VM created: %s", vm_result)
+                    else:
+                        self.logger.debug(
+                            "[EarlySpot] Spot VM not needed: %s (confidence: %.0f%%)",
+                            reason, confidence * 100,
+                        )
+                except asyncio.TimeoutError:
+                    self.logger.warning("[EarlySpot] Spot VM warm timed out")
+                except ImportError:
+                    self.logger.debug("[EarlySpot] GCP VM manager not available")
+                except Exception as _spot_err:
+                    self.logger.debug("[EarlySpot] Spot VM warm failed: %s", _spot_err)
+
+            self._early_spot_vm_task = create_safe_task(
+                _proactive_spot_vm_warm(),
+                name="early_spot_vm_warm",
+            )
+            self._background_tasks.append(self._early_spot_vm_task)
+            self.logger.info("[Kernel] Proactive Spot VM warm task created")
 
         if self.config.trinity_enabled and os.getenv("JARVIS_EARLY_PRIME_PREWARM", "true").lower() == "true":
             # Check golden image + GCP indicators
@@ -61791,6 +62041,11 @@ class JarvisSystemKernel:
             # =====================================================================
             await self._start_agent_runtime()
 
+            # v258.3 (Gap GCP-2): Re-evaluate startup mode after Intelligence phase.
+            # At this point, backend is loaded + intelligence systems initialized.
+            # Memory may have changed significantly from the pre-Phase-0 measurement.
+            await _reevaluate_startup_mode("post-intelligence")
+
             # =====================================================================
             # v200.0: TWO-TIER SECURITY INITIALIZATION
             # =====================================================================
@@ -62116,7 +62371,7 @@ class JarvisSystemKernel:
 
             await self._broadcast_startup_progress(
                 stage="enterprise",
-                message="Enterprise services online - initializing AGI OS...",
+                message="Enterprise services online - initializing Ghost Display...",
                 progress=85,
                 metadata={
                     "icon": "building",
@@ -62130,63 +62385,16 @@ class JarvisSystemKernel:
                         "two_tier": {"status": "complete"},
                         "trinity": {"status": "complete"},
                         "enterprise": {"status": "complete"},
-                        "agi_os": {"status": "running"},
-                        "ghost_display": {"status": "pending"},
-                        "frontend": {"status": "pending"},
-                    }
-                }
-            )
-
-            # =================================================================
-            # PHASE 6.5: AGI OS INITIALIZATION (v200.0)
-            # =================================================================
-            # Initialize the Autonomous General Intelligence Operating System:
-            # - AGIOSCoordinator (central orchestrator)
-            # - RealTimeVoiceCommunicator (voice output)
-            # - VoiceApprovalManager (approval workflows)
-            # - ProactiveEventStream (event-driven notifications)
-            # =================================================================
-            self._current_startup_phase = "agi_os"
-            self._current_startup_progress = 85
-            issue_collector.set_current_phase("Phase 6.5: AGI OS")
-            issue_collector.set_current_zone("Zone 6.5")
-            agi_os_timeout = float(os.environ.get("JARVIS_AGI_OS_TIMEOUT", "90.0"))
-            if self._startup_watchdog:
-                self._startup_watchdog.update_phase("agi_os", 85, operational_timeout=agi_os_timeout)
-
-            if not await self._initialize_agi_os():
-                # Non-fatal - continue without AGI OS
-                issue_collector.add_warning(
-                    "AGI OS failed to initialize - continuing without autonomous features",
-                    IssueCategory.INTELLIGENCE,
-                    suggestion="Check AGI OS modules and dependencies"
-                )
-
-            await self._broadcast_startup_progress(
-                stage="agi_os",
-                message="AGI OS active — initializing Ghost Display...",
-                progress=88,  # v240.0: narrowed from 90 to make room for ghost display phase
-                metadata={
-                    "icon": "brain",
-                    "phase": 6.5,
-                    "components": {
-                        "loading_server": {"status": "complete"},
-                        "preflight": {"status": "complete"},
-                        "resources": {"status": "complete"},
-                        "backend": {"status": "complete"},
-                        "intelligence": {"status": "complete"},
-                        "two_tier": {"status": "complete"},
-                        "trinity": {"status": "complete"},
-                        "enterprise": {"status": "complete"},
-                        "agi_os": {"status": "complete"},
                         "ghost_display": {"status": "running"},
+                        "agi_os": {"status": "pending"},
                         "frontend": {"status": "pending"},
                     }
                 }
             )
 
             # =================================================================
-            # PHASE 6.7: GHOST DISPLAY INITIALIZATION (v240.0)
+            # PHASE 6.5: GHOST DISPLAY INITIALIZATION (v240.0)
+            # v258.3: Moved before AGI OS to avoid CPU contention with ML loading
             # =================================================================
             # Initialize software-defined virtual display for background window
             # management via BetterDisplay/PhantomHardwareManager.
@@ -62194,13 +62402,13 @@ class JarvisSystemKernel:
             # Includes crash recovery for stranded windows and health monitoring.
             # =================================================================
             self._current_startup_phase = "ghost_display"
-            self._current_startup_progress = 88
-            issue_collector.set_current_phase("Phase 6.7: Ghost Display")
-            issue_collector.set_current_zone("Zone 6.7")
+            self._current_startup_progress = 85
+            issue_collector.set_current_phase("Phase 6.5: Ghost Display")
+            issue_collector.set_current_zone("Zone 6.5")
             ghost_display_timeout = _get_env_float("JARVIS_GHOST_DISPLAY_TIMEOUT", 30.0)
             if self._startup_watchdog:
                 self._startup_watchdog.update_phase(
-                    "ghost_display", 88, operational_timeout=ghost_display_timeout
+                    "ghost_display", 85, operational_timeout=ghost_display_timeout
                 )
 
             if not await self._initialize_ghost_display():
@@ -62213,10 +62421,66 @@ class JarvisSystemKernel:
 
             await self._broadcast_startup_progress(
                 stage="ghost_display",
-                message="Ghost Display ready — launching frontend...",
-                progress=90,
+                message="Ghost Display ready — initializing AGI OS...",
+                progress=86,
                 metadata={
                     "icon": "monitor",
+                    "phase": 6.5,
+                    "components": {
+                        "loading_server": {"status": "complete"},
+                        "preflight": {"status": "complete"},
+                        "resources": {"status": "complete"},
+                        "backend": {"status": "complete"},
+                        "intelligence": {"status": "complete"},
+                        "two_tier": {"status": "complete"},
+                        "trinity": {"status": "complete"},
+                        "enterprise": {"status": "complete"},
+                        "ghost_display": {"status": self._component_status.get(
+                            "ghost_display", {}
+                        ).get("status", "pending")},
+                        "agi_os": {"status": "running"},
+                        "frontend": {"status": "pending"},
+                    }
+                }
+            )
+
+            # v258.3 (Gap GCP-2): Re-evaluate before AGI OS — the most
+            # memory-intensive phase (~4.6GB ML loading). Memory may have
+            # changed since last re-evaluation (post-intelligence).
+            await _reevaluate_startup_mode("pre-agi-os")
+
+            # =================================================================
+            # PHASE 6.7: AGI OS INITIALIZATION (v200.0)
+            # v258.3: Renumbered from 6.5 to 6.7 (Ghost Display moved ahead)
+            # =================================================================
+            # Initialize the Autonomous General Intelligence Operating System:
+            # - AGIOSCoordinator (central orchestrator)
+            # - RealTimeVoiceCommunicator (voice output)
+            # - VoiceApprovalManager (approval workflows)
+            # - ProactiveEventStream (event-driven notifications)
+            # =================================================================
+            self._current_startup_phase = "agi_os"
+            self._current_startup_progress = 86
+            issue_collector.set_current_phase("Phase 6.7: AGI OS")
+            issue_collector.set_current_zone("Zone 6.7")
+            agi_os_timeout = float(os.environ.get("JARVIS_AGI_OS_TIMEOUT", "90.0"))
+            if self._startup_watchdog:
+                self._startup_watchdog.update_phase("agi_os", 86, operational_timeout=agi_os_timeout)
+
+            if not await self._initialize_agi_os():
+                # Non-fatal - continue without AGI OS
+                issue_collector.add_warning(
+                    "AGI OS failed to initialize - continuing without autonomous features",
+                    IssueCategory.INTELLIGENCE,
+                    suggestion="Check AGI OS modules and dependencies"
+                )
+
+            await self._broadcast_startup_progress(
+                stage="agi_os",
+                message="AGI OS active — initializing Visual Pipeline...",
+                progress=90,
+                metadata={
+                    "icon": "brain",
                     "phase": 6.7,
                     "components": {
                         "loading_server": {"status": "complete"},
@@ -62227,12 +62491,10 @@ class JarvisSystemKernel:
                         "two_tier": {"status": "complete"},
                         "trinity": {"status": "complete"},
                         "enterprise": {"status": "complete"},
+                        "ghost_display": {"status": "complete"},
                         "agi_os": {"status": "complete"},
-                        "ghost_display": {"status": self._component_status.get(
-                            "ghost_display", {}
-                        ).get("status", "pending")},
-                        "visual_pipeline": {"status": "pending"},
-                        "frontend": {"status": "running"},
+                        "visual_pipeline": {"status": "running"},
+                        "frontend": {"status": "pending"},
                     }
                 }
             )
@@ -62242,7 +62504,7 @@ class JarvisSystemKernel:
             # =================================================================
             # Initialize visual processing software pipeline: Ghost Hands
             # Orchestrator, N-Optic Nerve, Ferrari Engine verification.
-            # Requires Ghost Display (Phase 6.7) — skips gracefully if absent.
+            # Requires Ghost Display (Phase 6.5) — skips gracefully if absent.
             # Non-fatal: continues without if components unavailable.
             # =================================================================
             self._current_startup_phase = "visual_pipeline"
@@ -65166,9 +65428,9 @@ class JarvisSystemKernel:
             return True
 
         self._update_component_status("agi_os", "running", "Initializing AGI OS...")
-        await self._broadcast_progress(85, "agi_os", "Initializing AGI Operating System...")
+        await self._broadcast_progress(86, "agi_os", "Initializing AGI Operating System...")  # v258.3: 85→86
 
-        with self.logger.section_start(LogSection.BOOT, "Zone 6.5 | AGI OS"):
+        with self.logger.section_start(LogSection.BOOT, "Zone 6.7 | AGI OS"):  # v258.3: renumbered from 6.5
             try:
                 # v251.1: Raised operational timeout from 60→90s to accommodate
                 # the neural mesh time-budget (default 75s).  init_timeout must
@@ -65788,7 +66050,7 @@ class JarvisSystemKernel:
     # =========================================================================
     # Lifecycle management for the visual processing software pipeline:
     # Ghost Hands Orchestrator, N-Optic Nerve, Ferrari Engine verification.
-    # Follows the same pattern as Ghost Display (Phase 6.7) for initialization,
+    # Follows the same pattern as Ghost Display (Phase 6.5) for initialization,
     # state publishing, and health monitoring.
     # =========================================================================
 

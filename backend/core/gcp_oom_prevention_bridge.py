@@ -543,6 +543,21 @@ class GCPOOMPreventionBridge:
         Returns:
             Tuple of (available_ram_gb, memory_pressure_percent)
         """
+        # v258.3 (GCP-5): Use ResourceOrchestrator's measured snapshot if available.
+        # This avoids a race condition where two psutil calls seconds apart see
+        # different memory states (e.g., between ResourceOrchestrator and OOM bridge).
+        _shared_gb = os.environ.get("JARVIS_MEASURED_AVAILABLE_GB")
+        if _shared_gb:
+            try:
+                _avail = float(_shared_gb)
+                # Estimate pressure from available (rough: 100 - avail/total*100)
+                import psutil
+                _total = psutil.virtual_memory().total / (1024**3)
+                _pressure = (((_total - _avail) / _total) * 100) if _total > 0 else 50.0
+                return _avail, _pressure
+            except (ValueError, TypeError, ImportError):
+                pass  # Fall through to normal measurement
+
         # Try MemoryAwareStartup first (most accurate on macOS)
         if self._memory_aware_startup:
             try:

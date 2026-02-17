@@ -89,6 +89,15 @@ class HealthMonitorAgent(BaseNeuralMeshAgent):
             os.getenv("HEALTH_MONITOR_ALERT_DEDUP_WINDOW", "120.0")
         )
         self._active_alerts: Dict[str, float] = {}
+        # v258.3: CPU spike detection — track recent readings to detect
+        # short-duration spikes that would be masked by averaged data.
+        self._cpu_history_max_samples = int(
+            os.getenv("HEALTH_MONITOR_CPU_HISTORY_SAMPLES", "10")
+        )
+        self._cpu_recent_readings: List[float] = []
+        self._cpu_spike_threshold = float(
+            os.getenv("HEALTH_MONITOR_CPU_SPIKE_THRESHOLD", "95.0")
+        )
 
     def _is_startup_phase(self) -> bool:
         """Check if the system is currently in startup phase.
@@ -183,6 +192,13 @@ class HealthMonitorAgent(BaseNeuralMeshAgent):
                 "disk_free_gb": disk.free / (1024**3),
             }
 
+            # v258.3: Track CPU readings for spike detection.
+            # The async metrics service samples every 2s with interval=0.1,
+            # so each reading is a fresh 100ms measurement, not a long average.
+            self._cpu_recent_readings.append(cpu)
+            if len(self._cpu_recent_readings) > self._cpu_history_max_samples:
+                self._cpu_recent_readings = self._cpu_recent_readings[-self._cpu_history_max_samples:]
+
             # v258.3: Startup phase awareness — high CPU/memory is expected
             # during ML model loading, parallel init, torch imports.
             _in_startup = self._is_startup_phase()
@@ -210,6 +226,19 @@ class HealthMonitorAgent(BaseNeuralMeshAgent):
                     if self._cpu_relief_emitted:
                         await self._emit_cpu_recovery(cpu)
                         self._cpu_relief_emitted = False
+
+            # v258.3: Spike detection — catch short bursts above spike threshold
+            # even if not sustained (e.g., one reading at 99% among normal ones).
+            if (len(self._cpu_recent_readings) >= 3
+                    and not _in_startup
+                    and cpu <= self._cpu_high_threshold):
+                # Only check for spikes when current reading is normal
+                # (sustained check handles the "currently high" case)
+                _recent_max = max(self._cpu_recent_readings[-3:])
+                if _recent_max >= self._cpu_spike_threshold:
+                    health.setdefault("info", []).append(
+                        f"Recent CPU spike: {_recent_max:.0f}% (now {cpu:.0f}%)"
+                    )
 
             # v258.3: Memory threshold is higher during startup (95%)
             # because ML model loading transiently spikes memory.
@@ -298,6 +327,22 @@ class HealthMonitorAgent(BaseNeuralMeshAgent):
                 health["overall_status"] = "elevated"
             else:
                 health["overall_status"] = "degraded"
+
+        # v258.3: Publish to unified shared health state — enables all 5 health
+        # monitoring systems (HealthMonitorAgent, supervisor HealthChecker,
+        # AdaptiveResourceGovernor, TrinityHealthMonitor, DistributedHealthMonitor)
+        # to read a single authoritative health assessment.
+        import sys as _sys
+        _sys._jarvis_health_state = {  # type: ignore[attr-defined]
+            "overall_status": health["overall_status"],
+            "issues": health.get("issues", []),
+            "info": health.get("info", []),
+            "system": health.get("system", {}),
+            "agents": health.get("agents", {}),
+            "timestamp": time.time(),
+            "source": "health_monitor_agent",
+            "is_startup": self._is_startup_phase(),
+        }
 
         # Store in history
         self._health_history.append(health)
