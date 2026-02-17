@@ -70756,9 +70756,11 @@ class JarvisSystemKernel:
                     _last_heartbeat = _now
                     _elapsed = _now - (deadline - 120.0)
                     if self._startup_watchdog:
+                        # v260.3: Don't re-register operational_timeout — it resets the
+                        # stall timer indefinitely, preventing detection of truly stuck
+                        # webpack. Just update progress to signal liveness.
                         self._startup_watchdog.update_phase(
                             "frontend", self._current_startup_progress,
-                            operational_timeout=120.0,
                         )
                     self.logger.debug(
                         f"[Frontend] Waiting for port {frontend_port} ({_elapsed:.0f}s elapsed)"
@@ -71305,9 +71307,19 @@ class JarvisSystemKernel:
 
         completed_weight = 0
         running_weight = 0
+        # v260.3: Exclude skipped components from denominator entirely.
+        # Previously, "skipped" got full weight in both numerator AND denominator,
+        # inflating progress to 99-100 when many optional components are skipped
+        # (ghost_display, enterprise, reactor_core, etc.). Now skipped components
+        # are removed from the calculation — progress reflects only participating
+        # components, eliminating the dynamic progress poisoning root cause.
+        effective_total = 0
 
         for component, weight in weights.items():
             status = self._component_status.get(component, {}).get("status", "pending")
+            if status == "skipped":
+                continue  # Excluded from both numerator and denominator
+            effective_total += weight
             if status == "complete":
                 completed_weight += weight
             elif status == "running":
@@ -71317,10 +71329,11 @@ class JarvisSystemKernel:
                     running_weight += weight * min(1.0, max(0.0, float(sub)))
                 else:
                     running_weight += weight * 0.5
-            elif status == "skipped":
-                completed_weight += weight  # Full credit for intentionally skipped
 
-        return min(100, int(completed_weight + running_weight))
+        if effective_total == 0:
+            return 0
+        # Scale to 100 based on only participating components
+        return min(100, int((completed_weight + running_weight) * 100 / effective_total))
 
     def _is_trinity_ready(self) -> bool:
         """
@@ -74339,10 +74352,16 @@ class JarvisSystemKernel:
             _max_retries = int(_get_env_float("JARVIS_VERIFY_BACKEND_RETRIES", 2.0))
             _check_timeout = _base_timeout
 
-            # v260.2: Extend timeout under memory pressure (swap-heavy 16GB systems)
+            # v260.3: Extend timeout under memory pressure (swap-heavy 16GB systems)
+            # Use async_system_metrics if available (non-blocking cached), else psutil
             try:
-                mem = psutil.virtual_memory()
-                if mem.percent > 85.0:
+                _mem_pct = 0.0
+                try:
+                    from backend.core.async_system_metrics import get_memory_percent
+                    _mem_pct = await get_memory_percent()
+                except Exception:
+                    _mem_pct = (await asyncio.to_thread(lambda: psutil.virtual_memory().percent))
+                if _mem_pct > 85.0:
                     _check_timeout = min(_base_timeout * 2.0, 15.0)
                     status["memory_pressure"] = True
             except Exception:

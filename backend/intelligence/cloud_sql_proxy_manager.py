@@ -2034,24 +2034,24 @@ class CloudSQLProxyManager:
                         except Exception as e:
                             logger.debug(f"[CloudSQL] Failed to notify gate: {e}")
 
-                    # v224.0: Use intelligent port conflict resolution before recovery.
-                    # This replaces the old approach of blindly killing processes.
-                    # The start() method now handles conflict resolution internally
-                    # on every attempt, so we just need to call it.
-                    port = self.config["cloud_sql"]["port"]
-                    zombie_state = await self.detect_zombie_state_async()
-                    if zombie_state['is_zombie']:
-                        logger.warning(
-                            f"[CloudSQL] Zombie detected: port {zombie_state['port']} held by "
-                            f"non-proxy process (PID {zombie_state['pid_on_port']})"
-                        )
-                        # v224.0: Let _resolve_port_conflict_async handle this
-                        # intelligently instead of blindly killing
-                        resolved, effective_port = await self._resolve_port_conflict_async(port)
-                        if resolved:
-                            logger.info(
-                                f"[CloudSQL] Port conflict resolved → port {effective_port}"
+                    # v260.3: Only run zombie detection + port conflict resolution
+                    # AFTER reaching the recovery threshold. Running it on every
+                    # failure kills a slow-but-alive proxy on the first health check
+                    # failure — turning a transient GCP latency spike into a
+                    # permanent outage. The proxy may just need time to respond.
+                    if consecutive_failures >= max_recovery_attempts:
+                        port = self.config["cloud_sql"]["port"]
+                        zombie_state = await self.detect_zombie_state_async()
+                        if zombie_state['is_zombie']:
+                            logger.warning(
+                                f"[CloudSQL] Zombie detected: port {zombie_state['port']} held by "
+                                f"non-proxy process (PID {zombie_state['pid_on_port']})"
                             )
+                            resolved, effective_port = await self._resolve_port_conflict_async(port)
+                            if resolved:
+                                logger.info(
+                                    f"[CloudSQL] Port conflict resolved → port {effective_port}"
+                                )
 
                     if consecutive_failures <= max_recovery_attempts:
                         logger.info(f"🔄 Attempting automatic recovery (attempt {consecutive_failures})...")

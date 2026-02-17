@@ -21902,6 +21902,7 @@ class AdvancedStartupBootstrapper:
             return True
 
         except Exception as e:
+            import traceback
             self._log_event('init_error', {'error': str(e), 'traceback': traceback.format_exc()})
             return False
 
@@ -22112,6 +22113,7 @@ if __name__ == "__main__":
         if is_running and existing_state:
             # v119.1: Check if existing supervisor is healthy via IPC
             from backend.core.supervisor_singleton import send_supervisor_command_sync
+            health_result = {}  # v260.3: Initialize before try to avoid unbound on exception
             try:
                 health_result = send_supervisor_command_sync('health', timeout=5.0)
                 is_healthy = (

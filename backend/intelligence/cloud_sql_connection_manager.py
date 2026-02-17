@@ -2693,6 +2693,15 @@ class ProxyReadinessGate:
             return
 
         async def _recheck_loop():
+            # v260.3: Retry with backoff before declaring UNAVAILABLE.
+            # A single transient GCP network hiccup should NOT trigger a full
+            # state transition + cascade (AgentRegistry, cache warming, port kill).
+            _max_retries = int(float(os.environ.get(
+                "JARVIS_RECHECK_RETRIES", "2"
+            )))
+            _retry_delay = float(os.environ.get(
+                "JARVIS_RECHECK_RETRY_DELAY", "5.0"
+            ))
             while not self._shutting_down:
                 await asyncio.sleep(interval)
                 if self._shutting_down:
@@ -2700,11 +2709,24 @@ class ProxyReadinessGate:
                 if self._state == ReadinessState.READY:
                     success, reason = await self._check_db_level()
                     if not success:
-                        await self._set_state(
-                            ReadinessState.UNAVAILABLE,
-                            reason,
-                            "Periodic health check failed"
-                        )
+                        # v260.3: Retry before declaring UNAVAILABLE
+                        for _retry in range(_max_retries):
+                            if self._shutting_down:
+                                break
+                            logger.debug(
+                                f"[ReadinessGate] Periodic check failed ({reason}), "
+                                f"retry {_retry + 1}/{_max_retries} in {_retry_delay}s"
+                            )
+                            await asyncio.sleep(_retry_delay * (_retry + 1))
+                            success, reason = await self._check_db_level()
+                            if success:
+                                break
+                        if not success:
+                            await self._set_state(
+                                ReadinessState.UNAVAILABLE,
+                                reason,
+                                "Periodic health check failed"
+                            )
 
         try:
             self._recheck_task = asyncio.create_task(_recheck_loop())
