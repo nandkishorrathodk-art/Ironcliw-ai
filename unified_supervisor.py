@@ -64819,6 +64819,10 @@ class JarvisSystemKernel:
                 ready_count = sum(1 for v in results.values() if v)
                 self.logger.success(f"[Kernel] Intelligence: {ready_count}/{len(results)} initialized")
 
+                # v260.1: Progress callback after initialize_all — prevents DMS seeing
+                # flat progress at 52% for the entire intelligence phase duration.
+                await self._broadcast_progress(53, "intelligence_managers", "Intelligence managers initialized")
+
                 if self._readiness_manager:
                     self._readiness_manager.mark_component_ready("intelligence", ready_count > 0)
 
@@ -64830,6 +64834,9 @@ class JarvisSystemKernel:
                     self.logger.warning(
                         "[Kernel] Persistent conversation memory unavailable (degraded mode)"
                     )
+
+                # v260.1: Progress callback after memory agent
+                await self._broadcast_progress(54, "intelligence_memory", "Persistent memory initialized")
 
                 # v234.0: Initialize UnifiedModelServing (3-tier inference routing)
                 try:
@@ -65479,6 +65486,11 @@ class JarvisSystemKernel:
                     The ProgressController checks _current_startup_progress for
                     PHASE_HOLD_HARD_CAP — without advancing this, progress stays
                     flat at 58% for 300s+ triggering TRUE STALL.
+
+                    v260.1: Heartbeat must NEVER regress progress below what closures
+                    already set. Closures broadcast 56/57/58 at t=0 concurrently with
+                    heartbeat. At t=15, heartbeat must only write if its value exceeds
+                    the current progress (monotonic advance guard).
                     """
                     _tick = 0
                     while not _gather_done.is_set():
@@ -65487,17 +65499,20 @@ class JarvisSystemKernel:
                             break  # Event was set
                         except asyncio.TimeoutError:
                             _tick += 1
-                            # Advance both DMS watchdog and kernel progress counter.
-                            # Progress goes 56→57→58→59 (capped at 59, step 5 takes 60).
-                            _micro_progress = 56 + min(_tick, 3)
+                            # Candidate progress: 57→58→59 (capped at 59, step 5 takes 60).
+                            _candidate_progress = 56 + min(_tick, 3)
+                            # v260.1: Monotonic advance guard — only write if we're
+                            # actually advancing beyond what closures already set.
+                            _current = self._current_startup_progress
+                            _micro_progress = max(_candidate_progress, _current)
                             if self._startup_watchdog:
                                 self._startup_watchdog.update_phase(
                                     "two_tier", _micro_progress,
                                     operational_timeout=_get_env_float("JARVIS_TWO_TIER_TIMEOUT", 60.0),
                                 )
-                            # v260.0: Advance kernel progress counter so
-                            # ProgressController sees movement (resets PHASE_HOLD timer)
-                            self._current_startup_progress = _micro_progress
+                            # Only write if actually advancing
+                            if _micro_progress > _current:
+                                self._current_startup_progress = _micro_progress
 
                 _heartbeat_task = asyncio.ensure_future(_progress_heartbeat())
 
@@ -69141,32 +69156,13 @@ class JarvisSystemKernel:
                 return True
 
             elif phase == "intelligence":
-                # v260.0: Intelligence is non-critical. Don't re-try if shutting down.
-                if self._state in (KernelState.SHUTTING_DOWN, KernelState.FAILED):
-                    self.logger.info("[DMS] Intelligence restart skipped — kernel shutting down")
-                    return True
-                self.logger.info("[DMS] Intelligence layer restart - marking as successful")
-                if self._intelligence_registry:
-                    try:
-                        # v260.0: Re-init with timeout (was unbounded)
-                        _dms_intel_timeout = _get_env_float("JARVIS_DMS_INTEL_RESTART_TIMEOUT", 30.0)
-                        results = await asyncio.wait_for(
-                            self._intelligence_registry.initialize_all(),
-                            timeout=_dms_intel_timeout,
-                        )
-                        ready_count = sum(1 for v in results.values() if v)
-                        self.logger.info(f"[DMS] Intelligence re-initialized: {ready_count}/{len(results)}")
-                        return True
-                    except asyncio.TimeoutError:
-                        self.logger.warning(
-                            f"[DMS] Intelligence restart timed out ({_dms_intel_timeout:.0f}s)"
-                        )
-                        return True
-                    except asyncio.CancelledError:
-                        raise
-                    except Exception as e:
-                        self.logger.warning(f"[DMS] Intelligence restart failed: {e}")
-                        return True
+                # v260.1: Intelligence has an outer asyncio.wait_for(timeout=120s) at
+                # the call site (line 62196). The DMS restart callback runs in a SEPARATE
+                # task — if it re-initializes managers here, the outer timeout can cancel
+                # the phase concurrently, creating two parallel initialize_all() calls on
+                # the same registry (race condition). Solution: just acknowledge the stall
+                # and let the outer timeout handle cancellation + cleanup.
+                self.logger.info("[DMS] Intelligence phase stall acknowledged — outer timeout will handle")
                 return True
 
             elif phase == "enterprise":
