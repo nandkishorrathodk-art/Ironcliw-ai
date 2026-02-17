@@ -60531,13 +60531,23 @@ class JarvisSystemKernel:
         # imports the database adapter. This prevents redundant warnings from
         # components that initialize before _initialize_cloud_sql_proxy runs.
         # =====================================================================
+        # v258.3: Set unified system phase signal — enables all components
+        # (health monitor, resource orchestrator, VBI) to know the system is
+        # in startup phase and suppress transient metric-based degradation.
+        sys._jarvis_system_phase = {  # type: ignore[attr-defined]
+            "phase": "startup",
+            "started_at": time.time(),
+            "pid": os.getpid(),
+        }
+        os.environ["JARVIS_STARTUP_TIMESTAMP"] = str(time.time())
+
         try:
             from intelligence.cloud_database_adapter import register_supervisor_proxy_management
             register_supervisor_proxy_management("UnifiedSupervisor")
             self.logger.debug("[CloudSQL] Early proxy coordinator registration complete")
         except ImportError:
             pass  # Coordinator not available, proceed without it
-        
+
         # Initialize startup issue collector for organized error/warning display
         issue_collector = get_startup_issue_collector()
         issue_collector.clear()  # Fresh start
@@ -60616,16 +60626,22 @@ class JarvisSystemKernel:
             for _rec in _rs.recommendations:
                 _unified_logger.info("[ResourceOrchestrator] %s", _rec)
         except asyncio.TimeoutError:
+            # v258.3: INVERTED FAIL-SAFE FIX. Previously defaulted to
+            # "local_full" (most resource-hungry) under pressure — exactly
+            # when resources are LEAST available. Now defaults to
+            # "local_optimized" which skips non-critical ML and reduces
+            # parallel init. The orchestrator times out under CPU/memory
+            # pressure, so the fallback must be CONSERVATIVE.
             _unified_logger.warning(
-                "[ResourceOrchestrator] Timed out after %.1fs — defaulting to local_full",
+                "[ResourceOrchestrator] Timed out after %.1fs — defaulting to local_optimized",
                 _resource_check_timeout,
             )
-            os.environ["JARVIS_STARTUP_MEMORY_MODE"] = "local_full"
+            os.environ["JARVIS_STARTUP_MEMORY_MODE"] = "local_optimized"
         except Exception as _ro_err:
             _unified_logger.debug(
-                "[ResourceOrchestrator] %s — defaulting to local_full", _ro_err
+                "[ResourceOrchestrator] %s — defaulting to local_optimized", _ro_err
             )
-            os.environ["JARVIS_STARTUP_MEMORY_MODE"] = "local_full"
+            os.environ["JARVIS_STARTUP_MEMORY_MODE"] = "local_optimized"
 
         # =====================================================================
         # v181.0: PHASE -1: CLEAN SLATE - Crash Recovery & State Cleanup
@@ -62423,6 +62439,15 @@ class JarvisSystemKernel:
                     f"[Kernel] Total process time: {_total_process_time:.1f}s "
                     f"(pre-boot: {_pre_boot_time:.1f}s, phases: {startup_duration:.1f}s)"
                 )
+
+            # v258.3: Transition system phase to runtime — components stop
+            # suppressing transient CPU/memory alerts.
+            sys._jarvis_system_phase = {  # type: ignore[attr-defined]
+                "phase": "runtime",
+                "started_at": getattr(sys, '_jarvis_system_phase', {}).get("started_at", time.time()),
+                "runtime_at": time.time(),
+                "pid": os.getpid(),
+            }
 
             # v197.3/v204.0: Stop the startup progress heartbeat
             self._current_startup_phase = "complete"
@@ -65536,7 +65561,10 @@ class JarvisSystemKernel:
                 self.logger.warning(
                     f"[GhostDisplay] Timed out after {timeout}s — continuing without"
                 )
-                self._update_component_status("ghost_display", "error", f"Timeout ({timeout}s)")
+                # v258.3: GhostDisplay is an optional component — timeout is
+                # "skipped" (informational), not "error" (which triggers
+                # health degradation and escalation).
+                self._update_component_status("ghost_display", "skipped", f"Timeout ({timeout}s)")
                 return False
 
             if not success:

@@ -310,25 +310,26 @@ class AdaptiveResourceGovernor:
             )
 
         try:
-            # Run in executor to avoid blocking
-            loop = asyncio.get_event_loop()
+            # v258.3: Use shared async metrics service (non-blocking, no
+            # interval sleep). Falls back to psutil.cpu_percent(interval=None)
+            # which reads cached data (~microseconds, not 100ms blocking).
+            try:
+                from backend.core.async_system_metrics import get_cpu_percent
+                cpu = await get_cpu_percent()
+            except ImportError:
+                cpu = psutil.cpu_percent(interval=None)
 
-            def get_metrics():
-                cpu = psutil.cpu_percent(interval=0.1)
-                cpu_per_core = psutil.cpu_percent(percpu=True)
-                mem = psutil.virtual_memory()
-                swap = psutil.swap_memory()
-                return cpu, cpu_per_core, mem.percent, swap.percent
-
-            cpu, cpu_per_core, mem, swap = await loop.run_in_executor(
-                None, get_metrics
-            )
+            # Per-core and memory are already instant (no interval param)
+            cpu_per_core = psutil.cpu_percent(percpu=True)
+            mem = psutil.virtual_memory()
+            swap = psutil.swap_memory()
+            mem_pct, swap_pct = mem.percent, swap.percent
 
             return SystemLoad(
                 cpu_percent=cpu,
-                memory_percent=mem,
+                memory_percent=mem_pct,
                 cpu_per_core=cpu_per_core,
-                swap_percent=swap,
+                swap_percent=swap_pct,
             )
 
         except Exception as e:

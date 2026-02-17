@@ -76,6 +76,45 @@ class HealthMonitorAgent(BaseNeuralMeshAgent):
         self._cpu_relief_emitted: bool = False
         self._throttle_cache_time: float = 0.0
         self._throttle_factor: float = 1.0
+        # v258.3: Startup phase detection for system metrics grace period.
+        # High CPU/memory during startup (ML model loading, parallel init)
+        # is expected and should not flag the system as "degraded".
+        self._startup_time: float = time.monotonic()
+        self._metrics_startup_grace = float(
+            os.getenv("HEALTH_MONITOR_METRICS_STARTUP_GRACE", "300.0")
+        )
+        # v258.3: Alert deduplication — prevents identical alerts accumulating.
+        # Same issue message within window is not re-alerted; resolution tracked.
+        self._alert_dedup_window = float(
+            os.getenv("HEALTH_MONITOR_ALERT_DEDUP_WINDOW", "120.0")
+        )
+        self._active_alerts: Dict[str, float] = {}
+
+    def _is_startup_phase(self) -> bool:
+        """Check if the system is currently in startup phase.
+
+        v258.3: Uses the unified system phase signal (sys._jarvis_system_phase)
+        with fallback to JARVIS_STARTUP_TIMESTAMP env var.  During startup,
+        high CPU and memory usage are expected (ML model loading, parallel
+        init, torch imports) and should not trigger health degradation.
+        """
+        import sys as _sys
+
+        # Primary: unified system phase signal (set by supervisor)
+        _phase = getattr(_sys, '_jarvis_system_phase', None)
+        if _phase:
+            return _phase.get("phase") == "startup"
+
+        # Fallback: env var timestamp set early in supervisor startup
+        _startup_ts_str = os.environ.get("JARVIS_STARTUP_TIMESTAMP", "")
+        if _startup_ts_str:
+            try:
+                return time.time() - float(_startup_ts_str) < self._metrics_startup_grace
+            except (ValueError, TypeError):
+                pass
+
+        # Final fallback: time since health monitor creation
+        return time.monotonic() - self._startup_time < self._metrics_startup_grace
 
     async def on_initialize(self) -> None:
         logger.info("Initializing HealthMonitorAgent")
@@ -144,21 +183,38 @@ class HealthMonitorAgent(BaseNeuralMeshAgent):
                 "disk_free_gb": disk.free / (1024**3),
             }
 
-            # v258.0: Track sustained CPU pressure + emit relief
+            # v258.3: Startup phase awareness — high CPU/memory is expected
+            # during ML model loading, parallel init, torch imports.
+            _in_startup = self._is_startup_phase()
+
+            # v258.3: Track sustained CPU pressure + emit relief.
+            # Only flag as issue when SUSTAINED (N consecutive checks),
+            # not on a single spike. During startup, sustained CPU is
+            # informational only — it does not degrade system health.
             if cpu > self._cpu_high_threshold:
-                health["issues"].append("High CPU usage")
                 self._cpu_high_consecutive += 1
-                if (self._cpu_high_consecutive >= self._cpu_high_sustained_checks
-                        and not self._cpu_relief_emitted):
-                    await self._emit_cpu_relief_request(cpu)
-                    self._cpu_relief_emitted = True
+                if self._cpu_high_consecutive >= self._cpu_high_sustained_checks:
+                    if not _in_startup:
+                        health["issues"].append("High CPU usage (sustained)")
+                    else:
+                        # Informational during startup — log but don't degrade
+                        health.setdefault("info", []).append(
+                            f"CPU {cpu:.0f}% (expected during startup)"
+                        )
+                    if not self._cpu_relief_emitted:
+                        await self._emit_cpu_relief_request(cpu)
+                        self._cpu_relief_emitted = True
             else:
                 if self._cpu_high_consecutive > 0:
                     self._cpu_high_consecutive = 0
                     if self._cpu_relief_emitted:
                         await self._emit_cpu_recovery(cpu)
                         self._cpu_relief_emitted = False
-            if memory.percent > 90:
+
+            # v258.3: Memory threshold is higher during startup (95%)
+            # because ML model loading transiently spikes memory.
+            _memory_threshold = 95.0 if _in_startup else 90.0
+            if memory.percent > _memory_threshold:
                 health["issues"].append("High memory usage")
             if disk.percent > 90:
                 health["issues"].append("Low disk space")
@@ -222,10 +278,24 @@ class HealthMonitorAgent(BaseNeuralMeshAgent):
             except Exception as e:
                 health["agents"] = {"error": str(e)}
 
-        # Determine overall status
+        # v258.3: Severity-weighted status derivation.
+        # 4-level model: healthy → elevated → degraded → critical.
+        # "elevated" is a new level for CPU-only sustained pressure —
+        # it recovers naturally and should not trigger escalation.
         if health["issues"]:
-            if any("error" in issue.lower() for issue in health["issues"]):
+            _has_error = any("error" in i.lower() for i in health["issues"])
+            _has_disk = any("disk" in i.lower() for i in health["issues"])
+            _has_agent = any("agent " in i.lower() for i in health["issues"])
+            _has_memory = any("memory" in i.lower() for i in health["issues"])
+            _has_cpu = any("cpu" in i.lower() for i in health["issues"])
+
+            if _has_error or _has_disk:
                 health["overall_status"] = "critical"
+            elif _has_agent or _has_memory:
+                health["overall_status"] = "degraded"
+            elif _has_cpu:
+                # CPU-only sustained pressure — recovers naturally
+                health["overall_status"] = "elevated"
             else:
                 health["overall_status"] = "degraded"
 
@@ -352,32 +422,57 @@ class HealthMonitorAgent(BaseNeuralMeshAgent):
                     timeout=health_check_timeout,
                 )
 
-                # Create alerts for issues
-                for issue in health.get("issues", []):
+                # v258.3: Alert dedup — only create new alert if not seen
+                # within dedup window. Emit RESOLVED when issues clear.
+                _now_ts = time.time()
+                _current_issue_set = set(health.get("issues", []))
+
+                for issue in _current_issue_set:
+                    _last_seen = self._active_alerts.get(issue, 0.0)
+                    if _now_ts - _last_seen > self._alert_dedup_window:
+                        # New or expired — create alert
+                        self._alerts.append({
+                            "timestamp": datetime.now().isoformat(),
+                            "severity": "warning" if "error" not in issue.lower() else "critical",
+                            "message": issue,
+                        })
+                    self._active_alerts[issue] = _now_ts
+
+                # Emit RESOLVED for issues that cleared
+                _resolved = [
+                    k for k in self._active_alerts
+                    if k not in _current_issue_set
+                ]
+                for issue in _resolved:
                     self._alerts.append({
                         "timestamp": datetime.now().isoformat(),
-                        "severity": "warning" if "error" not in issue.lower() else "critical",
-                        "message": issue,
+                        "severity": "info",
+                        "message": f"RESOLVED: {issue}",
                     })
+                    del self._active_alerts[issue]
 
                 # Limit alerts history
                 if len(self._alerts) > 1000:
                     self._alerts = self._alerts[-1000:]
 
-                # v251.3: Log if unhealthy, with deduplication and detail
+                # v258.3: Log with severity-appropriate level + deduplication.
+                # "elevated" (CPU-only) → logger.info (not a warning)
+                # "degraded" / "critical" → logger.warning
                 issues = health.get("issues", [])
-                if health["overall_status"] != "healthy" and issues:
+                _status = health["overall_status"]
+                if _status not in ("healthy",) and issues:
                     current_issues = frozenset(issues)
                     if current_issues != self._last_logged_issues:
-                        # Issue set changed — log with full detail
-                        logger.warning(
-                            "System health: %s - %d issue(s): %s",
-                            health["overall_status"],
-                            len(issues),
-                            "; ".join(issues),
+                        _msg = (
+                            "System health: %s - %d issue(s): %s"
                         )
+                        _args = (_status, len(issues), "; ".join(issues))
+                        if _status == "elevated":
+                            logger.info(_msg, *_args)
+                        else:
+                            logger.warning(_msg, *_args)
                         self._last_logged_issues = current_issues
-                elif health["overall_status"] == "healthy":
+                elif _status == "healthy":
                     if self._last_logged_issues is not None:
                         logger.info("System health recovered to healthy")
                         self._last_logged_issues = None
@@ -415,13 +510,30 @@ class HealthMonitorAgent(BaseNeuralMeshAgent):
             level, throttle_factor, duration = "moderate", 4.0, 60.0
 
         # Primary signal: sys attribute (intra-process, GIL-atomic, zero I/O)
-        setattr(_sys, '_jarvis_cpu_throttle', {
+        _throttle_data = {
             "level": level,
             "throttle_factor": throttle_factor,
             "expires_at": time.time() + duration,
             "timestamp": time.time(),
             "cpu_percent": cpu,
-        })
+        }
+        setattr(_sys, '_jarvis_cpu_throttle', _throttle_data)
+
+        # v258.3: Cross-process signal — write to ~/.jarvis/signals/cpu_pressure.json
+        # so JARVIS Prime and Reactor Core can read it (sys attr is process-local).
+        try:
+            import json
+            _signal_dir = os.path.join(os.path.expanduser("~"), ".jarvis", "signals")
+            os.makedirs(_signal_dir, exist_ok=True)
+            _signal_path = os.path.join(_signal_dir, "cpu_pressure.json")
+            _signal_data = json.dumps(_throttle_data)
+            # Use atomic write pattern (write tmp + rename) to avoid partial reads
+            _tmp_path = _signal_path + ".tmp"
+            with open(_tmp_path, "w") as f:
+                f.write(_signal_data)
+            os.replace(_tmp_path, _signal_path)
+        except Exception as _sig_err:
+            logger.debug("Could not write cross-process CPU signal: %s", _sig_err)
 
         # Broadcast via neural mesh if available
         try:
@@ -451,6 +563,16 @@ class HealthMonitorAgent(BaseNeuralMeshAgent):
         # Clear sys attribute
         if hasattr(_sys, '_jarvis_cpu_throttle'):
             delattr(_sys, '_jarvis_cpu_throttle')
+
+        # v258.3: Clear cross-process signal file
+        try:
+            _signal_path = os.path.join(
+                os.path.expanduser("~"), ".jarvis", "signals", "cpu_pressure.json"
+            )
+            if os.path.exists(_signal_path):
+                os.remove(_signal_path)
+        except Exception:
+            pass  # Best-effort cleanup
 
         # Broadcast recovery
         try:
