@@ -55,6 +55,8 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
+from backend.clients.experience_scorer import WeightedExperienceTracker
+
 logger = logging.getLogger(__name__)
 
 
@@ -285,6 +287,9 @@ class ReactorCoreClient:
         except ImportError:
             logger.warning("[ReactorClient] CircuitBreaker not available, training CB disabled")
             self._training_circuit_breaker = None
+
+        # v2.2: Quality-weighted experience tracker for smarter auto-trigger
+        self._experience_tracker: WeightedExperienceTracker = WeightedExperienceTracker()
 
     async def initialize(self) -> bool:
         """
@@ -739,12 +744,23 @@ class ReactorCoreClient:
         """
         Stream a single experience log to Reactor-Core for future training.
 
+        Also feeds the experience into the weighted tracker (v2.2) so that
+        quality-aware auto-trigger can fire based on accumulated score.
+
         Args:
             experience: Experience data dictionary
 
         Returns:
             True if streamed successfully
         """
+        # v2.2: Always score the experience locally (even if offline, for when we reconnect)
+        score = self._experience_tracker.add(experience)
+        logger.debug(
+            f"[ReactorClient] Experience scored: {score:.1f} "
+            f"(cumulative={self._experience_tracker.cumulative_score:.1f}, "
+            f"threshold={self._experience_tracker.threshold:.1f})"
+        )
+
         if not self._is_online:
             return False
 
@@ -1048,14 +1064,18 @@ class ReactorCoreClient:
 
     async def _check_and_auto_trigger(self) -> None:
         """
-        v2.1: Check experience count and auto-trigger training if threshold met.
+        v2.2: Check experience count OR weighted score and auto-trigger training.
 
         Called from health monitor loop after each successful health check.
+
+        Two trigger paths (either can fire):
+        1. Raw count >= experience_threshold (legacy, v2.1)
+        2. Weighted score >= weighted_threshold (v2.2, quality-aware)
+
         Guards:
         - Auto-trigger must be enabled
         - Reactor-Core must be training-ready (is_training_ready)
         - No active training job (_active_job_id is None)
-        - Experience count must meet threshold
         - Minimum interval enforced by trigger_training()
         """
         # v2.1: Circuit breaker guard - skip if open after repeated failures
@@ -1071,10 +1091,20 @@ class ReactorCoreClient:
 
         try:
             count = await self.get_experience_count()
-            if count >= self.config.experience_threshold:
+
+            # v2.2: Check weighted score first (quality-aware trigger)
+            weighted_trigger = self._experience_tracker.should_trigger()
+            count_trigger = count >= self.config.experience_threshold
+
+            if weighted_trigger or count_trigger:
+                trigger_reason = (
+                    f"weighted_score={self._experience_tracker.cumulative_score:.1f}"
+                    if weighted_trigger
+                    else f"count={count}>={self.config.experience_threshold}"
+                )
                 logger.info(
-                    f"[ReactorClient] Auto-trigger: {count} experiences "
-                    f">= threshold {self.config.experience_threshold}"
+                    f"[ReactorClient] Auto-trigger: {trigger_reason} "
+                    f"(count={count}, weighted={self._experience_tracker.cumulative_score:.1f})"
                 )
                 job = await self.trigger_training(
                     experience_count=count,
@@ -1082,6 +1112,7 @@ class ReactorCoreClient:
                 )
                 if job:
                     self._active_job_id = job.job_id
+                    self._experience_tracker.reset()
                     logger.info(f"[ReactorClient] Auto-triggered job: {job.job_id}")
         except Exception as e:
             logger.warning(f"[ReactorClient] Auto-trigger check error: {e}")
