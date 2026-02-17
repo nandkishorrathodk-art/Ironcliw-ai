@@ -2702,7 +2702,31 @@ class ProxyReadinessGate:
             _retry_delay = float(os.environ.get(
                 "JARVIS_RECHECK_RETRY_DELAY", "5.0"
             ))
+            # v260.3: Recovery probe interval when UNAVAILABLE (default 60s)
+            _recovery_interval = float(os.environ.get(
+                "JARVIS_RECHECK_RECOVERY_INTERVAL", "60.0"
+            ))
             while not self._shutting_down:
+                # v260.3: When UNAVAILABLE, probe for recovery instead of sleeping forever.
+                # The old code only ran when state==READY, so once UNAVAILABLE the loop
+                # did nothing — CloudSQL stayed permanently down until process restart.
+                if self._state == ReadinessState.UNAVAILABLE:
+                    await asyncio.sleep(_recovery_interval)
+                    if self._shutting_down:
+                        break
+                    success, reason = await self._check_db_level()
+                    if success:
+                        logger.info(
+                            "[ReadinessGate v260.3] CloudSQL recovered — "
+                            "transitioning back to READY"
+                        )
+                        await self._set_state(
+                            ReadinessState.READY,
+                            None,
+                            "Recovery probe succeeded"
+                        )
+                    continue
+
                 await asyncio.sleep(interval)
                 if self._shutting_down:
                     break
