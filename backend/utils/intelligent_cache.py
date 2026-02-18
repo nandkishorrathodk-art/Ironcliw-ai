@@ -170,6 +170,13 @@ class IntelligentCache:
         self._last_resize = datetime.now()
         self._resize_interval = timedelta(minutes=5)
 
+        # v263.0: Auto-register with cache registry for unified monitoring
+        try:
+            from backend.utils.cache_registry import get_cache_registry
+            get_cache_registry().register("intelligent_cache", self)
+        except Exception:
+            pass  # Non-fatal
+
     def _generate_key(self, category: str, *args) -> str:
         """Generate cache key from category and arguments"""
         content = f"{category}:{':'.join(str(arg) for arg in args)}"

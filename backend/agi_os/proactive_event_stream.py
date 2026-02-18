@@ -45,6 +45,12 @@ from datetime import datetime, timedelta
 from enum import Enum, auto
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Coroutine, Union
 
+# Phase 5A: Bounded queue backpressure
+try:
+    from backend.core.bounded_queue import BoundedAsyncQueue, OverflowPolicy
+except ImportError:
+    BoundedAsyncQueue = None
+
 logger = logging.getLogger(__name__)
 
 
@@ -169,7 +175,10 @@ class ProactiveEventStream:
     def __init__(self):
         """Initialize the event stream."""
         # Event queue
-        self._event_queue: asyncio.Queue[AGIEvent] = asyncio.Queue()
+        self._event_queue: asyncio.Queue[AGIEvent] = (
+            BoundedAsyncQueue(maxsize=2000, policy=OverflowPolicy.DROP_OLDEST, name="agi_event_stream")
+            if BoundedAsyncQueue is not None else asyncio.Queue()
+        )
 
         # Subscriptions
         self._subscriptions: Dict[str, EventSubscription] = {}

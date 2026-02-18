@@ -603,6 +603,11 @@ import uuid
 import warnings
 from abc import ABC, abstractmethod
 from collections import defaultdict, deque, OrderedDict
+
+try:
+    from backend.utils.bounded_collections import BoundedDefaultDict
+except ImportError:
+    BoundedDefaultDict = None  # Fallback: use defaultdict directly
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager, contextmanager, suppress
 from dataclasses import dataclass, field
@@ -1536,6 +1541,15 @@ try:
 except ImportError:
     VOICE_ORCHESTRATOR_AVAILABLE = False
     VoiceOrchestrator = None
+
+# Phase 5A: BoundedAsyncQueue - backpressure for unbounded asyncio.Queue instances
+try:
+    from backend.core.bounded_queue import BoundedAsyncQueue, OverflowPolicy
+    BOUNDED_QUEUE_AVAILABLE = True
+except ImportError:
+    BOUNDED_QUEUE_AVAILABLE = False
+    BoundedAsyncQueue = None
+    OverflowPolicy = None
 
 # =============================================================================
 # CONSTANTS
@@ -2985,7 +2999,11 @@ class UnifiedLogger:
         self._active_phases: Dict[str, float] = {}
         self._section_stack: List[LogSection] = []
         self._indent_level: int = 0
-        self._metrics: Dict[str, List[float]] = defaultdict(list)
+        self._metrics: Dict[str, List[float]] = (
+            BoundedDefaultDict(list, max_size=5000)
+            if BoundedDefaultDict is not None
+            else defaultdict(list)
+        )
         self._json_mode = _get_env_bool("JARVIS_LOG_JSON", False)
         self._verbose = _get_env_bool("JARVIS_VERBOSE", False)
         self._colors_enabled = sys.stdout.isatty()
@@ -24125,18 +24143,24 @@ class TrinityIPCHub:
         self._enable_persistence = enable_persistence
         self._message_ttl_seconds = message_ttl_seconds
 
-        # Channel queues
+        # Channel queues (Phase 5A: bounded with backpressure)
+        def _ipc_queue(name: str, maxsize: int, policy_val: str) -> asyncio.Queue:
+            if BOUNDED_QUEUE_AVAILABLE:
+                _policy = OverflowPolicy(policy_val)
+                return BoundedAsyncQueue(maxsize=maxsize, policy=_policy, name=f"ipc_{name}")
+            return asyncio.Queue()
+
         self._channels: Dict[str, asyncio.Queue] = {
-            "body_to_reactor_cmd": asyncio.Queue(),
-            "reactor_to_body_status": asyncio.Queue(),
-            "prime_to_reactor_feedback": asyncio.Queue(),
-            "body_to_reactor_training": asyncio.Queue(),
-            "model_metadata": asyncio.Queue(),
-            "cross_repo_query": asyncio.Queue(),
-            "event_stream": asyncio.Queue(),
-            "rpc": asyncio.Queue(),
-            "pubsub": asyncio.Queue(),
-            "reliable_queue": asyncio.Queue(),
+            "body_to_reactor_cmd": _ipc_queue("body_to_reactor_cmd", 100, "block"),
+            "reactor_to_body_status": _ipc_queue("reactor_to_body_status", 500, "drop_oldest"),
+            "prime_to_reactor_feedback": _ipc_queue("prime_to_reactor_feedback", 500, "drop_oldest"),
+            "body_to_reactor_training": _ipc_queue("body_to_reactor_training", 200, "warn_and_block"),
+            "model_metadata": _ipc_queue("model_metadata", 200, "drop_oldest"),
+            "cross_repo_query": _ipc_queue("cross_repo_query", 200, "block"),
+            "event_stream": _ipc_queue("event_stream", 1000, "drop_oldest"),
+            "rpc": _ipc_queue("rpc", 100, "block"),
+            "pubsub": _ipc_queue("pubsub", 1000, "drop_oldest"),
+            "reliable_queue": _ipc_queue("reliable_queue", 500, "warn_and_block"),
         }
 
         # Pub/Sub subscriptions
@@ -27650,7 +27674,11 @@ class DistributedLockManager:
         # Lock state
         self._held_locks: Dict[str, FencingToken] = {}
         self._sequence_counter = 0
-        self._lock_waiters: Dict[str, List[asyncio.Future]] = defaultdict(list)
+        self._lock_waiters: Dict[str, List[asyncio.Future]] = (
+            BoundedDefaultDict(list, max_size=1000)
+            if BoundedDefaultDict is not None
+            else defaultdict(list)
+        )
 
         # Background tasks
         self._heartbeat_task: Optional[asyncio.Task] = None
@@ -28705,7 +28733,11 @@ class ObservabilityPipeline:
         # Metrics aggregation
         self._counters: Dict[str, float] = defaultdict(float)
         self._gauges: Dict[str, float] = {}
-        self._histograms: Dict[str, List[float]] = defaultdict(list)
+        self._histograms: Dict[str, List[float]] = (
+            BoundedDefaultDict(list, max_size=10000)
+            if BoundedDefaultDict is not None
+            else defaultdict(list)
+        )
 
         # Background tasks
         self._flush_task: Optional[asyncio.Task] = None
@@ -35293,14 +35325,22 @@ class StreamProcessor:
         self._retention = event_retention_seconds
 
         # Streams
-        self._streams: Dict[str, List[StreamEvent]] = defaultdict(list)
+        self._streams: Dict[str, List[StreamEvent]] = (
+            BoundedDefaultDict(list, max_size=1000)
+            if BoundedDefaultDict is not None
+            else defaultdict(list)
+        )
         self._stream_offsets: Dict[str, int] = defaultdict(int)
 
         # Consumer groups
         self._consumer_groups: Dict[str, Dict[str, StreamConsumerGroup]] = defaultdict(dict)
 
         # Event handlers per stream
-        self._handlers: Dict[str, List[Callable[[StreamEvent], Awaitable[None]]]] = defaultdict(list)
+        self._handlers: Dict[str, List[Callable[[StreamEvent], Awaitable[None]]]] = (
+            BoundedDefaultDict(list, max_size=500)
+            if BoundedDefaultDict is not None
+            else defaultdict(list)
+        )
 
         # Background tasks
         self._processor_tasks: Dict[str, asyncio.Task] = {}
@@ -46681,10 +46721,81 @@ class ExternalServiceRegistry:
         self.config = config
         self._lock = asyncio.Lock()
         self._services: Dict[str, ExternalService] = {}
-        self._circuit_breakers: Dict[str, bool] = {}  # service_id -> is_open
+        # v3A.0: Canonical circuit breakers from registry (replaces Dict[str, bool])
+        # Backward-compat: _circuit_breakers dict is kept as a computed view property
+        self._canonical_cbs: Dict[str, Any] = {}  # service_id -> canonical CircuitBreaker
+        self._circuit_breakers: Dict[str, bool] = {}  # service_id -> is_open (backward compat)
         self._request_log: deque = deque(maxlen=10000)
         self._logger = logging.getLogger("ExternalServiceRegistry")
         self._initialized = False
+
+    def _get_cb(self, service_id: str):
+        """v3A.0: Get or create a canonical CircuitBreaker for the given service."""
+        if not MODULAR_KERNEL_AVAILABLE or _get_modular_circuit_breaker is None:
+            return None
+        if service_id not in self._canonical_cbs:
+            cb = _get_modular_circuit_breaker(
+                f"ext-svc-{service_id}",
+                ModularCircuitBreakerConfig(
+                    failure_threshold=5,
+                    recovery_timeout_seconds=30.0,
+                ),
+            )
+            self._canonical_cbs[service_id] = cb
+        return self._canonical_cbs[service_id]
+
+    def _is_circuit_open(self, service_id: str) -> bool:
+        """v3A.0: Check if circuit is open using canonical breaker or fallback."""
+        cb = self._get_cb(service_id)
+        if cb is not None:
+            is_open = not cb.can_execute_sync()
+            # Keep backward-compat dict in sync
+            self._circuit_breakers[service_id] = is_open
+            return is_open
+        return self._circuit_breakers.get(service_id, False)
+
+    def _record_failure(self, service_id: str) -> None:
+        """v3A.0: Record a failure using canonical breaker or fallback."""
+        cb = self._get_cb(service_id)
+        if cb is not None:
+            cb._failure_count += 1
+            cb._last_failure_time = datetime.now()
+            cb._failure_history.append({
+                "time": datetime.now().isoformat(),
+                "error": f"ext-svc {service_id} request failure",
+                "state": cb._state.value,
+            })
+            if len(cb._failure_history) > 100:
+                cb._failure_history = cb._failure_history[-50:]
+            if cb._state == ModularCircuitBreakerState.HALF_OPEN:
+                cb._state = ModularCircuitBreakerState.OPEN
+                cb._success_count = 0
+            elif cb._failure_count >= cb._config.failure_threshold:
+                if cb._state != ModularCircuitBreakerState.OPEN:
+                    cb._state = ModularCircuitBreakerState.OPEN
+            # Keep backward-compat dict in sync
+            self._circuit_breakers[service_id] = not cb.can_execute_sync()
+        else:
+            # Fallback: use boolean dict
+            service = self._services.get(service_id)
+            if service and service.error_count > 5:
+                self._circuit_breakers[service_id] = True
+
+    def _record_success(self, service_id: str) -> None:
+        """v3A.0: Record a success using canonical breaker or fallback."""
+        cb = self._get_cb(service_id)
+        if cb is not None:
+            cb._failure_count = 0
+            cb._last_success_time = datetime.now()
+            cb._success_count += 1
+            if cb._state == ModularCircuitBreakerState.HALF_OPEN:
+                if cb._success_count >= cb._config.success_threshold:
+                    cb._state = ModularCircuitBreakerState.CLOSED
+                    cb._success_count = 0
+            elif cb._state == ModularCircuitBreakerState.CLOSED:
+                cb._failure_count = 0
+            # Keep backward-compat dict in sync
+            self._circuit_breakers[service_id] = False
 
     async def initialize(self) -> bool:
         """Initialize external service registry."""
@@ -46733,6 +46844,8 @@ class ExternalServiceRegistry:
 
         self._services[service_id] = service
         self._circuit_breakers[service_id] = False
+        # v3A.0: Pre-create canonical circuit breaker for this service
+        self._get_cb(service_id)
 
         self._logger.info(f"Registered external service: {name}")
         return service
@@ -46764,8 +46877,8 @@ class ExternalServiceRegistry:
         if not service:
             return False, "Service not found"
 
-        # Check circuit breaker
-        if self._circuit_breakers.get(service_id, False):
+        # Check circuit breaker (v3A.0: delegates to canonical breaker)
+        if self._is_circuit_open(service_id):
             return False, "Circuit breaker is open"
 
         try:
@@ -46800,15 +46913,18 @@ class ExternalServiceRegistry:
                 "success": True
             })
 
+            # v3A.0: Record success with canonical breaker
+            self._record_success(service_id)
+
             return True, response_data
 
         except Exception as e:
             async with self._lock:
                 service.error_count += 1
 
-                # Check if circuit breaker should open
-                if service.error_count > 5:
-                    self._circuit_breakers[service_id] = True
+                # v3A.0: Record failure with canonical breaker
+                self._record_failure(service_id)
+                if self._is_circuit_open(service_id):
                     self._logger.warning(f"Circuit breaker opened for {service.name}")
 
             self._request_log.append({
@@ -46848,8 +46964,16 @@ class ExternalServiceRegistry:
 
     def reset_circuit_breaker(self, service_id: str) -> bool:
         """Reset a circuit breaker."""
-        if service_id not in self._circuit_breakers:
+        if service_id not in self._circuit_breakers and service_id not in self._canonical_cbs:
             return False
+
+        # v3A.0: Reset canonical breaker if available
+        cb = self._get_cb(service_id)
+        if cb is not None:
+            cb._state = ModularCircuitBreakerState.CLOSED
+            cb._failure_count = 0
+            cb._success_count = 0
+            cb._half_open_request_count = 0
 
         self._circuit_breakers[service_id] = False
         if service_id in self._services:
@@ -46877,7 +47001,7 @@ class ExternalServiceRegistry:
             "request_count": service.request_count,
             "error_count": service.error_count,
             "error_rate": service.error_count / max(1, service.request_count) * 100,
-            "circuit_breaker_open": self._circuit_breakers.get(service_id, False),
+            "circuit_breaker_open": self._is_circuit_open(service_id),
             "last_request": service.last_request.isoformat() if service.last_request else None
         }
 
@@ -60773,7 +60897,30 @@ class JarvisSystemKernel:
         # Initialize startup issue collector for organized error/warning display
         issue_collector = get_startup_issue_collector()
         issue_collector.clear()  # Fresh start
-        
+
+        # v263.0: Initialize Startup State Machine for DAG-driven component tracking
+        _ssm = None
+        try:
+            from backend.core.startup_state_machine import (
+                get_startup_state_machine, CyclicDependencyError,
+            )
+            _ssm = await get_startup_state_machine()
+            _ssm.started_at = datetime.now()
+            _ssm._start_time = time.time()
+            # Validate dependency graph — catch misconfigured dependencies early
+            try:
+                _startup_waves = _ssm.compute_waves()
+                self.logger.info(
+                    f"[Kernel] Startup DAG validated: {len(_startup_waves)} waves, "
+                    f"{len(_ssm.components)} components"
+                )
+            except CyclicDependencyError as _cyc_err:
+                self.logger.error(f"[Kernel] Startup DAG cycle detected: {_cyc_err}")
+            self._startup_state_machine = _ssm
+        except Exception as _ssm_err:
+            self.logger.debug(f"[Kernel] State machine init failed (non-fatal): {_ssm_err}")
+            self._startup_state_machine = None
+
         # v197.1: Initialize live progress dashboard for real-time CLI feedback
         # v197.3: Now supports display modes - set JARVIS_DASHBOARD_MODE=passthrough to see logs
         dashboard = get_live_dashboard(enabled=sys.stdout.isatty())
@@ -60984,7 +61131,9 @@ class JarvisSystemKernel:
         _t0_cs = time.time()
         self._emit_event(SupervisorEventType.PHASE_START, "Phase: Clean Slate", phase="clean_slate", correlation_id=_cid_cs)
 
+        if _ssm: await _ssm.start_component("clean_slate")
         await self._phase_clean_slate()
+        if _ssm: await _ssm.complete_component("clean_slate")
 
         self._emit_event(
             SupervisorEventType.PHASE_END, "Phase: Clean Slate complete",
@@ -61897,7 +62046,9 @@ class JarvisSystemKernel:
             _t0_le = time.time()
             self._emit_event(SupervisorEventType.PHASE_START, "Phase: Loading Experience", phase="loading_experience", correlation_id=_cid_le)
 
+            if _ssm: await _ssm.start_component("loading_experience")
             await self._phase_loading_experience()
+            if _ssm: await _ssm.complete_component("loading_experience")
 
             self._emit_event(
                 SupervisorEventType.PHASE_END, "Phase: Loading Experience complete",
@@ -61963,7 +62114,9 @@ class JarvisSystemKernel:
             _t0_pf = time.time()
             self._emit_event(SupervisorEventType.PHASE_START, "Phase: Preflight", phase="preflight", correlation_id=_cid_pf)
 
+            if _ssm: await _ssm.start_component("preflight")
             if not await self._phase_preflight():
+                if _ssm: await _ssm.complete_component("preflight", error="Preflight failed")
                 issue_collector.add_critical(
                     "Preflight phase failed - cannot continue startup",
                     IssueCategory.GENERAL,
@@ -61971,6 +62124,7 @@ class JarvisSystemKernel:
                 )
                 issue_collector.print_health_report()
                 return 1
+            if _ssm: await _ssm.complete_component("preflight")
 
             self._emit_event(
                 SupervisorEventType.PHASE_END, "Phase: Preflight complete",
@@ -62029,7 +62183,9 @@ class JarvisSystemKernel:
             _t0_rs = time.time()
             self._emit_event(SupervisorEventType.PHASE_START, "Phase: Resources", phase="resources", correlation_id=_cid_rs)
 
+            if _ssm: await _ssm.start_component("resources")
             if not await self._phase_resources():
+                if _ssm: await _ssm.complete_component("resources", error="Resource init failed")
                 issue_collector.add_critical(
                     "Resource initialization failed - cannot continue startup",
                     IssueCategory.GENERAL,
@@ -62039,6 +62195,7 @@ class JarvisSystemKernel:
                     await self._narrator.narrate_error("Resource initialization failed", critical=True)
                 issue_collector.print_health_report()
                 return 1
+            if _ssm: await _ssm.complete_component("resources")
             if self._narrator:
                 await self._narrator.narrate_zone_complete(3, success=True)
 
@@ -62088,7 +62245,9 @@ class JarvisSystemKernel:
             _t0_be = time.time()
             self._emit_event(SupervisorEventType.PHASE_START, "Phase: Backend", phase="backend", correlation_id=_cid_be)
 
+            if _ssm: await _ssm.start_component("backend")
             if not await self._phase_backend():
+                if _ssm: await _ssm.complete_component("backend", error="Backend failed to start")
                 issue_collector.add_critical(
                     "Backend server failed to start",
                     IssueCategory.NETWORK,
@@ -62098,6 +62257,7 @@ class JarvisSystemKernel:
                     await self._narrator.narrate_error("Backend server failed to start", critical=True)
                 issue_collector.print_health_report()
                 return 1
+            if _ssm: await _ssm.complete_component("backend")
 
             self._emit_event(
                 SupervisorEventType.PHASE_END, "Phase: Backend complete",
@@ -62229,6 +62389,7 @@ class JarvisSystemKernel:
             # v260.0: Outer timeout on intelligence phase — previously relied solely
             # on DMS watchdog heartbeats which only fire every 5s. Direct timeout
             # provides clean CancelledError propagation and resource cleanup.
+            if _ssm: await _ssm.start_component("intelligence")
             _intel_ok = False
             try:
                 _intel_ok = await asyncio.wait_for(
@@ -62244,6 +62405,12 @@ class JarvisSystemKernel:
                 raise
             except Exception as _intel_err:
                 self.logger.warning(f"[Kernel] Intelligence phase failed: {_intel_err}")
+
+            if _ssm:
+                if _intel_ok:
+                    await _ssm.complete_component("intelligence")
+                else:
+                    await _ssm.complete_component("intelligence", error="Intelligence failed or timed out")
 
             if not _intel_ok:
                 # Non-fatal - continue without intelligence
@@ -62328,6 +62495,7 @@ class JarvisSystemKernel:
 
             # v256.0: Outer timeout on Two-Tier init — prevents unbounded accumulation
             # of sequential step timeouts (cross-repo 30s + AgenticRunner 60s = 90s min).
+            if _ssm: await _ssm.start_component("two_tier_security")
             _two_tier_init_timeout = _get_env_float("JARVIS_TWO_TIER_INIT_TIMEOUT", 80.0)
             try:
                 _two_tier_ok = await asyncio.wait_for(
@@ -62335,12 +62503,15 @@ class JarvisSystemKernel:
                     timeout=_two_tier_init_timeout,
                 )
                 if not _two_tier_ok:
+                    if _ssm: await _ssm.complete_component("two_tier_security", error="Init returned False")
                     # Non-fatal - continue without Two-Tier Security
                     issue_collector.add_warning(
                         "Two-Tier Security failed - continuing without VBIA/Watchdog",
                         IssueCategory.INTELLIGENCE,
                         suggestion="Check VBIA adapter and watchdog modules"
                     )
+                else:
+                    if _ssm: await _ssm.complete_component("two_tier_security")
             except asyncio.TimeoutError:
                 self.logger.warning(
                     f"[TwoTier] Init timed out ({_two_tier_init_timeout:.0f}s) — "
@@ -62569,7 +62740,9 @@ class JarvisSystemKernel:
                         )
                     except Exception:
                         pass
+                if _ssm: await _ssm.start_component("trinity")
                 await self._phase_trinity()
+                if _ssm: await _ssm.complete_component("trinity")
             else:
                 # v170.0: Explicitly log when Trinity is disabled
                 self.logger.info("[Kernel] ───────────────────────────────────────────────────────")
@@ -62577,6 +62750,7 @@ class JarvisSystemKernel:
                 self.logger.info(f"[Kernel]   Set JARVIS_TRINITY_ENABLED=true or --trinity to enable")
                 self.logger.info("[Kernel]   Trinity connects: JARVIS + J-Prime + Reactor-Core")
                 self.logger.info("[Kernel] ───────────────────────────────────────────────────────")
+                if _ssm: await _ssm.skip_component("trinity", "Disabled via config")
 
             self._emit_event(
                 SupervisorEventType.PHASE_END, "Phase: Trinity complete",
@@ -62652,7 +62826,9 @@ class JarvisSystemKernel:
             _t0_en = time.time()
             self._emit_event(SupervisorEventType.PHASE_START, "Phase: Enterprise Services", phase="enterprise", correlation_id=_cid_en)
 
+            if _ssm: await _ssm.start_component("enterprise_services")
             await self._phase_enterprise_services()
+            if _ssm: await _ssm.complete_component("enterprise_services")
             if self._narrator:
                 await self._narrator.narrate_zone_complete(6, success=True)
 
@@ -62704,13 +62880,17 @@ class JarvisSystemKernel:
                     "ghost_display", 85, operational_timeout=ghost_display_timeout
                 )
 
+            if _ssm: await _ssm.start_component("ghost_display")
             if not await self._initialize_ghost_display():
+                if _ssm: await _ssm.complete_component("ghost_display", error="Init failed")
                 # Non-fatal — continue without Ghost Display
                 issue_collector.add_warning(
                     "Ghost Display failed to initialize — continuing without virtual display",
                     IssueCategory.SYSTEM,
                     suggestion="Check BetterDisplay installation and permissions"
                 )
+            else:
+                if _ssm: await _ssm.complete_component("ghost_display")
 
             await self._broadcast_startup_progress(
                 stage="ghost_display",
@@ -62774,6 +62954,7 @@ class JarvisSystemKernel:
                 self._startup_watchdog.register_phase_timeout("agi_os", _agi_os_dms_timeout)
                 self._startup_watchdog.update_phase("agi_os", 86)
 
+            if _ssm: await _ssm.start_component("agi_os")
             try:
                 _agi_os_ok = await asyncio.wait_for(
                     self._initialize_agi_os(), timeout=_agi_os_outer_timeout
@@ -62803,6 +62984,11 @@ class JarvisSystemKernel:
                 self.logger.error("[Kernel] v262.0: _initialize_agi_os() cancelled")
                 _agi_os_ok = False
                 raise  # Re-raise to let caller handle shutdown
+            if _ssm:
+                if _agi_os_ok:
+                    await _ssm.complete_component("agi_os")
+                else:
+                    await _ssm.complete_component("agi_os", error="Init failed or timed out")
             if not _agi_os_ok:
                 # Non-fatal - continue without AGI OS
                 issue_collector.add_warning(
@@ -62859,6 +63045,7 @@ class JarvisSystemKernel:
                 "JARVIS_VISUAL_PIPELINE_OUTER_TIMEOUT",
                 _vp_inner_timeout + 15.0,
             )
+            if _ssm: await _ssm.start_component("visual_pipeline")
             try:
                 _vp_ok = await asyncio.wait_for(
                     self._initialize_visual_pipeline(), timeout=_vp_outer_timeout
@@ -62877,6 +63064,11 @@ class JarvisSystemKernel:
                 self.logger.error("[Kernel] v262.0: _initialize_visual_pipeline() cancelled")
                 _vp_ok = False
                 raise
+            if _ssm:
+                if _vp_ok:
+                    await _ssm.complete_component("visual_pipeline")
+                else:
+                    await _ssm.complete_component("visual_pipeline", error="Init failed or timed out")
             if not _vp_ok:
                 # Non-fatal — continue without Visual Pipeline
                 issue_collector.add_warning(
@@ -62932,7 +63124,9 @@ class JarvisSystemKernel:
             _t0_fe = time.time()
             self._emit_event(SupervisorEventType.PHASE_START, "Phase: Frontend Transition", phase="frontend", correlation_id=_cid_fe)
 
+            if _ssm: await _ssm.start_component("frontend")
             await self._phase_frontend_transition()
+            if _ssm: await _ssm.complete_component("frontend")
 
             self._emit_event(
                 SupervisorEventType.PHASE_END, "Phase: Frontend Transition complete",
@@ -63000,6 +63194,25 @@ class JarvisSystemKernel:
             # Evaluate readiness using the unified predicate. FULLY_READY is only
             # marked if all critical components are healthy.
             # =====================================================================
+            # v263.0: Transition state machine to final phase
+            if _ssm:
+                from backend.core.startup_state_machine import StartupPhase as _SSMPhase
+                await _ssm._check_phase_completion()
+                _ssm_summary = _ssm.get_component_summary()
+                _ssm_failed = [
+                    n for n, c in _ssm_summary["components"].items()
+                    if c["status"] == "failed" and c["is_critical"]
+                ]
+                if _ssm_failed:
+                    self.logger.warning(
+                        f"[Kernel] DAG: critical failures: {_ssm_failed}"
+                    )
+                else:
+                    self.logger.info(
+                        f"[Kernel] DAG: all critical components ready "
+                        f"(phase={_ssm.phase.value})"
+                    )
+
             readiness_is_fully_ready = True  # Default to True for fallback
             readiness_message = "System ready (predicate evaluation unavailable)"
             blocking_components: List[str] = []
@@ -71558,6 +71771,14 @@ class JarvisSystemKernel:
             "updated_at": datetime.now().isoformat(),
             **extra
         }
+
+        # v263.0: Forward to Startup State Machine for DAG tracking
+        _ssm = getattr(self, '_startup_state_machine', None)
+        if _ssm is not None:
+            _ssm.update_component_sync(
+                component, status,
+                error=message if status in ("error", "failed") else None,
+            )
 
         # v182.0: Update Trinity readiness flags for key components
         if component == "backend" and status == "complete":

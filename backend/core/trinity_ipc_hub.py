@@ -147,6 +147,12 @@ try:
 except ImportError:
     TaskGroup = None  # Fallback for older Python
 
+# Phase 5A: Bounded queue backpressure
+try:
+    from backend.core.bounded_queue import BoundedAsyncQueue, OverflowPolicy
+except ImportError:
+    BoundedAsyncQueue = None
+
 logger = logging.getLogger(__name__)
 
 
@@ -1903,7 +1909,10 @@ class TrinityMessageBus:
     def __init__(self, config: TrinityIPCConfig):
         self.config = config
         self._handlers: Dict[Type, List[Callable]] = defaultdict(list)
-        self._outbound_queue: asyncio.Queue = asyncio.Queue()
+        self._outbound_queue: asyncio.Queue = (
+            BoundedAsyncQueue(maxsize=500, policy=OverflowPolicy.WARN_AND_BLOCK, name="trinity_ipc_outbound")
+            if BoundedAsyncQueue is not None else asyncio.Queue()
+        )
         self._worker_task: Optional[asyncio.Task] = None
         self._socket_path = config.ipc_base_dir / "trinity.sock"
 

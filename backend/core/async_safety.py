@@ -1848,6 +1848,852 @@ async def wait_for_fire_and_forget_tasks(timeout: float = 5.0) -> int:
 
 
 # =============================================================================
+# CancellationToken: Cross-Process Cancellation Propagation (Phase 4A)
+# =============================================================================
+#
+# Enterprise-grade cancellation token system with:
+# - Thread-safe cancellation signaling (threading.Event + asyncio.Event)
+# - Parent-child token hierarchy (cancelling parent cancels all children)
+# - Cross-process propagation via IPC file
+# - Timeout support (auto-cancel after deadline)
+# - Callback registration (notify on cancel)
+# - Context manager support (async with token: / with token:)
+#
+# Usage example:
+#   token = get_root_cancellation_token()
+#   child = create_child_token(token)
+#
+#   # In async code:
+#   async with CancellationScope(token) as scope_token:
+#       while not scope_token.is_cancelled:
+#           await do_work()
+#
+#   # Cross-process:
+#   signal_global_shutdown()  # Writes IPC file + cancels root token
+#   # In other process:
+#   if check_ipc_cancellation():
+#       signal_global_shutdown()  # Propagate locally
+
+import threading as _threading
+
+# Cancellation-specific logger
+_cancel_logger = logging.getLogger(f"{__name__}.CancellationToken")
+
+# Environment-driven configuration for cancellation tokens
+_CANCEL_TOKEN_IPC_PATH: Final[str] = os.getenv(
+    "JARVIS_CANCEL_TOKEN_PATH",
+    os.path.expanduser("~/.jarvis/trinity/cancel_token.json"),
+)
+_CANCEL_TOKEN_IPC_CHECK_INTERVAL: Final[float] = _env_float(
+    "JARVIS_CANCEL_IPC_CHECK_INTERVAL", 1.0
+)
+_CANCEL_TOKEN_IPC_STALE_SECONDS: Final[float] = _env_float(
+    "JARVIS_CANCEL_IPC_STALE_SECONDS", 300.0
+)
+_CANCEL_TOKEN_CALLBACK_TIMEOUT: Final[float] = _env_float(
+    "JARVIS_CANCEL_CALLBACK_TIMEOUT", 5.0
+)
+_CANCEL_TOKEN_MAX_CHILDREN: Final[int] = _env_int(
+    "JARVIS_CANCEL_MAX_CHILDREN", 1000
+)
+
+
+class CancellationToken:
+    """
+    Thread-safe, async-compatible cancellation token with parent-child hierarchy
+    and cross-process IPC propagation.
+
+    Features:
+    - Dual signaling: threading.Event (sync) + asyncio.Event (async)
+    - Parent-child hierarchy: cancelling a parent cascades to all descendants
+    - Deadline/timeout support: auto-cancel after a specified time
+    - Callback registration: notify subscribers on cancellation
+    - IPC propagation: write cancel signal to a JSON file for cross-process use
+    - Context manager: both ``async with`` and ``with`` support
+    - Graceful degradation: IPC failures are logged, never raised
+
+    Thread Safety:
+    - All mutable state protected by ``threading.Lock``
+    - ``asyncio.Event`` lazily created per event loop (via ``LazyAsyncEvent``)
+
+    Usage::
+
+        token = CancellationToken(reason="shutting down")
+
+        # Register callback
+        token.on_cancel(lambda t: print(f"Cancelled: {t.reason}"))
+
+        # Create child
+        child = token.create_child(reason="subtask")
+
+        # Cancel parent -> cascades to child
+        token.cancel(reason="supervisor shutdown")
+
+        assert child.is_cancelled
+    """
+
+    __slots__ = (
+        "__weakref__",
+        "_id",
+        "_sync_event",
+        "_async_event",
+        "_lock",
+        "_parent",
+        "_children",
+        "_callbacks",
+        "_async_callbacks",
+        "_reason",
+        "_cancelled_at",
+        "_source_pid",
+        "_deadline",
+        "_deadline_timer",
+        "_deadline_task",
+        "_ipc_path",
+        "_propagate_ipc",
+    )
+
+    def __init__(
+        self,
+        *,
+        parent: Optional["CancellationToken"] = None,
+        reason: Optional[str] = None,
+        timeout: Optional[float] = None,
+        ipc_path: Optional[str] = None,
+        propagate_ipc: bool = False,
+    ) -> None:
+        """
+        Args:
+            parent: Optional parent token. If the parent is cancelled, this
+                    token will also be cancelled.
+            reason: Human-readable reason (set on cancel, or pre-set here).
+            timeout: Auto-cancel after this many seconds. ``None`` = no timeout.
+            ipc_path: Override the IPC file path for cross-process propagation.
+                      Defaults to ``JARVIS_CANCEL_TOKEN_PATH`` env var.
+            propagate_ipc: If ``True``, cancelling this token writes the IPC file.
+        """
+        self._id: str = uuid.uuid4().hex[:12]
+        self._sync_event = _threading.Event()
+        self._async_event = LazyAsyncEvent()
+        self._lock = _threading.Lock()
+
+        self._parent: Optional["CancellationToken"] = parent
+        self._children: List[weakref.ref] = []
+        self._callbacks: List[Callable[["CancellationToken"], Any]] = []
+        self._async_callbacks: List[Callable[["CancellationToken"], Awaitable[Any]]] = []
+
+        self._reason: Optional[str] = reason
+        self._cancelled_at: Optional[float] = None
+        self._source_pid: Optional[int] = None
+
+        self._deadline: Optional[float] = None
+        self._deadline_timer: Optional[_threading.Timer] = None
+        self._deadline_task: Optional[asyncio.TimerHandle] = None
+
+        self._ipc_path: str = ipc_path or _CANCEL_TOKEN_IPC_PATH
+        self._propagate_ipc: bool = propagate_ipc
+
+        # Register with parent
+        if parent is not None:
+            parent._register_child(self)
+            # If parent already cancelled, immediately cancel self
+            if parent.is_cancelled:
+                self._do_cancel(
+                    reason=parent.reason or "parent already cancelled",
+                    source_pid=parent.source_pid,
+                    _propagate_up=False,
+                )
+
+        # Set deadline if timeout provided
+        if timeout is not None and timeout > 0:
+            self._set_deadline(timeout)
+
+    # ------------------------------------------------------------------
+    # Properties
+    # ------------------------------------------------------------------
+
+    @property
+    def id(self) -> str:
+        """Unique token identifier."""
+        return self._id
+
+    @property
+    def is_cancelled(self) -> bool:
+        """Whether this token has been cancelled."""
+        return self._sync_event.is_set()
+
+    @property
+    def reason(self) -> Optional[str]:
+        """Human-readable cancellation reason, or ``None`` if not cancelled."""
+        with self._lock:
+            return self._reason
+
+    @property
+    def cancelled_at(self) -> Optional[float]:
+        """Timestamp (``time.time()``) when cancelled, or ``None``."""
+        with self._lock:
+            return self._cancelled_at
+
+    @property
+    def source_pid(self) -> Optional[int]:
+        """PID of the process that initiated cancellation."""
+        with self._lock:
+            return self._source_pid
+
+    @property
+    def parent(self) -> Optional["CancellationToken"]:
+        """Parent token, or ``None`` for root tokens."""
+        return self._parent
+
+    @property
+    def children(self) -> List["CancellationToken"]:
+        """Live (non-GC'd) child tokens."""
+        with self._lock:
+            alive: List["CancellationToken"] = []
+            for ref in self._children:
+                child = ref()
+                if child is not None:
+                    alive.append(child)
+            return alive
+
+    # ------------------------------------------------------------------
+    # Core cancellation
+    # ------------------------------------------------------------------
+
+    def cancel(
+        self,
+        reason: Optional[str] = None,
+        source_pid: Optional[int] = None,
+    ) -> None:
+        """
+        Cancel this token, cascading to all children.
+
+        Args:
+            reason: Human-readable reason for the cancellation.
+            source_pid: PID of the originating process (defaults to current).
+
+        This method is idempotent: calling it multiple times is safe.
+        """
+        self._do_cancel(
+            reason=reason,
+            source_pid=source_pid or os.getpid(),
+            _propagate_up=False,
+        )
+
+    def _do_cancel(
+        self,
+        reason: Optional[str],
+        source_pid: Optional[int],
+        _propagate_up: bool = False,
+    ) -> None:
+        """Internal cancel implementation."""
+        with self._lock:
+            if self._sync_event.is_set():
+                return  # Already cancelled
+            self._reason = reason or self._reason or "cancelled"
+            self._cancelled_at = time.time()
+            self._source_pid = source_pid or os.getpid()
+            self._sync_event.set()
+
+            # Cancel deadline timer if active
+            if self._deadline_timer is not None:
+                self._deadline_timer.cancel()
+                self._deadline_timer = None
+            if self._deadline_task is not None:
+                self._deadline_task.cancel()
+                self._deadline_task = None
+
+            # Snapshot children and callbacks under lock
+            children_snapshot = list(self._children)
+            sync_cbs = list(self._callbacks)
+            async_cbs = list(self._async_callbacks)
+
+        # Set async event (thread-safe via LazyAsyncEvent)
+        self._async_event.set()
+
+        _cancel_logger.info(
+            "CancellationToken[%s] cancelled: reason=%r pid=%s",
+            self._id, self._reason, self._source_pid,
+        )
+
+        # Write IPC file if configured
+        if self._propagate_ipc:
+            self._write_ipc_file()
+
+        # Cascade to children
+        for child_ref in children_snapshot:
+            child = child_ref()
+            if child is not None and not child.is_cancelled:
+                child._do_cancel(
+                    reason=f"parent[{self._id}] cancelled: {self._reason}",
+                    source_pid=self._source_pid,
+                    _propagate_up=False,
+                )
+
+        # Fire sync callbacks (best-effort, never raise)
+        for cb in sync_cbs:
+            try:
+                result = cb(self)
+                # If cb returns a coroutine, schedule it
+                if asyncio.iscoroutine(result):
+                    try:
+                        loop = asyncio.get_running_loop()
+                        loop.create_task(result)
+                    except RuntimeError:
+                        # No running loop — close the coroutine to avoid warning
+                        result.close()
+            except Exception as exc:
+                _cancel_logger.warning(
+                    "CancellationToken[%s] sync callback error: %s", self._id, exc
+                )
+
+        # Fire async callbacks (schedule on running loop if available)
+        if async_cbs:
+            try:
+                loop = asyncio.get_running_loop()
+                for acb in async_cbs:
+                    loop.create_task(self._safe_async_callback(acb))
+            except RuntimeError:
+                _cancel_logger.debug(
+                    "CancellationToken[%s] no event loop for %d async callbacks",
+                    self._id, len(async_cbs),
+                )
+
+    async def _safe_async_callback(
+        self,
+        callback: Callable[["CancellationToken"], Awaitable[Any]],
+    ) -> None:
+        """Execute an async callback with timeout and error handling."""
+        try:
+            await asyncio.wait_for(
+                callback(self),
+                timeout=_CANCEL_TOKEN_CALLBACK_TIMEOUT,
+            )
+        except asyncio.TimeoutError:
+            _cancel_logger.warning(
+                "CancellationToken[%s] async callback timed out after %.1fs",
+                self._id, _CANCEL_TOKEN_CALLBACK_TIMEOUT,
+            )
+        except Exception as exc:
+            _cancel_logger.warning(
+                "CancellationToken[%s] async callback error: %s", self._id, exc
+            )
+
+    # ------------------------------------------------------------------
+    # Deadline / timeout
+    # ------------------------------------------------------------------
+
+    def _set_deadline(self, timeout: float) -> None:
+        """Set an auto-cancel deadline."""
+        self._deadline = time.time() + timeout
+
+        # Try to use the asyncio event loop timer (more efficient)
+        try:
+            loop = asyncio.get_running_loop()
+            self._deadline_task = loop.call_later(
+                timeout,
+                self._deadline_expired,
+            )
+        except RuntimeError:
+            # No event loop — fall back to threading.Timer
+            self._deadline_timer = _threading.Timer(timeout, self._deadline_expired)
+            self._deadline_timer.daemon = True
+            self._deadline_timer.start()
+
+    def _deadline_expired(self) -> None:
+        """Called when the deadline timer fires."""
+        if not self.is_cancelled:
+            _cancel_logger.info(
+                "CancellationToken[%s] deadline expired after %.1fs",
+                self._id,
+                (self._deadline - (self._cancelled_at or time.time()))
+                if self._deadline else 0,
+            )
+            self.cancel(reason="deadline expired")
+
+    # ------------------------------------------------------------------
+    # Child management
+    # ------------------------------------------------------------------
+
+    def _register_child(self, child: "CancellationToken") -> None:
+        """Register a child token (weak reference)."""
+        with self._lock:
+            # Prune dead refs periodically
+            if len(self._children) > _CANCEL_TOKEN_MAX_CHILDREN:
+                self._children = [
+                    ref for ref in self._children if ref() is not None
+                ]
+            self._children.append(weakref.ref(child))
+
+    def create_child(
+        self,
+        *,
+        reason: Optional[str] = None,
+        timeout: Optional[float] = None,
+        propagate_ipc: bool = False,
+    ) -> "CancellationToken":
+        """
+        Create a child token linked to this parent.
+
+        The child is automatically cancelled when the parent is cancelled.
+
+        Args:
+            reason: Optional pre-set reason for the child.
+            timeout: Optional auto-cancel timeout for the child.
+            propagate_ipc: Whether cancelling the child writes the IPC file.
+
+        Returns:
+            A new CancellationToken whose parent is ``self``.
+        """
+        return CancellationToken(
+            parent=self,
+            reason=reason,
+            timeout=timeout,
+            ipc_path=self._ipc_path,
+            propagate_ipc=propagate_ipc,
+        )
+
+    # ------------------------------------------------------------------
+    # Callback registration
+    # ------------------------------------------------------------------
+
+    def on_cancel(
+        self,
+        callback: Callable[["CancellationToken"], Any],
+    ) -> None:
+        """
+        Register a synchronous callback invoked on cancellation.
+
+        If the token is already cancelled, the callback fires immediately.
+        Callbacks must not raise; exceptions are logged and swallowed.
+        """
+        with self._lock:
+            if self._sync_event.is_set():
+                # Already cancelled — fire immediately outside the lock
+                pass
+            else:
+                self._callbacks.append(callback)
+                return
+
+        # Fire immediately (token already cancelled)
+        try:
+            result = callback(self)
+            if asyncio.iscoroutine(result):
+                try:
+                    loop = asyncio.get_running_loop()
+                    loop.create_task(result)
+                except RuntimeError:
+                    result.close()
+        except Exception as exc:
+            _cancel_logger.warning(
+                "CancellationToken[%s] immediate sync callback error: %s",
+                self._id, exc,
+            )
+
+    def on_cancel_async(
+        self,
+        callback: Callable[["CancellationToken"], Awaitable[Any]],
+    ) -> None:
+        """
+        Register an async callback invoked on cancellation.
+
+        If the token is already cancelled, the callback is scheduled immediately
+        on the running event loop (if available).
+        """
+        with self._lock:
+            if self._sync_event.is_set():
+                # Already cancelled
+                pass
+            else:
+                self._async_callbacks.append(callback)
+                return
+
+        # Schedule immediately
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(self._safe_async_callback(callback))
+        except RuntimeError:
+            _cancel_logger.debug(
+                "CancellationToken[%s] no event loop for immediate async callback",
+                self._id,
+            )
+
+    # ------------------------------------------------------------------
+    # Async waiting
+    # ------------------------------------------------------------------
+
+    async def wait(self, timeout: Optional[float] = None) -> bool:
+        """
+        Asynchronously wait until this token is cancelled.
+
+        Args:
+            timeout: Maximum seconds to wait. ``None`` = wait forever.
+
+        Returns:
+            ``True`` if the token was cancelled, ``False`` on timeout.
+        """
+        if self._sync_event.is_set():
+            return True
+
+        try:
+            if timeout is not None:
+                await asyncio.wait_for(self._async_event.wait(), timeout=timeout)
+            else:
+                await self._async_event.wait()
+            return True
+        except asyncio.TimeoutError:
+            return False
+
+    def wait_sync(self, timeout: Optional[float] = None) -> bool:
+        """
+        Synchronously wait until this token is cancelled.
+
+        Args:
+            timeout: Maximum seconds to wait. ``None`` = wait forever.
+
+        Returns:
+            ``True`` if the token was cancelled, ``False`` on timeout.
+        """
+        return self._sync_event.wait(timeout=timeout)
+
+    # ------------------------------------------------------------------
+    # IPC file operations
+    # ------------------------------------------------------------------
+
+    def _write_ipc_file(self) -> None:
+        """Write cancellation state to IPC file (best-effort)."""
+        try:
+            ipc_dir = os.path.dirname(self._ipc_path)
+            if ipc_dir:
+                os.makedirs(ipc_dir, exist_ok=True)
+
+            payload = {
+                "cancelled": True,
+                "timestamp": self._cancelled_at or time.time(),
+                "reason": self._reason or "cancelled",
+                "source_pid": self._source_pid or os.getpid(),
+                "token_id": self._id,
+            }
+
+            # Atomic write: write to temp file then rename
+            tmp_path = self._ipc_path + f".tmp.{os.getpid()}"
+            with open(tmp_path, "w") as f:
+                json.dump(payload, f)
+            os.replace(tmp_path, self._ipc_path)
+
+            _cancel_logger.debug(
+                "CancellationToken[%s] wrote IPC file: %s", self._id, self._ipc_path
+            )
+        except Exception as exc:
+            _cancel_logger.warning(
+                "CancellationToken[%s] failed to write IPC file %s: %s",
+                self._id, self._ipc_path, exc,
+            )
+
+    # ------------------------------------------------------------------
+    # Context manager support
+    # ------------------------------------------------------------------
+
+    async def __aenter__(self) -> "CancellationToken":
+        """Async context manager entry. Returns self."""
+        return self
+
+    async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+        """Async context manager exit. Cancels the token if not already cancelled."""
+        if not self.is_cancelled:
+            self.cancel(reason="scope exited")
+
+    def __enter__(self) -> "CancellationToken":
+        """Sync context manager entry. Returns self."""
+        return self
+
+    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+        """Sync context manager exit. Cancels the token if not already cancelled."""
+        if not self.is_cancelled:
+            self.cancel(reason="scope exited")
+
+    # ------------------------------------------------------------------
+    # Introspection
+    # ------------------------------------------------------------------
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Serialize token state for diagnostics."""
+        with self._lock:
+            return {
+                "id": self._id,
+                "cancelled": self.is_cancelled,
+                "reason": self._reason,
+                "cancelled_at": self._cancelled_at,
+                "source_pid": self._source_pid,
+                "parent_id": self._parent._id if self._parent else None,
+                "children_count": len([r for r in self._children if r() is not None]),
+                "callbacks_count": len(self._callbacks) + len(self._async_callbacks),
+                "deadline": self._deadline,
+                "propagate_ipc": self._propagate_ipc,
+            }
+
+    def __repr__(self) -> str:
+        state = "CANCELLED" if self.is_cancelled else "ACTIVE"
+        return (
+            f"<CancellationToken id={self._id} state={state} "
+            f"reason={self._reason!r}>"
+        )
+
+    # ------------------------------------------------------------------
+    # Cleanup
+    # ------------------------------------------------------------------
+
+    def __del__(self) -> None:
+        """Clean up timers on garbage collection."""
+        if self._deadline_timer is not None:
+            try:
+                self._deadline_timer.cancel()
+            except Exception:
+                pass
+
+
+class CancellationScope:
+    """
+    Context manager that creates a child ``CancellationToken`` from a parent
+    and automatically cancels the child when the scope exits.
+
+    Supports both sync and async usage::
+
+        # Async
+        async with CancellationScope(parent_token) as child_token:
+            while not child_token.is_cancelled:
+                await do_work()
+
+        # Sync
+        with CancellationScope(parent_token) as child_token:
+            while not child_token.is_cancelled:
+                do_work()
+
+    The child is created on entry and cancelled on exit (unless already cancelled).
+    If no parent is provided, the global root token is used.
+    """
+
+    __slots__ = ("_parent", "_child", "_reason", "_timeout", "_propagate_ipc")
+
+    def __init__(
+        self,
+        parent: Optional[CancellationToken] = None,
+        *,
+        reason: Optional[str] = None,
+        timeout: Optional[float] = None,
+        propagate_ipc: bool = False,
+    ) -> None:
+        """
+        Args:
+            parent: Parent token. Defaults to the global root token.
+            reason: Optional reason pre-set on the child.
+            timeout: Optional auto-cancel timeout for the child scope.
+            propagate_ipc: Whether cancelling the child writes the IPC file.
+        """
+        self._parent = parent
+        self._child: Optional[CancellationToken] = None
+        self._reason = reason
+        self._timeout = timeout
+        self._propagate_ipc = propagate_ipc
+
+    def _create_child(self) -> CancellationToken:
+        """Create the child token from the parent (or global root)."""
+        parent = self._parent or get_root_cancellation_token()
+        self._child = parent.create_child(
+            reason=self._reason,
+            timeout=self._timeout,
+            propagate_ipc=self._propagate_ipc,
+        )
+        return self._child
+
+    # Async context manager
+    async def __aenter__(self) -> CancellationToken:
+        return self._create_child()
+
+    async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+        if self._child is not None and not self._child.is_cancelled:
+            self._child.cancel(reason=self._reason or "scope exited")
+
+    # Sync context manager
+    def __enter__(self) -> CancellationToken:
+        return self._create_child()
+
+    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+        if self._child is not None and not self._child.is_cancelled:
+            self._child.cancel(reason=self._reason or "scope exited")
+
+
+# =============================================================================
+# Module-Level CancellationToken Singletons & Helpers
+# =============================================================================
+
+_root_cancellation_token: Optional[CancellationToken] = None
+_root_cancellation_token_lock = _threading.Lock()
+
+
+def get_root_cancellation_token() -> CancellationToken:
+    """
+    Get the global root cancellation token (singleton).
+
+    The root token is the top of the hierarchy. Cancelling it cascades to
+    every child token in the process. It also writes the IPC file so that
+    sibling processes can detect the shutdown.
+
+    Returns:
+        The singleton root ``CancellationToken``.
+    """
+    global _root_cancellation_token
+
+    if _root_cancellation_token is not None:
+        return _root_cancellation_token
+
+    with _root_cancellation_token_lock:
+        # Double-checked locking
+        if _root_cancellation_token is None:
+            _root_cancellation_token = CancellationToken(
+                reason=None,
+                propagate_ipc=True,
+            )
+            _cancel_logger.debug(
+                "Root CancellationToken created: id=%s", _root_cancellation_token.id
+            )
+
+    return _root_cancellation_token
+
+
+def create_child_token(
+    parent: Optional[CancellationToken] = None,
+    *,
+    reason: Optional[str] = None,
+    timeout: Optional[float] = None,
+) -> CancellationToken:
+    """
+    Create a child cancellation token.
+
+    If ``parent`` is ``None``, the child is created under the global root token.
+
+    Args:
+        parent: Parent token (defaults to root).
+        reason: Optional pre-set reason.
+        timeout: Optional auto-cancel timeout in seconds.
+
+    Returns:
+        A new ``CancellationToken`` linked to the parent hierarchy.
+    """
+    effective_parent = parent or get_root_cancellation_token()
+    return effective_parent.create_child(reason=reason, timeout=timeout)
+
+
+def signal_global_shutdown(reason: Optional[str] = None) -> None:
+    """
+    Signal global shutdown across all tokens and processes.
+
+    This:
+    1. Cancels the root token (cascading to all children).
+    2. Writes the IPC cancellation file so sibling processes can detect shutdown.
+    3. Also sets the legacy ``_shutdown_event`` for backward compatibility.
+
+    Args:
+        reason: Human-readable reason for the shutdown.
+    """
+    root = get_root_cancellation_token()
+    root.cancel(reason=reason or "global shutdown signalled")
+
+    # Backward compatibility: also set the legacy shutdown event
+    _shutdown_event.set()
+
+    _cancel_logger.info(
+        "Global shutdown signalled: reason=%r pid=%d",
+        reason, os.getpid(),
+    )
+
+
+def check_ipc_cancellation() -> bool:
+    """
+    Check whether another process has signalled cancellation via the IPC file.
+
+    Reads the IPC cancel file at the configured path. Returns ``True`` if
+    the file exists, contains ``"cancelled": true``, and is not stale
+    (i.e., written within ``JARVIS_CANCEL_IPC_STALE_SECONDS``).
+
+    This function never raises; on any I/O error it returns ``False``.
+
+    Returns:
+        ``True`` if a valid, non-stale cancellation signal was found.
+    """
+    try:
+        ipc_path = _CANCEL_TOKEN_IPC_PATH
+
+        if not os.path.exists(ipc_path):
+            return False
+
+        with open(ipc_path, "r") as f:
+            data = json.load(f)
+
+        if not isinstance(data, dict):
+            return False
+
+        if not data.get("cancelled", False):
+            return False
+
+        # Check staleness
+        ts = data.get("timestamp")
+        if ts is not None:
+            age = time.time() - float(ts)
+            if age > _CANCEL_TOKEN_IPC_STALE_SECONDS:
+                _cancel_logger.debug(
+                    "IPC cancel file is stale (%.1fs old, limit %.1fs)",
+                    age, _CANCEL_TOKEN_IPC_STALE_SECONDS,
+                )
+                return False
+
+        source_pid = data.get("source_pid")
+        reason = data.get("reason", "unknown")
+        _cancel_logger.info(
+            "IPC cancellation detected: reason=%r source_pid=%s",
+            reason, source_pid,
+        )
+        return True
+
+    except (json.JSONDecodeError, OSError, ValueError, TypeError) as exc:
+        _cancel_logger.debug("Failed to read IPC cancel file: %s", exc)
+        return False
+
+
+def clear_ipc_cancellation() -> bool:
+    """
+    Remove the IPC cancellation file, if present.
+
+    Useful during startup to clear stale shutdown signals from a previous run.
+
+    Returns:
+        ``True`` if a file was removed, ``False`` otherwise.
+    """
+    try:
+        ipc_path = _CANCEL_TOKEN_IPC_PATH
+        if os.path.exists(ipc_path):
+            os.remove(ipc_path)
+            _cancel_logger.debug("Cleared IPC cancel file: %s", ipc_path)
+            return True
+        return False
+    except OSError as exc:
+        _cancel_logger.warning("Failed to clear IPC cancel file: %s", exc)
+        return False
+
+
+def reset_root_cancellation_token() -> None:
+    """
+    Reset the global root cancellation token.
+
+    This is primarily for testing or re-initialization scenarios.
+    Creates a fresh root token, discarding the old one.
+    """
+    global _root_cancellation_token
+    with _root_cancellation_token_lock:
+        _root_cancellation_token = None
+    _cancel_logger.debug("Root CancellationToken reset")
+
+
+# =============================================================================
 # Exports
 # =============================================================================
 
@@ -1909,4 +2755,14 @@ __all__ = [
     "get_global_backpressure",
     "get_shutdown_event",
     "signal_shutdown",
+
+    # Phase 4A: CancellationToken
+    "CancellationToken",
+    "CancellationScope",
+    "get_root_cancellation_token",
+    "create_child_token",
+    "signal_global_shutdown",
+    "check_ipc_cancellation",
+    "clear_ipc_cancellation",
+    "reset_root_cancellation_token",
 ]

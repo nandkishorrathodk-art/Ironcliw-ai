@@ -12,6 +12,12 @@ from typing import Optional, Dict, Any, Callable
 from datetime import datetime
 import json
 
+# Phase 5A: Bounded queue backpressure
+try:
+    from backend.core.bounded_queue import BoundedAsyncQueue, OverflowPolicy
+except ImportError:
+    BoundedAsyncQueue = None
+
 logger = logging.getLogger(__name__)
 
 class VoiceIntegrationHandler:
@@ -25,7 +31,10 @@ class VoiceIntegrationHandler:
             jarvis_api: JARVIS voice API instance for TTS
         """
         self.jarvis_api = jarvis_api
-        self.voice_queue = asyncio.Queue()
+        self.voice_queue = (
+            BoundedAsyncQueue(maxsize=50, policy=OverflowPolicy.DROP_OLDEST, name="vision_voice")
+            if BoundedAsyncQueue is not None else asyncio.Queue()
+        )
         self._voice_task = None
         self._is_active = False
         

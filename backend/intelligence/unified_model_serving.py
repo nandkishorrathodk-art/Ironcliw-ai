@@ -75,6 +75,26 @@ from typing import (
 
 from backend.core.async_safety import LazyAsyncLock
 
+# v3A.0: Canonical circuit breaker from kernel
+try:
+    from backend.kernel.circuit_breaker import (
+        get_circuit_breaker as _get_canonical_cb,
+        CircuitBreakerConfig as _CBConfig,
+        CircuitBreakerState as _CanonicalCBState,
+    )
+    _CANONICAL_CB_AVAILABLE = True
+except ImportError:
+    _CANONICAL_CB_AVAILABLE = False
+    _get_canonical_cb = None
+    _CBConfig = None
+    _CanonicalCBState = None
+
+# Phase 5A: Bounded queue backpressure
+try:
+    from backend.core.bounded_queue import BoundedAsyncQueue, OverflowPolicy
+except ImportError:
+    BoundedAsyncQueue = None
+
 # Environment-driven configuration
 MODEL_SERVING_DATA_DIR = Path(os.getenv(
     "MODEL_SERVING_DATA_DIR",
@@ -853,7 +873,10 @@ class PrimeLocalClient(ModelClient):
 
         prompt = self._build_prompt(request.messages, request.system_prompt)
         loop = asyncio.get_event_loop()
-        queue: asyncio.Queue = asyncio.Queue()
+        queue: asyncio.Queue = (
+            BoundedAsyncQueue(maxsize=500, policy=OverflowPolicy.BLOCK, name="llm_stream_bridge")
+            if BoundedAsyncQueue is not None else asyncio.Queue()
+        )
         _sentinel = object()
         _cancel = threading.Event()  # v239.0: cancellation signal
         fut = None
@@ -1517,7 +1540,20 @@ class ClaudeClient(ModelClient):
 
 
 class CircuitBreaker:
-    """Circuit breaker for model clients."""
+    """
+    Circuit breaker for model clients.
+
+    v3A.0: Delegates to the canonical CircuitBreakerRegistry from
+    backend.kernel.circuit_breaker when available. Falls back to inline
+    implementation otherwise. Preserves the same synchronous per-provider
+    interface used by UnifiedModelServing and module-level helper functions.
+
+    Backward compatibility:
+    - self._states dict is maintained for external code that reads it
+      (e.g. get_stats() serializes _states)
+    - self.failure_threshold and self.recovery_seconds remain mutable
+      for runtime config updates
+    """
 
     def __init__(
         self,
@@ -1528,14 +1564,56 @@ class CircuitBreaker:
         self.recovery_seconds = recovery_seconds
         self.logger = logging.getLogger("CircuitBreaker")
 
+        # Backward-compat: keep _states dict for external code that reads it
         self._states: Dict[str, CircuitBreakerState] = {}
         # v240.0: Thread-safe lock for all state mutations.
         # Prevents race conditions between concurrent async tasks that
         # interleave at await points between can_execute() and record_failure().
         self._lock = threading.Lock()
 
+        # v3A.0: Whether to use canonical circuit breakers
+        self._use_canonical = _CANONICAL_CB_AVAILABLE
+
+    def _get_cb(self, provider: str):
+        """v3A.0: Get or create canonical CircuitBreaker for this provider."""
+        if not self._use_canonical:
+            return None
+        cb_name = f"model-serving-{provider}"
+        return _get_canonical_cb(
+            cb_name,
+            _CBConfig(
+                failure_threshold=self.failure_threshold,
+                recovery_timeout_seconds=self.recovery_seconds,
+            ),
+        )
+
+    def _sync_state_from_canonical(self, provider: str, cb) -> None:
+        """v3A.0: Sync backward-compat _states dict from canonical breaker."""
+        # Map canonical state to local CircuitState enum
+        state_map = {
+            "closed": CircuitState.CLOSED,
+            "open": CircuitState.OPEN,
+            "half_open": CircuitState.HALF_OPEN,
+        }
+        if provider not in self._states:
+            self._states[provider] = CircuitBreakerState()
+        local = self._states[provider]
+        local.state = state_map.get(cb.state.value, CircuitState.CLOSED)
+        local.failure_count = cb._failure_count
+        local.last_failure_time = (
+            cb._last_failure_time.timestamp() if cb._last_failure_time else 0.0
+        )
+        local.last_success_time = (
+            cb._last_success_time.timestamp() if cb._last_success_time else time.time()
+        )
+
     def get_state(self, provider: str) -> CircuitBreakerState:
         """Get circuit state for a provider."""
+        cb = self._get_cb(provider)
+        if cb is not None:
+            self._sync_state_from_canonical(provider, cb)
+            return self._states[provider]
+
         with self._lock:
             if provider not in self._states:
                 self._states[provider] = CircuitBreakerState()
@@ -1543,6 +1621,15 @@ class CircuitBreaker:
 
     def can_execute(self, provider: str) -> bool:
         """Check if requests can be made to this provider."""
+        cb = self._get_cb(provider)
+        if cb is not None:
+            allowed = cb.can_execute_sync()
+            self._sync_state_from_canonical(provider, cb)
+            if not allowed:
+                self.logger.debug(f"Circuit for {provider} is open (canonical)")
+            return allowed
+
+        # Fallback: inline implementation
         with self._lock:
             state = self._states.get(provider)
             if state is None:
@@ -1565,6 +1652,30 @@ class CircuitBreaker:
 
     def record_success(self, provider: str) -> None:
         """Record a successful request."""
+        cb = self._get_cb(provider)
+        if cb is not None:
+            # Sync-safe direct state mutation for the canonical breaker.
+            # We use self._lock (threading.Lock) because the canonical breaker's
+            # _state_lock is asyncio.Lock and cannot be acquired synchronously.
+            # CPython's GIL makes individual attribute writes atomic, so this
+            # threading lock provides the same mutual exclusion as the original code.
+            from datetime import datetime as _dt
+            with self._lock:
+                cb._success_count += 1
+                cb._last_success_time = _dt.now()
+                cb._failure_count = 0
+                if cb._state == _CanonicalCBState.HALF_OPEN:
+                    if cb._success_count >= cb._config.success_threshold:
+                        cb._state = _CanonicalCBState.CLOSED
+                        cb._failure_count = 0
+                        cb._success_count = 0
+                        self.logger.info(f"Circuit for {provider} closed (recovered)")
+                elif cb._state == _CanonicalCBState.CLOSED:
+                    cb._failure_count = 0
+            self._sync_state_from_canonical(provider, cb)
+            return
+
+        # Fallback: inline implementation
         with self._lock:
             state = self._states.get(provider)
             if state is None:
@@ -1580,6 +1691,33 @@ class CircuitBreaker:
 
     def record_failure(self, provider: str) -> None:
         """Record a failed request."""
+        cb = self._get_cb(provider)
+        if cb is not None:
+            # Sync-safe direct state mutation (see record_success for rationale)
+            from datetime import datetime as _dt
+            with self._lock:
+                cb._failure_count += 1
+                cb._last_failure_time = _dt.now()
+                # Record in history
+                cb._failure_history.append({
+                    "time": _dt.now().isoformat(),
+                    "error": f"model-serving {provider} failure",
+                    "state": cb._state.value,
+                })
+                if len(cb._failure_history) > 100:
+                    cb._failure_history = cb._failure_history[-50:]
+                if cb._state == _CanonicalCBState.HALF_OPEN:
+                    cb._state = _CanonicalCBState.OPEN
+                    cb._success_count = 0
+                    self.logger.warning(f"Circuit for {provider} opened (too many failures)")
+                elif cb._failure_count >= cb._config.failure_threshold:
+                    if cb._state != _CanonicalCBState.OPEN:
+                        cb._state = _CanonicalCBState.OPEN
+                        self.logger.warning(f"Circuit for {provider} opened (too many failures)")
+            self._sync_state_from_canonical(provider, cb)
+            return
+
+        # Fallback: inline implementation
         with self._lock:
             state = self._states.get(provider)
             if state is None:

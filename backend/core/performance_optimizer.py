@@ -77,6 +77,12 @@ from typing import (
     Union,
 )
 
+# Phase 5A: Bounded queue backpressure
+try:
+    from backend.core.bounded_queue import BoundedAsyncQueue, OverflowPolicy
+except ImportError:
+    BoundedAsyncQueue = None
+
 logger = logging.getLogger("jarvis.performance")
 
 T = TypeVar("T")
@@ -529,7 +535,10 @@ class AdaptiveConnectionPool:
         self.factory = factory
         self.config = config or get_config()
 
-        self._pool: asyncio.Queue = asyncio.Queue()
+        self._pool: asyncio.Queue = (
+            BoundedAsyncQueue(maxsize=100, policy=OverflowPolicy.BLOCK, name=f"conn_pool_{name}")
+            if BoundedAsyncQueue is not None else asyncio.Queue()
+        )
         self._size = 0
         self._in_use = 0
         self._waiting = 0

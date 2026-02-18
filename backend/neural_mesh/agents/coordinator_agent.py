@@ -31,6 +31,12 @@ from ..data_models import (
     MessageType,
 )
 
+# Phase 5A: Bounded queue backpressure
+try:
+    from backend.core.bounded_queue import BoundedAsyncQueue, OverflowPolicy
+except ImportError:
+    BoundedAsyncQueue = None
+
 logger = logging.getLogger(__name__)
 
 
@@ -63,7 +69,10 @@ class CoordinatorAgent(BaseNeuralMeshAgent):
             version="1.0.0",
         )
 
-        self._task_queue: asyncio.Queue = asyncio.Queue()
+        self._task_queue: asyncio.Queue = (
+            BoundedAsyncQueue(maxsize=100, policy=OverflowPolicy.BLOCK, name="coordinator_tasks")
+            if BoundedAsyncQueue is not None else asyncio.Queue()
+        )
         self._pending_tasks: Dict[str, Dict[str, Any]] = {}
         self._task_history: List[Dict[str, Any]] = []
         self._agent_load: Dict[str, float] = defaultdict(float)

@@ -78,6 +78,12 @@ try:
 except ImportError:
     JWT_AVAILABLE = False
 
+# Phase 5A: Bounded queue backpressure
+try:
+    from backend.core.bounded_queue import BoundedAsyncQueue, OverflowPolicy
+except ImportError:
+    BoundedAsyncQueue = None
+
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
@@ -1153,7 +1159,10 @@ class AuditLogger:
         self._entries: List[AuditEntry] = []
         self._last_hash: str = ""
         self._lock = asyncio.Lock()
-        self._write_queue: asyncio.Queue = asyncio.Queue()
+        self._write_queue: asyncio.Queue = (
+            BoundedAsyncQueue(maxsize=5000, policy=OverflowPolicy.DROP_OLDEST, name="audit_write")
+            if BoundedAsyncQueue is not None else asyncio.Queue()
+        )
         self._running = False
         self._writer_task: Optional[asyncio.Task] = None
 

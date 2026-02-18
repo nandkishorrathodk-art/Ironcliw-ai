@@ -60,6 +60,12 @@ except ImportError:
 
 from pydantic import BaseModel, Field
 
+# Phase 5A: Bounded queue backpressure
+try:
+    from backend.core.bounded_queue import BoundedAsyncQueue, OverflowPolicy
+except ImportError:
+    BoundedAsyncQueue = None
+
 logger = logging.getLogger(__name__)
 
 
@@ -187,7 +193,10 @@ class VoiceNarrator:
         self.tts_callback = tts_callback
         self.style = style
         self.enabled = enabled
-        self._message_queue: asyncio.Queue[NarrationMessage] = asyncio.Queue()
+        self._message_queue: asyncio.Queue[NarrationMessage] = (
+            BoundedAsyncQueue(maxsize=200, policy=OverflowPolicy.DROP_OLDEST, name="narration_messages")
+            if BoundedAsyncQueue is not None else asyncio.Queue()
+        )
         self._narration_history: List[NarrationMessage] = []
         self._is_speaking = False
         self._suppress_similar_threshold = 3.0  # seconds

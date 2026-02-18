@@ -25,6 +25,12 @@ from typing import Any, Dict, List, Optional
 import torch
 import yaml
 
+# Phase 5A: Bounded queue backpressure
+try:
+    from backend.core.bounded_queue import BoundedAsyncQueue, OverflowPolicy
+except ImportError:
+    BoundedAsyncQueue = None
+
 logger = logging.getLogger(__name__)
 
 
@@ -106,7 +112,10 @@ class LocalLLMInference:
         self.health = ModelHealth()
 
         # Request queue for batching
-        self.request_queue: asyncio.Queue = asyncio.Queue()
+        self.request_queue: asyncio.Queue = (
+            BoundedAsyncQueue(maxsize=100, policy=OverflowPolicy.BLOCK, name="llm_inference_requests")
+            if BoundedAsyncQueue is not None else asyncio.Queue()
+        )
         self.response_futures: Dict[str, asyncio.Future] = {}
 
         # Cache for responses

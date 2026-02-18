@@ -446,6 +446,13 @@ class VoiceBiometricCache:
             f"TTL={embedding_ttl}s, similarity_threshold={similarity_threshold}"
         )
 
+        # v263.0: Auto-register with cache registry for unified monitoring
+        try:
+            from backend.utils.cache_registry import get_cache_registry
+            get_cache_registry().register("voice_biometric", self)
+        except Exception:
+            pass  # Non-fatal
+
     def set_voice_sample_recorder(self, recorder: VoiceSampleRecorderCallback):
         """
         Set the database recorder callback for continuous voice learning.

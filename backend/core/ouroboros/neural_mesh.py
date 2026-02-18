@@ -72,6 +72,12 @@ try:
 except ImportError:
     aiohttp = None
 
+# Phase 5A: Bounded queue backpressure
+try:
+    from backend.core.bounded_queue import BoundedAsyncQueue, OverflowPolicy
+except ImportError:
+    BoundedAsyncQueue = None
+
 logger = logging.getLogger("Ouroboros.NeuralMesh")
 
 
@@ -294,7 +300,10 @@ class WebSocketConnection(MeshConnection):
         self.url = url
         self._session: Optional[aiohttp.ClientSession] = None
         self._ws: Optional[aiohttp.ClientWebSocketResponse] = None
-        self._receive_queue: asyncio.Queue = asyncio.Queue()
+        self._receive_queue: asyncio.Queue = (
+            BoundedAsyncQueue(maxsize=500, policy=OverflowPolicy.DROP_OLDEST, name="ws_mesh_recv")
+            if BoundedAsyncQueue is not None else asyncio.Queue()
+        )
 
     async def connect(self) -> bool:
         if not aiohttp:
@@ -462,7 +471,10 @@ class FileConnection(MeshConnection):
         self.outbox = event_dir / "outbox"
         self.inbox = event_dir / "inbox"
         self._watcher_task: Optional[asyncio.Task] = None
-        self._receive_queue: asyncio.Queue = asyncio.Queue()
+        self._receive_queue: asyncio.Queue = (
+            BoundedAsyncQueue(maxsize=500, policy=OverflowPolicy.DROP_OLDEST, name="file_mesh_recv")
+            if BoundedAsyncQueue is not None else asyncio.Queue()
+        )
 
     async def connect(self) -> bool:
         try:

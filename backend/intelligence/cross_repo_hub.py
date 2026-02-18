@@ -41,6 +41,12 @@ from uuid import uuid4
 
 from backend.utils.env_config import get_env_str, get_env_int, get_env_float, get_env_bool
 
+# Phase 5A: Bounded queue backpressure
+try:
+    from backend.core.bounded_queue import BoundedAsyncQueue, OverflowPolicy
+except ImportError:
+    BoundedAsyncQueue = None
+
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
@@ -1170,7 +1176,10 @@ class CrossRepoIntelligenceHub:
 
         # Event handling
         self._event_handlers: Dict[EventType, List[Callable]] = {}
-        self._event_queue: asyncio.Queue = asyncio.Queue()
+        self._event_queue: asyncio.Queue = (
+            BoundedAsyncQueue(maxsize=1000, policy=OverflowPolicy.DROP_OLDEST, name="cross_repo_events")
+            if BoundedAsyncQueue is not None else asyncio.Queue()
+        )
 
         # Task processing
         self._task_queue: asyncio.PriorityQueue = asyncio.PriorityQueue()

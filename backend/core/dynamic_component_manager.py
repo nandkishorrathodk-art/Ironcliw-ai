@@ -33,6 +33,12 @@ from pathlib import Path
 import importlib
 import sys
 
+# Phase 5A: Bounded queue backpressure
+try:
+    from backend.core.bounded_queue import BoundedAsyncQueue, OverflowPolicy
+except ImportError:
+    BoundedAsyncQueue = None
+
 logger = logging.getLogger(__name__)
 
 # Import advanced preloader components
@@ -1208,8 +1214,14 @@ class DynamicComponentManager:
 
         # State tracking
         self.currently_loading: Set[str] = set()
-        self.load_queue: asyncio.Queue = asyncio.Queue()
-        self.unload_queue: asyncio.Queue = asyncio.Queue()
+        self.load_queue: asyncio.Queue = (
+            BoundedAsyncQueue(maxsize=50, policy=OverflowPolicy.BLOCK, name="component_load")
+            if BoundedAsyncQueue is not None else asyncio.Queue()
+        )
+        self.unload_queue: asyncio.Queue = (
+            BoundedAsyncQueue(maxsize=50, policy=OverflowPolicy.BLOCK, name="component_unload")
+            if BoundedAsyncQueue is not None else asyncio.Queue()
+        )
 
         # Advanced async preloading queues
         self.immediate_preload_queue: asyncio.Queue = asyncio.Queue(maxsize=10)  # High priority

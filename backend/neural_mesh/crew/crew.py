@@ -60,6 +60,12 @@ from .processes import (
 from .memory import CrewMemory
 from .delegation import TaskDelegationManager, DelegationDecision
 
+# Phase 5A: Bounded queue backpressure
+try:
+    from backend.core.bounded_queue import BoundedAsyncQueue, OverflowPolicy
+except ImportError:
+    BoundedAsyncQueue = None
+
 logger = logging.getLogger(__name__)
 
 
@@ -113,7 +119,10 @@ class Crew:
 
         # Event system (initialize first since other components may emit events)
         self._event_handlers: Dict[str, List[Callable]] = defaultdict(list)
-        self._event_queue: asyncio.Queue = asyncio.Queue()
+        self._event_queue: asyncio.Queue = (
+            BoundedAsyncQueue(maxsize=500, policy=OverflowPolicy.DROP_OLDEST, name="crew_events")
+            if BoundedAsyncQueue is not None else asyncio.Queue()
+        )
         self._event_history: List[CrewEvent] = []
 
         # Task tracking

@@ -143,6 +143,13 @@ class SpaceScreenshotCache:
         # Background tasks
         self.predictive_cache_task = None
         self._load_patterns()
+
+        # v263.0: Auto-register with cache registry for unified monitoring
+        try:
+            from backend.utils.cache_registry import get_cache_registry
+            get_cache_registry().register("space_screenshot", self)
+        except Exception:
+            pass  # Non-fatal
         
     def _load_patterns(self):
         """Load saved usage patterns"""
@@ -170,6 +177,19 @@ class SpaceScreenshotCache:
         except Exception as e:
             logger.error(f"Failed to save usage patterns: {e}")
             
+    def get_stats(self) -> Dict[str, Any]:
+        """Get cache statistics for unified monitoring."""
+        total = self.cache_hits + self.cache_misses
+        return {
+            "entries": len(self.cache),
+            "max_cache_size_mb": self.max_cache_size_mb,
+            "cache_hits": self.cache_hits,
+            "cache_misses": self.cache_misses,
+            "hit_rate": self.cache_hits / total if total > 0 else 0.0,
+            "spaces_tracked": len(self.usage_patterns),
+            "switch_history_len": len(self.switch_history),
+        }
+
     async def start_predictive_caching(self):
         """Start background task for predictive caching"""
         if self.predictive_cache_task is None:

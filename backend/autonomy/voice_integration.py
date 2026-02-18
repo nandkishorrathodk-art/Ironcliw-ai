@@ -54,6 +54,12 @@ from autonomy.contextual_understanding import ContextualUnderstandingEngine, Emo
 # Vision system imports
 from vision.enhanced_monitoring import EnhancedWorkspaceMonitor
 
+# Phase 5A: Bounded queue backpressure
+try:
+    from backend.core.bounded_queue import BoundedAsyncQueue, OverflowPolicy
+except ImportError:
+    BoundedAsyncQueue = None
+
 logger = logging.getLogger(__name__)
 
 class VoiceInteractionType(Enum):
@@ -223,7 +229,10 @@ class VoiceAnnouncementSystem:
         self.use_intelligent_selection = use_intelligent_selection
         
         # Announcement queue and management
-        self.announcement_queue = asyncio.Queue()
+        self.announcement_queue = (
+            BoundedAsyncQueue(maxsize=200, policy=OverflowPolicy.DROP_OLDEST, name="voice_announcements")
+            if BoundedAsyncQueue is not None else asyncio.Queue()
+        )
         self.pending_announcements = deque(maxlen=100)
         self.announcement_history = deque(maxlen=1000)
         
@@ -723,7 +732,10 @@ class NaturalVoiceCommunication:
         self.approval_timeout = 30  # seconds
         
         # Voice command processing
-        self.command_queue = asyncio.Queue()
+        self.command_queue = (
+            BoundedAsyncQueue(maxsize=100, policy=OverflowPolicy.BLOCK, name="voice_commands")
+            if BoundedAsyncQueue is not None else asyncio.Queue()
+        )
         self.is_processing = False
         
     async def start_voice_communication(self) -> None:

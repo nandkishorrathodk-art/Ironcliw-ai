@@ -55,6 +55,12 @@ except ImportError:
         return False
     COMPONENT_MEMORY_ESTIMATES = {}
 
+# Phase 5A: Bounded queue backpressure
+try:
+    from backend.core.bounded_queue import BoundedAsyncQueue, OverflowPolicy
+except ImportError:
+    BoundedAsyncQueue = None
+
 logger = logging.getLogger(__name__)
 
 # =============================================================================
@@ -143,7 +149,10 @@ class SmartStartupManager:
         # Model loading state
         self.loaded_models: Dict[str, Any] = {}
         self.failed_models: Dict[str, str] = {}
-        self.loading_queue: asyncio.Queue = asyncio.Queue()
+        self.loading_queue: asyncio.Queue = (
+            BoundedAsyncQueue(maxsize=50, policy=OverflowPolicy.BLOCK, name="startup_loading")
+            if BoundedAsyncQueue is not None else asyncio.Queue()
+        )
         
         # Executors
         self.cpu_count = multiprocessing.cpu_count()

@@ -32,6 +32,15 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 from collections import defaultdict
 from dataclasses import dataclass, field
 
+# v3A.0: Canonical circuit breaker from kernel
+try:
+    from backend.kernel.circuit_breaker import get_circuit_breaker, CircuitBreakerConfig
+    _CANONICAL_CB_AVAILABLE = True
+except ImportError:
+    _CANONICAL_CB_AVAILABLE = False
+    get_circuit_breaker = None
+    CircuitBreakerConfig = None
+
 # =============================================================================
 # CRITICAL: Fork-Safe Subprocess Import
 # =============================================================================
@@ -759,6 +768,10 @@ class IntelligentVoiceUnlockService:
         self.retry_delay_seconds = 0.5
         self.circuit_breaker_threshold = 5  # failures before circuit opens
         self.circuit_breaker_timeout = 60  # seconds
+
+        # v3A.0: Canonical circuit breaker from kernel (replaces ad-hoc defaultdict tracking)
+        self._canonical_cb_available = _CANONICAL_CB_AVAILABLE
+        # Backward-compat: keep old dicts alive for any external code that reads them
         self._circuit_breaker_failures = defaultdict(int)
         self._circuit_breaker_last_failure = defaultdict(float)
 
@@ -2539,6 +2552,19 @@ class IntelligentVoiceUnlockService:
         # Return pre-built result immediately (fast path)
         return result
 
+    def _get_canonical_cb(self, service_name: str):
+        """v3A.0: Get or create a canonical CircuitBreaker for the given service."""
+        if not self._canonical_cb_available:
+            return None
+        cb_name = f"voice-unlock-{service_name}"
+        return get_circuit_breaker(
+            cb_name,
+            CircuitBreakerConfig(
+                failure_threshold=self.circuit_breaker_threshold,
+                recovery_timeout_seconds=float(self.circuit_breaker_timeout),
+            ),
+        )
+
     def _check_circuit_breaker(self, service_name: str) -> bool:
         """
         Check if circuit breaker allows operation.
@@ -2546,9 +2572,23 @@ class IntelligentVoiceUnlockService:
         Returns:
             True if operation is allowed, False if circuit is open
         """
-        import time
+        # v3A.0: Delegate to canonical circuit breaker (sync path)
+        cb = self._get_canonical_cb(service_name)
+        if cb is not None:
+            allowed = cb.can_execute_sync()
+            if not allowed:
+                logger.warning(
+                    f"🔴 Circuit breaker OPEN for {service_name} "
+                    f"(state={cb.state.value})"
+                )
+                # Keep backward-compat dict in sync
+                self._circuit_breaker_failures[service_name] = cb._failure_count
+            return allowed
 
-        current_time = time.time()
+        # Fallback: inline implementation (when kernel not available)
+        import time as _time
+
+        current_time = _time.time()
 
         # Check if circuit is open
         if self._circuit_breaker_failures[service_name] >= self.circuit_breaker_threshold:
@@ -2570,8 +2610,39 @@ class IntelligentVoiceUnlockService:
 
     def _record_circuit_breaker_failure(self, service_name: str):
         """Record a failure for circuit breaker"""
-        import time
+        # v3A.0: Delegate to canonical circuit breaker
+        cb = self._get_canonical_cb(service_name)
+        if cb is not None:
+            # Use sync-safe direct state mutation (we're in a sync method)
+            from backend.kernel.circuit_breaker import CircuitBreakerState as _CBState
+            from datetime import datetime as _dt
+            cb._failure_count += 1
+            cb._last_failure_time = _dt.now()
+            # Record in history
+            cb._failure_history.append({
+                "time": _dt.now().isoformat(),
+                "error": f"voice-unlock {service_name} failure",
+                "state": cb._state.value,
+            })
+            if len(cb._failure_history) > 100:
+                cb._failure_history = cb._failure_history[-50:]
+            if cb._failure_count >= cb._config.failure_threshold:
+                if cb._state != _CBState.OPEN:
+                    cb._state = _CBState.OPEN
+                    logger.warning(
+                        f"🔴 Circuit breaker OPENED for {service_name} "
+                        f"(failures={cb._failure_count})"
+                    )
+            # Keep backward-compat dict in sync
+            self._circuit_breaker_failures[service_name] = cb._failure_count
+            self._circuit_breaker_last_failure[service_name] = time.time()
+            logger.debug(
+                f"⚠️ Circuit breaker failure recorded for {service_name}: "
+                f"{cb._failure_count}/{self.circuit_breaker_threshold}"
+            )
+            return
 
+        # Fallback: inline implementation
         self._circuit_breaker_failures[service_name] += 1
         self._circuit_breaker_last_failure[service_name] = time.time()
 
@@ -2582,6 +2653,28 @@ class IntelligentVoiceUnlockService:
 
     def _record_circuit_breaker_success(self, service_name: str):
         """Record a success - reset failure count"""
+        # v3A.0: Delegate to canonical circuit breaker
+        cb = self._get_canonical_cb(service_name)
+        if cb is not None:
+            from backend.kernel.circuit_breaker import CircuitBreakerState as _CBState
+            from datetime import datetime as _dt
+            cb._failure_count = 0
+            cb._last_success_time = _dt.now()
+            if cb._state == _CBState.HALF_OPEN:
+                cb._success_count += 1
+                if cb._success_count >= cb._config.success_threshold:
+                    cb._state = _CBState.CLOSED
+                    cb._success_count = 0
+                    logger.info(f"🟢 Circuit breaker CLOSED for {service_name} (recovered)")
+            elif cb._state == _CBState.CLOSED:
+                cb._failure_count = 0
+            # Keep backward-compat dict in sync
+            if self._circuit_breaker_failures[service_name] > 0:
+                logger.debug(f"✅ Circuit breaker success for {service_name} - resetting failures")
+            self._circuit_breaker_failures[service_name] = 0
+            return
+
+        # Fallback: inline implementation
         if self._circuit_breaker_failures[service_name] > 0:
             logger.debug(f"✅ Circuit breaker success for {service_name} - resetting failures")
             self._circuit_breaker_failures[service_name] = 0

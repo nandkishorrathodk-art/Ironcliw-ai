@@ -44,6 +44,12 @@ from typing import (
     Any, Callable, Coroutine, Dict, List, Optional, Set, Tuple, Union
 )
 
+# Phase 5A: Bounded queue backpressure
+try:
+    from backend.core.bounded_queue import BoundedAsyncQueue, OverflowPolicy
+except ImportError:
+    BoundedAsyncQueue = None
+
 logger = logging.getLogger(__name__)
 
 
@@ -671,7 +677,10 @@ class EventBus:
         self._handlers: Dict[OrchestratorEvent, List[weakref.ref]] = {}
         self._global_handlers: List[weakref.ref] = []
         self._lock = asyncio.Lock()
-        self._event_queue: asyncio.Queue = asyncio.Queue()
+        self._event_queue: asyncio.Queue = (
+            BoundedAsyncQueue(maxsize=500, policy=OverflowPolicy.DROP_OLDEST, name="orchestrator_events")
+            if BoundedAsyncQueue is not None else asyncio.Queue()
+        )
         self._processing = False
         self._task: Optional[asyncio.Task] = None
 
@@ -810,7 +819,10 @@ class OrchestratorNarratorBridge:
     def _get_pending_queue(self) -> asyncio.Queue:
         """Get or create pending announcements queue (lazy initialization)."""
         if self._pending_announcements is None:
-            self._pending_announcements = asyncio.Queue()
+            self._pending_announcements = (
+                BoundedAsyncQueue(maxsize=200, policy=OverflowPolicy.DROP_OLDEST, name="pending_announcements")
+                if BoundedAsyncQueue is not None else asyncio.Queue()
+            )
         return self._pending_announcements
 
         # Statistics

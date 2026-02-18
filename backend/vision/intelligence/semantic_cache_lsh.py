@@ -41,6 +41,13 @@ except ImportError:
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
+
+# Phase 5A: Bounded queue backpressure
+try:
+    from backend.core.bounded_queue import BoundedAsyncQueue, OverflowPolicy
+except ImportError:
+    BoundedAsyncQueue = None
+
 logger = logging.getLogger(__name__)
 
 
@@ -582,7 +589,10 @@ class L4PredictiveCache(BaseCacheLayer):
             size_mb=50, ttl_seconds=-1, cache_level=CacheLevel.L4_PREDICTIVE
         )  # Dynamic TTL
         self.pattern_predictor = PatternPredictor()
-        self.pre_compute_queue: asyncio.Queue = asyncio.Queue()
+        self.pre_compute_queue: asyncio.Queue = (
+            BoundedAsyncQueue(maxsize=500, policy=OverflowPolicy.DROP_OLDEST, name="semantic_precompute")
+            if BoundedAsyncQueue is not None else asyncio.Queue()
+        )
         self.prediction_task = None
 
     async def start_prediction_loop(self):
@@ -795,6 +805,13 @@ class SemanticCacheWithLSH:
         self._init_task = None
         self._pressure_monitor_task = None
 
+        # v263.0: Auto-register with cache registry for unified monitoring
+        try:
+            from backend.utils.cache_registry import get_cache_registry
+            get_cache_registry().register("semantic_cache_lsh", self)
+        except Exception:
+            pass  # Non-fatal
+
     async def initialize(self):
         """Initialize async components"""
         await self.l4_cache.start_prediction_loop()
@@ -841,6 +858,27 @@ class SemanticCacheWithLSH:
             except asyncio.CancelledError:
                 pass
         await self.l4_cache.stop_prediction_loop()
+
+    def get_stats(self) -> Dict[str, Any]:
+        """Get unified stats across all cache layers."""
+        layer_stats = {}
+        total_entries = 0
+        total_size_mb = 0.0
+        for layer in self.cache_layers:
+            try:
+                ls = layer.get_stats()
+                layer_stats[ls.get("level", type(layer).__name__)] = ls
+                total_entries += ls.get("entries", 0)
+                total_size_mb += ls.get("size_mb", 0.0)
+            except Exception:
+                pass
+        return {
+            "total_requests": self.total_requests,
+            "cache_bypass_count": self.cache_bypass_count,
+            "entries": total_entries,
+            "size_mb": round(total_size_mb, 2),
+            "layers": layer_stats,
+        }
 
     async def get(
         self,

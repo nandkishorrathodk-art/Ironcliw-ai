@@ -93,6 +93,12 @@ try:
 except ImportError:
     LZ4_AVAILABLE = False
 
+# Phase 5A: Bounded queue backpressure
+try:
+    from backend.core.bounded_queue import BoundedAsyncQueue, OverflowPolicy
+except ImportError:
+    BoundedAsyncQueue = None
+
 logger = logging.getLogger(__name__)
 
 
@@ -1400,7 +1406,10 @@ class StateSynchronizer:
         self.version_manager = version_manager
 
         self._local_clock = VectorClock()
-        self._sync_queue: asyncio.Queue[SyncMessage] = asyncio.Queue()
+        self._sync_queue: asyncio.Queue[SyncMessage] = (
+            BoundedAsyncQueue(maxsize=500, policy=OverflowPolicy.WARN_AND_BLOCK, name="trinity_state_sync")
+            if BoundedAsyncQueue is not None else asyncio.Queue()
+        )
         self._peers: Set[str] = set()
         self._sync_task: Optional[asyncio.Task] = None
         self._running = False

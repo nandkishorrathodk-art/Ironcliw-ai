@@ -47,6 +47,12 @@ from .models import (
 if TYPE_CHECKING:
     from .crew import Crew
 
+# Phase 5A: Bounded queue backpressure
+try:
+    from backend.core.bounded_queue import BoundedAsyncQueue, OverflowPolicy
+except ImportError:
+    BoundedAsyncQueue = None
+
 logger = logging.getLogger(__name__)
 
 
@@ -498,7 +504,10 @@ class TaskDelegationManager:
         self._strategies: Dict[DelegationStrategy, BaseDelegationStrategy] = {}
         self._delegation_history: List[DelegationDecision] = []
         self._pending_collaborations: Dict[str, CollaborationRequest] = {}
-        self._delegation_queue: asyncio.Queue = asyncio.Queue()
+        self._delegation_queue: asyncio.Queue = (
+            BoundedAsyncQueue(maxsize=100, policy=OverflowPolicy.BLOCK, name="crew_delegation")
+            if BoundedAsyncQueue is not None else asyncio.Queue()
+        )
         self._running = False
 
         # Initialize strategies

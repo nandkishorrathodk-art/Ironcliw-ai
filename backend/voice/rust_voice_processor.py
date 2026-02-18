@@ -21,6 +21,12 @@ try:
 except ImportError:
     from vision.rust_integration import RustAccelerator, SharedMemoryBuffer
 
+# Phase 5A: Bounded queue backpressure
+try:
+    from backend.core.bounded_queue import BoundedAsyncQueue, OverflowPolicy
+except ImportError:
+    BoundedAsyncQueue = None
+
 logger = logging.getLogger(__name__)
 
 @dataclass
@@ -286,7 +292,10 @@ class RustMLAudioBridge:
     def __init__(self):
         self.rust_processor = RustVoiceProcessor()
         self.ml_audio_handler = None  # Will be set by MLAudioHandler
-        self.processing_queue = asyncio.Queue()
+        self.processing_queue = (
+            BoundedAsyncQueue(maxsize=200, policy=OverflowPolicy.BLOCK, name="rust_voice_processing")
+            if BoundedAsyncQueue is not None else asyncio.Queue()
+        )
         self.result_cache = {}
         
     async def process_audio_stream(self, audio_stream):

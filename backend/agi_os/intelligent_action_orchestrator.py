@@ -85,6 +85,12 @@ from .realtime_voice_communicator import (
     get_voice_communicator,
 )
 
+# Phase 5A: Bounded queue backpressure
+try:
+    from backend.core.bounded_queue import BoundedAsyncQueue, OverflowPolicy
+except ImportError:
+    BoundedAsyncQueue = None
+
 logger = logging.getLogger(__name__)
 
 
@@ -246,7 +252,10 @@ class IntelligentActionOrchestrator:
 
         # Processing tasks
         self._detection_task: Optional[asyncio.Task] = None
-        self._execution_queue: asyncio.Queue[ProposedAction] = asyncio.Queue()
+        self._execution_queue: asyncio.Queue[ProposedAction] = (
+            BoundedAsyncQueue(maxsize=100, policy=OverflowPolicy.BLOCK, name="action_execution")
+            if BoundedAsyncQueue is not None else asyncio.Queue()
+        )
         self._executor_task: Optional[asyncio.Task] = None
         self._proactive_task: Optional[asyncio.Task] = None
 

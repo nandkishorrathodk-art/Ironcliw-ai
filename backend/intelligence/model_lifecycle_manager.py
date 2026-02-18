@@ -32,6 +32,12 @@ import yaml
 
 from backend.intelligence.model_registry import ModelDefinition, ModelState, get_model_registry
 
+# Phase 5A: Bounded queue backpressure
+try:
+    from backend.core.bounded_queue import BoundedAsyncQueue, OverflowPolicy
+except ImportError:
+    BoundedAsyncQueue = None
+
 logger = logging.getLogger(__name__)
 
 
@@ -102,7 +108,10 @@ class AdaptiveModelLifecycleManager:
 
         # Model loading/unloading locks
         self.model_locks: Dict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
-        self.load_queue: asyncio.Queue[LoadRequest] = asyncio.Queue()
+        self.load_queue: asyncio.Queue[LoadRequest] = (
+            BoundedAsyncQueue(maxsize=50, policy=OverflowPolicy.BLOCK, name="model_load_requests")
+            if BoundedAsyncQueue is not None else asyncio.Queue()
+        )
 
         # Background tasks
         self.background_tasks: List[asyncio.Task] = []

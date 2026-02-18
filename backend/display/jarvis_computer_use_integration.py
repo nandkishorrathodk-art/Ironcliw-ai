@@ -35,6 +35,12 @@ from enum import Enum
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Union
 from uuid import uuid4
 
+# Phase 5A: Bounded queue backpressure
+try:
+    from backend.core.bounded_queue import BoundedAsyncQueue, OverflowPolicy
+except ImportError:
+    BoundedAsyncQueue = None
+
 logger = logging.getLogger(__name__)
 
 
@@ -104,7 +110,10 @@ class JARVISComputerUse:
         # State
         self._initialized = False
         self._task_history: List[JARVISTaskResult] = []
-        self._narration_queue: asyncio.Queue = asyncio.Queue()
+        self._narration_queue: asyncio.Queue = (
+            BoundedAsyncQueue(maxsize=200, policy=OverflowPolicy.DROP_OLDEST, name="cu_narration")
+            if BoundedAsyncQueue is not None else asyncio.Queue()
+        )
 
         logger.info("[JARVIS CU] JARVIS Computer Use integration created")
 

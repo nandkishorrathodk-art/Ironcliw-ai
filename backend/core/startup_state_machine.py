@@ -35,6 +35,12 @@ from contextlib import asynccontextmanager
 
 from backend.core.async_safety import LazyAsyncLock
 
+# Phase 5A: Bounded queue backpressure
+try:
+    from backend.core.bounded_queue import BoundedAsyncQueue, OverflowPolicy
+except ImportError:
+    BoundedAsyncQueue = None
+
 logger = logging.getLogger(__name__)
 
 
@@ -124,7 +130,10 @@ class StartupStateMachine:
         self._start_time: Optional[float] = None
         self._listeners: Set[Callable] = set()
         self._lock = asyncio.Lock()
-        self._event_queue: asyncio.Queue = asyncio.Queue()
+        self._event_queue: asyncio.Queue = (
+            BoundedAsyncQueue(maxsize=500, policy=OverflowPolicy.WARN_AND_BLOCK, name="startup_events")
+            if BoundedAsyncQueue is not None else asyncio.Queue()
+        )
         self._background_tasks: List[asyncio.Task] = []
         self._ready_event = asyncio.Event()
         self._full_mode_event = asyncio.Event()
@@ -476,6 +485,55 @@ class StartupStateMachine:
 
         # Check if we should transition to FULL_MODE
         await self._check_phase_completion()
+
+    def update_component_sync(
+        self,
+        name: str,
+        status_str: str,
+        error: Optional[str] = None,
+    ) -> None:
+        """Sync update for component status — for use from sync callbacks.
+
+        Maps string status (from _update_component_status) to ComponentStatus enum.
+        Does NOT acquire the async lock — only safe for single-threaded event loop usage.
+        """
+        _STATUS_MAP = {
+            "pending": ComponentStatus.PENDING,
+            "running": ComponentStatus.LOADING,
+            "loading": ComponentStatus.LOADING,
+            "complete": ComponentStatus.READY,
+            "ready": ComponentStatus.READY,
+            "error": ComponentStatus.FAILED,
+            "failed": ComponentStatus.FAILED,
+            "skipped": ComponentStatus.SKIPPED,
+            "degraded": ComponentStatus.FAILED,
+        }
+        target = _STATUS_MAP.get(status_str)
+        if target is None:
+            return
+
+        if name not in self.components:
+            # Auto-register unknown components as non-critical
+            self.register_component(name, is_critical=False, load_order=100)
+
+        comp = self.components[name]
+
+        # Record start time on first LOADING transition
+        if target == ComponentStatus.LOADING and comp.start_time is None:
+            comp.start_time = time.time()
+
+        comp.status = target
+
+        if target in (ComponentStatus.READY, ComponentStatus.FAILED, ComponentStatus.SKIPPED):
+            comp.end_time = time.time()
+            if error:
+                comp.error = error
+
+        # Fire completion event if terminal
+        if comp.is_terminal:
+            event = self._completion_events.get(name)
+            if event:
+                event.set()
 
     async def skip_component(self, name: str, reason: str = ""):
         """Mark a component as skipped"""

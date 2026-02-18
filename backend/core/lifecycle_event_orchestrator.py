@@ -56,6 +56,12 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Set, Tuple
 
+# Phase 5A: Bounded queue backpressure
+try:
+    from backend.core.bounded_queue import BoundedAsyncQueue, OverflowPolicy
+except ImportError:
+    BoundedAsyncQueue = None
+
 logger = logging.getLogger(__name__)
 
 
@@ -256,7 +262,10 @@ class LifecycleEventPublisher:
 
     def __init__(self):
         self._event_bus = None
-        self._event_queue: asyncio.Queue[LifecycleEvent] = asyncio.Queue()
+        self._event_queue: asyncio.Queue[LifecycleEvent] = (
+            BoundedAsyncQueue(maxsize=1000, policy=OverflowPolicy.DROP_OLDEST, name="lifecycle_events")
+            if BoundedAsyncQueue is not None else asyncio.Queue()
+        )
         self._publisher_task: Optional[asyncio.Task] = None
         self._running = False
         self._callbacks: List[Callable[[LifecycleEvent], Awaitable[None]]] = []

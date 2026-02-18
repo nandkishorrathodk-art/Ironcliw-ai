@@ -40,6 +40,12 @@ from pydantic import BaseModel, Field, ValidationError, create_model, model_vali
 
 from backend.utils.env_config import get_env_str, get_env_int, get_env_bool
 
+# Phase 5A: Bounded queue backpressure
+try:
+    from backend.core.bounded_queue import BoundedAsyncQueue, OverflowPolicy
+except ImportError:
+    BoundedAsyncQueue = None
+
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
@@ -875,7 +881,10 @@ class MessageGate:
 
     def __init__(self):
         self._subscriptions: Dict[str, Set[MessageType]] = {}
-        self._message_queue: asyncio.Queue = asyncio.Queue()
+        self._message_queue: asyncio.Queue = (
+            BoundedAsyncQueue(maxsize=500, policy=OverflowPolicy.WARN_AND_BLOCK, name="sop_message_gate")
+            if BoundedAsyncQueue is not None else asyncio.Queue()
+        )
 
     def subscribe(self, role_id: str, message_types: List[MessageType]) -> None:
         """Subscribe a role to specific message types."""

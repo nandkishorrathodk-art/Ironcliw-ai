@@ -44,6 +44,12 @@ from .models import (
 if TYPE_CHECKING:
     from .crew import Crew
 
+# Phase 5A: Bounded queue backpressure
+try:
+    from backend.core.bounded_queue import BoundedAsyncQueue, OverflowPolicy
+except ImportError:
+    BoundedAsyncQueue = None
+
 logger = logging.getLogger(__name__)
 
 
@@ -419,7 +425,10 @@ class DynamicProcess(BaseProcess):
 
     def __init__(self, crew: "Crew") -> None:
         super().__init__(crew)
-        self._task_queue: asyncio.Queue = asyncio.Queue()
+        self._task_queue: asyncio.Queue = (
+            BoundedAsyncQueue(maxsize=100, policy=OverflowPolicy.BLOCK, name="dynamic_process_tasks")
+            if BoundedAsyncQueue is not None else asyncio.Queue()
+        )
         self._active_tasks: Dict[str, asyncio.Task] = {}
         self._agent_assignments: Dict[str, Set[str]] = defaultdict(set)
 

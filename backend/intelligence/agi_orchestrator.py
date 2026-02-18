@@ -80,6 +80,12 @@ from typing import (
 
 from backend.core.async_safety import LazyAsyncLock
 
+# Phase 5A: Bounded queue backpressure
+try:
+    from backend.core.bounded_queue import BoundedAsyncQueue, OverflowPolicy
+except ImportError:
+    BoundedAsyncQueue = None
+
 # Environment-driven configuration
 AGI_DATA_DIR = Path(os.getenv(
     "AGI_DATA_DIR",
@@ -247,8 +253,14 @@ class AGIOrchestrator:
         self._lock = asyncio.Lock()
 
         # Processing queue
-        self._input_queue: asyncio.Queue = asyncio.Queue()
-        self._output_queue: asyncio.Queue = asyncio.Queue()
+        self._input_queue: asyncio.Queue = (
+            BoundedAsyncQueue(maxsize=200, policy=OverflowPolicy.BLOCK, name="agi_input")
+            if BoundedAsyncQueue is not None else asyncio.Queue()
+        )
+        self._output_queue: asyncio.Queue = (
+            BoundedAsyncQueue(maxsize=200, policy=OverflowPolicy.WARN_AND_BLOCK, name="agi_output")
+            if BoundedAsyncQueue is not None else asyncio.Queue()
+        )
 
         # History
         self._processing_history: deque = deque(maxlen=1000)

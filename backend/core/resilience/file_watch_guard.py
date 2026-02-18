@@ -30,6 +30,12 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Set
 
+# Phase 5A: Bounded queue backpressure
+try:
+    from backend.core.bounded_queue import BoundedAsyncQueue, OverflowPolicy
+except ImportError:
+    BoundedAsyncQueue = None
+
 logger = logging.getLogger(__name__)
 
 
@@ -266,7 +272,10 @@ class FileWatchGuard:
 
         self._observer = None
         self._running = False
-        self._event_queue: asyncio.Queue[FileEvent] = asyncio.Queue()
+        self._event_queue: asyncio.Queue[FileEvent] = (
+            BoundedAsyncQueue(maxsize=500, policy=OverflowPolicy.WARN_AND_BLOCK, name="file_watch_events")
+            if BoundedAsyncQueue is not None else asyncio.Queue()
+        )
         self._processor_task: Optional[asyncio.Task] = None
         self._health_task: Optional[asyncio.Task] = None
 
