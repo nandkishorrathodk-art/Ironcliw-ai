@@ -50,6 +50,8 @@ async def register_display(request: RegisterDisplayRequest) -> Dict[str, Any]:
         from display import get_display_monitor
         
         monitor = get_display_monitor()
+        if monitor is None:  # v263.2
+            raise HTTPException(status_code=503, detail="Display monitor not initialized")
         monitor.register_display(
             display_name=request.display_name,
             auto_prompt=request.auto_prompt,
@@ -78,7 +80,9 @@ async def get_available_displays() -> Dict[str, Any]:
         from display import get_display_monitor
         
         monitor = get_display_monitor()
-        
+        if monitor is None:  # v263.2
+            raise HTTPException(status_code=503, detail="Display monitor not initialized")
+
         return {
             "available_displays": list(monitor.available_displays),
             "monitored_displays": list(monitor.monitored_displays.keys())
@@ -108,6 +112,8 @@ async def connect_to_display(
         from display import get_display_monitor
         
         monitor = get_display_monitor()
+        if monitor is None:  # v263.2
+            raise HTTPException(status_code=503, detail="Display monitor not initialized")
         result = await monitor._connect_to_display(display_name, mode)
         
         return result
@@ -129,6 +135,8 @@ async def get_status() -> Dict[str, Any]:
         from display import get_display_monitor
         
         monitor = get_display_monitor()
+        if monitor is None:  # v263.2
+            raise HTTPException(status_code=503, detail="Display monitor not initialized")
         stats = monitor.get_stats()
         pending = monitor.get_pending_prompt()
         
@@ -154,6 +162,8 @@ async def start_monitoring() -> Dict[str, Any]:
         from display import get_display_monitor
         
         monitor = get_display_monitor()
+        if monitor is None:  # v263.2
+            raise HTTPException(status_code=503, detail="Display monitor not initialized")
         await monitor.start_monitoring()
         
         return {
@@ -178,6 +188,8 @@ async def stop_monitoring() -> Dict[str, Any]:
         from display import get_display_monitor
         
         monitor = get_display_monitor()
+        if monitor is None:  # v263.2
+            raise HTTPException(status_code=503, detail="Display monitor not initialized")
         await monitor.stop_monitoring()
         
         return {

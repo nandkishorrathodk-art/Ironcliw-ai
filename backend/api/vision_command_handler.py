@@ -2233,6 +2233,8 @@ Provide a comprehensive analysis of what you see in Space {space_id}."""
             from display import get_display_monitor
 
             monitor = get_display_monitor()
+            if monitor is None:  # v263.2
+                return {"handled": False}
 
             # Only handle if we're waiting for a response
             has_pending = monitor.has_pending_prompt()

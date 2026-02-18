@@ -922,7 +922,7 @@ class IntelligentActionOrchestrator:
                 await self._route_action(action)
 
         except Exception as e:
-            logger.error("Error proposing action: %s", e)
+            logger.error("Error proposing action: %s", e, exc_info=True)  # v263.2
 
     async def _analyze_issue(self, issue: DetectedIssue) -> tuple:
         """

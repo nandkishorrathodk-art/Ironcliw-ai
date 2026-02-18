@@ -791,6 +791,16 @@ class StandardOperatingProcedure:
 
     async def _execute_step(self, step: SOPStep, llm: Any) -> ActionResult:
         """Execute a single step with validation and review."""
+        # v263.2: Handle string steps - convert or use as name
+        if isinstance(step, str):
+            step_name = step
+            action_id = f"{self.name}:{step_name}:{uuid4().hex[:8]}"
+            return ActionResult(
+                action_id=action_id,
+                status=ActionStatus.FAILED,
+                error=f"Step '{step_name}' is a string, not a SOPStep object. Check SOP definition.",
+                duration_ms=0.0,
+            )
         import time
         start_time = time.time()
         action_id = f"{self.name}:{step.name}:{uuid4().hex[:8]}"
@@ -860,6 +870,10 @@ class StandardOperatingProcedure:
     def _validate_output(self, step: SOPStep) -> List[str]:
         """Validate step output against its schema."""
         errors = []
+        # v263.2: Guard against string steps
+        if isinstance(step, str):
+            errors.append(f"Step '{step}' is a string, not a SOPStep object")
+            return errors
 
         if not step.action.instruct_content and not self.config.allow_partial_output:
             errors.append(f"Step {step.name} produced no output")
