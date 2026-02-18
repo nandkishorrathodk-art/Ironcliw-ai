@@ -1281,6 +1281,23 @@ class JARVISLoadingManager {
                 recoveredAt: null
             },
 
+            // v263.0: Dynamic Startup Timeout (negotiated with backend)
+            // Replaces hardcoded 600s limit with progress-aware timeout
+            startupTimeout: {
+                // Backend-negotiated max startup time (default 10min = old behavior until backend tells us)
+                negotiatedMs: 600000,
+                // Whether we've received timeout from backend yet
+                negotiated: false,
+                // Stall detection: time of last progress advancement
+                lastProgressAdvanceTime: Date.now(),
+                // Last progress value seen (for detecting advancement)
+                lastProgressValue: 0,
+                // How long progress must be stalled before considering timeout (2 min)
+                stallThresholdMs: 120000,
+                // Whether timeout error has been shown (prevent repeated shows)
+                timeoutShown: false,
+            },
+
             // Parallel Component Progress (individual bars)
             parallelComponents: {
                 jarvisPrime: {
@@ -1833,6 +1850,9 @@ class JARVISLoadingManager {
             console.log('[v210.0] Skipping WebSocket - no loading server, using backend health polling only');
         }
         
+        // v263.0: Fetch startup config for dynamic timeout negotiation
+        this.fetchStartupConfig();
+
         this.startHealthMonitoring();
 
         // v210.0: Show backend fallback button early if loading server not found
@@ -2362,6 +2382,8 @@ class JARVISLoadingManager {
                                 eta: inner.eta,  // v225.0: ML-based ETA from loading server
                                 metadata: {
                                     ...(inner.metadata || {}),
+                                    // v263.0: Propagate startup_timeout_ms from ProgressState top-level
+                                    startup_timeout_ms: inner.startup_timeout_ms || (inner.metadata || {}).startup_timeout_ms,
                                     components: inner.components || (inner.metadata || {}).components,
                                     trinity: inner.trinity || (inner.metadata || {}).trinity,
                                     trinity_ready: inner.trinity_ready ?? (inner.metadata || {}).trinity_ready,
@@ -2735,6 +2757,12 @@ class JARVISLoadingManager {
                 this.state.targetProgress = progress;
             }
             // If progress is less than current, ignore it (out-of-order message)
+
+            // v263.0: Track progress advancement for stall detection
+            if (effectiveProgress > this.state.startupTimeout.lastProgressValue) {
+                this.state.startupTimeout.lastProgressAdvanceTime = Date.now();
+                this.state.startupTimeout.lastProgressValue = effectiveProgress;
+            }
         }
 
         // Update stage
@@ -2795,6 +2823,18 @@ class JARVISLoadingManager {
             }
             if (metadata.sublabel) {
                 this.state.displaySublabel = metadata.sublabel;
+            }
+
+            // v263.0: Accept dynamic startup timeout from backend
+            // Check both metadata (from supervisor broadcasts) and top-level data
+            // (from loading_server to_dict() on WebSocket connect/reconnect)
+            const timeoutMs = metadata.startup_timeout_ms || data.startup_timeout_ms;
+            if (timeoutMs && timeoutMs > 0) {
+                if (!this.state.startupTimeout.negotiated || timeoutMs > this.state.startupTimeout.negotiatedMs) {
+                    console.log(`[v263.0] Startup timeout negotiated: ${timeoutMs}ms (${(timeoutMs / 60000).toFixed(1)}min)`);
+                    this.state.startupTimeout.negotiatedMs = timeoutMs;
+                    this.state.startupTimeout.negotiated = true;
+                }
             }
 
             // Process operations log from metadata
@@ -5315,8 +5355,49 @@ class JARVISLoadingManager {
                 }
             }
 
-            if (totalTime > 600000 && this.state.progress < 100) {
-                this.showError('Startup timed out. Please check terminal logs.');
+            // v263.0: Progress-aware dynamic timeout (replaces hardcoded 600s)
+            //
+            // OLD: if (totalTime > 600000) → show error
+            //   Problem: Backend can legitimately take 15-40 min with GCP/Trinity
+            //
+            // NEW: Timeout only fires when BOTH conditions are true:
+            //   1. Total time exceeds backend-negotiated deadline
+            //   2. Progress has been completely stalled (no advancement) for stallThresholdMs
+            //
+            // This means: if GCP VM provisioning takes 20 min but progress keeps
+            // advancing (5%→10%→15%...), we never timeout. We only timeout when
+            // the system is truly stuck AND has exceeded its own stated deadline.
+            if (this.state.progress < 100 && !this.state.startupTimeout.timeoutShown) {
+                const st = this.state.startupTimeout;
+                const timeSinceProgressAdvance = Date.now() - st.lastProgressAdvanceTime;
+                const isStalled = timeSinceProgressAdvance > st.stallThresholdMs;
+                const pastDeadline = totalTime > st.negotiatedMs;
+
+                // Log stall warnings periodically (every ~30s of stall)
+                if (isStalled) {
+                    const lastWarn = st._lastStallWarnTime || 0;
+                    if (Date.now() - lastWarn >= 30000) {
+                        st._lastStallWarnTime = Date.now();
+                        const stallMin = (timeSinceProgressAdvance / 60000).toFixed(1);
+                        const deadlineMin = (st.negotiatedMs / 60000).toFixed(1);
+                        const totalMin = (totalTime / 60000).toFixed(1);
+                        console.warn(
+                            `[v263.0] Progress stalled for ${stallMin}min at ${st.lastProgressValue}%. ` +
+                            `Total: ${totalMin}min, Deadline: ${deadlineMin}min, Past deadline: ${pastDeadline}`
+                        );
+                    }
+                }
+
+                if (isStalled && pastDeadline) {
+                    st.timeoutShown = true;
+                    const stallMin = (timeSinceProgressAdvance / 60000).toFixed(1);
+                    const totalMin = (totalTime / 60000).toFixed(1);
+                    this.showError(
+                        `Startup timed out after ${totalMin}min ` +
+                        `(progress stalled at ${Math.round(st.lastProgressValue)}% for ${stallMin}min). ` +
+                        `Please check terminal logs.`
+                    );
+                }
             }
         }, 5000);
     }
@@ -5490,6 +5571,41 @@ class JARVISLoadingManager {
         } catch (error) {
             console.debug('[v87.0] Supervisor heartbeat check error:', error.message);
             // Circuit breaker handles failure tracking
+        }
+    }
+
+    /**
+     * v263.0: Fetch startup configuration from loading server.
+     * Gets the backend-negotiated startup timeout so we don't use a hardcoded limit.
+     * Called once at init, and the timeout is also continuously updated via
+     * WebSocket progress messages (startup_timeout_ms in metadata).
+     */
+    async fetchStartupConfig() {
+        try {
+            const loadingUrl = `${this.config.httpProtocol}//${this.config.hostname}:${this.config.loadingServerPort}`;
+            const response = await fetch(`${loadingUrl}/api/startup-config`, {
+                method: 'GET',
+                headers: { 'Accept': 'application/json' },
+                signal: AbortSignal.timeout(3000)
+            });
+
+            if (response.ok) {
+                const config = await response.json();
+                if (config.startup_timeout_ms && config.startup_timeout_ms > 0) {
+                    this.state.startupTimeout.negotiatedMs = config.startup_timeout_ms;
+                    this.state.startupTimeout.negotiated = true;
+                    if (config.stall_timeout_ms) {
+                        this.state.startupTimeout.stallThresholdMs = config.stall_timeout_ms;
+                    }
+                    console.log(
+                        `[v263.0] Startup config received: timeout=${config.startup_timeout_ms}ms ` +
+                        `(${(config.startup_timeout_ms / 60000).toFixed(1)}min), ` +
+                        `stall=${this.state.startupTimeout.stallThresholdMs}ms`
+                    );
+                }
+            }
+        } catch (error) {
+            console.debug('[v263.0] Startup config fetch failed (will use WebSocket fallback):', error.message);
         }
     }
 

@@ -20648,12 +20648,28 @@ async def main():
             if str(backend_dir) not in sys.path:
                 sys.path.insert(0, str(backend_dir))
 
+            # v263.0: Compute dynamic startup timeout for frontend negotiation
+            # Base timeout from config, multiplied by adaptive factor
+            _base_timeout_s = float(os.environ.get("JARVIS_STARTUP_TIMEOUT", "180"))
+            _adaptive_max = float(os.environ.get("JARVIS_ADAPTIVE_TIMEOUT_MAX", "3.0"))
+            # GCP/Trinity modes can take much longer (model loading, VM provisioning)
+            _gcp_enabled = os.environ.get("JARVIS_GCP_ENABLED", "").lower() in ("1", "true", "yes")
+            _trinity_enabled = os.environ.get("JARVIS_TRINITY_ENABLED", "").lower() in ("1", "true", "yes")
+            if _gcp_enabled or _trinity_enabled:
+                # GCP VM provisioning + model loading can take 15-40 min
+                _startup_timeout_ms = int(max(_base_timeout_s * _adaptive_max, 2400) * 1000)
+            else:
+                _startup_timeout_ms = int(_base_timeout_s * _adaptive_max * 1000)
+
             # Progress: 1% - Started (EXTREME DETAIL)
             await broadcast_to_loading_server(
                 "initializing",
                 "Starting JARVIS restart sequence - preparing environment cleanup",
                 1,
-                metadata={"icon": "⚡", "label": "Initializing", "sublabel": "System check initiated"}
+                metadata={
+                    "icon": "⚡", "label": "Initializing", "sublabel": "System check initiated",
+                    "startup_timeout_ms": _startup_timeout_ms,
+                }
             )
             await asyncio.sleep(0.3)
 

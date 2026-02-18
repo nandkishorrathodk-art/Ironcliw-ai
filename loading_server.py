@@ -2927,6 +2927,24 @@ class ProgressState:
     cost_optimization: CostOptimizationState = field(default_factory=CostOptimizationState)
     cross_repo: CrossRepoState = field(default_factory=CrossRepoState)
 
+    # v263.0: Dynamic startup timeout negotiation
+    # Backend tells frontend the actual expected startup duration
+    # Accounts for GCP/Trinity which can take 15-40 min
+    startup_timeout_ms: int = field(default_factory=lambda: (lambda: (
+        # GCP/Trinity enabled → floor at 2400s (40 min) to match supervisor behavior
+        max(int(float(os.getenv('JARVIS_STARTUP_TIMEOUT', '180')) * 1000 *
+            float(os.getenv('JARVIS_ADAPTIVE_TIMEOUT_MAX', '3.0'))),
+            2400000)
+        if os.getenv('JARVIS_GCP_ENABLED', '').lower() in ('1', 'true', 'yes') or
+           os.getenv('JARVIS_TRINITY_ENABLED', '').lower() in ('1', 'true', 'yes')
+        # No GCP/Trinity → base * adaptive_max, minimum 600s to match old behavior
+        else max(int(float(os.getenv('JARVIS_STARTUP_TIMEOUT', '180')) * 1000 *
+                     float(os.getenv('JARVIS_ADAPTIVE_TIMEOUT_MAX', '3.0'))),
+                 600000)
+    ))())
+    # Tracks last time progress actually changed (for stall detection)
+    last_progress_change_time: float = field(default_factory=time.monotonic)
+
     # v4.0: Supervisor integration
     supervisor_connected: bool = False
     agi_os_enabled: bool = False
@@ -2960,6 +2978,10 @@ class ProgressState:
             self.progress != effective_progress
         )
 
+        # v263.0: Track when progress last actually advanced (for stall detection)
+        if effective_progress > self.progress:
+            self.last_progress_change_time = time.monotonic()
+
         # Update state
         self.stage = stage
         self.phase = stage  # Alias for hub compatibility
@@ -2977,6 +2999,10 @@ class ProgressState:
             self.is_ready = metadata.get('is_ready', self.is_ready)
             self.components_ready = metadata.get('components_ready', self.components_ready)
             self.total_components = metadata.get('total_components', self.total_components)
+
+            # v263.0: Accept dynamic startup timeout from backend
+            if 'startup_timeout_ms' in metadata:
+                self.startup_timeout_ms = int(metadata['startup_timeout_ms'])
 
             # Update ready flags from metadata
             if 'backend_ready' in metadata:
@@ -3154,6 +3180,8 @@ class ProgressState:
             # v6.3: Cost Optimization and Cross-Repo Intelligence
             "cost_optimization": self.cost_optimization.to_dict(),
             "cross_repo": self.cross_repo.to_dict(),
+            # v263.0: Dynamic startup timeout negotiation
+            "startup_timeout_ms": self.startup_timeout_ms,
             # Legacy
             "supervisor_connected": self.supervisor_connected,
             "agi_os_enabled": self.agi_os_enabled,
@@ -6330,6 +6358,40 @@ async def get_supervisor_heartbeat_status(request: web.Request) -> web.Response:
         }, status=500)
 
 
+async def get_startup_config(request: web.Request) -> web.Response:
+    """
+    v263.0: Dynamic startup configuration endpoint.
+
+    Returns the backend's actual startup timeout and stall detection parameters
+    so the frontend can use progress-aware timeout logic instead of a hardcoded limit.
+
+    The frontend should:
+    1. Use startup_timeout_ms as the maximum total startup time
+    2. Use stall_timeout_ms to detect when progress has stopped advancing
+    3. Only show "timed out" when BOTH conditions are met:
+       progress has stalled for stall_timeout_ms AND total time exceeds startup_timeout_ms
+    """
+    try:
+        elapsed_since_progress = time.monotonic() - progress_state.last_progress_change_time
+
+        return web.json_response({
+            "status": "ok",
+            "startup_timeout_ms": progress_state.startup_timeout_ms,
+            "stall_timeout_ms": 120000,  # 2 min of zero progress = stalled
+            "current_progress": progress_state.progress,
+            "seconds_since_progress_change": round(elapsed_since_progress, 1),
+            "timestamp": datetime.now().isoformat(),
+        })
+
+    except Exception as e:
+        metrics.record_error(str(e))
+        logger.error(f"[StartupConfig] Error: {e}")
+        return web.json_response({
+            "status": "error",
+            "message": str(e)
+        }, status=500)
+
+
 async def get_progress_resume(request: web.Request) -> web.Response:
     """
     v87.0: Resume progress endpoint - Get current progress with sequence tracking.
@@ -6818,6 +6880,7 @@ def create_app() -> web.Application:
     app.router.add_get('/api/health/unified', get_unified_health)
     app.router.add_get('/api/analytics/startup-performance', get_startup_analytics)
     app.router.add_get('/api/supervisor/heartbeat', get_supervisor_heartbeat_status)
+    app.router.add_get('/api/startup-config', get_startup_config)
     app.router.add_get('/api/progress/resume', get_progress_resume)
     app.router.add_get('/api/diagnostics/fd-leak', get_fd_leak_status)
 

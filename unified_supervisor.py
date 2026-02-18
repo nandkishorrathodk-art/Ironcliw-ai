@@ -60350,6 +60350,9 @@ class JarvisSystemKernel:
         startup_max_timeout = timeout_spec["max_timeout"]
         startup_components = timeout_spec["components"]
 
+        # v263.0: Store computed max timeout for frontend negotiation
+        self._startup_max_timeout_ms = int(startup_max_timeout * 1000)
+
         if startup_timeout != base_timeout:
             self.logger.info(
                 f"[Kernel] Startup timeout adjusted: {base_timeout}s → {startup_timeout}s "
@@ -62063,6 +62066,9 @@ class JarvisSystemKernel:
                 metadata={
                     "icon": "rocket",
                     "phase": 0,
+                    # v263.0: Negotiate startup timeout with frontend
+                    # Frontend uses this to replace its hardcoded 600s limit
+                    "startup_timeout_ms": getattr(self, '_startup_max_timeout_ms', 600000),
                     "components": {
                         "loading_server": {"status": "complete"},
                         "preflight": {"status": "pending"},
@@ -72289,12 +72295,19 @@ class JarvisSystemKernel:
             return False
 
         # Build progress data matching loading_server.py expected format
+        effective_metadata = metadata or {}
+        # v263.0: Always include startup_timeout_ms so frontend can negotiate
+        # even if it reconnects mid-startup after missing the initial broadcast
+        if 'startup_timeout_ms' not in effective_metadata:
+            effective_metadata['startup_timeout_ms'] = getattr(
+                self, '_startup_max_timeout_ms', 600000
+            )
         progress_data = {
             "stage": stage,
             "message": message,
             "progress": progress,
             "timestamp": datetime.now().isoformat(),
-            "metadata": metadata or {},
+            "metadata": effective_metadata,
         }
 
         # v205.0: Get timeout from StartupTimeouts if available, default 2.0s
