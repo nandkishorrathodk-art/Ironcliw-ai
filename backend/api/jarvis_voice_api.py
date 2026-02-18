@@ -107,6 +107,11 @@ class _MathBypassSignal(Exception):
     """v240.0: Internal signal to skip vision handler for math commands."""
     pass
 
+
+class _WorkspaceBypassSignal(Exception):
+    """v241.0: Internal signal to skip vision handler for workspace commands."""
+    pass
+
 # ============================================================================
 # WEBSOCKET CONNECTION TRACKING - For shutdown notifications
 # ============================================================================
@@ -2168,12 +2173,39 @@ class JARVISVoiceAPI:
                     f"'{command.text[:60]}', skipping vision handler"
                 )
 
+            # v241.0: Workspace intent guard — skip vision handler for
+            # calendar/email/docs commands so they reach GoogleWorkspaceAgent.
+            _skip_vision_for_workspace = False
+            _workspace_detect_result = None
+            try:
+                from core.workspace_routing_intelligence import get_workspace_detector
+                _ws_detector = get_workspace_detector()
+                _ws_result = await asyncio.wait_for(
+                    _ws_detector.detect(command.text), timeout=2.0
+                )
+                if _ws_result.is_workspace_command and _ws_result.confidence >= 0.7:
+                    _skip_vision_for_workspace = True
+                    _workspace_detect_result = _ws_result
+                    logger.info(
+                        f"[JARVIS API] v241.0: Workspace intent detected "
+                        f"({_ws_result.intent.value}, {_ws_result.confidence:.0%}) "
+                        f"— skipping vision handler"
+                    )
+            except asyncio.TimeoutError:
+                logger.warning("[JARVIS API] Workspace detector timed out (2s)")
+            except Exception:
+                pass  # Workspace detection unavailable, proceed normally
+
             try:
                 from .vision_command_handler import vision_command_handler
 
                 # v240.0: Bail out of the vision try-block immediately for math.
                 if _skip_vision_for_math:
                     raise _MathBypassSignal()
+
+                # v241.0: Bail out for workspace commands (calendar/email/docs).
+                if _skip_vision_for_workspace:
+                    raise _WorkspaceBypassSignal()
 
                 # Ensure vision handler is initialized - WITH TIMEOUT PROTECTION
                 if not vision_command_handler.intelligence:
@@ -2329,6 +2361,9 @@ class JARVISVoiceAPI:
                     }
             except _MathBypassSignal:
                 # v240.0: Math commands skip vision handler entirely — not an error.
+                pass
+            except _WorkspaceBypassSignal:
+                # v241.0: Workspace commands skip vision handler — route to GoogleWorkspaceAgent.
                 pass
             except Exception as e:
                 logger.error(f"Vision command handler error: {e}", exc_info=True)

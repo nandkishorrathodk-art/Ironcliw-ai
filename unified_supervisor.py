@@ -66009,11 +66009,32 @@ class JarvisSystemKernel:
                         )
                         
                         if has_execution:
+                            # v241.0: Save original workspace-aware execute_tier2 before monkey-patching.
+                            # The original method checks context.get("workspace_intent") and routes
+                            # to GoogleWorkspaceAgent via _execute_workspace_command().
+                            _original_execute_tier2 = self._tiered_router.execute_tier2
+
                             async def execute_tier2_via_runner(
                                 command: str,
                                 context: Optional[Dict[str, Any]] = None,
                             ) -> Dict[str, Any]:
-                                """Execute Tier 2 (agentic) commands via AgenticTaskRunner."""
+                                """Execute Tier 2 (agentic) commands via AgenticTaskRunner.
+
+                                v241.0: Workspace-aware — delegates calendar/email/docs commands
+                                to the original TieredCommandRouter.execute_tier2() which routes
+                                them to GoogleWorkspaceAgent.
+                                """
+                                # v241.0: Check for workspace intent FIRST — delegate to original
+                                # execute_tier2 which has workspace routing via GoogleWorkspaceAgent.
+                                context = context or {}
+                                workspace_intent = context.get("workspace_intent")
+                                if workspace_intent and getattr(workspace_intent, "is_workspace_command", False):
+                                    self.logger.info(
+                                        f"[TwoTier] Workspace intent detected — "
+                                        f"delegating to TieredCommandRouter"
+                                    )
+                                    return await _original_execute_tier2(command, context=context)
+
                                 try:
                                     result = await runner_ref.run(
                                         goal=command,
