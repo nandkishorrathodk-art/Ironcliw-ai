@@ -43,10 +43,11 @@ class _CallbackSet:
     Dead references are cleaned lazily during iteration and explicitly via _sweep().
     """
 
-    __slots__ = ('_refs',)
+    __slots__ = ('_weak_refs', '_strong_refs')
 
     def __init__(self):
-        self._refs: list = []
+        self._weak_refs: list = []    # weakref.ref / weakref.WeakMethod entries
+        self._strong_refs: list = []  # non-weakrefable callbacks (require explicit discard)
 
     @staticmethod
     def _callbacks_equal(a, b) -> bool:
@@ -56,59 +57,61 @@ class _CallbackSet:
             return a == b
         return a is b
 
-    def _make_ref(self, callback):
-        """Create the appropriate weak/strong reference for a callback."""
-        if isinstance(callback, types.MethodType):
-            return weakref.WeakMethod(callback)
-        try:
-            return weakref.ref(callback)
-        except TypeError:
-            # C extension functions, slots, etc. can't be weakly referenced.
-            # Wrap in a closure that always returns the object.
-            obj = callback
-            return lambda: obj
-
     def add(self, callback) -> None:
         """Add a callback. Idempotent — won't double-register the same live callback."""
-        # Sweep dead refs first to prevent unbounded growth
-        self._sweep()
-        # Check for duplicates by resolving existing refs
-        for ref in self._refs:
-            existing = ref()
-            if existing is not None and self._callbacks_equal(existing, callback):
+        # Check all existing (weak + strong) for duplicates
+        for cb in self:
+            if self._callbacks_equal(cb, callback):
                 return
-        self._refs.append(self._make_ref(callback))
+
+        # Try weak reference first
+        if isinstance(callback, types.MethodType):
+            self._weak_refs.append(weakref.WeakMethod(callback))
+            return
+        try:
+            self._weak_refs.append(weakref.ref(callback))
+        except TypeError:
+            # C extension functions, slots, etc. can't be weakly referenced.
+            # Store as strong ref — requires explicit discard() for cleanup.
+            self._strong_refs.append(callback)
 
     def discard(self, callback) -> None:
-        """Remove a callback if present."""
-        new_refs = []
-        for ref in self._refs:
-            obj = ref()
-            if obj is not None and not self._callbacks_equal(obj, callback):
-                new_refs.append(ref)
-        self._refs = new_refs
+        """Remove a callback if present (from either weak or strong list)."""
+        self._weak_refs = [
+            ref for ref in self._weak_refs
+            if ref() is not None and not self._callbacks_equal(ref(), callback)
+        ]
+        self._strong_refs = [
+            cb for cb in self._strong_refs
+            if not self._callbacks_equal(cb, callback)
+        ]
 
     def _sweep(self) -> None:
-        """Remove dead references."""
-        self._refs = [r for r in self._refs if r() is not None]
+        """Remove dead weak references. Strong refs are never swept (require discard)."""
+        self._weak_refs = [r for r in self._weak_refs if r() is not None]
 
     def __iter__(self):
-        """Yield live callbacks, sweeping dead refs."""
-        live_refs = []
-        for ref in self._refs:
+        """Yield live callbacks from a snapshot.
+
+        Uses copy-on-read to avoid mutating internal lists during iteration.
+        This prevents interleaving hazards where add()/discard() modifies
+        lists while a generator consumer is mid-iteration.
+        """
+        self._sweep()
+        for ref in list(self._weak_refs):  # snapshot
             obj = ref()
             if obj is not None:
-                live_refs.append(ref)
                 yield obj
-        self._refs = live_refs
+        for cb in list(self._strong_refs):  # snapshot
+            yield cb
 
     def __len__(self) -> int:
         self._sweep()
-        return len(self._refs)
+        return len(self._weak_refs) + len(self._strong_refs)
 
     def __bool__(self) -> bool:
         self._sweep()
-        return bool(self._refs)
+        return bool(self._weak_refs) or bool(self._strong_refs)
 
 class MemoryAwareScreenAnalyzer:
     """

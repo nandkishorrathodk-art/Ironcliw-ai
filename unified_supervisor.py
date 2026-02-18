@@ -67155,32 +67155,27 @@ class JarvisSystemKernel:
                 self.logger.warning("[ScreenObservation] MemoryAwareScreenAnalyzer not available — skipping")
                 return
 
-            # Get or create VisionCommandHandler — prefer existing backend instance
+            # Get VisionCommandHandler — prefer the pre-configured module-level singleton
+            # (instantiated at import time with jarvis_api + intelligence already wired)
+            # over constructing a new unconfigured instance.
             vision_handler = None
             try:
-                # Check if the backend already has a vision handler we can reuse
-                if hasattr(self, '_backend_app') and self._backend_app:
-                    vh = getattr(self._backend_app, 'vision_handler', None)
-                    if vh is not None:
-                        vision_handler = vh
-                        self.logger.debug("[ScreenObservation] Reusing backend VisionCommandHandler")
-            except Exception:
-                pass
+                from backend.api.vision_command_handler import vision_command_handler as _vh_singleton
+                if _vh_singleton is not None:
+                    vision_handler = _vh_singleton
+                    self.logger.debug("[ScreenObservation] Reusing backend VisionCommandHandler singleton")
+            except ImportError:
+                try:
+                    from api.vision_command_handler import vision_command_handler as _vh_singleton
+                    if _vh_singleton is not None:
+                        vision_handler = _vh_singleton
+                        self.logger.debug("[ScreenObservation] Reusing backend VisionCommandHandler singleton")
+                except ImportError:
+                    pass
 
             if vision_handler is None:
-                VisionHandler = None
-                try:
-                    from backend.api.vision_command_handler import VisionCommandHandler as VisionHandler
-                except ImportError:
-                    try:
-                        from api.vision_command_handler import VisionCommandHandler as VisionHandler
-                    except ImportError:
-                        pass
-
-                if VisionHandler is None:
-                    self.logger.warning("[ScreenObservation] VisionCommandHandler not available — skipping")
-                    return
-                vision_handler = VisionHandler()
+                self.logger.warning("[ScreenObservation] VisionCommandHandler not available — skipping")
+                return
 
             try:
                 self._screen_analyzer = ScreenAnalyzer(vision_handler)
@@ -67192,6 +67187,17 @@ class JarvisSystemKernel:
 
             except Exception as e:
                 self.logger.warning(f"[ScreenObservation] Activation failed: {e}")
+                # Clean up running analyzer tasks to prevent orphan leaks.
+                # start_monitoring() may have spawned internal tasks (monitoring,
+                # memory monitor, cleanup) that would run forever without this.
+                if self._screen_analyzer is not None:
+                    try:
+                        await asyncio.wait_for(
+                            self._screen_analyzer.stop_monitoring(),
+                            timeout=5.0
+                        )
+                    except (asyncio.TimeoutError, Exception) as stop_err:
+                        self.logger.debug(f"[ScreenObservation] Cleanup after failure: {stop_err}")
                 self._screen_analyzer = None
 
     async def _connect_screen_narration(self, analyzer) -> None:
@@ -67235,8 +67241,10 @@ class JarvisSystemKernel:
 
             was_running = False
             if NarrationEngineClass is not None:
-                existing = NarrationEngineClass.get_instance()
-                if existing and getattr(existing, '_is_running', False):
+                # Check _instance directly to avoid triggering __new__ side effects.
+                # get_instance() calls cls() which creates the singleton if it doesn't exist.
+                existing = getattr(NarrationEngineClass, '_instance', None)
+                if existing is not None and getattr(existing, '_is_running', False):
                     was_running = True
 
             self._narration_engine = await get_narration()

@@ -84,6 +84,34 @@ class _CGRect(ctypes.Structure):
     _fields_ = [("origin", _CGPoint), ("size", _CGSize)]
 
 
+# Configure function signatures once at module level (not per-call).
+# This avoids 360+ redundant restype/argtypes setups during the permission
+# recheck loop (10s interval × 60 max attempts).
+# Must come after _CGRect definition (used in CGWindowListCreateImage.argtypes).
+if _cg_lib is not None:
+    try:
+        _cg_lib.CGPreflightScreenCaptureAccess.restype = ctypes.c_bool
+    except AttributeError:
+        pass  # Not available on this macOS version
+    try:
+        _cg_lib.CGRequestScreenCaptureAccess.restype = ctypes.c_bool
+    except AttributeError:
+        pass
+    try:
+        _cg_lib.CGWindowListCreateImage.restype = ctypes.c_void_p
+        _cg_lib.CGWindowListCreateImage.argtypes = [
+            _CGRect, ctypes.c_uint32, ctypes.c_uint32, ctypes.c_uint32
+        ]
+    except AttributeError:
+        pass
+if _cf_lib is not None:
+    try:
+        _cf_lib.CFRelease.restype = None
+        _cf_lib.CFRelease.argtypes = [ctypes.c_void_p]
+    except AttributeError:
+        pass
+
+
 # =============================================================================
 # Permission Types and Status
 # =============================================================================
@@ -560,10 +588,9 @@ class PermissionManager:
           3. screencapture command (last resort)
         """
         # Method 1: CGPreflightScreenCaptureAccess (macOS 10.15+, most reliable)
-        # Uses module-level cached _cg_lib handle to avoid repeated find_library() calls.
+        # Uses module-level cached _cg_lib handle with restype pre-configured at import.
         try:
             if _cg_lib is not None:
-                _cg_lib.CGPreflightScreenCaptureAccess.restype = ctypes.c_bool
                 granted = _cg_lib.CGPreflightScreenCaptureAccess()
                 logger.debug(f"CGPreflightScreenCaptureAccess returned: {granted}")
                 return PermissionStatus.GRANTED if granted else PermissionStatus.DENIED
@@ -571,16 +598,9 @@ class PermissionManager:
             logger.debug(f"CGPreflightScreenCaptureAccess not available: {e}")
 
         # Method 2: CGWindowListCreateImage probe (older macOS)
-        # Uses module-level cached _cg_lib + _cf_lib handles and _CGRect struct.
+        # Uses module-level cached _cg_lib + _cf_lib handles with argtypes pre-configured.
         try:
             if _cg_lib is not None:
-                _cg_lib.CGWindowListCreateImage.restype = ctypes.c_void_p
-                _cg_lib.CGWindowListCreateImage.argtypes = [
-                    _CGRect,             # screenBounds
-                    ctypes.c_uint32,     # listOption
-                    ctypes.c_uint32,     # windowID
-                    ctypes.c_uint32,     # imageOption
-                ]
                 rect = _CGRect()
                 rect.origin.x = 0.0
                 rect.origin.y = 0.0
@@ -633,10 +653,9 @@ class PermissionManager:
         Returns:
             True if the request was triggered successfully (NOT whether permission was granted).
         """
-        # Try CGRequestScreenCaptureAccess (macOS 10.15+) — uses cached handle
+        # Try CGRequestScreenCaptureAccess (macOS 10.15+) — restype pre-configured at import
         try:
             if _cg_lib is not None:
-                _cg_lib.CGRequestScreenCaptureAccess.restype = ctypes.c_bool
                 result = _cg_lib.CGRequestScreenCaptureAccess()
                 logger.info(f"[Permissions] CGRequestScreenCaptureAccess triggered (returned: {result})")
                 return True
