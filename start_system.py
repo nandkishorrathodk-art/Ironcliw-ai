@@ -14787,7 +14787,7 @@ if (typeof localStorage !== 'undefined') {
         for script in scripts:
             if Path(script).exists():
                 try:
-                    os.chmod(script, 0o755)
+                    os.chmod(script, 0o700)
                     print(f"{Colors.GREEN}✅ Made {script} executable{Colors.ENDC}")
                     fixed = True
                 except Exception:

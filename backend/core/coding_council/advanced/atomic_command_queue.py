@@ -276,7 +276,7 @@ class AtomicFileLock:
                 self._fd = os.open(
                     str(self.lock_file),
                     os.O_RDWR | os.O_CREAT,
-                    0o666
+                    0o600  # Owner-only (CWE-732 fix)
                 )
 
                 # Try to acquire lock
@@ -518,7 +518,7 @@ class AtomicCommandQueue:
 
         try:
             # Open with exclusive lock
-            fd = os.open(str(lock_file), os.O_RDWR | os.O_CREAT, 0o666)
+            fd = os.open(str(lock_file), os.O_RDWR | os.O_CREAT, 0o600)  # Owner-only (CWE-732 fix)
             try:
                 fcntl.flock(fd, fcntl.LOCK_EX)
 

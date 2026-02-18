@@ -509,7 +509,7 @@ class AtomicFileLock:
             fd = os.open(
                 str(self.lock_file),
                 os.O_CREAT | os.O_EXCL | os.O_RDWR,
-                0o644
+                0o600
             )
 
             # Got the lock - write our info
@@ -4077,7 +4077,7 @@ class AtomicLogWriter:
             self._fd = os.open(
                 str(self.log_file),
                 os.O_WRONLY | os.O_CREAT | os.O_APPEND,
-                0o644
+                0o600
             )
         return self._fd
 

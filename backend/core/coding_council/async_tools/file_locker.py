@@ -453,7 +453,7 @@ class ProcessFileLock:
                 self._fd = os.open(
                     self.path,
                     os.O_RDWR | os.O_CREAT,
-                    0o644
+                    0o600
                 )
 
                 # Try to acquire lock

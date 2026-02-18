@@ -1208,8 +1208,8 @@ class ThreadedIPCServer:
             path=str(self._socket_path)
         )
 
-        # Make socket accessible
-        os.chmod(str(self._socket_path), 0o666)
+        # Restrict socket to owner-only for security (CWE-732)
+        os.chmod(str(self._socket_path), 0o600)
         logger.info(f"[ThreadedIPC] v123.0: Server listening on {self._socket_path}")
 
     async def _handle_connection(
@@ -2817,8 +2817,8 @@ class SupervisorSingleton:
             )
             self._ipc_server = server
 
-            # Make socket world-readable for other processes
-            os.chmod(str(SUPERVISOR_IPC_SOCKET), 0o666)
+            # Restrict socket to owner-only for security (CWE-732)
+            os.chmod(str(SUPERVISOR_IPC_SOCKET), 0o600)
 
             logger.info(f"[Singleton] IPC server started (legacy async): {SUPERVISOR_IPC_SOCKET}")
 
@@ -2893,7 +2893,7 @@ class SupervisorSingleton:
                         self._handle_ipc_connection,
                         path=str(SUPERVISOR_IPC_SOCKET),
                     )
-                    os.chmod(str(SUPERVISOR_IPC_SOCKET), 0o666)
+                    os.chmod(str(SUPERVISOR_IPC_SOCKET), 0o600)
                     logger.info(f"[Singleton] v119.4: IPC server restarted successfully")
                 except Exception as restart_error:
                     logger.error(f"[Singleton] v119.4: IPC server restart failed: {restart_error}")

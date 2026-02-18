@@ -249,7 +249,7 @@ class RobustFileLock:
 
     def _open_lock_file(self) -> int:
         """Open lock file (blocking, run in executor)."""
-        return os.open(str(self._lock_file), os.O_RDWR | os.O_CREAT, 0o644)
+        return os.open(str(self._lock_file), os.O_RDWR | os.O_CREAT, 0o600)  # Owner-only (CWE-732 fix)
 
     def _try_flock(self) -> bool:
         """Try to acquire flock. Returns True if acquired, False if would block."""

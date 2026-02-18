@@ -278,7 +278,7 @@ class LaunchAgentManager:
             save_plist(plist, self.plist_path)
 
             # Set permissions
-            os.chmod(self.plist_path, 0o644)
+            os.chmod(self.plist_path, 0o600)
 
             logger.info(f"Installed LaunchAgent: {self.plist_path}")
 

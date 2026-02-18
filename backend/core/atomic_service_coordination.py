@@ -266,7 +266,7 @@ class DistributedLock:
             self._fd = os.open(
                 str(self.lock_file),
                 os.O_RDWR | os.O_CREAT,
-                0o644
+                0o600
             )
 
             # Try non-blocking exclusive lock

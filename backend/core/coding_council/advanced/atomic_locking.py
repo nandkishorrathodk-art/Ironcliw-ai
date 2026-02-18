@@ -257,7 +257,7 @@ class AtomicFileLock:
         self._fd = os.open(
             str(self.lock_path),
             os.O_RDWR | os.O_CREAT,
-            0o644,
+            0o600,
         )
 
         try:
@@ -297,7 +297,7 @@ class AtomicFileLock:
             self._fd = os.open(
                 str(self.lock_path),
                 os.O_RDWR | os.O_CREAT,
-                0o644,
+                0o600,
             )
         except OSError as e:
             logger.debug(f"[AtomicLock] Failed to open lock file: {e}")

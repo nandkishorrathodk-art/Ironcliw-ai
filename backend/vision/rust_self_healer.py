@@ -657,7 +657,7 @@ class RustSelfHealer:
             
             if sys.platform != "win32":
                 # Make executable on Unix
-                os.chmod(installer_path, 0o755)
+                os.chmod(installer_path, 0o700)
                 
             # Run installer
             cmd = [installer_path, "-y", "--default-toolchain", "stable"]
@@ -1020,7 +1020,7 @@ class RustSelfHealer:
         
         try:
             # Make readable and executable
-            os.chmod(file_path, 0o755)
+            os.chmod(file_path, 0o700)
             return True
         except Exception as e:
             logger.error(f"Failed to fix permissions: {e}")

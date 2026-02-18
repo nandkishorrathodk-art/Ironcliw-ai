@@ -680,7 +680,7 @@ class AtomicIPCFile:
         lock_fd = os.open(
             str(self._lock_path),
             os.O_RDWR | os.O_CREAT,
-            0o644
+            0o600
         )
 
         try:

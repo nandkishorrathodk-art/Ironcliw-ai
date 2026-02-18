@@ -157,7 +157,7 @@ with open({_result_path!r}, "w") as f:
         _fd, _script_path = _tmp.mkstemp(suffix='.py', prefix=f'jarvis_{_cmd_name}_')
         _early_os.write(_fd, _script_content.encode())
         _early_os.close(_fd)
-        _early_os.chmod(_script_path, 0o755)
+        _early_os.chmod(_script_path, 0o700)
 
         # Launch completely detached (double-fork daemon pattern)
         _proc = _sp.Popen(

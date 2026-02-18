@@ -3827,7 +3827,7 @@ class UnifiedStateCoordinator:
         async with self._file_lock:
             try:
                 # Open lock file (create if doesn't exist)
-                fd = os.open(str(lock_file), os.O_CREAT | os.O_RDWR, 0o644)
+                fd = os.open(str(lock_file), os.O_CREAT | os.O_RDWR, 0o600)  # Owner-only (CWE-732 fix)
 
                 try:
                     # Try non-blocking exclusive lock
@@ -4459,7 +4459,7 @@ class UnifiedStateCoordinator:
                 except PermissionError:
                     logger.warning(f"[StateCoord] Lock file {lock_file} permission denied, recovering...")
                     try:
-                        lock_file.chmod(0o644)
+                        lock_file.chmod(0o600)  # Owner-only (CWE-732 fix)
                     except Exception:
                         lock_file.unlink(missing_ok=True)
                     return True

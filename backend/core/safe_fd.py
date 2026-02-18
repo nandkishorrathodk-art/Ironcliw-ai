@@ -556,7 +556,7 @@ def safe_close(
 def safe_open(
     path: Union[str, Path],
     flags: int,
-    mode: int = 0o644,
+    mode: int = 0o600,
 ) -> int:
     """
     Open a file and register the FD for safe closing.
@@ -566,7 +566,7 @@ def safe_open(
     Args:
         path: Path to open
         flags: os.O_* flags
-        mode: File mode for creation (default: 0o644)
+        mode: File mode for creation (default: 0o600)
 
     Returns:
         File descriptor (registered for safe closing)
@@ -623,7 +623,7 @@ def safe_dup2(fd: int, fd2: int) -> int:
 def safe_fd_context(
     path: Union[str, Path],
     flags: int,
-    mode: int = 0o644,
+    mode: int = 0o600,
 ) -> Generator[int, None, None]:
     """
     Context manager for safe FD handling.
@@ -644,7 +644,7 @@ def safe_fd_context(
 async def async_safe_fd_context(
     path: Union[str, Path],
     flags: int,
-    mode: int = 0o644,
+    mode: int = 0o600,
 ) -> AsyncGenerator[int, None]:
     """
     Async context manager for safe FD handling.
@@ -697,7 +697,7 @@ class SafeFDManager:
         self,
         path: Union[str, Path],
         flags: int,
-        mode: int = 0o644,
+        mode: int = 0o600,
     ) -> int:
         """Open a file and track it."""
         fd = safe_open(path, flags, mode)
@@ -729,7 +729,7 @@ class SafeFDManager:
         self,
         path: Union[str, Path],
         flags: int,
-        mode: int = 0o644,
+        mode: int = 0o600,
     ) -> Generator[int, None, None]:
         """Sync context manager for FD operations."""
         fd = self.open(path, flags, mode)
@@ -743,7 +743,7 @@ class SafeFDManager:
         self,
         path: Union[str, Path],
         flags: int,
-        mode: int = 0o644,
+        mode: int = 0o600,
     ) -> AsyncGenerator[int, None]:
         """Async context manager for FD operations."""
         fd = self.open(path, flags, mode)
@@ -753,7 +753,7 @@ class SafeFDManager:
             self.close(fd)
 
     @staticmethod
-    def open_safe(path: Union[str, Path], flags: int, mode: int = 0o644) -> "SafeFDHandle":
+    def open_safe(path: Union[str, Path], flags: int, mode: int = 0o600) -> "SafeFDHandle":
         """
         Create a SafeFDHandle context manager.
 
@@ -797,7 +797,7 @@ class SafeFDHandle:
         self,
         path: Union[str, Path],
         flags: int,
-        mode: int = 0o644,
+        mode: int = 0o600,
     ):
         self.path = path
         self.flags = flags

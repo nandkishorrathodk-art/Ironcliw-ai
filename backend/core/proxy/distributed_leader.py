@@ -325,7 +325,7 @@ class FileLock:
                 self._fd = os.open(
                     str(self.path),
                     os.O_RDWR | os.O_CREAT,
-                    0o644
+                    0o600
                 )
 
                 if blocking:
