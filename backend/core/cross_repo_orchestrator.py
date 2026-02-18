@@ -933,7 +933,7 @@ class CrossRepoOrchestrator:
             )
 
         # Run HTTP check in thread pool
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
 
         try:
             result = await loop.run_in_executor(

@@ -1137,7 +1137,7 @@ class ThreadedIPCServer:
         """v123.0: Serve forever with health monitoring."""
         try:
             # Create a future that completes when stop_event is set
-            stop_future = asyncio.get_event_loop().run_in_executor(
+            stop_future = asyncio.get_running_loop().run_in_executor(
                 None, self._stop_event.wait
             )
 
@@ -1807,7 +1807,7 @@ class HTTPHealthStrategy(HealthCheckStrategy):
         start = time.perf_counter()
 
         # Run HTTP check in thread pool to avoid blocking
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
 
         for port in HTTP_HEALTH_PORTS:
             try:
@@ -2790,7 +2790,7 @@ class SupervisorSingleton:
         # v123.0: Use thread-isolated IPC server for guaranteed responsiveness
         if IPC_THREAD_ENABLED:
             try:
-                main_loop = asyncio.get_event_loop()
+                main_loop = asyncio.get_running_loop()
                 self._threaded_ipc = ThreadedIPCServer(
                     socket_path=SUPERVISOR_IPC_SOCKET,
                     handlers=self._command_handlers,

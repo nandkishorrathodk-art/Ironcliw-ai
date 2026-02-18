@@ -788,12 +788,14 @@ if WATCHDOG_AVAILABLE:
             file_path = str(event.src_path)
             if file_path in self.manager._watched_files:
                 # Schedule reload in the asyncio event loop
-                loop = asyncio.get_event_loop()
-                if loop.is_running():
+                try:
+                    loop = asyncio.get_running_loop()
                     asyncio.run_coroutine_threadsafe(
                         self.manager.trigger_reload(file_path),
                         loop
                     )
+                except RuntimeError:
+                    pass  # No running event loop - skip async reload
 
 
 # =============================================================================

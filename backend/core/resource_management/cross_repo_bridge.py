@@ -528,7 +528,7 @@ class CrossRepoResourceBridge:
         await self.event_bus.publish(event)
 
         # Wait for response (with timeout)
-        response_future = asyncio.get_event_loop().create_future()
+        response_future = asyncio.get_running_loop().create_future()
         self._allocation_callbacks[request.request_id] = lambda resp: response_future.set_result(resp)
 
         try:

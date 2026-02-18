@@ -4362,7 +4362,7 @@ class GCPVMManager:
         # If we found an in-progress creation, wait for it
         if should_wait and wait_event is not None:
             try:
-                await asyncio.wait_for(wait_event.wait(), timeout=wait_timeout)
+                await asyncio.wait_for(asyncio.shield(wait_event.wait()), timeout=wait_timeout)
 
                 # Check the result of the creation we waited for
                 async with self._vm_lock:
@@ -6006,9 +6006,9 @@ class GCPVMManager:
 
         try:
             success, ip_address, status_msg = await asyncio.wait_for(
-                self.ensure_static_vm_ready(
+                asyncio.shield(self.ensure_static_vm_ready(
                     progress_callback=progress_callback,
-                ),
+                )),
                 timeout=recovery_timeout,
             )
 
@@ -6528,7 +6528,7 @@ class GCPVMManager:
         # Cleanup VMs with timeout protection
         try:
             await asyncio.wait_for(
-                self.cleanup_all_vms(reason="Manager shutdown"),
+                asyncio.shield(self.cleanup_all_vms(reason="Manager shutdown")),
                 timeout=30.0
             )
         except asyncio.TimeoutError:

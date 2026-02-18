@@ -651,8 +651,8 @@ class FileIntegrityGuardian:
         start_time = time.time()
         
         # Use thread pool for parallel file checking
-        loop = asyncio.get_event_loop()
-        
+        loop = asyncio.get_running_loop()
+
         async def check_one(path: str) -> IntegrityReport:
             return await loop.run_in_executor(
                 None,

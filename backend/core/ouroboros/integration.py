@@ -417,7 +417,7 @@ class PerformanceRecordPersistence:
                 ])
                 conn.commit()
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         await loop.run_in_executor(None, _write)
 
     async def _save_to_json(self, records: List[PerformanceRecord]) -> None:
@@ -436,7 +436,7 @@ class PerformanceRecordPersistence:
             with open(self._json_path, 'w') as f:
                 json.dump(existing, f, indent=2)
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         await loop.run_in_executor(None, _write)
 
     async def load_records(
@@ -512,7 +512,7 @@ class PerformanceRecordPersistence:
 
             return results
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, _read)
 
     async def _load_from_json(
@@ -555,7 +555,7 @@ class PerformanceRecordPersistence:
 
             return results
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, _read)
 
     async def cleanup_old_records(self) -> int:
@@ -585,7 +585,7 @@ class PerformanceRecordPersistence:
                 conn.commit()
                 return deleted
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, _clean)
 
     async def _cleanup_json(self, cutoff: datetime) -> int:
@@ -611,7 +611,7 @@ class PerformanceRecordPersistence:
 
             return original_count - len(data)
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, _clean)
 
     async def get_statistics(

@@ -1164,15 +1164,10 @@ class LazyAsyncLock:
             loop = asyncio.get_running_loop()
             current_loop_id = id(loop)
         except RuntimeError:
-            # No running loop - try to get the default loop
-            try:
-                loop = asyncio.get_event_loop()
-                current_loop_id = id(loop)
-            except RuntimeError:
-                # Create new loop
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                current_loop_id = id(loop)
+            # No running loop - create new loop
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            current_loop_id = id(loop)
 
         # Double-checked locking pattern
         if self._lock is None or self._loop_id != current_loop_id:

@@ -1547,7 +1547,7 @@ class ProcessSupervisor:
                 # Wait for graceful shutdown
                 try:
                     await asyncio.wait_for(
-                        asyncio.get_event_loop().run_in_executor(
+                        asyncio.get_running_loop().run_in_executor(
                             self._executor, proc.wait, graceful_timeout
                         ),
                         timeout=graceful_timeout + 1,
@@ -2003,7 +2003,7 @@ class EventStore:
 
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         await loop.run_in_executor(self._executor, self._init_db)
 
         self._initialized = True
@@ -2088,7 +2088,7 @@ class EventStore:
         )
 
         async with self._lock:
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             await loop.run_in_executor(self._executor, self._insert_event, event)
 
         # Dispatch to handlers
@@ -2131,7 +2131,7 @@ class EventStore:
         await self.initialize()
 
         async with self._lock:
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             return await loop.run_in_executor(
                 self._executor, self._get_unprocessed_sync, event_type, limit
             )
@@ -2183,7 +2183,7 @@ class EventStore:
     async def mark_processed(self, event_id: str) -> None:
         """Mark an event as processed."""
         async with self._lock:
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             await loop.run_in_executor(
                 self._executor, self._mark_processed_sync, event_id
             )
@@ -2208,7 +2208,7 @@ class EventStore:
         await self.initialize()
 
         async with self._lock:
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             return await loop.run_in_executor(
                 self._executor, self._replay_events_sync, since_timestamp, event_type
             )
@@ -2279,7 +2279,7 @@ class EventStore:
     async def cleanup_expired(self) -> int:
         """Remove expired events."""
         async with self._lock:
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             return await loop.run_in_executor(
                 self._executor, self._cleanup_expired_sync
             )
@@ -6636,7 +6636,7 @@ class TrinityAdvancedCoordinator:
 
     async def _async_touch(self, path: Path) -> None:
         """Touch a file asynchronously."""
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         await loop.run_in_executor(None, lambda: path.touch())
 
     async def execute_with_partition_handling(
@@ -13016,7 +13016,7 @@ class TrinityUnifiedOrchestrator:
 
             try:
                 await asyncio.wait_for(
-                    asyncio.get_event_loop().run_in_executor(
+                    asyncio.get_running_loop().run_in_executor(
                         None, lambda: proc.wait(timeout=tier_timeout)
                     ),
                     timeout=tier_timeout + 1,
@@ -13038,7 +13038,7 @@ class TrinityUnifiedOrchestrator:
 
             try:
                 await asyncio.wait_for(
-                    asyncio.get_event_loop().run_in_executor(
+                    asyncio.get_running_loop().run_in_executor(
                         None, lambda: proc.wait(timeout=tier_timeout)
                     ),
                     timeout=tier_timeout + 1,

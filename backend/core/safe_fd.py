@@ -933,7 +933,7 @@ async def async_safe_sync_file(path: Union[str, Path]) -> bool:
 
     Runs the sync in a thread pool to avoid blocking.
     """
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     return await loop.run_in_executor(None, safe_sync_file, path)
 
 

@@ -2136,7 +2136,7 @@ class AdvancedAsyncPipeline:
             try:
                 from voice_unlock.objc.server.screen_lock_detector import is_screen_locked
                 result = await asyncio.wait_for(
-                    asyncio.get_event_loop().run_in_executor(None, is_screen_locked),
+                    asyncio.get_running_loop().run_in_executor(None, is_screen_locked),
                     timeout=1.5
                 )
                 return bool(result)

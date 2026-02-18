@@ -711,7 +711,7 @@ class AdvancedEventEmitter:
             try:
                 if reg.is_sync:
                     # Run sync callback in executor
-                    loop = asyncio.get_event_loop()
+                    loop = asyncio.get_running_loop()
                     await asyncio.wait_for(
                         loop.run_in_executor(None, lambda: callback(event_type, details)),
                         timeout=reg.timeout_seconds,

@@ -93,7 +93,11 @@ class DirectoryManager:
         self.max_retries = max_retries
         self.retry_delay = retry_delay
         self._initialized = False
-        self._init_lock = asyncio.Lock() if asyncio.get_event_loop().is_running() else None
+        try:
+            asyncio.get_running_loop()
+            self._init_lock = asyncio.Lock()
+        except RuntimeError:
+            self._init_lock = None
 
     def ensure_directory_sync(self) -> bool:
         """

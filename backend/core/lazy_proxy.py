@@ -391,7 +391,7 @@ async def preload_proxies(
 
     # Use thread pool for parallel loading
     with ThreadPoolExecutor(max_workers=concurrency) as executor:
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         futures = [
             loop.run_in_executor(executor, load_proxy, proxy)
             for proxy in proxies

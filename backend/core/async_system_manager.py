@@ -872,15 +872,14 @@ class AsyncSystemManager:
         # Set async event if available (may not be if called before start)
         if self._shutdown_event:
             try:
-                # Get the event loop if running
-                loop = asyncio.get_event_loop()
-                if loop.is_running():
-                    loop.call_soon_threadsafe(self._shutdown_event.set)
-                else:
-                    self._shutdown_event.set()
+                loop = asyncio.get_running_loop()
+                loop.call_soon_threadsafe(self._shutdown_event.set)
             except RuntimeError:
-                # No event loop available
-                pass
+                # No running event loop - set directly if possible
+                try:
+                    self._shutdown_event.set()
+                except Exception:
+                    pass
 
     async def wait_for_ready(self, timeout: Optional[float] = None) -> bool:
         """

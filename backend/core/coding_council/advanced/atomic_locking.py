@@ -465,7 +465,7 @@ class AtomicFileLock:
     async def _async_cleanup_stale(self) -> None:
         """Async version of stale lock cleanup."""
         # Run in executor to avoid blocking
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         await loop.run_in_executor(None, self._cleanup_stale)
 
     def _force_unlock(self) -> None:

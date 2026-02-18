@@ -1649,7 +1649,7 @@ async def wait_for_gcp_ready(timeout: float = 60.0) -> bool:
         return False
 
     try:
-        await asyncio.wait_for(_trinity_gcp_ready_event.wait(), timeout=timeout)
+        await asyncio.wait_for(asyncio.shield(_trinity_gcp_ready_event.wait()), timeout=timeout)
         return True
     except asyncio.TimeoutError:
         logger.warning(f"[v146.0] GCP ready wait timed out after {timeout}s")
@@ -7946,7 +7946,7 @@ class ProcessOrchestrator:
             # indefinitely under CPU pressure (96-98%). 15s default is generous for psutil calls.
             _hw_timeout = _get_env_float("JARVIS_HW_ASSESS_TIMEOUT", 15.0)
             try:
-                await asyncio.wait_for(self._enforce_hardware_environment(), timeout=_hw_timeout)
+                await asyncio.wait_for(asyncio.shield(self._enforce_hardware_environment()), timeout=_hw_timeout)
             except asyncio.TimeoutError:
                 logger.warning(
                     f"[v256.0] Hardware assessment timed out ({_hw_timeout:.0f}s) — using defaults. "
@@ -7961,7 +7961,7 @@ class ProcessOrchestrator:
             if self._gcp_prewarm_enabled:
                 _gcp_prewarm_timeout = _get_env_float("JARVIS_GCP_PREWARM_TIMEOUT", 15.0)
                 try:
-                    await asyncio.wait_for(self._start_gcp_prewarm(), timeout=_gcp_prewarm_timeout)
+                    await asyncio.wait_for(asyncio.shield(self._start_gcp_prewarm()), timeout=_gcp_prewarm_timeout)
                 except asyncio.TimeoutError:
                     logger.warning(
                         f"[v256.1] GCP prewarm start timed out ({_gcp_prewarm_timeout:.0f}s) — "
@@ -7976,7 +7976,7 @@ class ProcessOrchestrator:
             _cross_repo_timeout = _get_env_float("JARVIS_ORCH_CROSS_REPO_TIMEOUT", 30.0)
             try:
                 await asyncio.wait_for(
-                    self._initialize_cross_repo_state(spawn_processes=spawn_processes),
+                    asyncio.shield(self._initialize_cross_repo_state(spawn_processes=spawn_processes)),
                     timeout=_cross_repo_timeout,
                 )
             except asyncio.TimeoutError:
@@ -20996,7 +20996,7 @@ echo "=== JARVIS Prime started ==="
             semaphore_timeout = 60.0  # Max wait for semaphore slot
             try:
                 acquired = await asyncio.wait_for(
-                    self._service_startup_semaphore_safe.acquire(),
+                    asyncio.shield(self._service_startup_semaphore_safe.acquire()),
                     timeout=semaphore_timeout
                 )
                 if not acquired:
@@ -22246,7 +22246,7 @@ echo "=== JARVIS Prime started ==="
                 try:
                     logger.info(f"  Stopping {service_name}...")
                     await asyncio.wait_for(
-                        self._stop_process(managed),
+                        asyncio.shield(self._stop_process(managed)),
                         timeout=30.0  # Per-service shutdown timeout
                     )
                 except asyncio.TimeoutError:

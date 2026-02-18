@@ -1125,7 +1125,7 @@ class HybridOrchestrator:
         if learning_db:
             try:
                 await learning_db.store_interaction(
-                    command=command, result=result, timestamp=asyncio.get_event_loop().time()
+                    command=command, result=result, timestamp=asyncio.get_running_loop().time()
                 )
                 logger.debug("💾 Stored in learning_database")
             except Exception as e:

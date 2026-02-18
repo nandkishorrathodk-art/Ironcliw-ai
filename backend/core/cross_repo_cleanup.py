@@ -566,7 +566,7 @@ class CrossRepoCleanupCoordinator:
                 results["callbacks_failed"] += 1
         
         # Execute sync callbacks in executor
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         for name, callback in self._cleanup_callbacks.items():
             try:
                 await asyncio.wait_for(

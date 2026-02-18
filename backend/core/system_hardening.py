@@ -720,7 +720,7 @@ async def harden_system() -> Dict[str, Any]:
     # Install signal handlers
     shutdown_manager = get_shutdown_manager()
     try:
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         shutdown_manager.install_signal_handlers(loop)
         results["signal_handlers"] = True
     except Exception as e:

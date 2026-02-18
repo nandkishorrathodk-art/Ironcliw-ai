@@ -1110,7 +1110,7 @@ class CrossRepoDataBridge:
             self._metrics.packets_retried += 1
 
             # Exponential backoff with jitter
-            jitter = delay * 0.1 * (2 * asyncio.get_event_loop().time() % 1 - 0.5)
+            jitter = delay * 0.1 * (2 * asyncio.get_running_loop().time() % 1 - 0.5)
             await asyncio.sleep(delay + jitter)
             delay = min(delay * 2, self.config.max_retry_delay)
 

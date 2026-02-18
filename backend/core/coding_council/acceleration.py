@@ -777,7 +777,7 @@ class UnifiedAccelerator:
         chunk_size: int = 100
     ) -> List[float]:
         """Async batch similarity for large candidate sets."""
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
 
         if len(candidates) <= chunk_size:
             return await loop.run_in_executor(
@@ -807,7 +807,7 @@ class UnifiedAccelerator:
         chunk_size: int = 100
     ) -> List[ArrayLike]:
         """Async batch normalization for large vector sets."""
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(
             self._executor,
             lambda: self.batch_normalize(vectors)

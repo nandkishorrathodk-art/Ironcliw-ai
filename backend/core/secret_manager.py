@@ -268,7 +268,7 @@ class SecretBackend(ABC):
 
     async def set_secret_async(self, secret_id: str, value: str) -> bool:
         """Set/update a secret asynchronously (if supported)."""
-        return await asyncio.get_event_loop().run_in_executor(
+        return await asyncio.get_running_loop().run_in_executor(
             None, self.set_secret, secret_id, value
         )
 
@@ -328,7 +328,7 @@ class GCPSecretManagerBackend(SecretBackend):
 
     async def get_secret_async(self, secret_id: str, version: str = "latest") -> Optional[str]:
         """Retrieve secret asynchronously using thread pool."""
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, self.get_secret, secret_id, version)
 
     def set_secret(self, secret_id: str, value: str) -> bool:
@@ -407,7 +407,7 @@ class KeychainBackend(SecretBackend):
 
     async def get_secret_async(self, secret_id: str, version: str = "latest") -> Optional[str]:
         """Retrieve secret asynchronously."""
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, self.get_secret, secret_id, version)
 
     def set_secret(self, secret_id: str, value: str) -> bool:
@@ -758,7 +758,7 @@ class SecretManager:
 
     async def rotate_secret_async(self, secret_id: str, new_value: str) -> bool:
         """Rotate secret asynchronously."""
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(
             self._executor, self.rotate_secret, secret_id, new_value
         )

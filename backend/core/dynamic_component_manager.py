@@ -338,7 +338,7 @@ class MLIntentPredictor:
         features, vec_time = self.vectorizer.vectorize(text)
 
         # Run inference in thread pool (non-blocking)
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         predictions = await loop.run_in_executor(
             None,
             self._predict_sync,
@@ -421,7 +421,7 @@ class MLIntentPredictor:
                 logger.info(f"ℹ️  CoreML training skipped ({type(e).__name__}), using sklearn fallback")
 
         # Fallback to sklearn training
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         success = await loop.run_in_executor(None, self._train_sync, X, y)
 
         if success:
@@ -786,17 +786,16 @@ class IntentAnalyzer:
             try:
                 # Use lower threshold for preloading (we want to be proactive)
                 import asyncio
-                loop = asyncio.get_event_loop()
-
-                if loop.is_running():
+                try:
+                    loop = asyncio.get_running_loop()
                     # Async context - schedule prediction
                     future = asyncio.ensure_future(
                         self.ml_predictor.predict_async(command, threshold=0.4)
                     )
                     # Note: We can't await here in sync function, so we return pattern-based for now
                     # ML predictions will be used in next call
-                else:
-                    # Sync context - use pattern-based only
+                except RuntimeError:
+                    # No running event loop - sync context, use pattern-based only
                     pass
 
             except Exception as e:

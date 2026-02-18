@@ -920,7 +920,7 @@ class GuaranteedDeliveryQueue:
             return
 
         # Initialize database (sync - SQLite doesn't have async)
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         await loop.run_in_executor(None, self._init_database)
 
         # Start retry processor
@@ -1005,7 +1005,7 @@ class GuaranteedDeliveryQueue:
         async with self._lock:
             try:
                 now = time.time()
-                loop = asyncio.get_event_loop()
+                loop = asyncio.get_running_loop()
 
                 await loop.run_in_executor(
                     None,
@@ -1050,7 +1050,7 @@ class GuaranteedDeliveryQueue:
         """
         async with self._lock:
             try:
-                loop = asyncio.get_event_loop()
+                loop = asyncio.get_running_loop()
 
                 result = await loop.run_in_executor(
                     None,
@@ -1080,7 +1080,7 @@ class GuaranteedDeliveryQueue:
         async with self._lock:
             try:
                 now = time.time()
-                loop = asyncio.get_event_loop()
+                loop = asyncio.get_running_loop()
 
                 cursor = await loop.run_in_executor(
                     None,
@@ -1129,7 +1129,7 @@ class GuaranteedDeliveryQueue:
         async with self._lock:
             try:
                 now = time.time()
-                loop = asyncio.get_event_loop()
+                loop = asyncio.get_running_loop()
 
                 if success:
                     # Mark as processing (awaiting ack)
@@ -1237,7 +1237,7 @@ class GuaranteedDeliveryQueue:
         """Remove expired requests."""
         async with self._lock:
             now = time.time()
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
 
             result = await loop.run_in_executor(
                 None,
@@ -1257,7 +1257,7 @@ class GuaranteedDeliveryQueue:
         """Move failed requests to dead letter queue."""
         async with self._lock:
             now = time.time()
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
 
             # Find failed requests (max attempts reached)
             cursor = await loop.run_in_executor(

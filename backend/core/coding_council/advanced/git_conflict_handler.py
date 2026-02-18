@@ -692,7 +692,7 @@ class GitConflictHandler:
 
         # Record history
         self._resolution_history.append({
-            "timestamp": asyncio.get_event_loop().time(),
+            "timestamp": asyncio.get_running_loop().time(),
             "resolved": resolved,
             "unresolved": unresolved,
             "strategy": default_strategy.value,

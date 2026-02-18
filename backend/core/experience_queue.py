@@ -205,7 +205,7 @@ class ExperienceStore:
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
 
         # Run database initialization in executor
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         await loop.run_in_executor(None, self._init_db)
 
     def _init_db(self) -> None:
@@ -254,7 +254,7 @@ class ExperienceStore:
     async def insert(self, entry: ExperienceEntry) -> bool:
         """Insert an entry into the store."""
         async with self._lock:
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             return await loop.run_in_executor(None, self._insert_sync, entry)
 
     def _insert_sync(self, entry: ExperienceEntry) -> bool:
@@ -292,7 +292,7 @@ class ExperienceStore:
     ) -> List[ExperienceEntry]:
         """Get a batch of entries by status, ordered by priority."""
         async with self._lock:
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             return await loop.run_in_executor(
                 None, self._get_batch_sync, batch_size, status
             )
@@ -340,7 +340,7 @@ class ExperienceStore:
     ) -> bool:
         """Update entry status."""
         async with self._lock:
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             return await loop.run_in_executor(
                 None, self._update_status_sync, entry_id, status, increment_attempts
             )
@@ -375,7 +375,7 @@ class ExperienceStore:
     async def delete(self, entry_id: str) -> bool:
         """Delete an entry."""
         async with self._lock:
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             return await loop.run_in_executor(None, self._delete_sync, entry_id)
 
     def _delete_sync(self, entry_id: str) -> bool:
@@ -392,7 +392,7 @@ class ExperienceStore:
     async def delete_batch(self, entry_ids: List[str]) -> int:
         """Delete multiple entries."""
         async with self._lock:
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             return await loop.run_in_executor(None, self._delete_batch_sync, entry_ids)
 
     def _delete_batch_sync(self, entry_ids: List[str]) -> int:
@@ -415,7 +415,7 @@ class ExperienceStore:
     async def cleanup_expired(self) -> int:
         """Remove expired entries."""
         async with self._lock:
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             return await loop.run_in_executor(None, self._cleanup_expired_sync)
 
     def _cleanup_expired_sync(self) -> int:
@@ -435,7 +435,7 @@ class ExperienceStore:
     async def get_stats(self) -> QueueStats:
         """Get queue statistics."""
         async with self._lock:
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             return await loop.run_in_executor(None, self._get_stats_sync)
 
     def _get_stats_sync(self) -> QueueStats:
@@ -498,7 +498,7 @@ class ExperienceStore:
     async def check_duplicate(self, content_hash: str) -> bool:
         """Check if a duplicate entry exists."""
         async with self._lock:
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             return await loop.run_in_executor(
                 None, self._check_duplicate_sync, content_hash
             )

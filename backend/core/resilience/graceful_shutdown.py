@@ -1252,7 +1252,7 @@ class MultiprocessingResourceTracker:
 
                 # Run shutdown in thread to avoid blocking event loop
                 shutdown_success = await asyncio.wait_for(
-                    asyncio.get_event_loop().run_in_executor(
+                    asyncio.get_running_loop().run_in_executor(
                         None,
                         lambda e=executor, c=cancel_futures: (
                             e.shutdown(wait=True, cancel_futures=c)
@@ -2273,7 +2273,7 @@ async def cleanup_ml_resources_async(timeout: float = 5.0) -> Dict[str, Any]:
 
     Runs cleanup in a thread pool to avoid blocking the event loop.
     """
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     try:
         result = await asyncio.wait_for(
             loop.run_in_executor(None, cleanup_torch_multiprocessing_resources),

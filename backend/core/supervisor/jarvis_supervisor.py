@@ -2694,9 +2694,11 @@ class JARVISSupervisor:
         """
         # Schedule async narration in event loop
         try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                create_safe_task(self._narrate_dms_status_async(status))
+            asyncio.get_running_loop()
+            create_safe_task(self._narrate_dms_status_async(status))
+        except RuntimeError:
+            # No running event loop - skip narration
+            pass
         except Exception as e:
             logger.debug(f"DMS status narration scheduling failed: {e}")
     
@@ -3036,8 +3038,8 @@ class JARVISSupervisor:
 
     def _setup_signal_handlers(self) -> None:
         """Setup signal handlers for graceful shutdown."""
-        loop = asyncio.get_event_loop()
-        
+        loop = asyncio.get_running_loop()
+
         for sig in (signal.SIGINT, signal.SIGTERM):
             loop.add_signal_handler(sig, self._signal_handler, sig)
         

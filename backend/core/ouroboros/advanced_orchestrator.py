@@ -617,6 +617,15 @@ class FileLockManager:
 # RESOURCE MONITOR
 # =============================================================================
 
+def _has_running_loop() -> bool:
+    """Check if there is a running asyncio event loop without using deprecated API."""
+    try:
+        asyncio.get_running_loop()
+        return True
+    except RuntimeError:
+        return False
+
+
 class ResourceMonitor:
     """
     Monitors system resources to prevent overload.
@@ -634,7 +643,7 @@ class ResourceMonitor:
             memory_mb=memory.used / (1024 * 1024),
             disk_free_mb=disk.free / (1024 * 1024),
             cpu_percent=psutil.cpu_percent(interval=0.1),
-            active_tasks=len(asyncio.all_tasks()) if asyncio.get_event_loop().is_running() else 0,
+            active_tasks=len(asyncio.all_tasks()) if _has_running_loop() else 0,
         )
 
     @staticmethod

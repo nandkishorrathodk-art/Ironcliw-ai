@@ -21577,7 +21577,7 @@ class StartupHandshakeProtocol:
 
             # Create future if not exists
             if service_name not in self._pending_handshakes:
-                self._pending_handshakes[service_name] = asyncio.get_event_loop().create_future()
+                self._pending_handshakes[service_name] = asyncio.get_running_loop().create_future()
 
         try:
             endpoint = await asyncio.wait_for(
@@ -25518,7 +25518,7 @@ class AtomicFileManager:
                         mode = "wb" if is_bytes else "w"
                         with open(temp_path, mode) as f:
                             f.write(content)
-                    await asyncio.get_event_loop().run_in_executor(None, sync_write)
+                    await asyncio.get_running_loop().run_in_executor(None, sync_write)
 
                 # Sync to disk
                 await self._sync_file(temp_path)
@@ -25610,7 +25610,7 @@ class AtomicFileManager:
                 finally:
                     safe_close(fd)
 
-            await asyncio.get_event_loop().run_in_executor(None, sync)
+            await asyncio.get_running_loop().run_in_executor(None, sync)
         except Exception as e:
             logger.debug(f"File sync warning: {e}")
 

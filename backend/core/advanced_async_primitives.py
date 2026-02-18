@@ -3863,7 +3863,7 @@ def setup_shutdown_signal_handlers(
         try:
             loop = asyncio.get_running_loop()
         except RuntimeError:
-            loop = asyncio.get_event_loop()
+            loop = asyncio.new_event_loop()
 
     def handle_signal(signum, frame):
         sig_name = sig.Signals(signum).name

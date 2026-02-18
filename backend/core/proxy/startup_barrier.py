@@ -414,7 +414,7 @@ class VerificationPipeline:
 
         try:
             # Use asyncio for non-blocking connect
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
 
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             sock.setblocking(False)
@@ -475,7 +475,7 @@ class VerificationPipeline:
             context.check_hostname = False
             context.verify_mode = ssl.CERT_NONE  # Proxy uses its own certs
 
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
 
             # Create raw socket first
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

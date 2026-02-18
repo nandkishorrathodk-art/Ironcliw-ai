@@ -600,7 +600,7 @@ class CrossRepoTransport:
                 data = event.to_bytes()
                 sock = self._sockets["multicast"]
 
-                loop = asyncio.get_event_loop()
+                loop = asyncio.get_running_loop()
                 await loop.run_in_executor(
                     None,
                     lambda: sock.sendto(
@@ -702,7 +702,7 @@ class CrossRepoTransport:
         if not sock:
             return
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         base_backoff = 0.1
         max_backoff = 5.0
 

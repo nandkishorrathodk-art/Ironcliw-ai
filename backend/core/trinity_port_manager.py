@@ -666,7 +666,7 @@ class TrinityPortManager:
         """Verify port is bindable by attempting socket bind."""
         try:
             # Run in executor to avoid blocking
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             return await asyncio.wait_for(
                 loop.run_in_executor(None, self._sync_socket_bind_test, port),
                 timeout=self.config.socket_bind_timeout,

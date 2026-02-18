@@ -939,7 +939,7 @@ class TheSimulator:
             if self._process_pool:
                 try:
                     await asyncio.wait_for(
-                        asyncio.get_event_loop().run_in_executor(
+                        asyncio.get_running_loop().run_in_executor(
                             None,
                             lambda: self._process_pool.shutdown(wait=True, cancel_futures=True)
                         ),
@@ -955,7 +955,7 @@ class TheSimulator:
             if self._thread_pool:
                 try:
                     await asyncio.wait_for(
-                        asyncio.get_event_loop().run_in_executor(
+                        asyncio.get_running_loop().run_in_executor(
                             None,
                             lambda: self._thread_pool.shutdown(wait=True, cancel_futures=True)
                         ),
@@ -1009,7 +1009,7 @@ class TheSimulator:
 
         try:
             # Run in process pool for isolation
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             future = self._process_pool.submit(
                 _execute_in_process,
                 (code, filename, globals_dict, trace)

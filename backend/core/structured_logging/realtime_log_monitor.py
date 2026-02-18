@@ -528,7 +528,7 @@ class RealTimeLogMonitor:
                 await self.narrator(announcement)
             else:
                 # Run sync narrator in thread pool
-                await asyncio.get_event_loop().run_in_executor(
+                await asyncio.get_running_loop().run_in_executor(
                     None, self.narrator, announcement
                 )
         except Exception as e:

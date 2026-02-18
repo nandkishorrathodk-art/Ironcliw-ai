@@ -3754,9 +3754,9 @@ class IntelligentKernelTakeover:
             return False
 
         try:
-            # Connect to IPC socket
+            # Connect to IPC socket (shielded to prevent cancellation during critical takeover)
             reader, writer = await asyncio.wait_for(
-                asyncio.open_unix_connection(str(self._ipc_socket_path)),
+                asyncio.shield(asyncio.open_unix_connection(str(self._ipc_socket_path))),
                 timeout=self.ipc_timeout
             )
 
@@ -3765,9 +3765,9 @@ class IntelligentKernelTakeover:
             writer.write(request.encode())
             await writer.drain()
 
-            # Wait for response
+            # Wait for response (shielded to prevent cancellation during critical handover)
             response = await asyncio.wait_for(
-                reader.readline(),
+                asyncio.shield(reader.readline()),
                 timeout=self.ipc_timeout
             )
 
@@ -3802,9 +3802,9 @@ class IntelligentKernelTakeover:
                 self.logger.debug("[Takeover] No IPC socket - cannot do graceful handover")
                 return False
 
-            # Send shutdown request
+            # Send shutdown request (shielded to prevent cancellation during graceful handover)
             reader, writer = await asyncio.wait_for(
-                asyncio.open_unix_connection(str(self._ipc_socket_path)),
+                asyncio.shield(asyncio.open_unix_connection(str(self._ipc_socket_path))),
                 timeout=self.ipc_timeout
             )
 
@@ -3816,9 +3816,9 @@ class IntelligentKernelTakeover:
             writer.write(request.encode())
             await writer.drain()
 
-            # Wait for acknowledgment
+            # Wait for acknowledgment (shielded to prevent cancellation during graceful shutdown)
             response = await asyncio.wait_for(
-                reader.readline(),
+                asyncio.shield(reader.readline()),
                 timeout=self.ipc_timeout
             )
 
@@ -9463,10 +9463,10 @@ class DynamicPortManager(ResourceManagerBase):
                         self._logger.info(f"Process {pid} terminated gracefully")
                         return True
                 else:
-                    # Fallback: run in executor
+                    # Fallback: run in executor (shielded so process cleanup completes)
                     loop = asyncio.get_running_loop()
                     await asyncio.wait_for(
-                        loop.run_in_executor(None, lambda: proc.wait(timeout=sigterm_timeout)),
+                        asyncio.shield(loop.run_in_executor(None, lambda: proc.wait(timeout=sigterm_timeout))),
                         timeout=sigterm_timeout + 1.0
                     )
                     self._logger.info(f"Process {pid} terminated gracefully")
@@ -10136,26 +10136,34 @@ class TieredStorageManager(ResourceManagerBase):
         self._bytes_migrated_warm += entry.get("size", 0)
 
     async def _get_from_warm(self, key: str) -> Optional[Any]:
-        """Get data from warm tier (local disk)."""
+        """Get data from warm tier (local disk). File I/O offloaded to thread."""
         try:
             warm_file = Path(self.warm_path) / f"{key}.json"
             if warm_file.exists():
-                import json
-                with open(warm_file, 'r') as f:
-                    return json.load(f)
+                return await asyncio.to_thread(self._sync_read_json, warm_file)
         except Exception:
             pass
         return None
 
+    def _sync_read_json(self, path: Path) -> Any:
+        """Synchronous JSON file read helper (called via asyncio.to_thread)."""
+        import json
+        with open(path, 'r') as f:
+            return json.load(f)
+
     async def _put_to_warm(self, key: str, data: Any) -> None:
-        """Put data to warm tier (local disk)."""
+        """Put data to warm tier (local disk). File I/O offloaded to thread."""
         try:
-            import json
             warm_file = Path(self.warm_path) / f"{key}.json"
-            with open(warm_file, 'w') as f:
-                json.dump(data, f)
+            await asyncio.to_thread(self._sync_write_json, warm_file, data)
         except Exception as e:
             self._logger.debug(f"Failed to write to warm tier: {e}")
+
+    def _sync_write_json(self, path: Path, data: Any) -> None:
+        """Synchronous JSON file write helper (called via asyncio.to_thread)."""
+        import json
+        with open(path, 'w') as f:
+            json.dump(data, f)
 
     async def _get_from_cold(self, key: str) -> Optional[Any]:
         """Get data from cold tier (cloud storage)."""
@@ -27204,19 +27212,27 @@ class EventSourcingManager:
             self._state.update(payload)
 
     async def _persist_event(self, event: Dict[str, Any]) -> None:
-        """Persist an event to disk."""
+        """Persist an event to disk. File I/O offloaded to thread."""
         # Use date-based files for organization
         date_str = datetime.now().strftime("%Y-%m-%d")
         event_file = self._event_dir / f"events_{date_str}.jsonl"
 
         try:
-            with open(event_file, "a") as f:
-                f.write(json.dumps(event) + "\n")
+            # Serialize in the caller so we capture errors early,
+            # then offload the actual file write to a thread
+            line = json.dumps(event) + "\n"
+            await asyncio.to_thread(self._sync_append_line, event_file, line)
         except Exception:
             pass
 
+    @staticmethod
+    def _sync_append_line(path: Path, line: str) -> None:
+        """Synchronous file append helper (called via asyncio.to_thread)."""
+        with open(path, "a") as f:
+            f.write(line)
+
     async def _create_snapshot(self) -> None:
-        """Create a snapshot of current state."""
+        """Create a snapshot of current state. File I/O offloaded to thread."""
         snapshot_id = f"snapshot_{self._event_count}"
         snapshot_file = self._event_dir / f"{snapshot_id}.snapshot.json"
 
@@ -27227,7 +27243,8 @@ class EventSourcingManager:
                 "state": self._state,
                 "timestamp": datetime.now().isoformat(),
             }
-            snapshot_file.write_text(json.dumps(data, indent=2))
+            content = json.dumps(data, indent=2)
+            await asyncio.to_thread(snapshot_file.write_text, content)
             self._stats["snapshots_created"] += 1
         except Exception:
             pass
@@ -54082,8 +54099,8 @@ class ProgressiveReadinessManager:
                 jitter = self._heartbeat_interval * 0.1 * (2 * random.random() - 1)
                 await asyncio.sleep(self._heartbeat_interval + jitter)
 
-                # Write heartbeat
-                self._write_heartbeat()
+                # Write heartbeat (offloaded to thread to avoid blocking event loop)
+                await asyncio.to_thread(self._write_heartbeat)
                 consecutive_errors = 0
 
             except asyncio.CancelledError:

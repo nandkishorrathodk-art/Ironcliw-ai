@@ -114,7 +114,7 @@ class RepoMasterAdapter:
         files: List[str]
     ) -> Dict[str, Any]:
         """Analyze import dependencies."""
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
 
         def _analyze():
             result = {
@@ -156,7 +156,7 @@ class RepoMasterAdapter:
         files: List[str]
     ) -> Dict[str, Any]:
         """Analyze code complexity."""
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
 
         def _analyze():
             result = {

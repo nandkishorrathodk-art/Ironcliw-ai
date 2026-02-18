@@ -130,7 +130,11 @@ class AsyncResourceManager:
         self._resources: Dict[str, ManagedResource] = {}
         self._resource_lock = threading.Lock()
         self._shutdown_initiated = False
-        self._shutdown_complete = asyncio.Event() if asyncio.get_event_loop().is_running() else None
+        try:
+            asyncio.get_running_loop()
+            self._shutdown_complete = asyncio.Event()
+        except RuntimeError:
+            self._shutdown_complete = None
         self._cleanup_timeout = float(os.getenv("RESOURCE_CLEANUP_TIMEOUT", "30.0"))
         self._cleanup_stats = {
             "total_registered": 0,
@@ -215,7 +219,7 @@ class AsyncResourceManager:
     def _wrap_sync_close(self, sync_close: Callable) -> Callable[[], Coroutine[Any, Any, None]]:
         """Wrap synchronous close function in async"""
         async def async_close():
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             await loop.run_in_executor(None, sync_close)
         return async_close
 

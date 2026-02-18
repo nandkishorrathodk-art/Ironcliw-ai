@@ -318,7 +318,7 @@ class AdvancedProcessSelfHealer:
                     return False
 
         try:
-            is_open = await asyncio.get_event_loop().run_in_executor(None, _check)
+            is_open = await asyncio.get_running_loop().run_in_executor(None, _check)
             if is_open:
                 # Port is open, but we can't verify health without HTTP
                 result.healthy = True  # Assume healthy if accepting connections
@@ -472,7 +472,7 @@ class AdvancedProcessSelfHealer:
             # Wait for graceful shutdown
             try:
                 await asyncio.wait_for(
-                    asyncio.get_event_loop().run_in_executor(
+                    asyncio.get_running_loop().run_in_executor(
                         None, proc.wait, self.config.graceful_shutdown_timeout
                     ),
                     timeout=self.config.graceful_shutdown_timeout + 1
@@ -491,7 +491,7 @@ class AdvancedProcessSelfHealer:
             try:
                 proc.kill()
                 await asyncio.wait_for(
-                    asyncio.get_event_loop().run_in_executor(None, proc.wait, 2.0),
+                    asyncio.get_running_loop().run_in_executor(None, proc.wait, 2.0),
                     timeout=3.0
                 )
                 result['process_killed'] = True

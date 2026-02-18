@@ -186,7 +186,7 @@ class ProactiveProxyDetector:
                 # Connection in progress - wait briefly with timeout
                 try:
                     # Use selector for cross-platform compatibility
-                    loop = asyncio.get_event_loop()
+                    loop = asyncio.get_running_loop()
                     await asyncio.wait_for(
                         loop.sock_connect(sock, (
                             self._config.proxy_host, self._config.proxy_port

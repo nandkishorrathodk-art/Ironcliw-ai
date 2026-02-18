@@ -764,7 +764,7 @@ class ShutdownHandler:
         self._started = True
 
         # Register signal handlers
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
 
         for sig in (signal.SIGTERM, signal.SIGINT):
             try:
@@ -816,14 +816,15 @@ class ShutdownHandler:
 
         # Try to run async cleanup in event loop
         try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                # Schedule cleanup
-                loop.create_task(self._run_cleanup())
-            else:
-                loop.run_until_complete(self._run_cleanup())
-        except Exception as e:
-            logger.error(f"[ShutdownHandler] Sync cleanup error: {e}")
+            loop = asyncio.get_running_loop()
+            # Loop is running - schedule cleanup as a task
+            loop.create_task(self._run_cleanup())
+        except RuntimeError:
+            # No running loop - try to create one and run cleanup
+            try:
+                asyncio.run(self._run_cleanup())
+            except Exception as e:
+                logger.error(f"[ShutdownHandler] Sync cleanup error: {e}")
 
     async def wait_for_shutdown(self) -> None:
         """Wait until shutdown is initiated."""

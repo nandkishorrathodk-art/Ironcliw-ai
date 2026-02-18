@@ -454,7 +454,7 @@ class SecurityScanner:
             )
 
         # Run OWASP pattern scan
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         owasp_vulns = await loop.run_in_executor(
             self._executor,
             self.owasp_scanner.scan_content,

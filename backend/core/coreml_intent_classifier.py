@@ -410,7 +410,7 @@ class CoreMLIntentClassifier:
         start = time.perf_counter()
 
         # Train in thread pool (non-blocking)
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         success = await loop.run_in_executor(
             None,
             self._train_sync,
@@ -505,7 +505,7 @@ class CoreMLIntentClassifier:
 
         logger.info("🔄 [v117.0] Exporting PyTorch model to CoreML...")
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         success = await loop.run_in_executor(None, self._export_to_coreml_sync)
 
         if success:
@@ -648,7 +648,7 @@ class CoreMLIntentClassifier:
         if self.is_trained and self.coreml_model is not None and not self.coreml_disabled:
             try:
                 # Run inference in thread pool (CoreML is blocking)
-                loop = asyncio.get_event_loop()
+                loop = asyncio.get_running_loop()
                 result = await loop.run_in_executor(
                     None,
                     self._predict_sync_coreml,
@@ -681,7 +681,7 @@ class CoreMLIntentClassifier:
         if self.pytorch_model is not None:
              try:
                 # Run inference in thread pool
-                loop = asyncio.get_event_loop()
+                loop = asyncio.get_running_loop()
                 result = await loop.run_in_executor(
                     None,
                     self._predict_sync_pytorch,

@@ -392,14 +392,15 @@ class LSPServer:
         reader = asyncio.StreamReader()
         protocol = asyncio.StreamReaderProtocol(reader)
 
-        await asyncio.get_event_loop().connect_read_pipe(
+        loop = asyncio.get_running_loop()
+        await loop.connect_read_pipe(
             lambda: protocol, sys.stdin
         )
 
-        writer_transport, writer_protocol = await asyncio.get_event_loop().connect_write_pipe(
+        writer_transport, writer_protocol = await loop.connect_write_pipe(
             lambda: asyncio.streams.FlowControlMixin(), sys.stdout
         )
-        writer = asyncio.StreamWriter(writer_transport, writer_protocol, None, asyncio.get_event_loop())
+        writer = asyncio.StreamWriter(writer_transport, writer_protocol, None, loop)
 
         await self._handle_stream(reader, writer)
 

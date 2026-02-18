@@ -568,7 +568,7 @@ class ExecutorRegistry:
 
         Runs the shutdown in a thread pool to avoid blocking the event loop.
         """
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(
             None,
             lambda: self.shutdown_all(wait=True, timeout=timeout, cancel_pending=cancel_pending)
@@ -875,7 +875,7 @@ class ManagedThreadPoolExecutor(ThreadPoolExecutor):
         Returns:
             Result of fn execution
         """
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         future = self.submit(fn, *args, **kwargs)
         return await loop.run_in_executor(None, future.result)
 
@@ -1945,7 +1945,7 @@ async def final_thread_cleanup_async(
 
     Runs the cleanup in a thread pool to avoid blocking the event loop.
     """
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     return await loop.run_in_executor(
         None,
         lambda: final_thread_cleanup(
@@ -2347,7 +2347,11 @@ class ShutdownCoordinator:
         self._shutdown_started = False
         self._shutdown_complete = False
         self._shutdown_lock = threading.Lock()
-        self._shutdown_event = asyncio.Event() if asyncio.get_event_loop().is_running() else None
+        try:
+            asyncio.get_running_loop()
+            self._shutdown_event = asyncio.Event()
+        except RuntimeError:
+            self._shutdown_event = None
 
         logger.debug("🛑 ShutdownCoordinator initialized")
 
@@ -2442,7 +2446,7 @@ class ShutdownCoordinator:
         logger.info("📌 Phase 4/4: Third-party Library Cleanup")
         try:
             # Run in executor to avoid blocking
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             third_party_stats = await loop.run_in_executor(
                 None,
                 lambda: shutdown_third_party_threads(timeout=phase_timeout)
@@ -2840,7 +2844,7 @@ class NativeLibrarySafetyGuard:
 
         timeout = timeout or self._default_timeout
         executor = self._get_pytorch_executor()
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
 
         def wrapped():
             with self.operation_context(NativeLibraryType.PYTORCH):

@@ -561,7 +561,7 @@ class RollbackManager:
 
     async def _run_git(self, *args: str) -> str:
         """Run a git command asynchronously."""
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
 
         def _run():
             result = subprocess.run(
@@ -666,7 +666,7 @@ class CodeValidator:
     async def _check_syntax(self, files: List[str]) -> Dict[str, Any]:
         """Check Python syntax using AST parsing."""
         result = {"errors": [], "valid_files": []}
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
 
         def _parse_file(filepath: str):
             try:
@@ -701,7 +701,7 @@ class CodeValidator:
     async def _check_imports(self, files: List[str]) -> Dict[str, Any]:
         """Check that all imports can be resolved."""
         result = {"errors": [], "warnings": []}
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
 
         def _check_file_imports(filepath: str):
             issues = []
@@ -754,7 +754,7 @@ class CodeValidator:
     async def _check_security(self, files: List[str]) -> Dict[str, Any]:
         """Basic security pattern scanning."""
         result = {"issues": []}
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
 
         # Dangerous patterns to check
         dangerous_patterns = [

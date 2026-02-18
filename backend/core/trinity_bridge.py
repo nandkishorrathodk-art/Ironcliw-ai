@@ -1032,12 +1032,10 @@ class TrinityBridge:
                 except RuntimeError:
                     pass
 
-            # Strategy 3: Try get_event_loop (deprecated but fallback)
+            # Strategy 3: Create new event loop as last resort
             if loop is None:
                 try:
-                    loop = asyncio.get_event_loop()
-                    if loop.is_closed():
-                        loop = None
+                    loop = asyncio.new_event_loop()
                 except RuntimeError:
                     pass
 

@@ -448,7 +448,7 @@ class BulkOperationGuardian:
         self._start_time = time.time()
         
         # Create snapshot
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         self.snapshot = await loop.run_in_executor(
             None,
             lambda: self._snapshot_manager.create_operation_snapshot(
@@ -475,7 +475,7 @@ class BulkOperationGuardian:
             if self.auto_rollback and self.snapshot:
                 logger.info("♻️ Initiating automatic rollback...")
                 
-                loop = asyncio.get_event_loop()
+                loop = asyncio.get_running_loop()
                 success, failed = await loop.run_in_executor(
                     None,
                     lambda: self._snapshot_manager.restore_operation(self.snapshot)
@@ -508,7 +508,7 @@ class BulkOperationGuardian:
                 if self.auto_rollback and self.snapshot:
                     logger.info("♻️ Rolling back due to validation failure...")
                     
-                    loop = asyncio.get_event_loop()
+                    loop = asyncio.get_running_loop()
                     await loop.run_in_executor(
                         None,
                         lambda: self._snapshot_manager.restore_operation(self.snapshot)

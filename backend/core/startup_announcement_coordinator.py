@@ -229,7 +229,7 @@ class StartupAnnouncementCoordinator:
         Returns:
             True if this system should announce, False otherwise
         """
-        start_time = asyncio.get_event_loop().time()
+        start_time = asyncio.get_running_loop().time()
 
         # Create attempt record
         attempt = AnnouncementAttempt(
@@ -270,7 +270,7 @@ class StartupAnnouncementCoordinator:
                     self._metrics.successful_announcements += 1
 
                     # Record decision time
-                    decision_time = (asyncio.get_event_loop().time() - start_time) * 1000
+                    decision_time = (asyncio.get_running_loop().time() - start_time) * 1000
                     self._update_avg_decision_time(decision_time)
 
                     await self._fire_callbacks("on_announced", attempt)
@@ -301,7 +301,7 @@ class StartupAnnouncementCoordinator:
                 self._metrics.first_announcement_time = attempt.timestamp
 
                 # Record decision time
-                decision_time = (asyncio.get_event_loop().time() - start_time) * 1000
+                decision_time = (asyncio.get_running_loop().time() - start_time) * 1000
                 self._update_avg_decision_time(decision_time)
 
                 await self._fire_callbacks("on_announced", attempt)

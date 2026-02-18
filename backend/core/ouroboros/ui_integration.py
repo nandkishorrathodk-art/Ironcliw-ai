@@ -208,7 +208,7 @@ class OuroborosUIController:
             # Update menu bar (thread-safe method)
             if hasattr(self._menu_bar_indicator, 'set_activity_status'):
                 # Main thread execution for PyObjC
-                await asyncio.get_event_loop().run_in_executor(
+                await asyncio.get_running_loop().run_in_executor(
                     None,
                     lambda: self._menu_bar_indicator.set_activity_status(
                         activity=activity.value,
@@ -223,7 +223,7 @@ class OuroborosUIController:
                     "ouroboros_phase": phase,
                     "ouroboros_progress": progress.progress_percent,
                 }
-                await asyncio.get_event_loop().run_in_executor(
+                await asyncio.get_running_loop().run_in_executor(
                     None,
                     lambda: self._menu_bar_indicator.update_stats(stats)
                 )
@@ -1123,7 +1123,7 @@ class UnifiedRealtimeBroadcaster:
                 activity = PHASE_TO_ACTIVITY.get(context.phase, UIActivityState.IDLE)
 
                 if hasattr(self._menu_bar, 'set_activity_status'):
-                    await asyncio.get_event_loop().run_in_executor(
+                    await asyncio.get_running_loop().run_in_executor(
                         None,
                         lambda: self._menu_bar.set_activity_status(
                             activity=activity.value,

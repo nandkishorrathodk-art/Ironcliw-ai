@@ -1075,7 +1075,7 @@ async def ensure_numba_initialized_async(timeout: float = 60.0) -> bool:
             return _numba_info.status == NumbaStatus.READY
 
     # Run in thread pool to avoid blocking event loop
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     executor = _get_async_executor()
 
     try:

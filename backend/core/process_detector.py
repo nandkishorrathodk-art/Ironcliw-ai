@@ -427,7 +427,7 @@ class AdvancedProcessDetector:
             return found
 
         # Run in thread pool to avoid blocking
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         processes = await loop.run_in_executor(None, scan)
 
         return processes
@@ -595,7 +595,7 @@ class AdvancedProcessDetector:
                 logger.debug(f"Network connections scan requires elevated permissions: {e}")
             return found
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         processes = await loop.run_in_executor(None, scan_connections)
 
         return processes
@@ -628,7 +628,7 @@ class AdvancedProcessDetector:
                     continue
             return found
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         processes = await loop.run_in_executor(None, scan_fds)
 
         return processes
@@ -661,7 +661,7 @@ class AdvancedProcessDetector:
                     continue
             return found
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         processes = await loop.run_in_executor(None, scan_children)
 
         return processes
@@ -711,7 +711,7 @@ class AdvancedProcessDetector:
                     continue
             return found
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         processes = await loop.run_in_executor(None, scan_cmdlines)
 
         return processes

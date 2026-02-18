@@ -612,7 +612,7 @@ class FileLock:
 
     async def __aenter__(self) -> "FileLock":
         """Async context manager entry."""
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         acquired = await loop.run_in_executor(None, self.acquire)
         if not acquired:
             raise RuntimeError(f"Could not acquire lock: {self.lock_path}")
@@ -620,7 +620,7 @@ class FileLock:
 
     async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
         """Async context manager exit."""
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         await loop.run_in_executor(None, self.release)
         self._guard.cleanup()
 

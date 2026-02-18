@@ -798,7 +798,7 @@ class UnifiedProxyOrchestrator:
 
 def setup_signal_handlers(orchestrator: UnifiedProxyOrchestrator) -> None:
     """Setup graceful shutdown signal handlers."""
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
 
     def signal_handler(signum: int) -> None:
         logger.info(f"[Orchestrator] Received signal {signum}, initiating shutdown")

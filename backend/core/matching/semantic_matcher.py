@@ -190,7 +190,7 @@ class SentenceTransformerProvider(EmbeddingProvider):
             """Run encoding with captured model reference."""
             return model_ref.encode(text)
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, _encode_sync)
 
     @property
