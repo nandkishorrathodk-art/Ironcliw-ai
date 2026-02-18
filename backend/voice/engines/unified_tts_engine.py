@@ -22,12 +22,13 @@ import tempfile
 import time
 from collections import OrderedDict
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import AsyncIterator, Dict, List, Optional
 
+import numpy as np
 import sounddevice as sd
 import soundfile as sf
 
-from .base_tts_engine import BaseTTSEngine, TTSConfig, TTSEngine, TTSResult
+from .base_tts_engine import BaseTTSEngine, TTSChunk, TTSConfig, TTSEngine, TTSResult
 
 logger = logging.getLogger(__name__)
 
@@ -400,13 +401,21 @@ class UnifiedTTSEngine:
 
         # TTS engines
         self.engines: Dict[TTSEngine, Optional[BaseTTSEngine]] = {
+            TTSEngine.PIPER: None,
             TTSEngine.GTTS: None,
             TTSEngine.MACOS: None,
             TTSEngine.PYTTSX3: None,
         }
 
         self.active_engine = None
-        self.fallback_order = [TTSEngine.MACOS, TTSEngine.PYTTSX3, TTSEngine.GTTS]
+        self.fallback_order = [
+            TTSEngine.PIPER, TTSEngine.MACOS, TTSEngine.PYTTSX3, TTSEngine.GTTS
+        ]
+
+        # Feature flag for AudioBus routing
+        self._audio_bus_enabled = os.getenv(
+            "JARVIS_AUDIO_BUS_ENABLED", "false"
+        ).lower() in ("true", "1", "yes")
 
         # Caching
         self.cache = TTSCache(max_size=500) if enable_cache else None
@@ -450,7 +459,10 @@ class UnifiedTTSEngine:
             return self.engines[engine_type]
 
         try:
-            if engine_type == TTSEngine.GTTS:
+            if engine_type == TTSEngine.PIPER:
+                from .piper_tts_engine import PiperTTSEngine
+                engine = PiperTTSEngine(self.config)
+            elif engine_type == TTSEngine.GTTS:
                 engine = GoogleTTSEngine(self.config)
             elif engine_type == TTSEngine.MACOS:
                 engine = MacOSTTSEngine(self.config)
@@ -520,22 +532,67 @@ class UnifiedTTSEngine:
             raise
 
     async def _play_audio(self, audio_data: bytes, sample_rate: int):
-        """Play audio using sounddevice"""
+        """Play audio — routes through AudioBus when enabled, else sounddevice."""
         try:
             # Load audio from bytes
             audio_buffer = io.BytesIO(audio_data)
-            data, sr = sf.read(audio_buffer)
-
-            # Resample if needed
+            data, sr = sf.read(audio_buffer, dtype="float32")
             if sr != sample_rate:
                 sample_rate = sr
 
-            # Play audio
+            if self._audio_bus_enabled:
+                try:
+                    from backend.audio.audio_bus import get_audio_bus_safe
+                    bus = get_audio_bus_safe()
+                    if bus is not None and bus.is_running:
+                        audio_np = np.asarray(data, dtype=np.float32)
+                        await bus.play_audio(audio_np, sample_rate)
+                        return
+                except ImportError:
+                    pass  # AudioBus not available, fall through
+
+            # Legacy path: direct sounddevice playback
             loop = asyncio.get_event_loop()
-            await loop.run_in_executor(None, lambda: sd.play(data, sample_rate) or sd.wait())
+            await loop.run_in_executor(
+                None, lambda: sd.play(data, sample_rate) or sd.wait()
+            )
 
         except Exception as e:
             logger.error(f"Audio playback error: {e}", exc_info=True)
+
+    async def speak_stream(self, text: str, play_audio: bool = True) -> None:
+        """
+        Synthesize and stream audio using the active engine's streaming
+        capability, routed through AudioBus.
+
+        Falls back to speak() if streaming is not available or AudioBus
+        is not running.
+        """
+        if not self.active_engine:
+            await self.initialize()
+
+        if not self._audio_bus_enabled:
+            await self.speak(text, play_audio=play_audio)
+            return
+
+        try:
+            from backend.audio.audio_bus import get_audio_bus_safe
+            bus = get_audio_bus_safe()
+            if bus is None or not bus.is_running:
+                await self.speak(text, play_audio=play_audio)
+                return
+
+            async for chunk in self.active_engine.synthesize_stream(text):
+                if not chunk.audio_data:
+                    continue
+                audio_buf = io.BytesIO(chunk.audio_data)
+                data, sr = sf.read(audio_buf, dtype="float32")
+                audio_np = np.asarray(data, dtype=np.float32)
+                await bus.play_audio(audio_np, sr)
+
+        except Exception as e:
+            logger.warning(f"[UnifiedTTS] Stream failed, falling back: {e}")
+            await self.speak(text, play_audio=play_audio)
 
     async def get_available_voices(self) -> List[str]:
         """Get available voices from active engine"""

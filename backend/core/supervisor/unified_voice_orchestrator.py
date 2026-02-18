@@ -858,25 +858,37 @@ class UnifiedVoiceOrchestrator:
 
     async def _execute_say(self, text: str) -> None:
         """
-        Execute TTS using Trinity Voice Coordinator (v3.1 Ultra Enhancement).
+        Execute TTS via AudioBus when enabled, else Trinity/direct fallback.
 
-        v3.1 Changes (fixes):
-        - Fixed import bug (TrinityPriority -> VoicePriority)
-        - Added check for empty engines before iteration
-        - Improved fallback handling when Trinity fails to initialize
-        - More robust error recovery
+        v4.0 Changes:
+        - AudioBus path: routes through UnifiedTTSEngine → AudioBus (single speaker)
+        - Feature flag: JARVIS_AUDIO_BUS_ENABLED controls routing
+        - Falls back to Trinity → direct 'say' when AudioBus unavailable
 
-        v3.0 Changes:
-        - Uses Trinity Voice Coordinator instead of direct `say` command
-        - Multi-engine fallback: MacOS Say → pyttsx3 → Edge TTS
-        - Automatic engine health tracking
-        - Cross-repo voice coordination
-        - Zero hardcoding (environment-driven)
+        v3.1 Changes (preserved as fallback):
+        - Trinity Voice Coordinator with multi-engine fallback
+        - Engine health tracking
         """
+        # --- AudioBus path (Layer 1) ---
+        audio_bus_enabled = os.getenv(
+            "JARVIS_AUDIO_BUS_ENABLED", "false"
+        ).lower() in ("true", "1", "yes")
+
+        if audio_bus_enabled:
+            try:
+                from backend.voice.engines.unified_tts_engine import UnifiedTTSEngine
+                tts = UnifiedTTSEngine()
+                await tts.initialize()
+                await tts.speak(text, play_audio=True)
+                logger.debug("[UnifiedVoice v4.0] Spoke via AudioBus/UnifiedTTSEngine")
+                return
+            except Exception as e:
+                logger.warning(f"[UnifiedVoice v4.0] AudioBus path failed: {e}, falling back")
+
+        # --- Trinity path (v3.1 fallback) ---
         trinity_success = False
 
         try:
-            # Import Trinity Voice Coordinator with correct import names
             try:
                 from backend.core.trinity_voice_coordinator import (
                     get_voice_coordinator,
@@ -887,21 +899,15 @@ class UnifiedVoiceOrchestrator:
                 from core.trinity_voice_coordinator import (
                     get_voice_coordinator,
                     VoiceContext,
-                    VoicePriority as TrinityPriority,  # v3.1 FIX: correct alias
+                    VoicePriority as TrinityPriority,
                 )
 
-            # Get Trinity coordinator instance
             trinity = await get_voice_coordinator()
 
-            # v3.1: Check if coordinator has any available engines
             if not trinity._engines:
-                logger.warning("[UnifiedVoice v3.1] Trinity has no engines, using fallback")
                 raise RuntimeError("No TTS engines available in Trinity")
 
-            # Determine context based on message content
-            context = VoiceContext.RUNTIME  # Default
-
-            # Map the message context intelligently
+            context = VoiceContext.RUNTIME
             text_lower = text.lower()
             if "startup" in text_lower or "online" in text_lower:
                 context = VoiceContext.STARTUP
@@ -910,48 +916,35 @@ class UnifiedVoiceOrchestrator:
             elif "complete" in text_lower or "ready" in text_lower:
                 context = VoiceContext.SUCCESS
 
-            # Get personality for context
             personality = trinity._get_personality(context)
-
-            # Try engines in fallback order until one succeeds
             engines = sorted(trinity._engines, key=lambda e: e.get_health_score(), reverse=True)
             available_engines = [e for e in engines if e.available]
 
-            # v3.1: Check if any engines are actually available
             if not available_engines:
-                logger.warning("[UnifiedVoice v3.1] No available engines in Trinity, using fallback")
                 raise RuntimeError("No available TTS engines")
 
             for engine in available_engines:
                 try:
-                    # Execute with timeout
                     success = await asyncio.wait_for(
                         engine.speak(text, personality, timeout=30.0),
                         timeout=35.0
                     )
-
                     if success:
-                        logger.debug(f"[UnifiedVoice v3.1] ✅ Spoke via {engine.__class__.__name__}")
+                        logger.debug(f"[UnifiedVoice v3.1] Spoke via {engine.__class__.__name__}")
                         trinity_success = True
                         return
-
                 except asyncio.TimeoutError:
-                    logger.warning(f"[UnifiedVoice v3.1] ⏱️  {engine.__class__.__name__} timed out")
                     continue
-                except Exception as e:
-                    logger.warning(f"[UnifiedVoice v3.1] ❌ {engine.__class__.__name__} failed: {e}")
+                except Exception:
                     continue
 
-            # All available engines failed
             if not trinity_success:
-                logger.warning(f"[UnifiedVoice v3.1] All Trinity engines failed, using direct fallback")
                 raise RuntimeError("All TTS engines failed")
 
         except Exception as e:
-            # Log only at debug level to avoid spam during fallback
-            logger.debug(f"[UnifiedVoice v3.1] Trinity integration: {e}, using direct fallback")
+            logger.debug(f"[UnifiedVoice v3.1] Trinity: {e}, using direct fallback")
 
-        # Ultimate fallback - direct `say` command (works on macOS)
+        # --- Direct 'say' fallback ---
         if not trinity_success:
             try:
                 cmd = [
@@ -960,33 +953,42 @@ class UnifiedVoiceOrchestrator:
                     "-r", str(self.config.rate),
                     text,
                 ]
-
                 self._current_process = await asyncio.create_subprocess_exec(
                     *cmd,
                     stdout=asyncio.subprocess.DEVNULL,
                     stderr=asyncio.subprocess.DEVNULL,
                 )
-
                 await self._current_process.wait()
-
-                if self._current_process.returncode == 0:
-                    logger.debug("[UnifiedVoice v3.1] ✅ Spoke via direct macOS 'say' fallback")
-                else:
-                    logger.error(f"[UnifiedVoice v3.1] Direct 'say' failed with code {self._current_process.returncode}")
-
             except FileNotFoundError:
-                logger.error("[UnifiedVoice v3.1] macOS 'say' command not found - voice disabled")
+                logger.error("[UnifiedVoice] macOS 'say' command not found")
             except Exception as fallback_error:
-                logger.error(f"[UnifiedVoice v3.1] Fallback 'say' failed: {fallback_error}")
+                logger.error(f"[UnifiedVoice] Fallback 'say' failed: {fallback_error}")
             finally:
                 self._current_process = None
 
     async def _interrupt_current(self) -> None:
-        """Interrupt current speech for critical message."""
+        """Interrupt current speech — flush AudioBus if available, else terminate process."""
+        # Try AudioBus flush first
+        audio_bus_enabled = os.getenv(
+            "JARVIS_AUDIO_BUS_ENABLED", "false"
+        ).lower() in ("true", "1", "yes")
+
+        if audio_bus_enabled:
+            try:
+                from backend.audio.audio_bus import get_audio_bus_safe
+                bus = get_audio_bus_safe()
+                if bus is not None and bus.is_running:
+                    flushed = bus.flush_playback()
+                    logger.debug(f"[UnifiedVoice] Flushed {flushed} frames via AudioBus")
+                    return
+            except ImportError:
+                pass
+
+        # Legacy: terminate subprocess
         if self._current_process and self._current_process.returncode is None:
             try:
                 self._current_process.terminate()
-                logger.debug("🔊 Interrupted current speech for critical message")
+                logger.debug("[UnifiedVoice] Interrupted current speech")
             except ProcessLookupError:
                 pass
 

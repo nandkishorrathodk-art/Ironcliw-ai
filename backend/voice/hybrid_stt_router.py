@@ -1808,6 +1808,45 @@ class HybridSTTRouter:
             },
         }
 
+    async def transcribe_stream(self, audio_bus=None):
+        """
+        Start streaming transcription from AudioBus mic input.
+
+        Returns an async iterator of StreamingTranscriptEvent objects.
+        Requires AudioBus to be running.
+
+        Args:
+            audio_bus: Optional AudioBus instance. If None, fetches singleton.
+
+        Returns:
+            AsyncIterator[StreamingTranscriptEvent]
+        """
+        from backend.voice.streaming_stt import StreamingSTTEngine
+
+        engine = StreamingSTTEngine(sample_rate=16000)
+        await engine.start()
+
+        # Register as mic consumer on AudioBus
+        if audio_bus is None:
+            try:
+                from backend.audio.audio_bus import get_audio_bus
+                audio_bus = get_audio_bus()
+            except ImportError:
+                raise RuntimeError(
+                    "AudioBus not available. Set JARVIS_AUDIO_BUS_ENABLED=true"
+                )
+
+        if audio_bus.is_running:
+            audio_bus.register_mic_consumer(engine.on_audio_frame)
+
+        try:
+            async for event in engine.get_transcripts():
+                yield event
+        finally:
+            if audio_bus.is_running:
+                audio_bus.unregister_mic_consumer(engine.on_audio_frame)
+            await engine.stop()
+
 
 # Global singleton
 _hybrid_router: Optional[HybridSTTRouter] = None

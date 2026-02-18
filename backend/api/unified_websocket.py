@@ -2884,3 +2884,175 @@ async def unified_websocket_endpoint(websocket: WebSocket):
             manager.circuit_failures += 1
     finally:
         await manager.disconnect(client_id)
+
+
+# ============================================================================
+# Full-Duplex Voice Conversation WebSocket (Layer 6b)
+# ============================================================================
+
+@router.websocket("/ws/voice-conversation")
+async def voice_conversation_ws(websocket: WebSocket):
+    """
+    Full-duplex voice conversation WebSocket endpoint.
+
+    Binary frames: raw audio (16-bit PCM, 16kHz, mono) — bidirectional
+    JSON frames: control messages (start/end/pause, partial transcripts, turn events)
+
+    Client-side AEC: Audio echoes through the client's speakers/mic.
+    Server sends TTS audio as binary → client plays + does browser-side AEC
+    (WebRTC) → client sends clean mic audio back.
+
+    Protocol:
+        Client → Server:
+            Binary: raw 16-bit PCM audio frames (16kHz mono)
+            JSON: {"type": "control", "action": "start"|"end"|"pause"}
+
+        Server → Client:
+            Binary: TTS audio frames (16-bit PCM, 16kHz mono)
+            JSON: {"type": "transcript", "text": "...", "is_partial": bool}
+            JSON: {"type": "turn_event", "event": "turn_end"}
+            JSON: {"type": "response", "text": "...", "is_final": bool}
+            JSON: {"type": "mode_change", "mode": "conversation"|"command"}
+    """
+    await websocket.accept()
+
+    client_id = f"voice_{id(websocket)}_{datetime.now().timestamp()}"
+    logger.info(f"[VoiceConvWS] Client {client_id} connected")
+
+    # Import conversation components
+    try:
+        from backend.audio.audio_bus import AudioBus, WebSocketSink
+        from backend.audio.conversation_pipeline import ConversationPipeline
+        from backend.voice.streaming_stt import StreamingSTTEngine
+        from backend.audio.turn_detector import TurnDetector
+        from backend.audio.barge_in_controller import BargeInController
+    except ImportError as e:
+        await websocket.send_json({
+            "type": "error",
+            "message": f"Voice conversation not available: {e}",
+        })
+        await websocket.close()
+        return
+
+    # Create per-connection STT and turn detector
+    stt_engine = StreamingSTTEngine(sample_rate=16000)
+    turn_detector = TurnDetector()
+    barge_in = BargeInController()
+
+    try:
+        await stt_engine.start()
+    except Exception as e:
+        await websocket.send_json({
+            "type": "error",
+            "message": f"Failed to start STT: {e}",
+        })
+        await websocket.close()
+        return
+
+    # Register a WebSocket sink for TTS output
+    ws_sink = None
+    audio_bus = AudioBus.get_instance_safe()
+    if audio_bus is not None and audio_bus.is_running:
+        ws_sink = WebSocketSink(websocket.send_bytes)
+        audio_bus.register_sink(client_id, ws_sink)
+
+    running = True
+
+    async def _receive_audio():
+        """Receive audio from client and feed to STT."""
+        nonlocal running
+        import numpy as np
+        while running:
+            try:
+                message = await asyncio.wait_for(
+                    websocket.receive(), timeout=30.0
+                )
+
+                if "bytes" in message and message["bytes"]:
+                    # Binary: raw PCM audio
+                    pcm_data = message["bytes"]
+                    audio_i16 = np.frombuffer(pcm_data, dtype=np.int16)
+                    audio_f32 = audio_i16.astype(np.float32) / 32767.0
+                    stt_engine.on_audio_frame(audio_f32)
+
+                elif "text" in message and message["text"]:
+                    # JSON: control message
+                    import json
+                    try:
+                        data = json.loads(message["text"])
+                        if data.get("type") == "control":
+                            action = data.get("action")
+                            if action == "end":
+                                running = False
+                                break
+                    except json.JSONDecodeError:
+                        pass
+
+            except asyncio.TimeoutError:
+                # Send keepalive
+                try:
+                    await websocket.send_json({"type": "keepalive"})
+                except Exception:
+                    running = False
+                    break
+            except Exception:
+                running = False
+                break
+
+    async def _send_transcripts():
+        """Send transcripts and turn events to client."""
+        nonlocal running
+        async for event in stt_engine.get_transcripts():
+            if not running:
+                break
+            try:
+                await websocket.send_json({
+                    "type": "transcript",
+                    "text": event.text,
+                    "is_partial": event.is_partial,
+                    "confidence": event.confidence,
+                    "timestamp_ms": event.timestamp_ms,
+                })
+
+                # Feed VAD to turn detector
+                if not event.is_partial:
+                    result = turn_detector.on_vad_result(
+                        False, event.timestamp_ms
+                    )
+                    if result == "turn_end":
+                        await websocket.send_json({
+                            "type": "turn_event",
+                            "event": "turn_end",
+                        })
+            except Exception:
+                running = False
+                break
+
+    try:
+        await websocket.send_json({
+            "type": "session_start",
+            "client_id": client_id,
+            "sample_rate": 16000,
+            "format": "pcm_s16le",
+        })
+
+        # Run receive and transcript tasks concurrently
+        await asyncio.gather(
+            _receive_audio(),
+            _send_transcripts(),
+            return_exceptions=True,
+        )
+
+    except WebSocketDisconnect:
+        logger.info(f"[VoiceConvWS] Client {client_id} disconnected")
+    except Exception as e:
+        logger.error(f"[VoiceConvWS] Error: {e}")
+    finally:
+        running = False
+        await stt_engine.stop()
+
+        # Unregister WebSocket sink
+        if audio_bus is not None and ws_sink is not None:
+            audio_bus.unregister_sink(client_id)
+
+        logger.info(f"[VoiceConvWS] Client {client_id} session ended")

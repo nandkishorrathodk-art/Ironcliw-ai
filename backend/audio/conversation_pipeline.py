@@ -1,0 +1,452 @@
+"""
+Conversation Pipeline Orchestrator (Layer 5)
+=============================================
+
+Wires all audio layers into a complete voice conversation loop:
+
+    Mic → AEC → VAD → TurnDetector → StreamingSTT → LLM → SentenceSplitter
+                                                           → StreamingTTS → AudioBus
+
+Supports barge-in (user interrupts JARVIS) and maintains a sliding-window
+conversation transcript for LLM context.
+
+Architecture:
+    ┌───────────────────────────────────────────────────────────────────┐
+    │                     ConversationPipeline                         │
+    │                                                                  │
+    │  AudioBus ──▶ StreamingSTT ──▶ TurnDetector ──▶ [user text]     │
+    │      ▲                                              │            │
+    │      │                                              ▼            │
+    │  TTS stream ◀── SentenceSplitter ◀── LLM stream ◀── context    │
+    │      │                                                           │
+    │  BargeInController (cancels TTS on user speech)                  │
+    └───────────────────────────────────────────────────────────────────┘
+"""
+
+import asyncio
+import logging
+import os
+import re
+import time
+import uuid
+from dataclasses import dataclass, field
+from typing import AsyncIterator, Dict, List, Optional
+
+logger = logging.getLogger(__name__)
+
+# Configuration
+_MAX_CONTEXT_TURNS = int(os.getenv("JARVIS_CONV_MAX_TURNS", "20"))
+_SESSION_TIMEOUT_S = float(os.getenv("JARVIS_CONV_SESSION_TIMEOUT", "300"))
+_SENTENCE_DELIMITERS = re.compile(r'(?<=[.!?])\s+')
+
+
+# ============================================================================
+# Conversation Data Model
+# ============================================================================
+
+@dataclass
+class ConversationTurn:
+    """A single turn in the conversation."""
+    role: str          # "user" or "assistant"
+    text: str
+    timestamp: float
+    audio_duration_ms: Optional[float] = None
+
+
+@dataclass
+class ConversationSession:
+    """Ordered turn transcript with sliding window for LLM context."""
+    session_id: str = field(default_factory=lambda: str(uuid.uuid4())[:8])
+    turns: List[ConversationTurn] = field(default_factory=list)
+    max_context_turns: int = _MAX_CONTEXT_TURNS
+    created_at: float = field(default_factory=time.time)
+    last_activity: float = field(default_factory=time.time)
+
+    def add_turn(
+        self,
+        role: str,
+        text: str,
+        audio_duration_ms: Optional[float] = None
+    ) -> None:
+        """Add a turn and maintain sliding window."""
+        turn = ConversationTurn(
+            role=role,
+            text=text,
+            timestamp=time.time(),
+            audio_duration_ms=audio_duration_ms,
+        )
+        self.turns.append(turn)
+        self.last_activity = time.time()
+
+        # Trim to max context
+        if len(self.turns) > self.max_context_turns:
+            self.turns = self.turns[-self.max_context_turns:]
+
+    def get_context_for_llm(self) -> List[Dict[str, str]]:
+        """Get conversation history as messages array for LLM."""
+        messages = []
+        for turn in self.turns:
+            messages.append({
+                "role": turn.role,
+                "content": turn.text,
+            })
+        return messages
+
+    @property
+    def is_expired(self) -> bool:
+        """Check if session has timed out."""
+        return (time.time() - self.last_activity) > _SESSION_TIMEOUT_S
+
+    @property
+    def turn_count(self) -> int:
+        return len(self.turns)
+
+    def to_dict(self) -> dict:
+        return {
+            "session_id": self.session_id,
+            "turn_count": self.turn_count,
+            "created_at": self.created_at,
+            "last_activity": self.last_activity,
+            "is_expired": self.is_expired,
+        }
+
+
+# ============================================================================
+# Sentence Splitter
+# ============================================================================
+
+class SentenceSplitter:
+    """
+    Accumulates LLM tokens until a sentence boundary, then yields complete
+    sentences for TTS. This lets the user hear the first word at ~300-500ms
+    instead of waiting for the full LLM response.
+    """
+
+    def __init__(self, min_sentence_len: int = 10):
+        self._min_len = min_sentence_len
+
+    async def split(
+        self, token_stream: AsyncIterator[str]
+    ) -> AsyncIterator[str]:
+        """
+        Consume an async stream of tokens and yield complete sentences.
+
+        Sentence boundaries: .!? followed by whitespace or end of stream.
+        """
+        buffer = ""
+
+        async for token in token_stream:
+            buffer += token
+
+            # Check for sentence boundaries
+            while True:
+                match = _SENTENCE_DELIMITERS.search(buffer)
+                if match and match.start() >= self._min_len:
+                    sentence = buffer[:match.end()].strip()
+                    buffer = buffer[match.end():]
+                    if sentence:
+                        yield sentence
+                else:
+                    break
+
+        # Flush remaining buffer
+        buffer = buffer.strip()
+        if buffer:
+            yield buffer
+
+
+# ============================================================================
+# Conversation Pipeline
+# ============================================================================
+
+class ConversationPipeline:
+    """
+    Full conversation orchestrator.
+
+    Coordinates:
+        - StreamingSTT (mic → text)
+        - TurnDetector (detect end of user speech)
+        - BargeInController (cancel TTS on interrupt)
+        - LLM (generate response via UnifiedModelServing)
+        - SentenceSplitter (stream sentences to TTS)
+        - UnifiedTTSEngine → AudioBus (speak response)
+    """
+
+    def __init__(
+        self,
+        audio_bus=None,
+        streaming_stt=None,
+        turn_detector=None,
+        barge_in=None,
+        tts_engine=None,
+        llm_client=None,
+    ):
+        self._audio_bus = audio_bus
+        self._streaming_stt = streaming_stt
+        self._turn_detector = turn_detector
+        self._barge_in = barge_in
+        self._tts_engine = tts_engine
+        self._llm_client = llm_client
+
+        self._session: Optional[ConversationSession] = None
+        self._sentence_splitter = SentenceSplitter()
+        self._running = False
+        self._run_task: Optional[asyncio.Task] = None
+
+        # System prompt for conversation mode
+        self._system_prompt = os.getenv(
+            "JARVIS_CONV_SYSTEM_PROMPT",
+            "You are JARVIS, a helpful AI assistant engaged in a voice "
+            "conversation. Keep responses concise and natural for speech. "
+            "Use short sentences. Avoid markdown, code blocks, or lists "
+            "unless specifically asked."
+        )
+
+    async def start_session(self) -> str:
+        """Start a new conversation session. Returns session_id."""
+        self._session = ConversationSession()
+        logger.info(
+            f"[ConvPipeline] Started session {self._session.session_id}"
+        )
+        return self._session.session_id
+
+    async def end_session(self) -> None:
+        """End the current conversation session."""
+        if self._session is not None:
+            logger.info(
+                f"[ConvPipeline] Ended session {self._session.session_id} "
+                f"({self._session.turn_count} turns)"
+            )
+            self._session = None
+
+        self._running = False
+        if self._run_task is not None:
+            self._run_task.cancel()
+            try:
+                await self._run_task
+            except asyncio.CancelledError:
+                pass
+            self._run_task = None
+
+    async def run(self) -> None:
+        """
+        Main conversation loop.
+
+        Runs until end_session() is called or session expires.
+        """
+        if self._session is None:
+            await self.start_session()
+
+        self._running = True
+
+        try:
+            await self._conversation_loop()
+        except asyncio.CancelledError:
+            logger.info("[ConvPipeline] Conversation loop cancelled")
+        except Exception as e:
+            logger.error(f"[ConvPipeline] Error in conversation loop: {e}")
+        finally:
+            self._running = False
+
+    async def _conversation_loop(self) -> None:
+        """Core conversation loop: listen → understand → respond → repeat."""
+        while self._running and self._session is not None:
+            if self._session.is_expired:
+                logger.info("[ConvPipeline] Session expired")
+                break
+
+            try:
+                # 1. Wait for user to finish speaking (get transcript)
+                user_text = await self._listen_for_turn()
+                if user_text is None:
+                    continue
+
+                if not user_text.strip():
+                    continue
+
+                # 2. Add user turn to session
+                self._session.add_turn("user", user_text)
+                logger.info(
+                    f"[ConvPipeline] User: {user_text[:80]}"
+                    f"{'...' if len(user_text) > 80 else ''}"
+                )
+
+                # 3. Check for exit commands
+                if self._is_exit_command(user_text):
+                    logger.info("[ConvPipeline] Exit command detected")
+                    break
+
+                # 4. Generate and speak response
+                await self._generate_and_speak_response()
+
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                logger.error(f"[ConvPipeline] Turn error: {e}")
+                await asyncio.sleep(0.5)
+
+    async def _listen_for_turn(self) -> Optional[str]:
+        """
+        Listen for a complete user turn using StreamingSTT + TurnDetector.
+        Returns the final transcript text, or None on timeout.
+        """
+        if self._streaming_stt is None:
+            # Fallback: wait for input (testing mode)
+            await asyncio.sleep(1.0)
+            return None
+
+        # Reset barge-in controller
+        if self._barge_in is not None:
+            self._barge_in.reset()
+
+        final_text = None
+
+        try:
+            async for event in self._streaming_stt.get_transcripts():
+                if not self._running:
+                    break
+
+                if event.is_partial:
+                    # Could broadcast partial to UI here
+                    pass
+                else:
+                    # Final transcript
+                    final_text = event.text
+                    break
+
+        except asyncio.TimeoutError:
+            pass
+
+        return final_text
+
+    async def _generate_and_speak_response(self) -> None:
+        """Generate LLM response and stream it through TTS."""
+        if self._session is None:
+            return
+
+        # Build messages for LLM
+        messages = [
+            {"role": "system", "content": self._system_prompt},
+            *self._session.get_context_for_llm(),
+        ]
+
+        # Reset barge-in for the response
+        if self._barge_in is not None:
+            self._barge_in.reset()
+        cancel_event = (
+            self._barge_in.get_cancel_event()
+            if self._barge_in is not None
+            else asyncio.Event()
+        )
+
+        full_response = ""
+
+        try:
+            if self._llm_client is not None:
+                # Use UnifiedModelServing for streaming response
+                token_stream = self._get_llm_stream(messages)
+
+                async for sentence in self._sentence_splitter.split(token_stream):
+                    if cancel_event.is_set():
+                        logger.info("[ConvPipeline] Barge-in — stopping response")
+                        break
+
+                    full_response += sentence + " "
+
+                    # Speak sentence through TTS
+                    await self._speak_sentence(sentence, cancel_event)
+
+            else:
+                # No LLM client — echo mode for testing
+                full_response = f"I heard you say: {self._session.turns[-1].text}"
+                await self._speak_sentence(full_response, cancel_event)
+
+        except Exception as e:
+            logger.error(f"[ConvPipeline] Response generation error: {e}")
+            full_response = full_response or "(response failed)"
+
+        # Add assistant turn to session
+        full_response = full_response.strip()
+        if full_response:
+            self._session.add_turn("assistant", full_response)
+            logger.info(
+                f"[ConvPipeline] JARVIS: {full_response[:80]}"
+                f"{'...' if len(full_response) > 80 else ''}"
+            )
+
+    async def _get_llm_stream(
+        self, messages: List[Dict[str, str]]
+    ) -> AsyncIterator[str]:
+        """
+        Get a streaming token response from the LLM.
+
+        Uses UnifiedModelServing's generate_stream() which supports
+        the PRIME_API → PRIME_LOCAL → CLAUDE tier chain.
+        """
+        if self._llm_client is None:
+            return
+
+        try:
+            # Build prompt from messages
+            prompt = "\n".join(
+                f"{m['role']}: {m['content']}" for m in messages
+            )
+
+            async for chunk in self._llm_client.generate_stream(prompt):
+                yield chunk
+
+        except Exception as e:
+            logger.error(f"[ConvPipeline] LLM stream error: {e}")
+            yield "I'm sorry, I had trouble generating a response."
+
+    async def _speak_sentence(
+        self, sentence: str, cancel_event: asyncio.Event
+    ) -> None:
+        """Speak a single sentence through TTS, checking for barge-in."""
+        if cancel_event.is_set():
+            return
+
+        if self._tts_engine is not None:
+            try:
+                # Use streaming TTS when available
+                if hasattr(self._tts_engine, 'speak_stream'):
+                    await self._tts_engine.speak_stream(sentence, play_audio=True)
+                else:
+                    await self._tts_engine.speak(sentence, play_audio=True)
+            except Exception as e:
+                logger.debug(f"[ConvPipeline] TTS error: {e}")
+
+    def _is_exit_command(self, text: str) -> bool:
+        """Check if the user wants to exit conversation mode."""
+        text_lower = text.lower().strip()
+        exit_phrases = [
+            "goodbye", "good bye", "bye", "stop", "exit",
+            "end conversation", "that's all", "i'm done",
+            "jarvis stop", "jarvis quit",
+        ]
+        return any(phrase in text_lower for phrase in exit_phrases)
+
+    # ---- Properties ----
+
+    @property
+    def is_running(self) -> bool:
+        return self._running
+
+    @property
+    def session(self) -> Optional[ConversationSession]:
+        return self._session
+
+    def get_status(self) -> dict:
+        """Get pipeline status."""
+        return {
+            "running": self._running,
+            "session": self._session.to_dict() if self._session else None,
+            "stt_running": (
+                self._streaming_stt.is_running
+                if self._streaming_stt else False
+            ),
+            "barge_in": (
+                self._barge_in.get_status()
+                if self._barge_in else None
+            ),
+        }

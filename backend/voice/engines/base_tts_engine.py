@@ -19,9 +19,9 @@ Example:
 
 import logging
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
-from typing import Dict, List, Optional
+from typing import AsyncIterator, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +45,7 @@ class TTSEngine(Enum):
     PYTTSX3 = "pyttsx3"  # System TTS (local, fast)
     ELEVENLABS = "elevenlabs"  # ElevenLabs (premium, online)
     MACOS = "macos"  # macOS native (local, fast)
+    PIPER = "piper"  # Piper TTS (local, neural, streaming)
 
 
 @dataclass
@@ -123,6 +124,22 @@ class TTSResult:
     engine: TTSEngine
     voice: str
     metadata: Dict
+
+
+@dataclass
+class TTSChunk:
+    """A chunk of streaming TTS audio output.
+
+    Used by synthesize_stream() to yield audio incrementally as it's generated.
+    Enables low-latency playback by starting output before full synthesis completes.
+    """
+
+    audio_data: bytes
+    chunk_index: int
+    is_final: bool
+    sample_rate: int
+    duration_ms: Optional[float] = None
+    metadata: Dict = field(default_factory=dict)
 
 
 class BaseTTSEngine(ABC):
@@ -248,13 +265,34 @@ class BaseTTSEngine(ABC):
             TTSEngineError: If cleanup operations fail
         """
 
+    async def synthesize_stream(self, text: str) -> AsyncIterator[TTSChunk]:
+        """Stream synthesized audio in chunks for low-latency playback.
+
+        Default implementation wraps synthesize() and yields a single chunk.
+        Override in subclasses for true streaming (e.g., Piper).
+
+        Args:
+            text: Text to synthesize.
+
+        Yields:
+            TTSChunk objects with audio data.
+        """
+        result = await self.synthesize(text)
+        yield TTSChunk(
+            audio_data=result.audio_data,
+            chunk_index=0,
+            is_final=True,
+            sample_rate=result.sample_rate,
+            duration_ms=result.duration_ms,
+        )
+
     def is_initialized(self) -> bool:
         """Check if the engine has been properly initialized.
-        
+
         Returns:
             True if the engine is initialized and ready for synthesis,
             False otherwise.
-        
+
         Example:
             >>> if engine.is_initialized():
             ...     result = await engine.synthesize("Hello")

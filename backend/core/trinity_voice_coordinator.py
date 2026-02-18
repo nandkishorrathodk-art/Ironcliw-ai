@@ -1194,7 +1194,21 @@ class Pyttsx3Engine(TTSEngine):
         personality: VoicePersonality,
         timeout: float
     ) -> bool:
-        """Speak using pyttsx3."""
+        """Speak using pyttsx3 or AudioBus/UnifiedTTSEngine when enabled."""
+        # AudioBus path — bypass pyttsx3 entirely
+        _bus_enabled = os.getenv(
+            "JARVIS_AUDIO_BUS_ENABLED", "false"
+        ).lower() in ("true", "1", "yes")
+        if _bus_enabled:
+            try:
+                from backend.voice.engines.unified_tts_engine import UnifiedTTSEngine
+                tts = UnifiedTTSEngine()
+                await tts.initialize()
+                await tts.speak(message, play_audio=True)
+                return True
+            except Exception:
+                pass  # Fall through to pyttsx3
+
         if not self._engine:
             return False
 

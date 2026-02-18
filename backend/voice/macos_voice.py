@@ -138,7 +138,23 @@ class MacOSVoice:
         # Add text processing for better speech
         processed_text = self._process_text_for_speech(text)
         
-        # Execute speech
+        # AudioBus path when enabled
+        _bus_enabled = os.getenv(
+            "JARVIS_AUDIO_BUS_ENABLED", "false"
+        ).lower() in ("true", "1", "yes")
+        if _bus_enabled:
+            try:
+                import asyncio
+                from backend.voice.engines.unified_tts_engine import UnifiedTTSEngine
+                tts = UnifiedTTSEngine()
+                loop = asyncio.get_event_loop()
+                loop.run_until_complete(tts.initialize())
+                loop.run_until_complete(tts.speak(processed_text, play_audio=True))
+                return
+            except Exception:
+                pass  # Fall through to legacy
+
+        # Legacy: direct macOS say
         subprocess.run(cmd + [processed_text])
     
     def _process_text_for_speech(self, text: str) -> str:
@@ -180,7 +196,20 @@ class MacOSVoice:
             except queue.Empty:
                 break
         
-        # Kill any running say process
+        # AudioBus flush or kill say
+        _bus_enabled = os.getenv(
+            "JARVIS_AUDIO_BUS_ENABLED", "false"
+        ).lower() in ("true", "1", "yes")
+        if _bus_enabled:
+            try:
+                from backend.audio.audio_bus import get_audio_bus_safe
+                bus = get_audio_bus_safe()
+                if bus is not None and bus.is_running:
+                    bus.flush_playback()
+                    self.speaking = False
+                    return
+            except ImportError:
+                pass
         subprocess.run(['killall', 'say'], capture_output=True)
         self.speaking = False
     

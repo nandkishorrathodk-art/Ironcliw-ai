@@ -1557,9 +1557,18 @@ class EnhancedVoiceEngine:
         if self.optimization_enabled:
             self._start_optimization_thread()
 
-        # Text-to-speech
-        if USE_MACOS_VOICE:
-            self.tts_engine: Union[MacOSVoice, Any] = MacOSVoice()
+        # Text-to-speech — AudioBus-aware initialization
+        _bus_enabled = os.getenv(
+            "JARVIS_AUDIO_BUS_ENABLED", "false"
+        ).lower() in ("true", "1", "yes")
+        if _bus_enabled:
+            try:
+                from backend.voice.engines.unified_tts_engine import UnifiedTTSEngine
+                self.tts_engine: Union[MacOSVoice, Any] = UnifiedTTSEngine()
+            except ImportError:
+                self.tts_engine = MacOSVoice() if USE_MACOS_VOICE else pyttsx3.init()
+        elif USE_MACOS_VOICE:
+            self.tts_engine = MacOSVoice()
         else:
             self.tts_engine = pyttsx3.init()
         self._setup_voice()

@@ -505,10 +505,24 @@ class RealTimeVoiceCommunicator:
             self._fire_callbacks('speech_interrupted', self._current_message)
 
     async def stop_speaking(self) -> None:
-        """Stop any current speech immediately."""
+        """Stop any current speech immediately — flush AudioBus or kill say."""
         if self._is_speaking:
             try:
-                # Kill the say process
+                # Try AudioBus flush first
+                _bus_enabled = os.getenv(
+                    "JARVIS_AUDIO_BUS_ENABLED", "false"
+                ).lower() in ("true", "1", "yes")
+                if _bus_enabled:
+                    try:
+                        from backend.audio.audio_bus import get_audio_bus_safe
+                        bus = get_audio_bus_safe()
+                        if bus is not None and bus.is_running:
+                            bus.flush_playback()
+                            self._is_speaking = False
+                            return
+                    except ImportError:
+                        pass
+                # Legacy: kill say process
                 subprocess.run(['killall', 'say'], capture_output=True, timeout=2)
             except Exception as e:
                 logger.debug("Error stopping speech: %s", e)
@@ -627,27 +641,38 @@ class RealTimeVoiceCommunicator:
 
     async def _speak_message(self, message: SpeechMessage) -> None:
         """
-        Speak a single message using macOS say command.
+        Speak a single message — AudioBus path or macOS say fallback.
 
         Args:
             message: Message to speak
         """
-        config = self._mode_configs.get(message.mode, self._mode_configs[VoiceMode.NORMAL])
+        _bus_enabled = os.getenv(
+            "JARVIS_AUDIO_BUS_ENABLED", "false"
+        ).lower() in ("true", "1", "yes")
 
+        if _bus_enabled:
+            try:
+                from backend.voice.engines.unified_tts_engine import UnifiedTTSEngine
+                tts = UnifiedTTSEngine()
+                await tts.initialize()
+                await tts.speak(message.text, play_audio=True)
+                return
+            except Exception as e:
+                logger.debug("AudioBus speak failed, falling back: %s", e)
+
+        # Legacy: direct macOS say
+        config = self._mode_configs.get(message.mode, self._mode_configs[VoiceMode.NORMAL])
         cmd = [
             'say',
             '-v', config.voice,
             '-r', str(config.rate),
             message.text
         ]
-
-        # Run in subprocess (non-blocking)
         process = await asyncio.create_subprocess_exec(
             *cmd,
             stdout=asyncio.subprocess.DEVNULL,
             stderr=asyncio.subprocess.DEVNULL
         )
-
         await process.wait()
 
     def _process_text(self, text: str, mode: VoiceMode) -> str:

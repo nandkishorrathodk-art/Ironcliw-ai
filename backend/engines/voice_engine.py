@@ -753,13 +753,30 @@ class VoiceAssistant:
             self._play_feedback("success")
             
     def _play_feedback(self, feedback_type: str):
-        """Play audio feedback"""
+        """Play audio feedback — AudioBus or pyaudio fallback."""
         feedback_audio = self.audio_feedback.get_feedback(feedback_type)
         if feedback_audio is not None:
-            # Convert to int16 for playback
+            # Try AudioBus first
+            _bus_enabled = os.getenv(
+                "JARVIS_AUDIO_BUS_ENABLED", "false"
+            ).lower() in ("true", "1", "yes")
+            if _bus_enabled:
+                try:
+                    from backend.audio.audio_bus import get_audio_bus_safe
+                    bus = get_audio_bus_safe()
+                    if bus is not None and bus.is_running:
+                        import asyncio
+                        audio_f32 = feedback_audio.astype(np.float32)
+                        loop = asyncio.get_event_loop()
+                        loop.run_until_complete(
+                            bus.play_audio(audio_f32, self.config.sample_rate)
+                        )
+                        return
+                except (ImportError, RuntimeError):
+                    pass
+
+            # Legacy: PyAudio playback
             audio_int16 = (feedback_audio * 32767).astype(np.int16)
-            
-            # Play using PyAudio
             p = pyaudio.PyAudio()
             stream = p.open(
                 format=pyaudio.paInt16,
@@ -767,7 +784,6 @@ class VoiceAssistant:
                 rate=self.config.sample_rate,
                 output=True
             )
-            
             stream.write(audio_int16.tobytes())
             stream.stop_stream()
             stream.close()

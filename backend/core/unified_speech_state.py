@@ -83,29 +83,33 @@ logger = logging.getLogger(__name__)
 
 class SpeechStateConfig:
     """Configuration for speech state management."""
-    
+
     # Cooldown after speech ends (milliseconds)
     # This accounts for audio echo/reverb picked up after TTS completes
     DEFAULT_COOLDOWN_MS: int = 1500  # 1.5 seconds
-    
+
     # Extended cooldown for longer speeches (based on text length)
     EXTENDED_COOLDOWN_PER_CHAR_MS: float = 5.0  # 5ms per character
     MAX_COOLDOWN_MS: int = 3000  # 3 seconds max
-    
+
     # Similarity threshold for detecting echoed text
     # If transcription is >60% similar to recent speech, likely echo
     SIMILARITY_THRESHOLD: float = 0.6
-    
+
     # How long to keep recent spoken texts in memory
     RECENT_TEXTS_RETENTION_MS: int = 10000  # 10 seconds
     MAX_RECENT_TEXTS: int = 20
-    
+
     # Broadcast throttle (prevent spamming WebSocket)
     MIN_BROADCAST_INTERVAL_MS: int = 50
 
     # v263.1: Watchdog — auto-reset is_speaking if stuck for too long.
     # No single TTS utterance should take > 60 seconds.
     MAX_SPEAKING_DURATION_MS: int = 60000
+
+    # Conversation mode: when AEC is active, cooldown is unnecessary.
+    # Skip cooldown but keep similarity check as a safety net.
+    CONVERSATION_MODE_ENABLED: bool = False
 
 
 # =============================================================================
@@ -429,7 +433,8 @@ class UnifiedSpeechStateManager:
                     )
             
             # Check 2: In cooldown period
-            if self._state.is_in_cooldown():
+            # Skip cooldown in conversation mode — AEC handles echo
+            if self._state.is_in_cooldown() and not self._config.CONVERSATION_MODE_ENABLED:
                 remaining_ms = self._state.get_cooldown_remaining_ms()
                 self._stats["audio_rejections"] += 1
                 return AudioRejection(
@@ -494,6 +499,23 @@ class UnifiedSpeechStateManager:
     # STATE ACCESS (Thread-Safe)
     # =========================================================================
     
+    def set_conversation_mode(self, enabled: bool) -> None:
+        """
+        Enable/disable conversation mode.
+
+        When conversation mode is active (AEC handling echo), cooldown
+        is skipped and only the similarity check runs as a safety net.
+        """
+        with self._state_lock:
+            self._config.CONVERSATION_MODE_ENABLED = enabled
+        logger.info(f"[SpeechState] Conversation mode: {enabled}")
+
+    @property
+    def conversation_mode(self) -> bool:
+        """Check if conversation mode is active."""
+        with self._state_lock:
+            return self._config.CONVERSATION_MODE_ENABLED
+
     @property
     def is_speaking(self) -> bool:
         """Check if JARVIS is currently speaking."""
