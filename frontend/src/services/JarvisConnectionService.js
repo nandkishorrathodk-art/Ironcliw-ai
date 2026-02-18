@@ -813,8 +813,11 @@ class JarvisConnectionService {
     }
 
     // Strategy 3: Queue for later if both paths are down
-    if (this.wsClient && this.wsClient.offlineQueue) {
-      this.wsClient.offlineQueue.push({ ...message, _queuedAt: Date.now() });
+    // v263.1: Use _queueMessage() API which wraps items in a Promise with
+    // resolve/reject callbacks. Direct .push() to offlineQueue creates items
+    // without these callbacks, causing "item.reject is not a function" in _flushQueue().
+    if (this.wsClient && typeof this.wsClient._queueMessage === 'function') {
+      this.wsClient._queueMessage(message, 'default', 'normal').catch(() => {});
       console.log('[JarvisConnection] Command queued for retry when connection is restored');
       return { success: false, route: 'queued', error: 'No connection available — command queued for retry' };
     }

@@ -1788,10 +1788,11 @@ class JARVISVoiceAPI:
 
             monitor = get_display_monitor()
 
-            # v242.5: Guard against None monitor — get_display_monitor()
-            # returns None if display subsystem hasn't initialized yet.
+            # v263.1: Gracefully skip display prompt check if monitor
+            # hasn't been initialized yet (instead of raising, which
+            # logs a noisy ERROR on every command during early startup).
             if monitor is None:
-                raise AttributeError("Display monitor not initialized")
+                raise AttributeError("Display monitor not initialized — skipping prompt check")
 
             # Debug logging
             logger.info(
@@ -1839,6 +1840,10 @@ class JARVISVoiceAPI:
                             "command_type": "display_response",
                             "success": display_result.get("success", True),
                         }
+        except AttributeError:
+            # v263.1: Display monitor not yet initialized — expected during
+            # early startup. Debug-level, not error, to reduce log noise.
+            logger.debug("[JARVIS CMD] Display monitor not yet initialized, skipping prompt check")
         except Exception as e:
             logger.error(f"[JARVIS CMD] Error checking display prompt: {e}")
             # Continue to normal processing if this fails
@@ -3272,10 +3277,9 @@ class JARVISVoiceAPI:
 
                                 monitor = get_display_monitor()
 
-                                # v242.5: Guard against None monitor — get_display_monitor()
-                                # returns None if display subsystem hasn't initialized yet.
+                                # v263.1: Gracefully skip if not yet initialized
                                 if monitor is None:
-                                    raise AttributeError("Display monitor not initialized")
+                                    raise AttributeError("Display monitor not initialized — skipping prompt check")
 
                                 # Debug logging
                                 logger.info(
@@ -3348,6 +3352,9 @@ class JARVISVoiceAPI:
                                                 }
                                             )
                                             continue
+                            except AttributeError:
+                                # v263.1: Display monitor not yet initialized
+                                logger.debug("[JARVIS WS] Display monitor not yet initialized, skipping prompt check")
                             except Exception as e:
                                 logger.error(f"[JARVIS WS] Error checking display prompt: {e}")
                                 # Continue to normal processing if this fails

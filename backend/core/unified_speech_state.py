@@ -103,6 +103,10 @@ class SpeechStateConfig:
     # Broadcast throttle (prevent spamming WebSocket)
     MIN_BROADCAST_INTERVAL_MS: int = 50
 
+    # v263.1: Watchdog — auto-reset is_speaking if stuck for too long.
+    # No single TTS utterance should take > 60 seconds.
+    MAX_SPEAKING_DURATION_MS: int = 60000
+
 
 # =============================================================================
 # DATA CLASSES
@@ -395,15 +399,34 @@ class UnifiedSpeechStateManager:
             
             # Check 1: Currently speaking
             if self._state.is_speaking:
-                self._stats["audio_rejections"] += 1
-                return AudioRejection(
-                    reject=True,
-                    reason="jarvis_speaking",
-                    details={
-                        "speaking_for_ms": now_ms - (self._state.speech_started_at or now_ms),
-                        "current_text": self._state.current_text[:50],
-                    }
-                )
+                speaking_for_ms = now_ms - (self._state.speech_started_at or now_ms)
+
+                # v263.1: Watchdog — auto-reset if stuck speaking for too long.
+                # No single TTS utterance should exceed MAX_SPEAKING_DURATION_MS.
+                # This prevents permanent audio rejection if stop_speaking() was
+                # missed due to a silent exception.
+                if speaking_for_ms > self._config.MAX_SPEAKING_DURATION_MS:
+                    logger.warning(
+                        f"🔇 [SPEECH WATCHDOG] is_speaking stuck for "
+                        f"{speaking_for_ms:.0f}ms (>{self._config.MAX_SPEAKING_DURATION_MS}ms). "
+                        f"Auto-resetting. text='{self._state.current_text[:50]}'"
+                    )
+                    self._state.is_speaking = False
+                    self._state.speech_ended_at = now_ms
+                    self._state.current_text = ""
+                    self._state.current_source = SpeechSource.UNKNOWN
+                    self._stats["speeches_completed"] += 1
+                    # Don't reject — allow audio through after watchdog reset
+                else:
+                    self._stats["audio_rejections"] += 1
+                    return AudioRejection(
+                        reject=True,
+                        reason="jarvis_speaking",
+                        details={
+                            "speaking_for_ms": speaking_for_ms,
+                            "current_text": self._state.current_text[:50],
+                        }
+                    )
             
             # Check 2: In cooldown period
             if self._state.is_in_cooldown():

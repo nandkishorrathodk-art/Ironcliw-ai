@@ -788,35 +788,41 @@ class DynamicWebSocketClient {
 
   async _flushQueue() {
     if (this.offlineQueue.length === 0) return;
-    
+
     console.log(`📤 Flushing ${this.offlineQueue.length} queued messages`);
-    
+
     const queue = [...this.offlineQueue];
     this.offlineQueue = [];
-    
+
     for (const item of queue) {
       await yieldToEventLoop();
-      
+
+      // v263.1: Defensive guard — items pushed directly to the queue
+      // (e.g. by external code) may lack resolve/reject Promise callbacks.
+      const safeResolve = typeof item.resolve === 'function' ? item.resolve : () => {};
+      const safeReject = typeof item.reject === 'function' ? item.reject : () => {};
+      const itemTimestamp = item.timestamp || item._queuedAt || Date.now();
+
       // Check TTL
-      if (Date.now() - item.timestamp > this.config.queueTTL) {
+      if (Date.now() - itemTimestamp > this.config.queueTTL) {
         console.warn('Message expired in queue, discarding');
-        item.reject(new Error('Message expired in queue'));
+        safeReject(new Error('Message expired in queue'));
         continue;
       }
-      
+
       try {
         if (item.type === 'reliable') {
-          await this.sendReliable(item.message, item.capability, item.timeout);
+          await this.sendReliable(item.message || item, item.capability, item.timeout);
         } else {
-          await this.send(item.message, item.capability);
+          await this.send(item.message || item, item.capability);
         }
-        item.resolve();
+        safeResolve();
       } catch (error) {
         // Re-queue if still no connection
         if (!this._getConnection(item.capability)) {
           this.offlineQueue.push(item);
         } else {
-          item.reject(error);
+          safeReject(error);
         }
       }
     }

@@ -1488,26 +1488,44 @@ class UnifiedWebSocketManager:
                 logger.debug(f"[VBI-SESSION] Check failed: {e}")
 
             # Check 2: Is JARVIS speaking?
+            # v263.1: Prefer unified speech state manager (has watchdog for stuck state).
+            # Fall back to direct voice_comm check if manager unavailable.
             try:
-                from agi_os.realtime_voice_communicator import get_voice_communicator
-                voice_comm = await asyncio.wait_for(get_voice_communicator(), timeout=0.3)
-
-                if voice_comm and voice_comm.is_speaking:
-                    # JARVIS is currently speaking - this audio is likely echo
+                from core.unified_speech_state import UnifiedSpeechStateManager
+                manager = UnifiedSpeechStateManager()
+                rejection = manager.should_reject_audio()
+                if rejection.reject:
                     logger.warning(
                         f"🔇 [SELF-VOICE-SUPPRESSION] Rejecting audio message - "
-                        f"JARVIS is speaking (is_speaking={voice_comm.is_speaking})"
+                        f"reason={rejection.reason}, details={rejection.details}"
                     )
                     return {
                         "success": False,
                         "type": "self_voice_suppressed",
-                        "message": "Audio rejected - JARVIS is currently speaking",
+                        "message": f"Audio rejected - {rejection.reason}",
                         "should_retry": False
                     }
-            except asyncio.TimeoutError:
-                logger.debug("[SELF-VOICE] Voice communicator check timed out")
-            except Exception as e:
-                logger.debug(f"[SELF-VOICE] Check failed: {e}")
+            except Exception:
+                # Fallback: direct voice_comm check
+                try:
+                    from agi_os.realtime_voice_communicator import get_voice_communicator
+                    voice_comm = await asyncio.wait_for(get_voice_communicator(), timeout=0.3)
+
+                    if voice_comm and voice_comm.is_speaking:
+                        logger.warning(
+                            f"🔇 [SELF-VOICE-SUPPRESSION] Rejecting audio message - "
+                            f"JARVIS is speaking (is_speaking={voice_comm.is_speaking})"
+                        )
+                        return {
+                            "success": False,
+                            "type": "self_voice_suppressed",
+                            "message": "Audio rejected - JARVIS is currently speaking",
+                            "should_retry": False
+                        }
+                except asyncio.TimeoutError:
+                    logger.debug("[SELF-VOICE] Voice communicator check timed out")
+                except Exception as e:
+                    logger.debug(f"[SELF-VOICE] Check failed: {e}")
 
         # Check if message type should use pipeline processing
         pipeline_types = {

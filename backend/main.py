@@ -7355,16 +7355,17 @@ def mount_routers():
         if display_monitor_comp.get("available"):
             logger.info("🖥️  Initializing Advanced Display Monitor (Component #9)...")
 
-            # Create voice handler for display monitor
+            # v263.1: Use the class constructor directly instead of
+            # get_display_monitor() which just returns the singleton (None at init).
+            monitor_class = display_monitor_comp.get("monitor_class")
             voice_handler_factory = display_monitor_comp.get("voice_handler_factory")
-            get_monitor = display_monitor_comp.get("get_monitor")
 
-            if voice_handler_factory and get_monitor:
+            if monitor_class and voice_handler_factory:
                 # Create voice handler
                 voice_handler = voice_handler_factory()
 
-                # Get monitor instance with voice integration
-                monitor = get_monitor(voice_handler=voice_handler)
+                # Construct the monitor instance (not get — CREATE)
+                monitor = monitor_class(voice_handler=voice_handler)
 
                 # Register as the app's monitor instance (singleton pattern)
                 from display.advanced_display_monitor import set_app_display_monitor
