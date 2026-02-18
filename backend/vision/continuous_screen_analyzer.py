@@ -1316,21 +1316,6 @@ Be concise but thorough.'''
                 "Async callback timeout for %s after %.2fs", event_type, timeout
             )
 
-    async def _invoke_async_callback(
-        self,
-        callback: Callable[..., Any],
-        payload: Dict[str, Any],
-        event_type: str,
-    ) -> None:
-        """Invoke async callback with timeout isolation."""
-        timeout = max(0.1, float(self.config.get('callback_timeout_seconds', 3.0)))
-        try:
-            await asyncio.wait_for(callback(payload), timeout=timeout)
-        except asyncio.TimeoutError:
-            logger.warning(
-                "Callback timeout for %s after %.2fs", event_type, timeout
-            )
-    
     def register_callback(self, event_type: str, callback: Callable):
         """Register a callback for specific events"""
         if event_type in self.event_callbacks:

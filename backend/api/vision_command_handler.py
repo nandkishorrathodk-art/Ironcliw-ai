@@ -907,13 +907,13 @@ class VisionCommandHandler:
         # Capture screen(s) based on query type
         if needs_multi_space:
             # Capture multiple spaces for comprehensive analysis
-            screenshot = await self._capture_screen(multi_space=True)
+            screenshot = await self.capture_screen(multi_space=True)
             logger.info(
                 f"[VISION] Captured {len(screenshot) if isinstance(screenshot, dict) else 1} space(s)"
             )
         else:
             # Single space capture
-            screenshot = await self._capture_screen()
+            screenshot = await self.capture_screen()
             
         if not screenshot:
             # Even error messages come from Claude - but be more specific about timeout
@@ -991,13 +991,13 @@ class VisionCommandHandler:
             # Capture screen(s) based on query type
             if needs_multi_space:
                 # Capture multiple spaces for comprehensive analysis
-                screenshot = await self._capture_screen(multi_space=True)
+                screenshot = await self.capture_screen(multi_space=True)
                 logger.info(
                     f"[VISION] Captured {len(screenshot) if isinstance(screenshot, dict) else 1} space(s)"
                 )
             else:
                 # Single space capture
-                screenshot = await self._capture_screen()
+                screenshot = await self.capture_screen()
 
             if not screenshot:
                 # Even error messages come from Claude
@@ -1583,7 +1583,7 @@ BE CONCISE. No technical details.
             )
 
             # Capture screen
-            screenshot = await self._capture_screen(multi_space=multi_space)
+            screenshot = await self.capture_screen(multi_space=multi_space)
 
             if not screenshot:
                 return "I couldn't capture your screen, Sir. Please check screen recording permissions."
@@ -1639,7 +1639,7 @@ BE CONCISE. No technical details.
                                 logger.info(f"[INTELLIGENT-DEBUG] First window sample: app={first_window.get('app', 'N/A')}, title={first_window.get('title', 'N/A')[:50]}")
 
             # Capture ONLY current space screenshot (non-disruptive)
-            current_screenshot = await self._capture_screen(multi_space=False)
+            current_screenshot = await self.capture_screen(multi_space=False)
 
             if not current_screenshot:
                 logger.warning("[INTELLIGENT] Could not capture current space, using Yabai only")
@@ -2032,7 +2032,7 @@ Provide a comprehensive analysis of what you see in Space {space_id}."""
                     await asyncio.sleep(0.5)
                     
                     # Capture screenshot of the switched space
-                    screenshot = await self._capture_screen(multi_space=False)
+                    screenshot = await self.capture_screen(multi_space=False)
                     
                     # Switch back to original space
                     if original_space_id:
@@ -2063,7 +2063,7 @@ Provide a comprehensive analysis of what you see in Space {space_id}."""
                     return screenshot
                 else:
                     logger.info(f"[FOLLOW-UP] Already on Space {space_id}, capturing current space")
-                    screenshot = await self._capture_screen(multi_space=False)
+                    screenshot = await self.capture_screen(multi_space=False)
                     return screenshot
                         
             except Exception as e:
@@ -2071,7 +2071,7 @@ Provide a comprehensive analysis of what you see in Space {space_id}."""
             
             # Final fallback: capture current space and inform user
             logger.info(f"[FOLLOW-UP] Falling back to current space capture")
-            screenshot = await self._capture_screen(multi_space=False)
+            screenshot = await self.capture_screen(multi_space=False)
             
             return screenshot
             
@@ -2448,7 +2448,7 @@ Provide a comprehensive analysis of what you see in Space {space_id}."""
                     break
                     
                 # Capture screen and check for important changes
-                screenshot = await self._capture_screen()
+                screenshot = await self.capture_screen()
                 if screenshot:
                     proactive_message = await self.proactive.observe_and_communicate(
                         screenshot
@@ -2465,11 +2465,14 @@ Provide a comprehensive analysis of what you see in Space {space_id}."""
                 logger.error(f"Proactive monitoring error: {e}")
                 await asyncio.sleep(5)
                 
-    async def _capture_screen(
+    async def capture_screen(
         self, multi_space=False, space_number=None
     ) -> Optional[Any]:
         """
-        Capture screen(s) with multi-space support
+        Public API: Capture screen(s) with multi-space support.
+
+        v264.0: Exposed as public method (was _capture_screen). External consumers
+        (MemoryAwareScreenAnalyzer, ScreenVisionSystem, etc.) depend on this name.
 
         Args:
             multi_space: If True, capture all desktop spaces

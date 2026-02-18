@@ -35,12 +35,12 @@ async def test_vision_capture_timeout():
         logger.info("✅ VisionCommandHandler created")
 
         # Test 1: Screen capture with timeout
-        logger.info("\n[TEST 1] Testing _capture_screen with timeout...")
+        logger.info("\n[TEST 1] Testing capture_screen with timeout...")
         start_time = asyncio.get_event_loop().time()
 
         try:
             screenshot = await asyncio.wait_for(
-                handler._capture_screen(multi_space=False),
+                handler.capture_screen(multi_space=False),
                 timeout=20.0  # Overall test timeout
             )
             elapsed = asyncio.get_event_loop().time() - start_time
