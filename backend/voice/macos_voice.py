@@ -17,22 +17,31 @@ class MacOSVoice:
     def __init__(self):
         # Get available voices
         self.voices = self._get_available_voices()
-        
+
         # Find British voices (prioritized)
         self.british_voices = self._find_british_voices()
-        
+
         # Select primary voice
         self.primary_voice = self._select_best_voice()
-        
+
         # Speech settings
         self.rate = 175  # Words per minute (slightly faster for JARVIS)
         self.pitch_adjustment = 0  # Can be adjusted for effect
-        
+
         # Queue for smooth speech delivery
         self.speech_queue = queue.Queue()
         self.speaking = False
         self.speech_thread = None
-        
+
+        # Capture the event loop from the constructing thread so the
+        # background speech thread can schedule async coroutines safely.
+        self._event_loop: Optional['asyncio.AbstractEventLoop'] = None
+        try:
+            import asyncio
+            self._event_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            pass  # No running loop at construction — will try asyncio.run() later
+
         # Voice variations for different contexts
         self.voice_modes = {
             'normal': {'rate': 175, 'voice': self.primary_voice},
@@ -40,7 +49,7 @@ class MacOSVoice:
             'thoughtful': {'rate': 160, 'voice': self.primary_voice},
             'quiet': {'rate': 150, 'voice': self.primary_voice}
         }
-        
+
         # Start speech processing thread
         self._start_speech_thread()
         
@@ -138,18 +147,32 @@ class MacOSVoice:
         # Add text processing for better speech
         processed_text = self._process_text_for_speech(text)
         
-        # AudioBus path when enabled
+        # AudioBus path when enabled — use the TTS singleton.
+        # This method runs in a background thread, so we must use
+        # run_coroutine_threadsafe() with the main loop (captured at init),
+        # NOT run_until_complete (which fails if the loop is already running).
         _bus_enabled = os.getenv(
             "JARVIS_AUDIO_BUS_ENABLED", "false"
         ).lower() in ("true", "1", "yes")
         if _bus_enabled:
             try:
                 import asyncio
-                from backend.voice.engines.unified_tts_engine import UnifiedTTSEngine
-                tts = UnifiedTTSEngine()
-                loop = asyncio.get_event_loop()
-                loop.run_until_complete(tts.initialize())
-                loop.run_until_complete(tts.speak(processed_text, play_audio=True))
+                from backend.voice.engines.unified_tts_engine import get_tts_engine
+
+                async def _speak_via_singleton():
+                    engine = await get_tts_engine()
+                    await engine.speak(processed_text, play_audio=True)
+
+                loop = self._event_loop
+                if loop is not None and loop.is_running():
+                    # Schedule on the main event loop from this background thread
+                    future = asyncio.run_coroutine_threadsafe(
+                        _speak_via_singleton(), loop
+                    )
+                    future.result(timeout=30)
+                else:
+                    # No captured loop or it's not running — use a fresh loop
+                    asyncio.run(_speak_via_singleton())
                 return
             except Exception:
                 pass  # Fall through to legacy

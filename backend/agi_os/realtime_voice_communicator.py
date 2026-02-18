@@ -652,9 +652,8 @@ class RealTimeVoiceCommunicator:
 
         if _bus_enabled:
             try:
-                from backend.voice.engines.unified_tts_engine import UnifiedTTSEngine
-                tts = UnifiedTTSEngine()
-                await tts.initialize()
+                from backend.voice.engines.unified_tts_engine import get_tts_engine
+                tts = await get_tts_engine()
                 await tts.speak(message.text, play_audio=True)
                 return
             except Exception as e:

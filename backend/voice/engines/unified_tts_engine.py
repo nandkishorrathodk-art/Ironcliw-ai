@@ -32,6 +32,58 @@ from .base_tts_engine import BaseTTSEngine, TTSChunk, TTSConfig, TTSEngine, TTSR
 
 logger = logging.getLogger(__name__)
 
+# =============================================================================
+# SINGLETON ACCESSOR
+# =============================================================================
+
+_tts_instance: Optional["UnifiedTTSEngine"] = None
+_tts_lock: Optional[asyncio.Lock] = None
+
+
+def _get_tts_lock() -> asyncio.Lock:
+    """Lazily create the singleton lock to avoid 'no running event loop' at import."""
+    global _tts_lock
+    if _tts_lock is None:
+        _tts_lock = asyncio.Lock()
+    return _tts_lock
+
+
+async def get_tts_engine(
+    preferred_engine: TTSEngine = TTSEngine.MACOS,
+    config: Optional[TTSConfig] = None,
+) -> "UnifiedTTSEngine":
+    """
+    Get the global UnifiedTTSEngine singleton.
+
+    First call initializes the engine (loads models, discovers voices).
+    Subsequent calls return the cached instance.
+
+    Args:
+        preferred_engine: Which TTS backend to try first.
+        config: Optional config override (only used on first init).
+
+    Returns:
+        Initialized UnifiedTTSEngine singleton.
+    """
+    global _tts_instance
+
+    if _tts_instance is not None:
+        return _tts_instance
+
+    async with _get_tts_lock():
+        # Double-checked locking
+        if _tts_instance is not None:
+            return _tts_instance
+
+        engine = UnifiedTTSEngine(
+            preferred_engine=preferred_engine,
+            config=config,
+        )
+        await engine.initialize()
+        _tts_instance = engine
+        logger.info("[TTS] Singleton engine initialized")
+        return _tts_instance
+
 
 class TTSCache:
     """LRU cache for synthesized speech"""
@@ -479,13 +531,22 @@ class UnifiedTTSEngine:
             logger.debug(f"Could not initialize {engine_type.value}: {e}")
             return None
 
-    async def speak(self, text: str, play_audio: bool = True) -> TTSResult:
+    async def speak(
+        self,
+        text: str,
+        play_audio: bool = True,
+        source: Optional[str] = None,
+    ) -> TTSResult:
         """
-        Synthesize and optionally play speech
+        Synthesize and optionally play speech.
+
+        Integrates with UnifiedSpeechStateManager to prevent JARVIS from
+        hearing its own voice (self-voice suppression).
 
         Args:
             text: Text to synthesize
             play_audio: Whether to play audio immediately
+            source: Speech source identifier for state manager
 
         Returns:
             TTSResult with audio data and metadata
@@ -503,7 +564,13 @@ class UnifiedTTSEngine:
             if cached_result:
                 logger.debug("[TTS Cache HIT]")
                 if play_audio:
-                    await self._play_audio(cached_result.audio_data, cached_result.sample_rate)
+                    await self._notify_speech_start(text, source)
+                    try:
+                        await self._play_audio(
+                            cached_result.audio_data, cached_result.sample_rate
+                        )
+                    finally:
+                        await self._notify_speech_stop(cached_result.duration_ms)
                 return cached_result
 
         # Synthesize
@@ -516,13 +583,18 @@ class UnifiedTTSEngine:
             if self.cache:
                 self.cache.put(cache_key, result)
 
-            # Play if requested
+            # Play if requested — with speech state tracking
             if play_audio:
-                await self._play_audio(result.audio_data, result.sample_rate)
+                await self._notify_speech_start(text, source)
+                try:
+                    await self._play_audio(result.audio_data, result.sample_rate)
+                finally:
+                    await self._notify_speech_stop(result.duration_ms)
 
             logger.info(
                 f"[TTS] Synthesized {len(text)} chars "
-                f"(latency: {result.latency_ms:.0f}ms, RTF: {result.metadata.get('rtf', 0):.2f}x)"
+                f"(latency: {result.latency_ms:.0f}ms, "
+                f"RTF: {result.metadata.get('rtf', 0):.2f}x)"
             )
 
             return result
@@ -560,39 +632,106 @@ class UnifiedTTSEngine:
         except Exception as e:
             logger.error(f"Audio playback error: {e}", exc_info=True)
 
-    async def speak_stream(self, text: str, play_audio: bool = True) -> None:
+    async def speak_stream(
+        self,
+        text: str,
+        play_audio: bool = True,
+        cancel_event: Optional[asyncio.Event] = None,
+        source: Optional[str] = None,
+    ) -> None:
         """
         Synthesize and stream audio using the active engine's streaming
-        capability, routed through AudioBus.
+        capability, routed through AudioBus with barge-in support.
 
         Falls back to speak() if streaming is not available or AudioBus
         is not running.
+
+        Args:
+            text: Text to synthesize
+            play_audio: Whether to play audio
+            cancel_event: Event signalling barge-in — set to stop playback.
+            source: Speech source identifier for state manager.
         """
         if not self.active_engine:
             await self.initialize()
 
         if not self._audio_bus_enabled:
-            await self.speak(text, play_audio=play_audio)
+            await self.speak(text, play_audio=play_audio, source=source)
             return
 
         try:
             from backend.audio.audio_bus import get_audio_bus_safe
             bus = get_audio_bus_safe()
             if bus is None or not bus.is_running:
-                await self.speak(text, play_audio=play_audio)
+                await self.speak(text, play_audio=play_audio, source=source)
                 return
 
-            async for chunk in self.active_engine.synthesize_stream(text):
-                if not chunk.audio_data:
-                    continue
-                audio_buf = io.BytesIO(chunk.audio_data)
-                data, sr = sf.read(audio_buf, dtype="float32")
-                audio_np = np.asarray(data, dtype=np.float32)
-                await bus.play_audio(audio_np, sr)
+            await self._notify_speech_start(text, source)
+            play_start = time.time()
+            try:
+                # Wrap the engine's chunk iterator to convert to numpy arrays
+                async def _chunk_to_numpy():
+                    async for chunk in self.active_engine.synthesize_stream(text):
+                        if not chunk.audio_data:
+                            continue
+                        audio_buf = io.BytesIO(chunk.audio_data)
+                        data, sr = sf.read(audio_buf, dtype="float32")
+                        yield np.asarray(data, dtype=np.float32)
+
+                # Use bus.play_stream() which supports cancel events for barge-in
+                await bus.play_stream(
+                    _chunk_to_numpy(),
+                    sample_rate=self.config.sample_rate if hasattr(self.config, 'sample_rate') else 22050,
+                    cancel=cancel_event,
+                )
+            finally:
+                actual_duration_ms = (time.time() - play_start) * 1000
+                await self._notify_speech_stop(actual_duration_ms)
 
         except Exception as e:
             logger.warning(f"[UnifiedTTS] Stream failed, falling back: {e}")
-            await self.speak(text, play_audio=play_audio)
+            await self.speak(text, play_audio=play_audio, source=source)
+
+    # ---- Speech State Integration ----
+
+    async def _notify_speech_start(
+        self, text: str, source: Optional[str] = None
+    ) -> None:
+        """Notify UnifiedSpeechStateManager that JARVIS started speaking."""
+        try:
+            from backend.core.unified_speech_state import (
+                SpeechSource,
+                get_speech_state_manager,
+            )
+
+            manager = await get_speech_state_manager()
+
+            # Map source string to SpeechSource enum
+            speech_source = SpeechSource.TTS_BACKEND
+            if source:
+                try:
+                    speech_source = SpeechSource(source)
+                except ValueError:
+                    pass
+
+            await manager.start_speaking(text, source=speech_source)
+        except Exception as e:
+            # Non-fatal — speech state is best-effort
+            logger.debug(f"[TTS] Speech state start_speaking failed: {e}")
+
+    async def _notify_speech_stop(
+        self, duration_ms: Optional[float] = None
+    ) -> None:
+        """Notify UnifiedSpeechStateManager that JARVIS stopped speaking."""
+        try:
+            from backend.core.unified_speech_state import get_speech_state_manager
+
+            manager = await get_speech_state_manager()
+            await manager.stop_speaking(actual_duration_ms=duration_ms)
+        except Exception as e:
+            logger.debug(f"[TTS] Speech state stop_speaking failed: {e}")
+
+    # ---- Voice Management ----
 
     async def get_available_voices(self) -> List[str]:
         """Get available voices from active engine"""

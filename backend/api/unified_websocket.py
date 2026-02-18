@@ -2895,24 +2895,23 @@ async def voice_conversation_ws(websocket: WebSocket):
     """
     Full-duplex voice conversation WebSocket endpoint.
 
-    Binary frames: raw audio (16-bit PCM, 16kHz, mono) — bidirectional
+    Binary frames: raw audio (16-bit PCM, 16kHz, mono) -- bidirectional
     JSON frames: control messages (start/end/pause, partial transcripts, turn events)
 
     Client-side AEC: Audio echoes through the client's speakers/mic.
-    Server sends TTS audio as binary → client plays + does browser-side AEC
-    (WebRTC) → client sends clean mic audio back.
+    Server sends TTS audio as binary -> client plays + does browser-side AEC
+    (WebRTC) -> client sends clean mic audio back.
 
     Protocol:
-        Client → Server:
+        Client -> Server:
             Binary: raw 16-bit PCM audio frames (16kHz mono)
             JSON: {"type": "control", "action": "start"|"end"|"pause"}
 
-        Server → Client:
+        Server -> Client:
             Binary: TTS audio frames (16-bit PCM, 16kHz mono)
             JSON: {"type": "transcript", "text": "...", "is_partial": bool}
             JSON: {"type": "turn_event", "event": "turn_end"}
             JSON: {"type": "response", "text": "...", "is_final": bool}
-            JSON: {"type": "mode_change", "mode": "conversation"|"command"}
     """
     await websocket.accept()
 
@@ -2922,10 +2921,11 @@ async def voice_conversation_ws(websocket: WebSocket):
     # Import conversation components
     try:
         from backend.audio.audio_bus import AudioBus, WebSocketSink
-        from backend.audio.conversation_pipeline import ConversationPipeline
-        from backend.voice.streaming_stt import StreamingSTTEngine
-        from backend.audio.turn_detector import TurnDetector
         from backend.audio.barge_in_controller import BargeInController
+        from backend.audio.conversation_pipeline import ConversationPipeline
+        from backend.audio.turn_detector import TurnDetector
+        from backend.voice.engines.unified_tts_engine import get_tts_engine
+        from backend.voice.streaming_stt import StreamingSTTEngine
     except ImportError as e:
         await websocket.send_json({
             "type": "error",
@@ -2934,7 +2934,7 @@ async def voice_conversation_ws(websocket: WebSocket):
         await websocket.close()
         return
 
-    # Create per-connection STT and turn detector
+    # Create per-connection components
     stt_engine = StreamingSTTEngine(sample_rate=16000)
     turn_detector = TurnDetector()
     barge_in = BargeInController()
@@ -2949,17 +2949,39 @@ async def voice_conversation_ws(websocket: WebSocket):
         await websocket.close()
         return
 
-    # Register a WebSocket sink for TTS output
+    # Wire up AudioBus + WebSocket sink
     ws_sink = None
     audio_bus = AudioBus.get_instance_safe()
     if audio_bus is not None and audio_bus.is_running:
         ws_sink = WebSocketSink(websocket.send_bytes)
         audio_bus.register_sink(client_id, ws_sink)
 
+    # Wire BargeInController to AudioBus + SpeechState + event loop
+    loop = asyncio.get_running_loop()
+    barge_in.set_loop(loop)
+    if audio_bus is not None:
+        barge_in.set_audio_bus(audio_bus)
+    try:
+        from backend.core.unified_speech_state import get_speech_state_manager
+        speech_state = await get_speech_state_manager()
+        barge_in.set_speech_state(speech_state)
+        # Enable conversation mode (AEC handles echo, skip post-speech cooldown)
+        speech_state.set_conversation_mode(True)
+    except Exception as e:
+        logger.debug(f"[VoiceConvWS] Speech state setup failed: {e}")
+        speech_state = None
+
+    # Get TTS singleton for response playback
+    tts_engine = None
+    try:
+        tts_engine = await get_tts_engine()
+    except Exception as e:
+        logger.warning(f"[VoiceConvWS] TTS init failed: {e}")
+
     running = True
 
     async def _receive_audio():
-        """Receive audio from client and feed to STT."""
+        """Receive audio from client and feed to STT + barge-in VAD."""
         nonlocal running
         import numpy as np
         while running:
@@ -2973,7 +2995,14 @@ async def voice_conversation_ws(websocket: WebSocket):
                     pcm_data = message["bytes"]
                     audio_i16 = np.frombuffer(pcm_data, dtype=np.int16)
                     audio_f32 = audio_i16.astype(np.float32) / 32767.0
+
+                    # Feed to STT for transcription
                     stt_engine.on_audio_frame(audio_f32)
+
+                    # Feed to BargeInController's VAD (detects user
+                    # speaking over JARVIS for barge-in interruption)
+                    is_speech = stt_engine.is_speech_active
+                    barge_in.on_vad_speech_detected(is_speech)
 
                 elif "text" in message and message["text"]:
                     # JSON: control message
@@ -2985,11 +3014,14 @@ async def voice_conversation_ws(websocket: WebSocket):
                             if action == "end":
                                 running = False
                                 break
+                            elif action == "pause":
+                                barge_in.enabled = False
+                            elif action == "resume":
+                                barge_in.enabled = True
                     except json.JSONDecodeError:
                         pass
 
             except asyncio.TimeoutError:
-                # Send keepalive
                 try:
                     await websocket.send_json({"type": "keepalive"})
                 except Exception:
@@ -2999,13 +3031,17 @@ async def voice_conversation_ws(websocket: WebSocket):
                 running = False
                 break
 
-    async def _send_transcripts():
-        """Send transcripts and turn events to client."""
+    async def _process_transcripts():
+        """Process transcripts, detect turns, generate and speak responses."""
         nonlocal running
+
+        accumulated_text_parts: list = []
+
         async for event in stt_engine.get_transcripts():
             if not running:
                 break
             try:
+                # Forward transcript to client
                 await websocket.send_json({
                     "type": "transcript",
                     "text": event.text,
@@ -3014,19 +3050,76 @@ async def voice_conversation_ws(websocket: WebSocket):
                     "timestamp_ms": event.timestamp_ms,
                 })
 
-                # Feed VAD to turn detector
-                if not event.is_partial:
-                    result = turn_detector.on_vad_result(
-                        False, event.timestamp_ms
+                if event.is_partial:
+                    # Speech is active — feed TurnDetector
+                    turn_detector.on_vad_result(
+                        is_speech=True, timestamp_ms=event.timestamp_ms
                     )
-                    if result == "turn_end":
+                else:
+                    # Final transcript segment — accumulate
+                    if event.text.strip():
+                        accumulated_text_parts.append(event.text.strip())
+
+                    # Feed silence to TurnDetector
+                    result = turn_detector.on_vad_result(
+                        is_speech=False, timestamp_ms=event.timestamp_ms
+                    )
+
+                    if result == "turn_end" and accumulated_text_parts:
+                        user_text = " ".join(accumulated_text_parts)
+                        accumulated_text_parts.clear()
+
                         await websocket.send_json({
                             "type": "turn_event",
                             "event": "turn_end",
+                            "text": user_text,
                         })
-            except Exception:
+
+                        # Generate and speak response
+                        await _respond_to_turn(user_text)
+                        turn_detector.reset()
+
+            except Exception as e:
+                logger.debug(f"[VoiceConvWS] Transcript processing error: {e}")
                 running = False
                 break
+
+    async def _respond_to_turn(user_text: str):
+        """Generate LLM response and speak it with barge-in support."""
+        if tts_engine is None:
+            return
+
+        # Send response start
+        await websocket.send_json({
+            "type": "response",
+            "text": "",
+            "is_final": False,
+            "status": "generating",
+        })
+
+        # For now, echo the user text as response (LLM integration is
+        # handled by ConversationPipeline when used as the full loop).
+        # This endpoint provides the low-level WebSocket transport;
+        # ConversationPipeline.run() orchestrates the full LLM loop.
+        response_text = f"I heard you say: {user_text}"
+
+        try:
+            cancel_event = barge_in.get_cancel_event()
+            barge_in.reset()
+
+            await tts_engine.speak_stream(
+                response_text,
+                play_audio=True,
+                cancel_event=cancel_event,
+            )
+
+            await websocket.send_json({
+                "type": "response",
+                "text": response_text,
+                "is_final": True,
+            })
+        except Exception as e:
+            logger.debug(f"[VoiceConvWS] Response error: {e}")
 
     try:
         await websocket.send_json({
@@ -3036,10 +3129,10 @@ async def voice_conversation_ws(websocket: WebSocket):
             "format": "pcm_s16le",
         })
 
-        # Run receive and transcript tasks concurrently
+        # Run receive and processing tasks concurrently
         await asyncio.gather(
             _receive_audio(),
-            _send_transcripts(),
+            _process_transcripts(),
             return_exceptions=True,
         )
 
@@ -3050,6 +3143,13 @@ async def voice_conversation_ws(websocket: WebSocket):
     finally:
         running = False
         await stt_engine.stop()
+
+        # Disable conversation mode
+        if speech_state is not None:
+            try:
+                speech_state.set_conversation_mode(False)
+            except Exception:
+                pass
 
         # Unregister WebSocket sink
         if audio_bus is not None and ws_sink is not None:

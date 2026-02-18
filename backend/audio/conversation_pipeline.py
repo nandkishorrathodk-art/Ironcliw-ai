@@ -233,11 +233,17 @@ class ConversationPipeline:
         Main conversation loop.
 
         Runs until end_session() is called or session expires.
+        Enables conversation mode on the speech state manager (disables
+        post-speech cooldown when AEC handles echo suppression).
         """
         if self._session is None:
             await self.start_session()
 
         self._running = True
+
+        # Enable conversation mode — AEC handles echo suppression, so
+        # the speech state manager can skip its post-speech cooldown.
+        await self._set_conversation_mode(True)
 
         try:
             await self._conversation_loop()
@@ -247,6 +253,19 @@ class ConversationPipeline:
             logger.error(f"[ConvPipeline] Error in conversation loop: {e}")
         finally:
             self._running = False
+            await self._set_conversation_mode(False)
+
+    async def _set_conversation_mode(self, enabled: bool) -> None:
+        """Toggle conversation mode on the speech state manager."""
+        try:
+            from backend.core.unified_speech_state import get_speech_state_manager
+            manager = await get_speech_state_manager()
+            manager.set_conversation_mode(enabled)
+            logger.info(
+                f"[ConvPipeline] Conversation mode {'enabled' if enabled else 'disabled'}"
+            )
+        except Exception as e:
+            logger.debug(f"[ConvPipeline] Speech state mode toggle failed: {e}")
 
     async def _conversation_loop(self) -> None:
         """Core conversation loop: listen → understand → respond → repeat."""
@@ -288,7 +307,14 @@ class ConversationPipeline:
     async def _listen_for_turn(self) -> Optional[str]:
         """
         Listen for a complete user turn using StreamingSTT + TurnDetector.
-        Returns the final transcript text, or None on timeout.
+
+        The TurnDetector uses adaptive silence thresholds based on question
+        context (300ms for yes/no, 600ms default, 900ms for open-ended).
+        Multiple final transcripts within one turn are accumulated — the user
+        may speak in short bursts that the STT segments individually but which
+        form a single conversational turn.
+
+        Returns the accumulated transcript text, or None on timeout/silence.
         """
         if self._streaming_stt is None:
             # Fallback: wait for input (testing mode)
@@ -299,7 +325,12 @@ class ConversationPipeline:
         if self._barge_in is not None:
             self._barge_in.reset()
 
-        final_text = None
+        # Reset turn detector for the new listening phase
+        if self._turn_detector is not None:
+            self._turn_detector.reset()
+
+        accumulated_text_parts: list = []
+        turn_ended = False
 
         try:
             async for event in self._streaming_stt.get_transcripts():
@@ -307,17 +338,39 @@ class ConversationPipeline:
                     break
 
                 if event.is_partial:
-                    # Could broadcast partial to UI here
-                    pass
+                    # Feed VAD-derived speech signal to TurnDetector.
+                    # Partial events mean speech is active.
+                    if self._turn_detector is not None:
+                        self._turn_detector.on_vad_result(
+                            is_speech=True, timestamp_ms=event.timestamp_ms
+                        )
                 else:
-                    # Final transcript
-                    final_text = event.text
-                    break
+                    # Final transcript — STT's VAD detected end of utterance.
+                    if event.text.strip():
+                        accumulated_text_parts.append(event.text.strip())
+
+                    # Feed silence signal to TurnDetector (STT emits final
+                    # when it detects sustained silence).
+                    if self._turn_detector is not None:
+                        result = self._turn_detector.on_vad_result(
+                            is_speech=False, timestamp_ms=event.timestamp_ms
+                        )
+                        if result == "turn_end":
+                            turn_ended = True
+                            break
+                    else:
+                        # No TurnDetector — fall back to single-final behavior
+                        turn_ended = True
+                        break
 
         except asyncio.TimeoutError:
             pass
 
-        return final_text
+        if not accumulated_text_parts:
+            return None
+
+        # Join all accumulated segments into one turn
+        return " ".join(accumulated_text_parts)
 
     async def _generate_and_speak_response(self) -> None:
         """Generate LLM response and stream it through TTS."""
@@ -381,18 +434,35 @@ class ConversationPipeline:
         Get a streaming token response from the LLM.
 
         Uses UnifiedModelServing's generate_stream() which supports
-        the PRIME_API → PRIME_LOCAL → CLAUDE tier chain.
+        the PRIME_API -> PRIME_LOCAL -> CLAUDE tier chain.
+
+        generate_stream() expects a ModelRequest object with a messages
+        list — NOT a flat prompt string.
         """
         if self._llm_client is None:
             return
 
         try:
-            # Build prompt from messages
-            prompt = "\n".join(
-                f"{m['role']}: {m['content']}" for m in messages
+            from backend.intelligence.unified_model_serving import ModelRequest
+
+            # Separate system prompt from conversation messages
+            system_prompt = None
+            conversation_messages = []
+            for m in messages:
+                if m["role"] == "system":
+                    system_prompt = m["content"]
+                else:
+                    conversation_messages.append(m)
+
+            request = ModelRequest(
+                messages=conversation_messages,
+                system_prompt=system_prompt,
+                stream=True,
+                temperature=float(os.getenv("JARVIS_CONV_TEMPERATURE", "0.7")),
+                max_tokens=int(os.getenv("JARVIS_CONV_MAX_TOKENS", "512")),
             )
 
-            async for chunk in self._llm_client.generate_stream(prompt):
+            async for chunk in self._llm_client.generate_stream(request):
                 yield chunk
 
         except Exception as e:
