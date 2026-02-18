@@ -25,9 +25,48 @@ Features:
 - Color space transformations
 """
 
-import Quartz
-import Quartz.CoreGraphics as CG
+import os
 from PIL import Image, ImageDraw, ImageFont
+
+# v262.0: Gate PyObjC imports behind headless detection (prevents SIGABRT).
+def _is_gui_session() -> bool:
+    """Check for macOS GUI session without loading PyObjC."""
+    _cached = os.environ.get("_JARVIS_GUI_SESSION")
+    if _cached is not None:
+        return _cached == "1"
+    import sys as _sys
+    result = False
+    if _sys.platform == "darwin":
+        if os.environ.get("JARVIS_HEADLESS", "").lower() in ("1", "true", "yes"):
+            pass
+        elif os.environ.get("SSH_CONNECTION") or os.environ.get("SSH_TTY"):
+            pass
+        else:
+            try:
+                import ctypes
+                cg = ctypes.cdll.LoadLibrary(
+                    "/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics"
+                )
+                cg.CGSessionCopyCurrentDictionary.restype = ctypes.c_void_p
+                result = cg.CGSessionCopyCurrentDictionary() is not None
+            except Exception:
+                pass
+    os.environ["_JARVIS_GUI_SESSION"] = "1" if result else "0"
+    return result
+
+Quartz = None  # type: ignore[assignment]
+CG = None  # type: ignore[assignment]
+MACOS_NATIVE_AVAILABLE = False
+
+if _is_gui_session():
+    try:
+        import Quartz as _Quartz  # type: ignore[no-redef]
+        import Quartz.CoreGraphics as _CG  # type: ignore[no-redef]
+        Quartz = _Quartz
+        CG = _CG
+        MACOS_NATIVE_AVAILABLE = True
+    except (ImportError, RuntimeError):
+        pass
 import numpy as np
 import logging
 import time

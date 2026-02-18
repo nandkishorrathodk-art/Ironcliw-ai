@@ -78,56 +78,93 @@ except ImportError:
             "NativeLibrarySafetyGuard not available, using direct calls"
         )
 
-# Import PyObjC frameworks (now properly installed)
-try:
-    import objc
-    from Foundation import (
-        NSObject,
-        NSRunLoop,
-        NSDefaultRunLoopMode,
-        NSData,
-    )
-    from AVFoundation import (
-        AVCaptureSession,
-        AVCaptureScreenInput,
-        AVCaptureVideoDataOutput,
-        AVCaptureSessionPreset1920x1080,
-        AVCaptureSessionPreset1280x720,
-        AVCaptureSessionPreset640x480,
-    )
-    from CoreMedia import (
-        CMSampleBufferGetImageBuffer,
-        CMTimeMake,
-    )
-    from Quartz import (
-        CVPixelBufferLockBaseAddress,
-        CVPixelBufferUnlockBaseAddress,
-        CVPixelBufferGetBaseAddress,
-        CVPixelBufferGetBytesPerRow,
-        CVPixelBufferGetHeight,
-        CVPixelBufferGetWidth,
-        kCVPixelBufferPixelFormatTypeKey,
-        kCVPixelFormatType_32BGRA,
-        CGWindowListCreateImage,
-        CGRectNull,
-        kCGWindowListOptionIncludingWindow,
-        kCGWindowImageDefault,
-        CGImageGetWidth,
-        CGImageGetHeight,
-        CGImageGetDataProvider,
-        CGDataProviderCopyData,
-    )
-    import libdispatch
+# v262.0: Gate PyObjC imports behind headless detection. On macOS,
+# importing AppKit/AVFoundation/Quartz via PyObjC can trigger Window Server
+# registration via _RegisterApplication. In headless environments (SSH, Cursor
+# sandbox, launchd daemon), this calls abort() — a C-level process kill that
+# bypasses Python exception handling entirely.
+def _is_gui_session() -> bool:
+    """Check for macOS GUI session without loading PyObjC (prevents SIGABRT)."""
+    _cached = os.environ.get("_JARVIS_GUI_SESSION")
+    if _cached is not None:
+        return _cached == "1"
+    import sys as _sys
+    result = False
+    if _sys.platform == "darwin":
+        if os.environ.get("JARVIS_HEADLESS", "").lower() in ("1", "true", "yes"):
+            pass
+        elif os.environ.get("SSH_CONNECTION") or os.environ.get("SSH_TTY"):
+            pass
+        else:
+            try:
+                import ctypes
+                cg = ctypes.cdll.LoadLibrary(
+                    "/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics"
+                )
+                cg.CGSessionCopyCurrentDictionary.restype = ctypes.c_void_p
+                result = cg.CGSessionCopyCurrentDictionary() is not None
+            except Exception:
+                pass
+    os.environ["_JARVIS_GUI_SESSION"] = "1" if result else "0"
+    return result
 
-    PYOBJC_AVAILABLE = True
-    AVFOUNDATION_AVAILABLE = True
-except ImportError as e:
-    PYOBJC_AVAILABLE = False
-    AVFOUNDATION_AVAILABLE = False
-    logging.getLogger(__name__).error(
-        f"PyObjC frameworks not available: {e}\n"
-        f"Install with: pip install pyobjc-framework-AVFoundation pyobjc-framework-Quartz "
-        f"pyobjc-framework-CoreMedia pyobjc-framework-libdispatch"
+# Import PyObjC frameworks (gated behind GUI session check)
+PYOBJC_AVAILABLE = False
+AVFOUNDATION_AVAILABLE = False
+
+if _is_gui_session():
+    try:
+        import objc
+        from Foundation import (
+            NSObject,
+            NSRunLoop,
+            NSDefaultRunLoopMode,
+            NSData,
+        )
+        from AVFoundation import (
+            AVCaptureSession,
+            AVCaptureScreenInput,
+            AVCaptureVideoDataOutput,
+            AVCaptureSessionPreset1920x1080,
+            AVCaptureSessionPreset1280x720,
+            AVCaptureSessionPreset640x480,
+        )
+        from CoreMedia import (
+            CMSampleBufferGetImageBuffer,
+            CMTimeMake,
+        )
+        from Quartz import (
+            CVPixelBufferLockBaseAddress,
+            CVPixelBufferUnlockBaseAddress,
+            CVPixelBufferGetBaseAddress,
+            CVPixelBufferGetBytesPerRow,
+            CVPixelBufferGetHeight,
+            CVPixelBufferGetWidth,
+            kCVPixelBufferPixelFormatTypeKey,
+            kCVPixelFormatType_32BGRA,
+            CGWindowListCreateImage,
+            CGRectNull,
+            kCGWindowListOptionIncludingWindow,
+            kCGWindowImageDefault,
+            CGImageGetWidth,
+            CGImageGetHeight,
+            CGImageGetDataProvider,
+            CGDataProviderCopyData,
+        )
+        import libdispatch
+
+        PYOBJC_AVAILABLE = True
+        AVFOUNDATION_AVAILABLE = True
+    except (ImportError, RuntimeError) as e:
+        logging.getLogger(__name__).error(
+            f"PyObjC frameworks not available: {e}\n"
+            f"Install with: pip install pyobjc-framework-AVFoundation pyobjc-framework-Quartz "
+            f"pyobjc-framework-CoreMedia pyobjc-framework-libdispatch"
+        )
+else:
+    logging.getLogger(__name__).info(
+        "PyObjC imports skipped — no macOS GUI session detected "
+        "(headless/SSH/sandbox environment)"
     )
 
 # Try ScreenCaptureKit (macOS 12.3+)

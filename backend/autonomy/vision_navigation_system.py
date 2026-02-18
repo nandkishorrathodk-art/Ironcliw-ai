@@ -26,14 +26,43 @@ from vision.window_detector import WindowDetector, WindowInfo
 from vision.enhanced_monitoring import EnhancedWorkspaceMonitor
 
 # macOS integration
-try:
-    import Quartz
-    import AppKit
-    from Quartz import CGWindowListCopyWindowInfo, kCGWindowListOptionAll, kCGNullWindowID
-    from AppKit import NSWorkspace, NSRunningApplication
-    MACOS_AVAILABLE = True
-except ImportError:
-    MACOS_AVAILABLE = False
+# v262.0: Gate PyObjC imports behind headless detection. On macOS,
+# `import AppKit` triggers Window Server registration via _RegisterApplication.
+# In headless environments (SSH, Cursor sandbox, launchd daemon), this calls
+# abort() — a C-level process kill that bypasses Python exception handling.
+def _is_gui_session() -> bool:
+    """Check for macOS GUI session without loading PyObjC (prevents SIGABRT)."""
+    _cached = os.environ.get("_JARVIS_GUI_SESSION")
+    if _cached is not None:
+        return _cached == "1"
+    result = False
+    if sys.platform == "darwin":
+        if os.environ.get("JARVIS_HEADLESS", "").lower() in ("1", "true", "yes"):
+            pass
+        elif os.environ.get("SSH_CONNECTION") or os.environ.get("SSH_TTY"):
+            pass
+        else:
+            try:
+                import ctypes
+                cg = ctypes.cdll.LoadLibrary(
+                    "/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics"
+                )
+                cg.CGSessionCopyCurrentDictionary.restype = ctypes.c_void_p
+                result = cg.CGSessionCopyCurrentDictionary() is not None
+            except Exception:
+                pass
+    os.environ["_JARVIS_GUI_SESSION"] = "1" if result else "0"
+    return result
+
+MACOS_AVAILABLE = False
+if _is_gui_session():
+    try:
+        import Quartz
+        import AppKit
+        from AppKit import NSWorkspace, NSRunningApplication
+        MACOS_AVAILABLE = True
+    except (ImportError, RuntimeError):
+        pass
     
 logger = logging.getLogger(__name__)
 

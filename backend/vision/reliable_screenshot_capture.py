@@ -27,18 +27,70 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
-import Quartz
-from AppKit import NSScreen
 from PIL import Image
-from Quartz import (
-    CGRectMake,
-    CGRectNull,
-    CGWindowListCopyWindowInfo,
-    CGWindowListCreateImage,
-    kCGNullWindowID,
-    kCGWindowImageDefault,
-    kCGWindowListOptionOnScreenOnly,
-)
+
+# v262.0: Gate PyObjC imports behind headless detection (prevents SIGABRT).
+def _is_gui_session() -> bool:
+    """Check for macOS GUI session without loading PyObjC."""
+    _cached = os.environ.get("_JARVIS_GUI_SESSION")
+    if _cached is not None:
+        return _cached == "1"
+    import sys as _sys
+    result = False
+    if _sys.platform == "darwin":
+        if os.environ.get("JARVIS_HEADLESS", "").lower() in ("1", "true", "yes"):
+            pass
+        elif os.environ.get("SSH_CONNECTION") or os.environ.get("SSH_TTY"):
+            pass
+        else:
+            try:
+                import ctypes
+                cg = ctypes.cdll.LoadLibrary(
+                    "/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics"
+                )
+                cg.CGSessionCopyCurrentDictionary.restype = ctypes.c_void_p
+                result = cg.CGSessionCopyCurrentDictionary() is not None
+            except Exception:
+                pass
+    os.environ["_JARVIS_GUI_SESSION"] = "1" if result else "0"
+    return result
+
+Quartz = None  # type: ignore[assignment]
+NSScreen = None  # type: ignore[assignment]
+CGRectMake = None
+CGRectNull = None
+CGWindowListCopyWindowInfo = None
+CGWindowListCreateImage = None
+kCGNullWindowID = None
+kCGWindowImageDefault = None
+kCGWindowListOptionOnScreenOnly = None
+MACOS_NATIVE_AVAILABLE = False
+
+if _is_gui_session():
+    try:
+        import Quartz as _Quartz
+        from AppKit import NSScreen as _NSScreen
+        from Quartz import (
+            CGRectMake as _CGRectMake,
+            CGRectNull as _CGRectNull,
+            CGWindowListCopyWindowInfo as _CGWindowListCopyWindowInfo,
+            CGWindowListCreateImage as _CGWindowListCreateImage,
+            kCGNullWindowID as _kCGNullWindowID,
+            kCGWindowImageDefault as _kCGWindowImageDefault,
+            kCGWindowListOptionOnScreenOnly as _kCGWindowListOptionOnScreenOnly,
+        )
+        Quartz = _Quartz
+        NSScreen = _NSScreen
+        CGRectMake = _CGRectMake
+        CGRectNull = _CGRectNull
+        CGWindowListCopyWindowInfo = _CGWindowListCopyWindowInfo
+        CGWindowListCreateImage = _CGWindowListCreateImage
+        kCGNullWindowID = _kCGNullWindowID
+        kCGWindowImageDefault = _kCGWindowImageDefault
+        kCGWindowListOptionOnScreenOnly = _kCGWindowListOptionOnScreenOnly
+        MACOS_NATIVE_AVAILABLE = True
+    except (ImportError, RuntimeError):
+        pass
 
 logger = logging.getLogger(__name__)
 

@@ -11,9 +11,49 @@ import logging
 import time
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple, Any
-import Quartz
-import Vision
-import AppKit
+# v262.0: PyObjC imports moved from bare module-level to guarded lazy-load.
+# On macOS, `import AppKit` triggers Window Server registration via
+# _RegisterApplication. In headless environments (SSH, Cursor sandbox,
+# launchd daemon), registration fails → macOS calls abort() — an unrecoverable
+# C-level process kill that bypasses Python exception handling entirely.
+# Only `Quartz` is used in this file (Vision and AppKit were dead imports).
+
+def _is_gui_session() -> bool:
+    """Check for macOS GUI session without loading PyObjC (prevents SIGABRT)."""
+    _cached = os.environ.get("_JARVIS_GUI_SESSION")
+    if _cached is not None:
+        return _cached == "1"
+    import sys as _sys
+    result = False
+    if _sys.platform == "darwin":
+        if os.environ.get("JARVIS_HEADLESS", "").lower() in ("1", "true", "yes"):
+            pass
+        elif os.environ.get("SSH_CONNECTION") or os.environ.get("SSH_TTY"):
+            pass
+        else:
+            try:
+                import ctypes
+                cg = ctypes.cdll.LoadLibrary(
+                    "/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics"
+                )
+                cg.CGSessionCopyCurrentDictionary.restype = ctypes.c_void_p
+                result = cg.CGSessionCopyCurrentDictionary() is not None
+            except Exception:
+                pass
+    os.environ["_JARVIS_GUI_SESSION"] = "1" if result else "0"
+    return result
+
+Quartz = None  # type: ignore[assignment]
+MACOS_NATIVE_AVAILABLE = False
+
+if _is_gui_session():
+    try:
+        import Quartz as _Quartz
+        Quartz = _Quartz
+        MACOS_NATIVE_AVAILABLE = True
+    except (ImportError, RuntimeError):
+        pass
+
 from PIL import Image
 import pytesseract
 import cv2

@@ -11,21 +11,88 @@ import logging
 from typing import Dict, List, Any, Optional, Tuple
 from dataclasses import dataclass
 from datetime import datetime
-import Quartz
-from Quartz import (
-    CGWindowListCopyWindowInfo,
-    kCGWindowListOptionAll,
-    kCGWindowListExcludeDesktopElements,
-    kCGNullWindowID,
-    CGWindowListCreateImage,
-    CGRectNull,
-    kCGWindowImageDefault,
-    kCGWindowImageBoundsIgnoreFraming,
-    kCGWindowImageNominalResolution
-)
-import AppKit
-from AppKit import NSWorkspace, NSScreen, NSApplication
-import objc
+# v262.0: Gate PyObjC imports behind headless detection (prevents SIGABRT).
+def _is_gui_session() -> bool:
+    """Check for macOS GUI session without loading PyObjC."""
+    _cached = os.environ.get("_JARVIS_GUI_SESSION")
+    if _cached is not None:
+        return _cached == "1"
+    import sys as _sys
+    result = False
+    if _sys.platform == "darwin":
+        if os.environ.get("JARVIS_HEADLESS", "").lower() in ("1", "true", "yes"):
+            pass
+        elif os.environ.get("SSH_CONNECTION") or os.environ.get("SSH_TTY"):
+            pass
+        else:
+            try:
+                import ctypes
+                cg = ctypes.cdll.LoadLibrary(
+                    "/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics"
+                )
+                cg.CGSessionCopyCurrentDictionary.restype = ctypes.c_void_p
+                result = cg.CGSessionCopyCurrentDictionary() is not None
+            except Exception:
+                pass
+    os.environ["_JARVIS_GUI_SESSION"] = "1" if result else "0"
+    return result
+
+MACOS_NATIVE_AVAILABLE = False
+Quartz = None  # type: ignore[assignment]
+AppKit = None  # type: ignore[assignment]
+objc = None  # type: ignore[assignment]
+NSWorkspace = None  # type: ignore[assignment]
+NSScreen = None  # type: ignore[assignment]
+NSApplication = None  # type: ignore[assignment]
+CGWindowListCopyWindowInfo = None
+kCGWindowListOptionAll = None
+kCGWindowListExcludeDesktopElements = None
+kCGNullWindowID = None
+CGWindowListCreateImage = None
+CGRectNull = None
+kCGWindowImageDefault = None
+kCGWindowImageBoundsIgnoreFraming = None
+kCGWindowImageNominalResolution = None
+
+if _is_gui_session():
+    try:
+        import Quartz as _Quartz  # type: ignore[no-redef]
+        from Quartz import (
+            CGWindowListCopyWindowInfo as _CWLCWI,
+            kCGWindowListOptionAll as _kWLOA,
+            kCGWindowListExcludeDesktopElements as _kWLEDE,
+            kCGNullWindowID as _kNWID,
+            CGWindowListCreateImage as _CWLCI,
+            CGRectNull as _CRN,
+            kCGWindowImageDefault as _kWID,
+            kCGWindowImageBoundsIgnoreFraming as _kWIBIF,
+            kCGWindowImageNominalResolution as _kWINR,
+        )
+        import AppKit as _AppKit  # type: ignore[no-redef]
+        from AppKit import (
+            NSWorkspace as _NSWorkspace,
+            NSScreen as _NSScreen,
+            NSApplication as _NSApplication,
+        )
+        import objc as _objc  # type: ignore[no-redef]
+        Quartz = _Quartz
+        AppKit = _AppKit
+        objc = _objc
+        NSWorkspace = _NSWorkspace
+        NSScreen = _NSScreen
+        NSApplication = _NSApplication
+        CGWindowListCopyWindowInfo = _CWLCWI
+        kCGWindowListOptionAll = _kWLOA
+        kCGWindowListExcludeDesktopElements = _kWLEDE
+        kCGNullWindowID = _kNWID
+        CGWindowListCreateImage = _CWLCI
+        CGRectNull = _CRN
+        kCGWindowImageDefault = _kWID
+        kCGWindowImageBoundsIgnoreFraming = _kWIBIF
+        kCGWindowImageNominalResolution = _kWINR
+        MACOS_NATIVE_AVAILABLE = True
+    except (ImportError, RuntimeError):
+        pass
 
 logger = logging.getLogger(__name__)
 
