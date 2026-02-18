@@ -319,12 +319,15 @@ class ShutdownDiagnostics:
     def _save_on_exit(self) -> None:
         """Save final diagnostics state on exit."""
         # v201.4: Skip verbose logging in CLI-only mode
+        # v262.0: Catch Exception (not just ImportError) — importing graceful_shutdown
+        # during interpreter shutdown triggers concurrent.futures → threading._register_atexit()
+        # → RuntimeError. Uncaught atexit exceptions can corrupt interpreter → SIGABRT.
         try:
             from backend.core.resilience.graceful_shutdown import is_cli_only_mode
             if is_cli_only_mode():
                 return  # No diagnostics for CLI-only commands
-        except ImportError:
-            pass  # Fall through to normal behavior
+        except Exception:
+            pass  # Fall through to normal behavior (ImportError, RuntimeError, etc.)
 
         try:
             exit_time = time.time()

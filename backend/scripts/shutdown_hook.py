@@ -1052,12 +1052,18 @@ def _atexit_handler() -> None:
     _shutdown_phase = 2  # v109.4: Mark atexit phase
 
     # v201.4: Skip verbose logging in CLI-only mode (--status, --monitor-prime, etc.)
+    # v262.0: Catch Exception (not just ImportError). During interpreter shutdown,
+    # importing graceful_shutdown triggers `from concurrent.futures import
+    # ProcessPoolExecutor` (line 1125) which calls threading._register_atexit()
+    # → RuntimeError: can't register atexit after shutdown. This RuntimeError
+    # propagates through the import chain as-is (NOT wrapped in ImportError).
+    # Uncaught exceptions in atexit handlers can corrupt interpreter state → SIGABRT.
     try:
         from backend.core.resilience.graceful_shutdown import is_cli_only_mode
         if is_cli_only_mode():
             return  # Skip cleanup for CLI-only commands - they don't start resources
-    except ImportError:
-        pass  # Fall through to normal cleanup
+    except Exception:
+        pass  # Fall through to normal cleanup (ImportError, RuntimeError, etc.)
 
     logger.info("🔚 atexit handler: Final cleanup check...")
 
