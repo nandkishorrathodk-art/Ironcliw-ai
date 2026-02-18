@@ -21069,23 +21069,11 @@ class PersistentConversationMemoryAgent:
         if self._running:
             return True
 
-        # v258.2: CPU-aware timeout extension — under high CPU pressure,
-        # the 8s default is insufficient for DB queries even when parallelized.
+        # v241.1: CPU-aware timeout band-aid REMOVED. The root cause was
+        # ECAPA verification running concurrently with Phase 4, starving
+        # DB queries. Now that ECAPA is sequenced after Phase 4, the base
+        # timeout is sufficient without CPU-conditional extensions.
         boot_timeout = max(1.0, min(self._boot_load_timeout, self._init_timeout))
-        try:
-            from backend.core.async_system_metrics import get_cpu_percent
-            _cpu = await get_cpu_percent()
-        except Exception:
-            _cpu = 0.0
-        # v263.2: Lowered from 90% → 80% — at 86% CPU startup contention
-        # is already severe enough to need the extended timeout.
-        if _cpu > 80.0:
-            _boot_max = float(os.getenv("JARVIS_MEMORY_BOOT_MAX_TIMEOUT", "16.0"))
-            boot_timeout = min(_boot_max, self._init_timeout)
-            self._logger.info(
-                "[MemoryAgent] CPU %.0f%% — extended boot timeout to %.0fs",
-                _cpu, boot_timeout,
-            )
 
         boot_task = create_safe_task(
             self._load_boot_context(),
@@ -60019,6 +60007,10 @@ class JarvisSystemKernel:
         except Exception as e:
             self.logger.debug(f"[Kernel] Permission Manager stop error: {e}")
 
+        # Release cached references
+        self._perm_type_cls = None
+        self._perm_status_cls = None
+
         # v250.0: Visual Pipeline teardown (N-Optic → Ghost Hands order)
         try:
             if self._n_optic_nerve and getattr(self._n_optic_nerve, '_is_running', False):
@@ -62394,66 +62386,15 @@ class JarvisSystemKernel:
                     self.logger.warning(f"[Kernel] Voice Orchestrator failed to start: {vo_err}")
                     self._voice_orchestrator = None
 
-            # v223.0: ECAPA verification pipeline (non-blocking smoke test)
-            # Runs after backend is up to validate voice biometric pipeline end-to-end.
-            # Root fix: launch as managed background task so startup phase transition
-            # cannot be held by voice-biometric smoke checks.
-            if self.config.ecapa_enabled:
-                async def _run_ecapa_verification_bg() -> None:
-                    # v258.1 R2-#3: Initialize before try to avoid UnboundLocalError
-                    cpu = 0.0
-                    _ecapa_base_timeout = _get_env_float("JARVIS_ECAPA_BG_TIMEOUT", 90.0)
-                    _ecapa_max_timeout = _get_env_float("JARVIS_ECAPA_MAX_TIMEOUT", 180.0)
-                    _ecapa_bg_timeout = _ecapa_base_timeout
-
-                    try:
-                        # v258.1: CPU-aware dynamic timeout
-                        try:
-                            from backend.core.async_system_metrics import get_cpu_percent
-                            cpu = await get_cpu_percent()
-                        except Exception:
-                            pass  # cpu stays 0.0
-
-                        # v263.2: Lowered from 90% → 80%. At 86% CPU, Phase 4
-                        # Intelligence init starves ECAPA model loading.
-                        if cpu > 80.0:
-                            _ecapa_bg_timeout = _ecapa_max_timeout
-                            self.logger.info(
-                                f"[Kernel] ECAPA timeout extended to {_ecapa_bg_timeout:.0f}s "
-                                f"(CPU: {cpu:.0f}%, base: {_ecapa_base_timeout:.0f}s)"
-                            )
-
-                        ecapa_verify = await asyncio.wait_for(
-                            self._verify_ecapa_pipeline(), timeout=_ecapa_bg_timeout
-                        )
-                        if ecapa_verify.get("verification_pipeline_ready"):
-                            self.logger.info("[Kernel] ECAPA pipeline verified and ready")
-                        else:
-                            # v256.1: Guard against post-startup collector state
-                            try:
-                                issue_collector.add_warning(
-                                    "ECAPA pipeline verification incomplete — voice unlock may be degraded",
-                                    IssueCategory.INTELLIGENCE,
-                                    suggestion="Check ECAPA model availability and ML engine registry",
-                                )
-                            except Exception:
-                                self.logger.warning("[Kernel] ECAPA verification incomplete (post-startup)")
-                    except asyncio.TimeoutError:
-                        self.logger.warning(
-                            f"[Kernel] ECAPA verification timed out ({_ecapa_bg_timeout:.0f}s, "
-                            f"CPU: {cpu:.0f}%) — skipping"
-                        )
-                    except asyncio.CancelledError:
-                        raise
-                    except Exception as ev_err:
-                        self.logger.debug(f"[Kernel] ECAPA verification skipped: {ev_err}")
-
-                if self._ecapa_verification_task is None or self._ecapa_verification_task.done():
-                    self._ecapa_verification_task = create_safe_task(
-                        _run_ecapa_verification_bg(),
-                        name="ecapa-verification",
-                    )
-                    self._background_tasks.append(self._ecapa_verification_task)
+            # v241.1: ECAPA verification DEFERRED to after Phase 4 completes.
+            # Root cause: ECAPA model loading (SpeechBrain ECAPA-TDNN PyTorch) is
+            # extremely CPU-heavy. Launching it here (end of Phase 3) means it runs
+            # concurrently with Phase 4 (Intelligence), the heaviest phase. Both
+            # compete for CPU → mutual starvation at 87%+ → ECAPA times out and
+            # Phase 4 DB queries starve. Previous "fix" extended timeouts when
+            # CPU > 80% — that's a band-aid, not a cure. The real fix: sequence
+            # heavyweight operations so they don't compete.
+            # See ECAPA launch after Phase 4 completion below.
 
             # Phase 4: Intelligence (Zone 4)
             self._current_startup_phase = "intelligence"
@@ -62546,6 +62487,74 @@ class JarvisSystemKernel:
                     }
                 }
             )
+
+            # v241.1: ECAPA verification — launched AFTER Phase 4 completes.
+            # Phase 4 (Intelligence) is the heaviest CPU phase (model loading,
+            # HybridWorkloadRouter, GoalInferenceEngine, etc.). ECAPA model loading
+            # (SpeechBrain ECAPA-TDNN) is also CPU-heavy. Running them concurrently
+            # causes mutual starvation at 87%+ CPU. Sequencing them eliminates the
+            # contention entirely — no timeout band-aids needed.
+            if self.config.ecapa_enabled:
+                async def _run_ecapa_verification_bg() -> None:
+                    """ECAPA verification with CPU backpressure gate."""
+                    _ecapa_bg_timeout = _get_env_float("JARVIS_ECAPA_BG_TIMEOUT", 90.0)
+
+                    try:
+                        # CPU backpressure gate: wait for CPU to settle after Phase 4
+                        # before starting another heavyweight operation.
+                        _bp_threshold = 70.0
+                        _bp_max_wait = 30.0
+                        _bp_poll = 2.0
+                        _bp_waited = 0.0
+                        try:
+                            from backend.core.async_system_metrics import get_cpu_percent
+                            while _bp_waited < _bp_max_wait:
+                                _cpu = await get_cpu_percent()
+                                if _cpu < _bp_threshold:
+                                    break
+                                self.logger.debug(
+                                    f"[Kernel] ECAPA backpressure: CPU {_cpu:.0f}% "
+                                    f"> {_bp_threshold:.0f}%, waiting..."
+                                )
+                                await asyncio.sleep(_bp_poll)
+                                _bp_waited += _bp_poll
+                            else:
+                                self.logger.info(
+                                    f"[Kernel] ECAPA backpressure: CPU still elevated "
+                                    f"after {_bp_max_wait:.0f}s, proceeding anyway"
+                                )
+                        except Exception:
+                            pass  # Metrics unavailable, proceed immediately
+
+                        ecapa_verify = await asyncio.wait_for(
+                            self._verify_ecapa_pipeline(), timeout=_ecapa_bg_timeout
+                        )
+                        if ecapa_verify.get("verification_pipeline_ready"):
+                            self.logger.info("[Kernel] ECAPA pipeline verified and ready")
+                        else:
+                            try:
+                                issue_collector.add_warning(
+                                    "ECAPA pipeline verification incomplete — voice unlock may be degraded",
+                                    IssueCategory.INTELLIGENCE,
+                                    suggestion="Check ECAPA model availability and ML engine registry",
+                                )
+                            except Exception:
+                                self.logger.warning("[Kernel] ECAPA verification incomplete (post-startup)")
+                    except asyncio.TimeoutError:
+                        self.logger.warning(
+                            f"[Kernel] ECAPA verification timed out ({_ecapa_bg_timeout:.0f}s) — skipping"
+                        )
+                    except asyncio.CancelledError:
+                        raise
+                    except Exception as ev_err:
+                        self.logger.debug(f"[Kernel] ECAPA verification skipped: {ev_err}")
+
+                if self._ecapa_verification_task is None or self._ecapa_verification_task.done():
+                    self._ecapa_verification_task = create_safe_task(
+                        _run_ecapa_verification_bg(),
+                        name="ecapa-verification",
+                    )
+                    self._background_tasks.append(self._ecapa_verification_task)
 
             # =====================================================================
             # UNIFIED AGENT RUNTIME INITIALIZATION
