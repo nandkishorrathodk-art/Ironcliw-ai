@@ -306,11 +306,13 @@ class WorkflowParser:
                     description=command
                 )
                 
-        # Default to unknown action
+        # v263.1: Default to unknown action, marked optional so it doesn't
+        # halt the workflow if the fallback executor can't interpret it
         return WorkflowAction(
             action_type=ActionType.UNKNOWN,
             target=command,
-            description=command
+            description=command,
+            optional=True,
         )
         
     def _analyze_dependencies(self, actions: List[WorkflowAction]):

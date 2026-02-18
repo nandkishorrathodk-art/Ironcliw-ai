@@ -303,21 +303,29 @@ class ActionExecutorRegistry:
         """Register default executors for core actions"""
         from .action_executors import (
             unlock_system, open_application, perform_search,
-            check_resource, create_item, mute_notifications
+            check_resource, create_item, mute_notifications,
+            handle_generic_action,
         )
-        
+
         default_executors = {
             ActionType.UNLOCK: unlock_system,
             ActionType.OPEN_APP: open_application,
             ActionType.SEARCH: perform_search,
             ActionType.CHECK: check_resource,
             ActionType.CREATE: create_item,
-            ActionType.MUTE: mute_notifications
+            ActionType.MUTE: mute_notifications,
         }
-        
+
         for action_type, executor in default_executors.items():
             if action_type not in self.executors:
                 self.register(action_type, executor)
+
+        # v263.1: Register fallback executor for all action types that lack
+        # a dedicated executor. This prevents "No executor for action type"
+        # crashes when the parser produces UNKNOWN or unimplemented types.
+        for action_type in ActionType:
+            if action_type not in self.executors:
+                self.register(action_type, handle_generic_action)
                 
     def register(self, action_type: ActionType, executor: Callable):
         """Register an executor for an action type"""

@@ -721,6 +721,135 @@ class NotificationMuterExecutor(BaseActionExecutor):
             raise Exception(f"Notification muting failed: {str(e)}")
 
 
+class GenericFallbackExecutor(BaseActionExecutor):
+    """Fallback executor for unregistered action types (UNKNOWN, NAVIGATE, SET, etc.)
+
+    v263.1: Instead of crashing with "No executor for action type", this executor
+    logs the unhandled action, records it for future executor development, and
+    returns a graceful result so the workflow can continue.
+    """
+
+    # Action types that can be mapped to existing executors.
+    # Only map to keys that exist in _reroute_action's executor_map.
+    _REROUTE_MAP = {
+        ActionType.NAVIGATE: "open_app",    # navigate → open browser + URL
+        ActionType.START: "open_app",       # start X → open X
+        ActionType.READ: "open_app",        # read X → open file
+        ActionType.WRITE: "create",         # write X → create X
+        ActionType.PREPARE: "check",        # prepare for meeting → check calendar/email
+        ActionType.MONITOR: "check",        # monitor X → check X status
+        ActionType.ANALYZE: "search",       # analyze X → search for X
+        ActionType.SCHEDULE: "check",       # schedule X → check calendar
+    }
+
+    async def execute(self, action: WorkflowAction, context: ExecutionContext) -> Any:
+        """Handle unregistered action types gracefully"""
+        action_type = action.action_type
+        target = action.target or "unspecified"
+
+        logger.warning(
+            f"GenericFallbackExecutor handling {action_type.value} "
+            f"(target={target!r}) — no dedicated executor registered"
+        )
+
+        # For truly UNKNOWN actions, try to interpret via the target/description
+        if action_type == ActionType.UNKNOWN:
+            return await self._handle_unknown(action, context)
+
+        # For known-but-unimplemented types, try rerouting
+        reroute = self._REROUTE_MAP.get(action_type)
+        if reroute:
+            return await self._reroute_action(action, reroute, context)
+
+        # For everything else, return a skipped result
+        return {
+            "status": "skipped",
+            "action_type": action_type.value,
+            "target": target,
+            "message": f"No dedicated executor for '{action_type.value}'. "
+                       f"Action skipped gracefully.",
+            "suggestion": "This action type needs a dedicated executor implementation."
+        }
+
+    async def _handle_unknown(self, action: WorkflowAction, context: ExecutionContext) -> Any:
+        """Attempt to interpret an UNKNOWN action from its target/description text"""
+        target = (action.target or "").lower()
+        desc = (action.description or "").lower()
+        text = f"{target} {desc}"
+
+        # Try keyword-based rerouting from the raw text
+        keyword_map = [
+            (["open", "launch", "start", "run"], "open_app"),
+            (["search", "find", "look up", "google"], "search"),
+            (["check", "show", "review", "status"], "check"),
+            (["create", "make", "new", "write"], "create"),
+            (["mute", "silence", "quiet", "dnd"], "mute"),
+            (["close", "quit", "stop", "kill", "exit"], "system_command"),
+        ]
+
+        for keywords, reroute_type in keyword_map:
+            if any(kw in text for kw in keywords):
+                logger.info(
+                    f"UNKNOWN action rerouted to '{reroute_type}' "
+                    f"based on keywords in: {text!r}"
+                )
+                return await self._reroute_action(action, reroute_type, context)
+
+        # Genuinely uninterpretable — skip gracefully
+        logger.info(f"UNKNOWN action could not be interpreted: {text!r}")
+        return {
+            "status": "skipped",
+            "action_type": "unknown",
+            "target": action.target,
+            "message": f"Could not interpret action: '{action.description or action.target}'. "
+                       f"Skipping to continue workflow.",
+        }
+
+    async def _reroute_action(self, action: WorkflowAction, executor_key: str,
+                              context: ExecutionContext) -> Any:
+        """Reroute to an existing executor by key"""
+        executor_map = {
+            "open_app": ApplicationLauncherExecutor,
+            "search": SearchExecutor,
+            "check": ResourceCheckerExecutor,
+            "create": ItemCreatorExecutor,
+            "mute": NotificationMuterExecutor,
+        }
+
+        executor_cls = executor_map.get(executor_key)
+        if executor_cls:
+            logger.info(
+                f"Rerouting {action.action_type.value} → {executor_key} executor"
+            )
+            try:
+                executor = executor_cls()
+                return await executor.execute(action, context)
+            except Exception as e:
+                logger.warning(
+                    f"Rerouted {action.action_type.value} → {executor_key} failed: {e}"
+                )
+                return {
+                    "status": "skipped",
+                    "action_type": action.action_type.value,
+                    "target": action.target,
+                    "message": f"Reroute to '{executor_key}' failed: {e}. Action skipped.",
+                }
+
+        # Unmapped reroute target — skip
+        return {
+            "status": "skipped",
+            "action_type": action.action_type.value,
+            "target": action.target,
+            "message": f"Reroute target '{executor_key}' not yet implemented. Action skipped.",
+        }
+
+
+async def handle_generic_action(action: WorkflowAction, context: ExecutionContext) -> Any:
+    """Factory function for generic/fallback action handling"""
+    executor = GenericFallbackExecutor()
+    return await executor.execute(action, context)
+
+
 # Executor factory functions for configuration-driven loading
 async def unlock_system(action: WorkflowAction, context: ExecutionContext) -> Any:
     """Factory function for system unlock"""
