@@ -60,15 +60,22 @@ class ModeDispatcher:
     Wake word detection runs in parallel with all modes.
     """
 
-    def __init__(self):
+    def __init__(
+        self,
+        conversation_pipeline=None,
+        speech_state=None,
+    ):
         self._current_mode = VoiceMode.COMMAND
         self._previous_mode: Optional[VoiceMode] = None
         self._last_activity = time.time()
         self._mode_change_callbacks = []
 
-        # Pipeline references (set during wiring)
-        self._conversation_pipeline = None
-        self._speech_state = None
+        # Pipeline references (set via constructor or setters)
+        self._conversation_pipeline = conversation_pipeline
+        self._speech_state = speech_state
+
+        # Conversation task management
+        self._conversation_task: Optional[asyncio.Task] = None
 
         # Stats
         self._mode_switches = 0
@@ -134,6 +141,15 @@ class ModeDispatcher:
     async def _leave_mode(self, mode: VoiceMode) -> None:
         """Clean up when leaving a mode."""
         if mode == VoiceMode.CONVERSATION:
+            # Cancel conversation loop task
+            if self._conversation_task is not None:
+                self._conversation_task.cancel()
+                try:
+                    await self._conversation_task
+                except asyncio.CancelledError:
+                    pass
+                self._conversation_task = None
+
             # Disable conversation mode in speech state
             if self._speech_state is not None:
                 self._speech_state.set_conversation_mode(False)
@@ -149,9 +165,13 @@ class ModeDispatcher:
             if self._speech_state is not None:
                 self._speech_state.set_conversation_mode(True)
 
-            # Start conversation session
+            # Start conversation session AND run the loop
             if self._conversation_pipeline is not None:
                 await self._conversation_pipeline.start_session()
+                # Launch conversation loop as a background task
+                self._conversation_task = asyncio.ensure_future(
+                    self._conversation_pipeline.run()
+                )
 
         elif mode == VoiceMode.BIOMETRIC:
             pass  # Biometric mode handled by existing voice_unlock system
@@ -227,3 +247,13 @@ class ModeDispatcher:
             "inactivity_seconds": time.time() - self._last_activity,
             "conversation_active": self._current_mode == VoiceMode.CONVERSATION,
         }
+
+    async def start(self) -> None:
+        """Start the mode dispatcher. Currently a no-op — modes are event-driven."""
+        logger.info("[ModeDispatcher] Started")
+
+    async def stop(self) -> None:
+        """Stop the mode dispatcher and clean up any active mode."""
+        if self._current_mode == VoiceMode.CONVERSATION:
+            await self._leave_mode(VoiceMode.CONVERSATION)
+        logger.info("[ModeDispatcher] Stopped")
