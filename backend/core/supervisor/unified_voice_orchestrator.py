@@ -96,6 +96,34 @@ from backend.core.secure_logging import sanitize_for_log
 logger = logging.getLogger(__name__)
 
 
+def _env_flag(name: str, default: str = "false") -> bool:
+    """Parse common truthy env values."""
+    return os.getenv(name, default).strip().lower() in ("1", "true", "yes", "on")
+
+
+def _canonical_voice_name() -> str:
+    """Canonical voice identity for supervisor-controlled speech."""
+    value = os.getenv("JARVIS_CANONICAL_VOICE_NAME", "Daniel").strip()
+    return value or "Daniel"
+
+
+def _resolve_voice_name(requested: Optional[str] = None) -> str:
+    """
+    Resolve effective voice for orchestrator.
+
+    By default we enforce canonical voice to avoid drift across subsystems.
+    """
+    canonical = _canonical_voice_name()
+    if _env_flag("JARVIS_ENFORCE_CANONICAL_VOICE", "true"):
+        return canonical
+
+    if requested and requested.strip():
+        return requested.strip()
+
+    env_voice = os.getenv("JARVIS_VOICE_NAME", "").strip()
+    return env_voice or canonical
+
+
 class VoicePriority(Enum):
     """Priority levels for voice messages."""
     LOW = 1        # Background info, can be skipped/delayed
@@ -175,7 +203,7 @@ class VoiceConfig:
 
     # TTS settings
     voice: str = field(
-        default_factory=lambda: os.getenv("JARVIS_VOICE_NAME", "Daniel")
+        default_factory=lambda: _resolve_voice_name()
     )
     rate: int = field(
         default_factory=lambda: int(os.getenv("JARVIS_VOICE_RATE", "180"))
@@ -387,6 +415,13 @@ class UnifiedVoiceOrchestrator:
     def __init__(self, config: Optional[VoiceConfig] = None):
         """Initialize the unified voice orchestrator."""
         self.config = config or VoiceConfig()
+        self.config.voice = _resolve_voice_name(self.config.voice)
+
+        # Keep env aliases in sync so downstream engines (Trinity/TTS) agree.
+        if _env_flag("JARVIS_ENFORCE_CANONICAL_VOICE", "true"):
+            os.environ["JARVIS_VOICE_NAME"] = self.config.voice
+            os.environ["JARVIS_VOICE_FALLBACK_ORDER"] = self.config.voice
+
         self._is_macos = platform.system() == "Darwin"
 
         # Core state
@@ -858,20 +893,20 @@ class UnifiedVoiceOrchestrator:
 
     async def _execute_say(self, text: str) -> None:
         """
-        Execute TTS — routes through AudioBus when device is held, else legacy.
+        Execute TTS with deterministic startup-safe routing.
 
-        v236.6: Probe FullDuplexDevice state ONCE at entry. When the device is
-        held, ALL legacy paths (Trinity MacOSSayEngine/Pyttsx3/EdgeTTS, raw
-        ``say``) open conflicting audio streams → static/mixing artifacts.
-        Only AudioBus TTS (``say -o file`` → PlaybackRingBuffer → single stream)
-        is safe when the device is held.
+        Design:
+        - If AudioBus/FullDuplexDevice currently holds the device, route ONLY
+          through UnifiedTTSEngine (single-stream path) and skip on failure.
+        - If device is free on macOS, use direct ``say`` with canonical voice.
+          This avoids multi-engine fallback drift during startup.
+        - Optional Trinity fallback is disabled by default to keep startup audio
+          deterministic. Enable with ``JARVIS_VOICE_ENABLE_TRINITY_FALLBACK``.
 
-        Decision tree:
-          bus.is_running=True  → AudioBus TTS only; skip speech on failure
-          bus.is_running=False → AudioBus TTS → Trinity → direct say (all safe)
+        This removes non-deterministic startup fallback paths that can reintroduce
+        static/crackle through mixed audio stacks.
         """
-        # v236.6: Probe actual bus state ONCE — gates all downstream paths.
-        # This replaces the per-path checks from v236.5.
+        # Probe actual bus state ONCE — gates all downstream paths.
         _device_held = False
         try:
             from backend.audio.audio_bus import AudioBus as _ABProbe
@@ -880,14 +915,8 @@ class UnifiedVoiceOrchestrator:
         except ImportError:
             pass
 
-        # --- AudioBus TTS path (safe whether device held or free) ---
-        # Uses `say -o tempfile` (no audio device access) then routes audio
-        # through FullDuplexDevice's PlaybackRingBuffer (single stream).
-        audio_bus_enabled = os.getenv(
-            "JARVIS_AUDIO_BUS_ENABLED", "false"
-        ).lower() in ("true", "1", "yes")
-
-        if audio_bus_enabled or _device_held:
+        # Device held: ONLY AudioBus-compatible route is safe.
+        if _device_held:
             try:
                 from backend.voice.engines.unified_tts_engine import get_tts_engine
                 tts = await get_tts_engine()
@@ -895,83 +924,14 @@ class UnifiedVoiceOrchestrator:
                 logger.debug("[UnifiedVoice v236.6] Spoke via AudioBus/UnifiedTTSEngine")
                 return
             except Exception as e:
-                if _device_held:
-                    # Device is held — Trinity engines (raw say/pyttsx3/afplay)
-                    # would all open conflicting audio streams → static.
-                    # Better to skip speech than produce artifacts.
-                    logger.warning(
-                        f"[UnifiedVoice v236.6] AudioBus TTS failed while device "
-                        f"held: {e} — skipping speech to prevent static"
-                    )
-                    return
                 logger.warning(
-                    f"[UnifiedVoice v236.6] AudioBus path failed: {e}, "
-                    f"falling back to legacy (device free)"
+                    f"[UnifiedVoice] AudioBus TTS failed while device held: {e} "
+                    f"— skipping speech to prevent static"
                 )
+                return
 
-        # === Below this point: device is NOT held — all paths are safe ===
-
-        # --- Trinity path (v3.1 fallback, device-free only) ---
-        trinity_success = False
-
-        try:
-            try:
-                from backend.core.trinity_voice_coordinator import (
-                    get_voice_coordinator,
-                    VoiceContext,
-                    VoicePriority as TrinityPriority,
-                )
-            except ImportError:
-                from core.trinity_voice_coordinator import (
-                    get_voice_coordinator,
-                    VoiceContext,
-                    VoicePriority as TrinityPriority,
-                )
-
-            trinity = await get_voice_coordinator()
-
-            if not trinity._engines:
-                raise RuntimeError("No TTS engines available in Trinity")
-
-            context = VoiceContext.RUNTIME
-            text_lower = text.lower()
-            if "startup" in text_lower or "online" in text_lower:
-                context = VoiceContext.STARTUP
-            elif "error" in text_lower or "fail" in text_lower:
-                context = VoiceContext.ALERT
-            elif "complete" in text_lower or "ready" in text_lower:
-                context = VoiceContext.SUCCESS
-
-            personality = trinity._get_personality(context)
-            engines = sorted(trinity._engines, key=lambda e: e.get_health_score(), reverse=True)
-            available_engines = [e for e in engines if e.available]
-
-            if not available_engines:
-                raise RuntimeError("No available TTS engines")
-
-            for engine in available_engines:
-                try:
-                    success = await asyncio.wait_for(
-                        engine.speak(text, personality, timeout=30.0),
-                        timeout=35.0
-                    )
-                    if success:
-                        logger.debug(f"[UnifiedVoice v3.1] Spoke via {engine.__class__.__name__}")
-                        trinity_success = True
-                        return
-                except asyncio.TimeoutError:
-                    continue
-                except Exception:
-                    continue
-
-            if not trinity_success:
-                raise RuntimeError("All TTS engines failed")
-
-        except Exception as e:
-            logger.debug(f"[UnifiedVoice v3.1] Trinity: {e}, using direct fallback")
-
-        # --- Direct 'say' fallback (device-free only) ---
-        if not trinity_success:
+        # Device free on macOS: direct say is deterministic and low-risk.
+        if self._is_macos:
             try:
                 cmd = [
                     "say",
@@ -985,30 +945,74 @@ class UnifiedVoiceOrchestrator:
                     stderr=asyncio.subprocess.DEVNULL,
                 )
                 await self._current_process.wait()
+                return
             except FileNotFoundError:
                 logger.error("[UnifiedVoice] macOS 'say' command not found")
-            except Exception as fallback_error:
-                logger.error(f"[UnifiedVoice] Fallback 'say' failed: {fallback_error}")
+            except Exception as direct_error:
+                logger.warning(f"[UnifiedVoice] Direct 'say' failed: {direct_error}")
             finally:
                 self._current_process = None
+
+        # Optional Trinity fallback for non-macOS or direct say failures.
+        if _env_flag("JARVIS_VOICE_ENABLE_TRINITY_FALLBACK", "false"):
+            try:
+                from backend.core.trinity_voice_coordinator import (
+                    get_voice_coordinator,
+                    VoiceContext,
+                )
+                trinity = await get_voice_coordinator()
+                if trinity._engines:
+                    context = VoiceContext.RUNTIME
+                    text_lower = text.lower()
+                    if "startup" in text_lower or "online" in text_lower:
+                        context = VoiceContext.STARTUP
+                    elif "error" in text_lower or "fail" in text_lower:
+                        context = VoiceContext.ALERT
+                    elif "complete" in text_lower or "ready" in text_lower:
+                        context = VoiceContext.SUCCESS
+
+                    personality = trinity._get_personality(context)
+                    engines = sorted(
+                        trinity._engines, key=lambda e: e.get_health_score(), reverse=True
+                    )
+                    available_engines = [e for e in engines if e.available]
+                    for engine in available_engines:
+                        try:
+                            success = await asyncio.wait_for(
+                                engine.speak(text, personality, timeout=30.0),
+                                timeout=35.0,
+                            )
+                            if success:
+                                logger.debug(
+                                    f"[UnifiedVoice] Spoke via Trinity {engine.__class__.__name__}"
+                                )
+                                return
+                        except Exception:
+                            continue
+            except Exception as trinity_err:
+                logger.debug(f"[UnifiedVoice] Trinity fallback unavailable: {trinity_err}")
+
+        # Final generic fallback.
+        try:
+            from backend.voice.engines.unified_tts_engine import get_tts_engine
+            tts = await get_tts_engine()
+            await tts.speak(text, play_audio=True)
+            logger.debug("[UnifiedVoice] Spoke via final UnifiedTTSEngine fallback")
+        except Exception as fallback_err:
+            logger.error(f"[UnifiedVoice] Final speech fallback failed: {fallback_err}")
 
     async def _interrupt_current(self) -> None:
         """Interrupt current speech — flush AudioBus if available, else terminate process."""
         # Try AudioBus flush first
-        audio_bus_enabled = os.getenv(
-            "JARVIS_AUDIO_BUS_ENABLED", "false"
-        ).lower() in ("true", "1", "yes")
-
-        if audio_bus_enabled:
-            try:
-                from backend.audio.audio_bus import get_audio_bus_safe
-                bus = get_audio_bus_safe()
-                if bus is not None and bus.is_running:
-                    flushed = bus.flush_playback()
-                    logger.debug(f"[UnifiedVoice] Flushed {flushed} frames via AudioBus")
-                    return
-            except ImportError:
-                pass
+        try:
+            from backend.audio.audio_bus import get_audio_bus_safe
+            bus = get_audio_bus_safe()
+            if bus is not None and bus.is_running:
+                flushed = bus.flush_playback()
+                logger.debug(f"[UnifiedVoice] Flushed {flushed} frames via AudioBus")
+                return
+        except ImportError:
+            pass
 
         # Legacy: terminate subprocess
         if self._current_process and self._current_process.returncode is None:
@@ -1200,7 +1204,7 @@ async def speak_intelligent(
 
     try:
         # Try to generate intelligent message with JARVIS-Prime
-        from core.jarvis_prime_client import get_jarvis_prime_client
+        from backend.core.jarvis_prime_client import get_jarvis_prime_client
 
         prime_client = get_jarvis_prime_client()
 

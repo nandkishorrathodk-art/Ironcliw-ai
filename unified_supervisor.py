@@ -83515,6 +83515,40 @@ def _generate_launchd_plist() -> str:
 </plist>"""
 
 
+def _apply_canonical_voice_policy() -> str:
+    """
+    Enforce canonical voice identity across supervisor, startup narrator,
+    Trinity, and downstream TTS engines.
+
+    Default policy is strict so startup voice stays deterministic.
+    """
+    canonical = os.getenv("JARVIS_CANONICAL_VOICE_NAME", "Daniel").strip() or "Daniel"
+    enforce = os.getenv("JARVIS_ENFORCE_CANONICAL_VOICE", "true").strip().lower() in (
+        "1", "true", "yes", "on"
+    )
+
+    if not enforce:
+        # Keep user-provided voice when enforcement is disabled.
+        return os.getenv("JARVIS_VOICE_NAME", canonical).strip() or canonical
+
+    aliases = (
+        "JARVIS_VOICE_NAME",
+        "STARTUP_NARRATOR_VOICE_NAME",
+        "JARVIS_STARTUP_VOICE_NAME",
+        "JARVIS_NARRATOR_VOICE_NAME",
+        "JARVIS_RUNTIME_VOICE_NAME",
+        "JARVIS_ALERT_VOICE_NAME",
+        "JARVIS_SUCCESS_VOICE_NAME",
+        "JARVIS_TRINITY_VOICE_NAME",
+    )
+    for key in aliases:
+        os.environ[key] = canonical
+
+    # Constrain fallback order to canonical voice for deterministic startup.
+    os.environ["JARVIS_VOICE_FALLBACK_ORDER"] = canonical
+    return canonical
+
+
 def main() -> int:
     """
     Main entry point for JARVIS Unified System Kernel.
@@ -83555,6 +83589,9 @@ def main() -> int:
     faulthandler.enable()
     if hasattr(_sig, "SIGUSR1"):
         faulthandler.register(_sig.SIGUSR1, all_threads=True, chain=False)
+
+    # Enforce canonical startup voice before component initialization.
+    _apply_canonical_voice_policy()
 
     # Parse arguments
     parser = create_argument_parser()
