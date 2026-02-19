@@ -1397,23 +1397,56 @@ class RealTimeVoiceCommunicator:
                         # Fall through to legacy path
                         _bus_enabled = False
 
+                _bus_fallback_succeeded = False
                 if not _bus_enabled:
-                    # Legacy: direct macOS say subprocess
-                    config = self._mode_configs.get(mode, self._mode_configs[VoiceMode.NORMAL])
-                    cmd = [
-                        'say',
-                        '-v', config.voice,
-                        '-r', str(config.rate),
-                        text
-                    ]
-                    process = await asyncio.create_subprocess_exec(
-                        *cmd,
-                        stdout=asyncio.subprocess.DEVNULL,
-                        stderr=asyncio.subprocess.DEVNULL
-                    )
-                    self._current_speech_process = process
-                    await asyncio.wait_for(process.wait(), timeout=timeout)
-                    self._current_speech_process = None
+                    # Try AudioBus path first (provides AEC reference signal)
+                    try:
+                        from backend.audio.audio_bus import get_audio_bus_safe
+                        _bus = get_audio_bus_safe()
+                        if _bus is not None and getattr(_bus, 'is_running', False):
+                            from backend.voice.engines.unified_tts_engine import get_tts_engine
+                            _tts = await get_tts_engine()
+                            if hasattr(_tts, 'synthesize'):
+                                _tts_result = await _tts.synthesize(text)
+                                if _tts_result is not None:
+                                    _audio_bytes = getattr(_tts_result, 'audio_data', None)
+                                    _sr = getattr(_tts_result, 'sample_rate', 22050)
+                                    if _audio_bytes is not None:
+                                        import io
+                                        import numpy as np
+                                        try:
+                                            import soundfile as sf
+                                            _audio_np, _file_sr = sf.read(
+                                                io.BytesIO(_audio_bytes), dtype='float32',
+                                            )
+                                            _sr = _file_sr
+                                        except Exception:
+                                            _audio_np = np.frombuffer(
+                                                _audio_bytes, dtype=np.int16,
+                                            ).astype(np.float32) / 32767.0
+                                        await _bus.play_audio(_audio_np, _sr)
+                                        self._is_speaking = False
+                                        _bus_fallback_succeeded = True
+                    except Exception as bus_err:
+                        logger.debug(f"[SpeakImmediate] AudioBus path failed, falling back: {bus_err}")
+
+                    if not _bus_fallback_succeeded:
+                        # Legacy: direct macOS say subprocess
+                        config = self._mode_configs.get(mode, self._mode_configs[VoiceMode.NORMAL])
+                        cmd = [
+                            'say',
+                            '-v', config.voice,
+                            '-r', str(config.rate),
+                            text
+                        ]
+                        process = await asyncio.create_subprocess_exec(
+                            *cmd,
+                            stdout=asyncio.subprocess.DEVNULL,
+                            stderr=asyncio.subprocess.DEVNULL
+                        )
+                        self._current_speech_process = process
+                        await asyncio.wait_for(process.wait(), timeout=timeout)
+                        self._current_speech_process = None
 
                 logger.debug(f"🔊 [SPEAKING] Finished: {text[:50]}...")
 
@@ -1433,7 +1466,7 @@ class RealTimeVoiceCommunicator:
                     except Exception:
                         pass
 
-                if not _in_conversation_mode and not _bus_enabled:
+                if not _in_conversation_mode and not _bus_enabled and not _bus_fallback_succeeded:
                     await asyncio.sleep(
                         float(os.getenv("JARVIS_POST_SPEECH_BUFFER_S", "0.3"))
                     )
