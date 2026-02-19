@@ -301,7 +301,10 @@ class UnifiedSpeechStateManager:
         logger.info(
             f"🔇 [SPEECH START] source={source.value}, text='{text[:50]}...'"
         )
-        
+
+        # v265.0: Gate AudioBus mic to prevent self-voice at audio level
+        self._set_mic_gate(True)
+
         # Broadcast to all listeners
         await self._broadcast_state_change("speech_started")
     
@@ -343,7 +346,10 @@ class UnifiedSpeechStateManager:
         logger.info(
             f"🔇 [SPEECH END] cooldown={cooldown_ms}ms, text='{current_text[:50]}...'"
         )
-        
+
+        # v265.0: Ungate AudioBus mic after speech ends
+        self._set_mic_gate(False)
+
         # Broadcast to all listeners
         await self._broadcast_state_change("speech_ended")
     
@@ -369,6 +375,28 @@ class UnifiedSpeechStateManager:
         
         return min(base_cooldown + text_extension, self._config.MAX_COOLDOWN_MS)
     
+    def _set_mic_gate(self, active: bool) -> None:
+        """Set AudioBus mic gate state.
+
+        v265.0: Audio-level gating is the strongest defense against self-voice.
+        Prevents audio from reaching STT at all during TTS playback.
+        """
+        try:
+            from backend.audio.audio_bus import AudioBus
+            bus = AudioBus.get_instance_safe()
+            if bus is not None and hasattr(bus, "set_mic_gate"):
+                bus.set_mic_gate(active)
+        except ImportError:
+            try:
+                from audio.audio_bus import AudioBus
+                bus = AudioBus.get_instance_safe()
+                if bus is not None and hasattr(bus, "set_mic_gate"):
+                    bus.set_mic_gate(active)
+            except ImportError:
+                pass
+        except Exception:
+            pass
+
     def _cleanup_recent_texts(self) -> None:
         """Remove old texts from memory."""
         now_ms = time.time() * 1000

@@ -275,6 +275,10 @@ class AudioBus:
         self._running = False
         self._loop: Optional[asyncio.AbstractEventLoop] = None
 
+        # v265.0: Mic gate — when active, no mic frames are dispatched.
+        # Used by speech state manager to suppress self-voice during TTS.
+        self._mic_gate_active: bool = False
+
     @classmethod
     def get_instance(cls) -> "AudioBus":
         """Get or create the singleton AudioBus."""
@@ -444,6 +448,21 @@ class AudioBus:
         """Unregister a named sink."""
         self._sinks.pop(sink_id, None)
 
+    # ---- Mic Gating (v265.0) ----
+
+    def set_mic_gate(self, active: bool) -> None:
+        """Gate mic consumers — when active, no mic frames are dispatched.
+
+        v265.0: Used by speech state manager to suppress self-voice during TTS.
+        """
+        self._mic_gate_active = active
+        logger.debug(f"[AudioBus] Mic gate {'ACTIVE' if active else 'INACTIVE'}")
+
+    @property
+    def mic_gate_active(self) -> bool:
+        """Check if mic gate is active."""
+        return self._mic_gate_active
+
     # ---- Internal: Mic frame processing ----
 
     def _on_mic_frame(self, raw_frame: np.ndarray) -> None:
@@ -453,6 +472,10 @@ class AudioBus:
         Pipeline: raw mic → downsample → AEC → dispatch to consumers
         """
         if not self._running:
+            return
+
+        # v265.0: Mic gate — discard frames when TTS is active
+        if self._mic_gate_active:
             return
 
         try:
@@ -515,6 +538,7 @@ class AudioBus:
                 "speexdsp" if self._aec and self._aec._use_speexdsp
                 else "spectral_subtraction" if self._aec else "none"
             ),
+            "mic_gate_active": self._mic_gate_active,  # v265.0
         }
 
 

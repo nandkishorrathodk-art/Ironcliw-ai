@@ -5959,6 +5959,19 @@ const JarvisVoice = () => {
   const recordSpeakingEnded = () => {
     speakingEndTimeRef.current = Date.now();
     console.log('🔇 [Self-Voice] Speaking ended, cooldown started');
+
+    // v265.0: Notify backend that frontend TTS finished so speech state
+    // manager can clear is_speaking and re-enable mic processing.
+    try {
+      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+        wsRef.current.send(JSON.stringify({
+          type: 'speech_ended',
+          timestamp: Date.now(),
+        }));
+      }
+    } catch (e) {
+      console.debug('[Self-Voice] Failed to send speech_ended:', e);
+    }
   };
 
   const processNextInSpeechQueue = async () => {

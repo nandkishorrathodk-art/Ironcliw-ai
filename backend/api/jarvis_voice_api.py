@@ -618,6 +618,40 @@ class DynamicErrorHandler:
                 return SimpleNamespace(**kwargs)
 
 
+async def _notify_frontend_speech(text: str) -> None:
+    """Notify speech state manager and schedule deferred stop for frontend TTS.
+
+    v265.0: Module-level helper used by WebSocket handlers to ensure
+    self-voice suppression is active while the frontend speaks.
+    """
+    if not text:
+        return
+    try:
+        from backend.core.unified_speech_state import get_speech_state_manager_sync, SpeechSource
+        mgr = get_speech_state_manager_sync()
+    except ImportError:
+        try:
+            from core.unified_speech_state import get_speech_state_manager_sync, SpeechSource
+            mgr = get_speech_state_manager_sync()
+        except ImportError:
+            return
+    if mgr is None:
+        return
+    try:
+        await mgr.start_speaking(text=text, source=SpeechSource.TTS_FRONTEND)
+        word_count = len(text.split())
+        estimated_s = word_count * 0.4 + 1.5  # 400ms/word + 1.5s buffer
+
+        async def _deferred_stop():
+            await asyncio.sleep(estimated_s)
+            if mgr._state.is_speaking and mgr._state.current_text == text:
+                await mgr.stop_speaking()
+
+        asyncio.ensure_future(_deferred_stop())
+    except Exception as e:
+        logger.debug(f"[VoiceAPI] v265.0: Speech state notification failed: {e}")
+
+
 class JARVISVoiceAPI:
     """API for JARVIS voice interaction"""
 
@@ -1585,7 +1619,8 @@ class JARVISVoiceAPI:
                 session_dict = CGSessionCopyCurrentDictionary()
                 if session_dict:
                     is_locked = session_dict.get("CGSSessionScreenIsLocked", False)
-                    screen_saver = session_dict.get("CGSSessionScreenSaverIsRunning", False)
+                    # v265.0: Fix screen saver key — correct key is "IsActive", not "IsRunning"
+                    screen_saver = session_dict.get("CGSSessionScreenSaverIsActive", False)
                     return bool(is_locked or screen_saver)
             except ImportError:
                 pass
@@ -1659,18 +1694,52 @@ class JARVISVoiceAPI:
         return "complete your request"
 
     async def _speak_cai_message(self, message: str) -> None:
-        """Speak a CAI message using available TTS."""
+        """Speak a CAI message with speech state tracking.
+
+        v265.0: Wraps macOS ``say`` with start_speaking/stop_speaking so the
+        speech state manager suppresses mic input during TTS playback.
+        """
+        import contextlib
+
+        _speech_mgr = None
         try:
-            # Try direct macOS say command (most reliable)
-            import asyncio
-            process = await asyncio.create_subprocess_exec(
+            from backend.core.unified_speech_state import get_speech_state_manager_sync, SpeechSource
+            _speech_mgr = get_speech_state_manager_sync()
+        except ImportError:
+            try:
+                from core.unified_speech_state import get_speech_state_manager_sync, SpeechSource
+                _speech_mgr = get_speech_state_manager_sync()
+            except ImportError:
+                pass
+
+        if _speech_mgr:
+            try:
+                await _speech_mgr.start_speaking(text=message, source=SpeechSource.CAI_FEEDBACK)
+            except Exception:
+                pass
+
+        proc = None
+        try:
+            proc = await asyncio.create_subprocess_exec(
                 "say", "-v", "Daniel", message,
                 stdout=asyncio.subprocess.DEVNULL,
                 stderr=asyncio.subprocess.DEVNULL,
             )
-            await asyncio.wait_for(process.wait(), timeout=10.0)
-        except Exception as e:
-            logger.debug(f"[CAI] Could not speak: {e}")
+            await asyncio.wait_for(
+                proc.wait(),
+                timeout=float(os.environ.get("JARVIS_CAI_SPEAK_TIMEOUT", "10.0")),
+            )
+        except (asyncio.TimeoutError, Exception) as e:
+            logger.warning(f"[CAI] v265.0: speak failed: {e}")
+            if proc is not None:
+                with contextlib.suppress(Exception):
+                    proc.kill()
+        finally:
+            if _speech_mgr:
+                try:
+                    await _speech_mgr.stop_speaking()
+                except Exception:
+                    pass
 
     async def _perform_cai_unlock(self, command: "JARVISCommand") -> Dict:
         """Perform screen unlock via VBI (with audio) or keychain (without audio).
@@ -3552,6 +3621,8 @@ class JARVISVoiceAPI:
                                 },
                             }
 
+                            # v265.0: Notify speech state before frontend TTS
+                            await _notify_frontend_speech(response_text)
                             await websocket.send_json(response_data)
                             logger.info(
                                 f"[JARVIS API] Sent ENHANCED context-aware response: {response_data['text'][:100]}..."
@@ -4147,6 +4218,39 @@ class JARVISVoiceAPI:
                             }
                         )
 
+                        # v265.0: Self-voice rejection in WebSocket audio handler.
+                        # Check BEFORE auto-processing to prevent JARVIS from
+                        # hearing its own TTS output and treating it as a command.
+                        try:
+                            from backend.core.unified_speech_state import get_speech_state_manager_sync
+                            _speech_mgr_check = get_speech_state_manager_sync()
+                        except ImportError:
+                            try:
+                                from core.unified_speech_state import get_speech_state_manager_sync
+                                _speech_mgr_check = get_speech_state_manager_sync()
+                            except ImportError:
+                                _speech_mgr_check = None
+
+                        if _speech_mgr_check:
+                            _rejection = _speech_mgr_check.should_reject_audio(
+                                transcribed_text=result.text
+                            )
+                            if _rejection and _rejection.reject:
+                                logger.info(
+                                    "[VoiceAPI] v265.0: Rejected self-voice in /stream audio: "
+                                    "'%s' reason=%s",
+                                    result.text[:80],
+                                    _rejection.reason,
+                                )
+                                await websocket.send_json(
+                                    {
+                                        "type": "status",
+                                        "message": "[Self-voice filtered]",
+                                        "speak": False,
+                                    }
+                                )
+                                continue
+
                         # If confidence is good, also process as command
                         if result.confidence >= 0.6 and result.text.strip():
                             logger.info(
@@ -4181,6 +4285,8 @@ class JARVISVoiceAPI:
                                         success=success,
                                     )
 
+                                    # v265.0: Notify speech state before frontend TTS
+                                    await _notify_frontend_speech(response_text)
                                     # Send response
                                     await websocket.send_json(
                                         {
@@ -4271,11 +4377,33 @@ class JARVISVoiceAPI:
                         "timestamp": datetime.now().isoformat()
                     })
                 
+                elif data.get("type") == "speech_ended":
+                    # v265.0: Frontend TTS finished — clear speech state + mic gate
+                    try:
+                        from backend.core.unified_speech_state import get_speech_state_manager_sync
+                        _se_mgr = get_speech_state_manager_sync()
+                    except ImportError:
+                        try:
+                            from core.unified_speech_state import get_speech_state_manager_sync
+                            _se_mgr = get_speech_state_manager_sync()
+                        except ImportError:
+                            _se_mgr = None
+                    if _se_mgr and _se_mgr._state.is_speaking:
+                        await _se_mgr.stop_speaking()
+                    # Also clear AudioBus mic gate
+                    try:
+                        from backend.audio.audio_bus import get_audio_bus_safe
+                        _se_bus = get_audio_bus_safe()
+                        if _se_bus and hasattr(_se_bus, "set_mic_gate"):
+                            _se_bus.set_mic_gate(False)
+                    except Exception:
+                        pass
+
                 elif data.get("type") == "speech_recovery":
                     # Handle successful speech recovery from frontend
                     client_id = data.get("client_id", f"ws_{id(websocket)}")
                     speech_tracker.record_recovery(client_id)
-                    
+
                     await websocket.send_json({
                         "type": "speech_status",
                         "status": "recovered",

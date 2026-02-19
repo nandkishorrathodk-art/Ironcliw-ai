@@ -82,12 +82,21 @@ class SystemStateMonitor:
             logger.info(f"Registered state detector: {name}")
 
     async def _detect_screen_locked(self) -> bool:
-        """Detect if screen is locked"""
+        """Detect if screen is locked.
+
+        v265.0: Direct Quartz check instead of importing screen_lock_detector
+        (which created a circular dependency: detector → monitor → detector).
+        """
         try:
-            from context_intelligence.detectors.screen_lock_detector import get_screen_lock_detector
-            detector = get_screen_lock_detector()
-            if detector:
-                return await detector.is_screen_locked()
+            from Quartz import CGSessionCopyCurrentDictionary
+
+            session_dict = CGSessionCopyCurrentDictionary()
+            if session_dict:
+                screen_locked = session_dict.get("CGSSessionScreenIsLocked", False)
+                screen_saver = session_dict.get("CGSSessionScreenSaverIsActive", False)
+                return bool(screen_locked or screen_saver)
+        except ImportError:
+            pass
         except Exception:
             pass
         return False

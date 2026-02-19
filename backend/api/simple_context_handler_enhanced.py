@@ -27,6 +27,36 @@ from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
+# v265.0: Lazy import helpers for speech state (self-voice suppression)
+_speech_state_imported = False
+_SpeechSource = None
+_get_speech_mgr_sync = None
+
+
+def _ensure_speech_imports():
+    """Lazy-import speech state module to avoid circular imports at module load."""
+    global _speech_state_imported, _SpeechSource, _get_speech_mgr_sync
+    if _speech_state_imported:
+        return
+    try:
+        from backend.core.unified_speech_state import (
+            get_speech_state_manager_sync,
+            SpeechSource,
+        )
+        _get_speech_mgr_sync = get_speech_state_manager_sync
+        _SpeechSource = SpeechSource
+    except ImportError:
+        try:
+            from core.unified_speech_state import (
+                get_speech_state_manager_sync,
+                SpeechSource,
+            )
+            _get_speech_mgr_sync = get_speech_state_manager_sync
+            _SpeechSource = SpeechSource
+        except ImportError:
+            logger.debug("[ENHANCED CONTEXT] unified_speech_state not available")
+    _speech_state_imported = True
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Module-level lock to serialize unlock attempts across all handler instances.
 # Prevents concurrent CG Event streams from interleaving password characters
@@ -138,6 +168,38 @@ class EnhancedSimpleContextHandler:
             "maximize",
         ]
 
+    async def _notify_speech_and_schedule_stop(self, text: str) -> None:
+        """Notify speech state manager and schedule deferred stop_speaking.
+
+        v265.0: Ensures self-voice suppression is active during frontend TTS.
+        The frontend ``speech_ended`` WebSocket message (Fix 9) will call
+        stop_speaking() sooner if it arrives first; the deferred stop is a
+        safety net.
+        """
+        _ensure_speech_imports()
+        if _get_speech_mgr_sync is None:
+            return
+        try:
+            mgr = _get_speech_mgr_sync()
+            if mgr is None:
+                return
+            await mgr.start_speaking(
+                text=text,
+                source=_SpeechSource.TTS_FRONTEND if _SpeechSource else None,
+            )
+            # Schedule deferred stop as safety net.
+            word_count = len(text.split())
+            estimated_s = word_count * 0.4 + 1.5  # 400ms/word + 1.5s buffer
+
+            async def _deferred_stop():
+                await asyncio.sleep(estimated_s)
+                if mgr._state.is_speaking and mgr._state.current_text == text:
+                    await mgr.stop_speaking()
+
+            asyncio.ensure_future(_deferred_stop())
+        except Exception as e:
+            logger.debug(f"[ENHANCED CONTEXT] Speech state notification failed: {e}")
+
     def _add_step(self, step: str, details: Optional[Dict[str, Any]] = None):
         """Add an execution step for tracking"""
         self.execution_steps.append(
@@ -241,6 +303,9 @@ class EnhancedSimpleContextHandler:
                     # result will be the real "response".
                     # ─────────────────────────────────────────────────────────
                     if websocket:
+                        # v265.0: Notify speech state BEFORE sending spoken message
+                        # to prevent mic from picking up TTS as a new command.
+                        await self._notify_speech_and_schedule_stop(context_message)
                         await websocket.send_json(
                             {
                                 "type": "processing",
@@ -265,7 +330,9 @@ class EnhancedSimpleContextHandler:
                         )
 
                         # Brief pause for unlock animation to complete
-                        await asyncio.sleep(1.5)
+                        # v265.0: Env-var configurable pause
+                        _post_unlock_pause = float(os.environ.get("JARVIS_POST_UNLOCK_PAUSE", "1.5"))
+                        await asyncio.sleep(_post_unlock_pause)
 
                         # Execute the original command
                         logger.info("[ENHANCED CONTEXT] Executing original command...")
@@ -503,8 +570,10 @@ class EnhancedSimpleContextHandler:
                 from macos_keychain_unlock import get_keychain_unlock_service
 
                 unlock_service = await get_keychain_unlock_service()
+                # v265.0: Use dynamic owner name instead of hardcoded "Derek"
+                _fallback_speaker = await _get_owner_name()
                 result = await asyncio.wait_for(
-                    unlock_service.unlock_screen(verified_speaker=speaker_name or "Derek"),
+                    unlock_service.unlock_screen(verified_speaker=speaker_name or _fallback_speaker),
                     timeout=15.0,
                 )
 

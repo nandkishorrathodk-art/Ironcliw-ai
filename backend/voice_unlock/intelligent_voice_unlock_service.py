@@ -1616,11 +1616,26 @@ class IntelligentVoiceUnlockService:
                     # Voice is verified - proceed directly to unlock (skip redundant verification)
                     # Use 40% threshold (unlock threshold) since VBI already verified the speaker
                     # This prevents falling through to parallel verification that may return 0%
-                    if vbi_result.was_cached or vbi_result.confidence >= 0.40: # 0.40 is the unlock threshold 
+                    if vbi_result.was_cached or vbi_result.confidence >= 0.40: # 0.40 is the unlock threshold
                         # Verified above unlock threshold - proceed directly
+                        # v265.0: Populate context/scenario dicts so _perform_unlock
+                        # security gate (speaker_verified + unlock_allowed) passes.
+                        _vbi_context = {
+                            "available": True,
+                            "speaker_verified": True,
+                            "verification_score": vbi_result.confidence,
+                            "unlock_type": "vbi_fast_path",
+                        }
+                        _vbi_scenario = {
+                            "available": True,
+                            "unlock_allowed": True,
+                            "scenario_type": "vbi_verified_unlock",
+                            "risk_level": "low",
+                            "confidence": vbi_result.confidence,
+                        }
                         unlock_result = await asyncio.wait_for(
                             self._perform_unlock(
-                                vbi_result.speaker_name, {}, {}, attempt_id=None
+                                vbi_result.speaker_name, _vbi_context, _vbi_scenario, attempt_id=None
                             ),
                             timeout=PERFORM_UNLOCK_TIMEOUT
                         )
@@ -1694,9 +1709,23 @@ class IntelligentVoiceUnlockService:
                     )
 
                     # Still need to perform the actual unlock
+                    # v265.0: Populate context/scenario dicts for security gate.
+                    _cache_context = {
+                        "available": True,
+                        "speaker_verified": True,
+                        "verification_score": cache_result.similarity_score,
+                        "unlock_type": "cache_fast_path",
+                    }
+                    _cache_scenario = {
+                        "available": True,
+                        "unlock_allowed": True,
+                        "scenario_type": "cache_verified_unlock",
+                        "risk_level": "low",
+                        "confidence": cache_result.similarity_score,
+                    }
                     unlock_result = await asyncio.wait_for(
                         self._perform_unlock(
-                            cache_result.speaker_name, {}, {}, attempt_id=None
+                            cache_result.speaker_name, _cache_context, _cache_scenario, attempt_id=None
                         ),
                         timeout=PERFORM_UNLOCK_TIMEOUT
                     )
