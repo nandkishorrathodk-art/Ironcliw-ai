@@ -69585,10 +69585,16 @@ class JarvisSystemKernel:
                 # The _trinity_progress_callback handles discrete status transitions
                 # (starting/waiting/healthy), but this covers the continuous wait
                 # between callbacks when the model is loading.
-                _poll_startup_pct = 72 + min(5, int(current_progress / 20))  # 72-77%
+                # v236.2: Time-proportional fallback — when health endpoint is
+                # unreachable (current_progress=0), elapsed-based increment ensures
+                # progress still advances (~1% per 60s). Without this, the formula
+                # degenerates to a constant 72 and the hard cap fires after 300s.
+                _progress_component = min(5, int(current_progress / 20))  # 0-5 from model progress
+                _elapsed_component = min(5, int(elapsed / 60))  # 0-5 from elapsed time (1%/min)
+                _poll_startup_pct = 72 + max(_progress_component, _elapsed_component)  # 72-77%
                 await self._broadcast_startup_progress(
                     stage="trinity",
-                    message=f"Component health wait ({current_progress:.0f}% internal)",
+                    message=f"Component health wait ({current_progress:.0f}% internal, {elapsed:.0f}s)",
                     progress=_poll_startup_pct,
                 )
 
@@ -70419,9 +70425,21 @@ class JarvisSystemKernel:
 
                                         # v236.1: Periodic progress broadcast during golden image wait
                                         # to prevent PHASE HOLD HARD CAP (300s) from firing.
-                                        # Broadcasts every ~30s with slowly incrementing progress (70-71%).
+                                        # v236.2: Time-proportional increments that ALSO raise the
+                                        # ceiling periodically. Cloud-only waits can reach 600s, so
+                                        # we need guaranteed increments every <300s across the range.
+                                        # Strategy: 1% per 90s (70→73 over 270s = 4 transitions),
+                                        # PLUS ceiling bumps so progress isn't stuck at 73 after 270s.
                                         if int(_wait_elapsed) % 30 < int(_gw_poll_interval):
-                                            _gw_broadcast_pct = 70 + min(1, int(_wait_elapsed / 120))
+                                            _gw_time_pct = min(5, int(_wait_elapsed / 90))  # 0-5 over 450s
+                                            _gw_broadcast_pct = 70 + _gw_time_pct
+                                            # Raise ceiling to keep broadcasts effective beyond 73
+                                            # (68 + 5 = 73 at start; after 180s: 70 + 5 = 75, etc.)
+                                            _gw_new_ceiling = max(
+                                                getattr(self, '_current_startup_progress', 68),
+                                                68 + min(7, int(_wait_elapsed / 90))  # 68→75 over 630s
+                                            )
+                                            self._current_startup_progress = _gw_new_ceiling
                                             await self._broadcast_startup_progress(
                                                 stage="trinity",
                                                 message=f"Waiting for golden image VM ({_wait_elapsed:.0f}s)",
@@ -71143,6 +71161,10 @@ class JarvisSystemKernel:
                     if self._startup_watchdog:
                         trinity_heartbeat_progress["current"] = 69
                         self._startup_watchdog.update_phase("trinity", 69)
+                    # v236.2: Broadcast to _current_progress (legacy path)
+                    await self._broadcast_startup_progress(
+                        stage="trinity", message="Legacy Trinity integration starting", progress=69
+                    )
 
                     # Log repo search paths
                     prime_path = self.config.prime_repo_path
@@ -71162,6 +71184,10 @@ class JarvisSystemKernel:
                     if self._startup_watchdog:
                         trinity_heartbeat_progress["current"] = 70
                         self._startup_watchdog.update_phase("trinity", 70)
+                    # v236.2: Broadcast to _current_progress (legacy path)
+                    await self._broadcast_startup_progress(
+                        stage="trinity", message="Trinity integrator initialized (legacy)", progress=70
+                    )
 
                     # Get detailed status after initialization
                     status = self._trinity.get_status()
