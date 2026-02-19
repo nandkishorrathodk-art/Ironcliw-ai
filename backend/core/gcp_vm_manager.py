@@ -3591,6 +3591,46 @@ class GCPVMManager:
         except Exception as dedup_err:
             logger.debug(f"[VMSync] v236.2: Post-adoption dedup failed: {dedup_err}")
 
+        # ═══════════════════════════════════════════════════════════════════
+        # v236.3: Propagate endpoints for adopted healthy VMs
+        # ═══════════════════════════════════════════════════════════════════
+        # ROOT CAUSE FIX: Adopted VMs never had their endpoints propagated
+        # to the routing layer, leaving them idle while local CPU hit 99.8%.
+        # After adoption (and dedup), propagate endpoints for all healthy
+        # RUNNING VMs so the routing layer can start sending traffic.
+        # ═══════════════════════════════════════════════════════════════════
+        propagated_count = 0
+        for vm_name in adopted_vms:
+            if vm_name not in self.managed_vms:
+                continue  # Was terminated during dedup
+            vm = self.managed_vms[vm_name]
+            if vm.state == VMState.RUNNING and vm.ip_address:
+                try:
+                    if await self._ensure_endpoint_propagated(vm):
+                        propagated_count += 1
+                except Exception as prop_err:
+                    logger.debug(
+                        f"[VMSync] v236.3: Endpoint propagation deferred for "
+                        f"'{vm_name}': {prop_err}"
+                    )
+
+        # v236.3: Register adopted VMs with cost tracker
+        if self.cost_tracker and adopted_vms:
+            for vm_name in adopted_vms:
+                if vm_name not in self.managed_vms:
+                    continue
+                vm = self.managed_vms[vm_name]
+                try:
+                    if hasattr(self.cost_tracker, 'record_vm_created'):
+                        await self.cost_tracker.record_vm_created(
+                            instance_id=vm.instance_id,
+                            components=vm.components or [],
+                            trigger_reason="adopted-on-startup",
+                            metadata={"adopted": True, "adopted_at": time.time()},
+                        )
+                except Exception as ct_err:
+                    logger.debug(f"[VMSync] Cost tracker registration failed for '{vm_name}': {ct_err}")
+
         # Summary logging
         parts = []
         if stale_vms:
@@ -3599,10 +3639,140 @@ class GCPVMManager:
             parts.append(f"{len(updated_vms)} updated")
         if adopted_vms:
             parts.append(f"{len(adopted_vms)} adopted")
+        if propagated_count:
+            parts.append(f"{propagated_count} endpoints propagated")
         if parts:
             logger.info(f"[VMSync] Sync complete: {', '.join(parts)}")
         else:
             logger.info("[VMSync] All VMs in sync — no changes needed")
+
+    async def _ensure_endpoint_propagated(self, vm: VMInstance) -> bool:
+        """
+        v236.3: Ensure a healthy VM's endpoint is propagated to the routing layer.
+
+        ROOT CAUSE FIX: Adopted VMs (discovered during _sync_managed_vms_with_gcp)
+        never had their endpoints propagated to PrimeRouter or UnifiedModelServing.
+        This left them idle at 0% CPU while local machine hit 99.8% CPU — the
+        hybrid cloud architecture was architecturally complete but operationally
+        disconnected.
+
+        This method:
+        1. Verifies the VM is actually ready for inference (health endpoint ping)
+        2. Sets environment variables so all consumers discover the endpoint
+        3. Notifies PrimeRouter singleton for live traffic routing
+        4. Notifies UnifiedModelServing for inference hot-swap
+        5. Tracks propagation state to avoid redundant calls
+
+        Called from:
+        - _sync_managed_vms_with_gcp() after adoption (one-time)
+        - _monitoring_loop() when a VM becomes healthy (continuous healing)
+
+        Returns True if endpoint was successfully propagated.
+        """
+        # Guard: only propagate for running VMs with IPs
+        if not vm.ip_address or vm.state != VMState.RUNNING:
+            return False
+
+        # Guard: already propagated and still healthy — skip redundant work
+        if vm.metadata.get("endpoint_propagated") and vm.health_status == "healthy":
+            return True
+
+        # Determine the service port from VM type
+        is_invincible = (
+            vm.name.startswith("jarvis-prime-node")
+            or vm.metadata.get("vm_class") == "invincible"
+        )
+        port = int(os.getenv(
+            "JARVIS_PRIME_PORT" if is_invincible else "GCP_BACKEND_PORT",
+            "8000",
+        ))
+
+        # Verify VM is actually ready for inference (not just RUNNING in GCP)
+        try:
+            is_ready, health_data = await self._ping_health_endpoint(
+                vm.ip_address, port, timeout=10.0
+            )
+        except Exception:
+            return False
+
+        if not is_ready:
+            return False
+
+        # === Propagate to routing layer ===
+        url = f"http://{vm.ip_address}:{port}"
+
+        # Set environment variables (consumed by PrimeClient, HybridBackendClient, etc.)
+        os.environ["JARVIS_PRIME_URL"] = url
+        os.environ["GCP_PRIME_ENDPOINT"] = url
+        os.environ["JARVIS_PRIME_API_URL"] = url
+        os.environ["JARVIS_HOLLOW_CLIENT_ACTIVE"] = "true"
+        os.environ["JARVIS_INVINCIBLE_NODE_IP"] = vm.ip_address
+        os.environ["JARVIS_INVINCIBLE_NODE_PORT"] = str(port)
+
+        logger.info(
+            f"[EndpointPropagation] v236.3: Propagating VM '{vm.name}' "
+            f"endpoint {url} to routing layer"
+        )
+
+        # Notify PrimeRouter (routes inference traffic)
+        try:
+            from backend.core.prime_router import notify_gcp_vm_ready
+            success = await notify_gcp_vm_ready(vm.ip_address, port)
+            if success:
+                logger.info(
+                    f"[EndpointPropagation] PrimeRouter promoted GCP endpoint: "
+                    f"{vm.ip_address}:{port}"
+                )
+            else:
+                logger.warning(
+                    f"[EndpointPropagation] PrimeRouter promotion failed "
+                    f"for {vm.ip_address}:{port}"
+                )
+        except ImportError:
+            logger.debug("[EndpointPropagation] PrimeRouter not available")
+        except Exception as e:
+            logger.warning(f"[EndpointPropagation] PrimeRouter notification error: {e}")
+
+        # Notify UnifiedModelServing (hot-swaps inference client)
+        try:
+            from backend.intelligence.unified_model_serving import notify_gcp_endpoint_ready
+            success = await notify_gcp_endpoint_ready(url)
+            if success:
+                logger.info(
+                    f"[EndpointPropagation] UnifiedModelServing hot-swapped to {url}"
+                )
+        except ImportError:
+            logger.debug("[EndpointPropagation] UnifiedModelServing not available")
+        except Exception as e:
+            logger.warning(f"[EndpointPropagation] ModelServing notification error: {e}")
+
+        # Notify orchestrator's Trinity GCP ready event (prevents duplicate VM provisioning)
+        try:
+            from backend.supervisor.cross_repo_startup_orchestrator import (
+                _trinity_gcp_ready_event,
+            )
+            if _trinity_gcp_ready_event is not None and not _trinity_gcp_ready_event.is_set():
+                _trinity_gcp_ready_event.set()
+                logger.info("[EndpointPropagation] Trinity GCP ready event set")
+        except ImportError:
+            pass
+        except Exception:
+            pass
+
+        # Track propagation state
+        vm.metadata["endpoint_propagated"] = True
+        vm.metadata["endpoint_propagated_at"] = time.time()
+        vm.metadata["endpoint_url"] = url
+
+        # Record activity — the VM is now serving traffic
+        # (This prevents immediate termination by the cost tracker)
+        vm.record_activity()
+
+        logger.info(
+            f"[EndpointPropagation] v236.3: VM '{vm.name}' fully integrated "
+            f"into routing layer at {url}"
+        )
+        return True
 
     async def _count_active_gcp_instances(self) -> int:
         """
@@ -6455,6 +6625,20 @@ class GCPVMManager:
                                 logger.warning(f"⚠️  VM {vm_name} health check failed (state: {vm.state.value})")
                             else:
                                 logger.warning(f"⚠️  VM {vm_name} in unexpected state: {vm.state.value}")
+
+                        # === STEP 2b: Endpoint propagation (v236.3) ===
+                        # If VM is healthy but routing layer doesn't know about it,
+                        # propagate endpoint now. This is the continuous healing loop
+                        # that ensures adopted VMs and VMs that just finished loading
+                        # get integrated into the routing layer.
+                        if is_healthy and not vm.metadata.get("endpoint_propagated"):
+                            try:
+                                await self._ensure_endpoint_propagated(vm)
+                            except Exception as ep_err:
+                                logger.debug(
+                                    f"[MonitorLoop] Endpoint propagation deferred "
+                                    f"for '{vm_name}': {ep_err}"
+                                )
 
                     except Exception as metrics_error:
                         # GCP API failed — keep last-known state and metrics, don't reset to 0
