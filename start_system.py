@@ -1649,13 +1649,15 @@ def track_voice_verification_attempt(success: bool, confidence: float, diagnosti
 try:
     from dotenv import load_dotenv
 
-    # Load from root .env first
-    load_dotenv()
-
-    # Then load from backend/.env (will override if there are conflicts)
+    # v236.2: Correct load order — less-specific first, root .env LAST wins.
+    # Root .env is the authoritative source of truth for all credentials.
     backend_env = Path("backend") / ".env"
+    gcp_env = Path(".env.gcp")
     if backend_env.exists():
-        load_dotenv(backend_env, override=True)
+        load_dotenv(backend_env, override=True)  # Component overrides (loaded first)
+    if gcp_env.exists():
+        load_dotenv(gcp_env, override=True)      # GCP-specific overrides
+    load_dotenv(override=True)                    # Root .env — authoritative (LAST WINS)
 except ImportError:
     pass
 

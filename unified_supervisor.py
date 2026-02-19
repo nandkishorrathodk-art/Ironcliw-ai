@@ -2151,10 +2151,12 @@ def _load_environment_files() -> List[str]:
         return []
 
     loaded = []
+    # v236.2: Load order matters — less specific first, root .env LAST.
+    # With override=True, last-loaded wins. Root .env is authoritative source of truth.
     env_files = [
-        PROJECT_ROOT / ".env",
         PROJECT_ROOT / "backend" / ".env",
         PROJECT_ROOT / ".env.gcp",
+        PROJECT_ROOT / ".env",  # Root .env always wins (loaded last)
     ]
 
     for env_file in env_files:
@@ -2167,6 +2169,38 @@ def _load_environment_files() -> List[str]:
 
 # Load environment files immediately
 _loaded_env_files = _load_environment_files()
+
+
+# v236.2: Centralized subprocess environment builder.
+# Ensures all subprocess launches inherit dotenv-loaded credentials,
+# not stale shell environment variables.
+_CRITICAL_ENV_KEYS = (
+    "ANTHROPIC_API_KEY",
+    "GEMINI_API_KEY",
+    "GOOGLE_SEARCH_API_KEY",
+    "BRAVE_SEARCH_API_KEY",
+    "GITHUB_TOKEN",
+    "LANGFUSE_SECRET_KEY",
+    "LANGFUSE_PUBLIC_KEY",
+    "JARVIS_PRIME_CLOUD_RUN_URL",
+    "JARVIS_CLOUD_ML_ENDPOINT",
+)
+
+
+def _build_subprocess_env(**extra: str) -> Dict[str, str]:
+    """Build environment dict for subprocess with authoritative dotenv values.
+
+    Starts from os.environ (which has dotenv-loaded values after module init),
+    then ensures critical keys are explicitly set from the current process env
+    (which was loaded via _load_environment_files with correct override order).
+    """
+    env = os.environ.copy()
+    for key in _CRITICAL_ENV_KEYS:
+        value = os.getenv(key, "")
+        if value:
+            env[key] = value
+    env.update(extra)
+    return env
 
 
 # =============================================================================
@@ -54965,9 +54999,16 @@ class StartupWatchdog:
     # Environment overrides: JARVIS_DMS_TIMEOUT_<PHASE>=<seconds>
     # v210.0: Added 'two_tier' phase for VBIA/Watchdog initialization
     DEFAULT_PHASES: Dict[str, PhaseConfig] = {
-        "clean_slate": PhaseConfig("Clean Slate", 30.0, 0, 5, "diagnostic"),
-        "loading_server": PhaseConfig("Loading Server", 45.0, 5, 15, "restart"),
-        "preflight": PhaseConfig("Preflight", 60.0, 15, 25, "diagnostic"),
+        # v236.2: Increased from 30→60s. Clean slate performs lock cleanup (5s timeout),
+        # IPC timeout (5s), handover timeout (30s) — minimum 40s sequential. 60s gives buffer.
+        "clean_slate": PhaseConfig("Clean Slate", 60.0, 0, 5, "diagnostic"),
+        # v236.2: Increased from 45→75s. Chrome startup + loading server health can take 50-60s
+        # on cold start (Chrome profile init, extension loads). Recovery changed to diagnostic
+        # since restarting the loading server mid-launch just adds latency.
+        "loading_server": PhaseConfig("Loading Server", 75.0, 5, 15, "diagnostic"),
+        # v236.2: Increased from 60→90s. Preflight includes kernel takeover (30s handover
+        # timeout), service registry cleanup, IPC init — 60s was borderline under load.
+        "preflight": PhaseConfig("Preflight", 90.0, 15, 25, "diagnostic"),
         # v192.0: Resources timeout synced with JARVIS_RESOURCE_TIMEOUT (default 300s + 30s buffer)
         "resources": PhaseConfig("Resources", 330.0, 25, 45, "restart"),
         # v232.1: Backend recovery changed from "restart" to "diagnostic".
@@ -54995,7 +55036,10 @@ class StartupWatchdog:
         "visual_pipeline": PhaseConfig("Visual Pipeline", 60.0, 90, 93, "diagnostic"),
         # v236.1: frontend progress_start fixed from 85→90 to avoid overlap with agi_os
         # v250.0: frontend progress_start adjusted from 90→93 for visual_pipeline phase
-        "frontend": PhaseConfig("Frontend", 60.0, 93, 100, "rollback"),
+        # v236.2: Increased from 60→150s (outer warmup timeout is 120s + 30s buffer).
+        # Recovery changed from "rollback" to "diagnostic" — frontend is non-critical,
+        # rolling back the entire system because React startup is slow is destructive.
+        "frontend": PhaseConfig("Frontend", 150.0, 93, 100, "diagnostic"),
     }
     
     def __init__(
@@ -57049,10 +57093,12 @@ class TrinityIntegrator:
 
         try:
             # Start process with Trinity environment
-            env = os.environ.copy()
-            env["TRINITY_COMPONENT"] = component.name
-            env["TRINITY_PORT"] = str(component.port)
-            env["TRINITY_ENABLED"] = "true"
+            # v236.2: Use centralized env builder for authoritative credential propagation
+            env = _build_subprocess_env(
+                TRINITY_COMPONENT=component.name,
+                TRINITY_PORT=str(component.port),
+                TRINITY_ENABLED="true",
+            )
 
             # v216.0: jarvis-prime specific optimizations
             # These enable local ML on hardware with <32GB RAM (e.g., 16GB MacBooks)
@@ -62810,10 +62856,12 @@ class JarvisSystemKernel:
                     self.logger.info(f"[EarlyPrime] Found startup script: {os.path.basename(startup_script)}")
                     
                     # Prepare environment with startup grace period
-                    env = os.environ.copy()
-                    env["JARVIS_EARLY_PREWARM"] = "true"
-                    env["JARVIS_PORT"] = str(prime_port)
-                    env["JARVIS_STARTUP_GRACE_PERIOD"] = "720"  # 12 minutes
+                    # v236.2: Use centralized env builder for authoritative credential propagation
+                    env = _build_subprocess_env(
+                        JARVIS_EARLY_PREWARM="true",
+                        JARVIS_PORT=str(prime_port),
+                        JARVIS_STARTUP_GRACE_PERIOD="720",  # 12 minutes
+                    )
                     
                     self.logger.info(f"[EarlyPrime] Starting Prime at port {prime_port} using {os.path.basename(startup_script)}...")
                     
@@ -63772,7 +63820,9 @@ class JarvisSystemKernel:
             # cleanup at line 62228 covers the normal path, but if intelligence phase
             # timeout cancels before reaching it, the active flag may leak.
             update_dashboard_model_loading(active=False)
-            two_tier_timeout = float(os.environ.get("JARVIS_TWO_TIER_TIMEOUT", "60.0"))
+            # v236.2: Default aligned with outer init timeout (80s) at line 63787.
+            # Was 60s — DMS would fire at 90s (60+30 buffer) before outer timeout at 80s.
+            two_tier_timeout = float(os.environ.get("JARVIS_TWO_TIER_TIMEOUT", "80.0"))
             if self._startup_watchdog:
                 self._startup_watchdog.update_phase("two_tier", 55, operational_timeout=two_tier_timeout)
 
@@ -66310,9 +66360,11 @@ class JarvisSystemKernel:
 
         try:
             # Start process
-            env = os.environ.copy()
-            env["JARVIS_BACKEND_PORT"] = str(self.config.backend_port)
-            env["JARVIS_KERNEL_PID"] = str(os.getpid())
+            # v236.2: Use centralized env builder for authoritative credential propagation
+            env = _build_subprocess_env(
+                JARVIS_BACKEND_PORT=str(self.config.backend_port),
+                JARVIS_KERNEL_PID=str(os.getpid()),
+            )
 
             self._backend_process = await asyncio.create_subprocess_exec(
                 sys.executable,
@@ -74390,7 +74442,8 @@ class JarvisSystemKernel:
             self.logger.debug(f"[LoadingServer] Using system Python: {python_executable}")
 
         # Step 2: Build base environment (shared across retry attempts)
-        env = os.environ.copy()
+        # v236.2: Use centralized env builder for authoritative credential propagation
+        env = _build_subprocess_env(JARVIS_KERNEL_PID=str(os.getpid()))
         pythonpath_parts = [
             str(project_root),
             str(project_root / "backend"),
@@ -74399,7 +74452,6 @@ class JarvisSystemKernel:
         if existing_pythonpath:
             pythonpath_parts.append(existing_pythonpath)
         env["PYTHONPATH"] = os.pathsep.join(pythonpath_parts)
-        env["JARVIS_KERNEL_PID"] = str(os.getpid())
         frontend_port = int(os.environ.get("JARVIS_FRONTEND_PORT", "3000"))
         env["JARVIS_FRONTEND_PORT"] = str(frontend_port)
 
@@ -74911,11 +74963,13 @@ class JarvisSystemKernel:
                 self.logger.success("[Frontend] Dependencies installed")
 
             # Configure frontend environment
+            # v236.2: Use centralized env builder for authoritative credential propagation
             frontend_port = int(os.environ.get("JARVIS_FRONTEND_PORT", "3000"))
-            env = os.environ.copy()
-            env["PORT"] = str(frontend_port)
-            env["BROWSER"] = "none"  # Don't auto-open browser
-            env["REACT_APP_BACKEND_URL"] = f"http://localhost:{self.config.backend_port}"
+            env = _build_subprocess_env(
+                PORT=str(frontend_port),
+                BROWSER="none",  # Don't auto-open browser
+                REACT_APP_BACKEND_URL=f"http://localhost:{self.config.backend_port}",
+            )
             
             # v211.0: DO NOT set CI=true - it causes React dev server issues
             # CI mode is for build processes, not the development server
@@ -78625,10 +78679,12 @@ class JarvisSystemKernel:
             pass
 
         # Step 4: Start the router process
-        env = os.environ.copy()
-        env["PORT"] = str(router_port)
-        env["NODE_ENV"] = "production"
-        env["PYTHONUNBUFFERED"] = "1"
+        # v236.2: Use centralized env builder for authoritative credential propagation
+        env = _build_subprocess_env(
+            PORT=str(router_port),
+            NODE_ENV="production",
+            PYTHONUNBUFFERED="1",
+        )
 
         # Set up log file
         log_dir = self.config.backend_dir / "logs"
@@ -79929,9 +79985,11 @@ class JarvisSystemKernel:
             return False
 
         try:
-            env = os.environ.copy()
-            env["JARVIS_KERNEL_PID"] = str(os.getpid())
-            env["TRINITY_COORDINATOR"] = "jarvis"
+            # v236.2: Use centralized env builder for authoritative credential propagation
+            env = _build_subprocess_env(
+                JARVIS_KERNEL_PID=str(os.getpid()),
+                TRINITY_COORDINATOR="jarvis",
+            )
 
             process = await asyncio.create_subprocess_exec(
                 sys.executable, str(script_path),

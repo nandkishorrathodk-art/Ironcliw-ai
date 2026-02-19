@@ -661,10 +661,23 @@ except ImportError as e:
     register_http_client = None
 
 # Load environment variables (force override of system env vars)
+# v236.2: Explicit paths + correct load order. Less-specific first, root .env LAST wins.
+# This prevents backend/.env from overriding the root .env authoritative key values.
 try:
+    from pathlib import Path as _EnvPath
     from dotenv import load_dotenv
 
-    load_dotenv(override=True)  # Force .env to override existing environment variables
+    _backend_root = _EnvPath(__file__).resolve().parent  # backend/
+    _project_root = _backend_root.parent  # project root
+
+    # Load order: subdirectory first (less specific), root LAST (most specific, authoritative)
+    for _env_candidate in [
+        _backend_root / ".env",        # backend/.env (component overrides)
+        _project_root / ".env.gcp",    # GCP-specific overrides
+        _project_root / ".env",        # Root .env — authoritative source of truth (LAST WINS)
+    ]:
+        if _env_candidate.exists():
+            load_dotenv(_env_candidate, override=True)
 except ImportError:
     pass
 
