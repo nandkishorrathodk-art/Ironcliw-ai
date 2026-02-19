@@ -26,7 +26,7 @@ Usage in supervisor:
 import asyncio
 import logging
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional
 
 import numpy as np
@@ -45,8 +45,9 @@ class PipelineHandle:
     conversation_pipeline: object = None
     mode_dispatcher: object = None
     health_task: Optional[asyncio.Task] = None
+    _bargein_vad_consumer: object = None  # stored for unregister on shutdown
 
-    async def get_status(self) -> dict:
+    def get_status(self) -> dict:
         """Aggregate status from all components."""
         status = {}
         for name in [
@@ -74,7 +75,8 @@ async def start_audio_bus(timeout: float = 5.0):
     try:
         from backend.audio.audio_bus import AudioBus
         bus = AudioBus.get_instance()
-        await asyncio.wait_for(bus.start(), timeout=timeout)
+        # Shield to prevent singleton half-init on timeout (see MEMORY.md)
+        await asyncio.wait_for(asyncio.shield(bus.start()), timeout=timeout)
         logger.info("[Bootstrap] AudioBus started (Phase 1)")
         return bus
     except asyncio.TimeoutError:
@@ -112,7 +114,7 @@ async def wire_conversation_pipeline(
         )
         logger.info("[Bootstrap] TTS singleton ready")
     except Exception as e:
-        logger.debug(f"[Bootstrap] TTS init skipped: {e}")
+        logger.warning(f"[Bootstrap] TTS init skipped: {e}")
 
     # 2. StreamingSTT — register as AudioBus mic consumer
     try:
@@ -126,7 +128,7 @@ async def wire_conversation_pipeline(
         else:
             logger.info("[Bootstrap] StreamingSTT started (no AudioBus)")
     except Exception as e:
-        logger.debug(f"[Bootstrap] StreamingSTT init skipped: {e}")
+        logger.warning(f"[Bootstrap] StreamingSTT init skipped: {e}")
         handle.streaming_stt = None
 
     # 3. TurnDetector + BargeInController
@@ -142,15 +144,15 @@ async def wire_conversation_pipeline(
         if audio_bus is not None:
             handle.barge_in.set_audio_bus(audio_bus)
             # Register barge-in VAD callback as AudioBus mic consumer.
-            _bargein_vad = _create_bargein_vad_consumer(handle.barge_in)
-            audio_bus.register_mic_consumer(_bargein_vad)
+            handle._bargein_vad_consumer = _create_bargein_vad_consumer(handle.barge_in)
+            audio_bus.register_mic_consumer(handle._bargein_vad_consumer)
             logger.info("[Bootstrap] BargeInController registered on AudioBus")
 
         if speech_state is not None:
             handle.barge_in.set_speech_state(speech_state)
 
     except Exception as e:
-        logger.debug(f"[Bootstrap] TurnDetector/BargeIn skipped: {e}")
+        logger.warning(f"[Bootstrap] TurnDetector/BargeIn skipped: {e}")
 
     # 4. ConversationPipeline
     try:
@@ -166,7 +168,7 @@ async def wire_conversation_pipeline(
         )
         logger.info("[Bootstrap] ConversationPipeline created")
     except Exception as e:
-        logger.debug(f"[Bootstrap] ConversationPipeline init skipped: {e}")
+        logger.warning(f"[Bootstrap] ConversationPipeline init skipped: {e}")
 
     # 5. ModeDispatcher
     try:
@@ -179,7 +181,7 @@ async def wire_conversation_pipeline(
         await handle.mode_dispatcher.start()
         logger.info("[Bootstrap] ModeDispatcher started")
     except Exception as e:
-        logger.debug(f"[Bootstrap] ModeDispatcher init skipped: {e}")
+        logger.warning(f"[Bootstrap] ModeDispatcher init skipped: {e}")
 
     return handle
 
@@ -194,6 +196,8 @@ def _create_bargein_vad_consumer(barge_in):
     _energy_threshold = float(os.getenv("JARVIS_BARGEIN_ENERGY_THRESHOLD", "0.01"))
 
     def _on_frame(frame: np.ndarray) -> None:
+        if frame.size == 0:
+            return
         energy = float(np.sqrt(np.mean(frame ** 2)))
         is_speech = energy > _energy_threshold
         barge_in.on_vad_speech_detected(is_speech)
@@ -215,7 +219,23 @@ async def shutdown(handle: PipelineHandle) -> None:
         except Exception as e:
             logger.debug(f"[Bootstrap] ModeDispatcher stop error: {e}")
 
-    # 2. ConversationPipeline
+    # 2. BargeInController — disable before pipeline teardown to prevent
+    #    call_soon_threadsafe on a closing event loop from the audio thread.
+    if handle.barge_in is not None:
+        try:
+            handle.barge_in.enabled = False
+            handle.barge_in.set_loop(None)
+        except Exception:
+            pass
+
+    # 2b. Unregister barge-in VAD consumer from AudioBus
+    if handle._bargein_vad_consumer is not None and handle.audio_bus is not None:
+        try:
+            handle.audio_bus.unregister_mic_consumer(handle._bargein_vad_consumer)
+        except Exception:
+            pass
+
+    # 3. ConversationPipeline
     if handle.conversation_pipeline is not None:
         try:
             await asyncio.wait_for(
