@@ -60968,6 +60968,17 @@ class JarvisSystemKernel:
         except Exception:
             pass
 
+        # v240.0: Shutdown DI Intelligence Services
+        if hasattr(self, '_di_container') and self._di_container:
+            try:
+                from backend.core.di.intelligence_services import shutdown_intelligence_services
+                await asyncio.wait_for(
+                    shutdown_intelligence_services(self._di_container), timeout=10.0,
+                )
+                self.logger.info("[Kernel] DI Intelligence Services stopped")
+            except Exception:
+                pass
+
         # Stop backend deterministically (in-process first, then subprocess fallback)
         if self._backend_server or self._backend_server_task:
             await self._stop_backend_in_process(
@@ -71687,6 +71698,39 @@ class JarvisSystemKernel:
                 self.logger.debug("[Zone6/Enterprise] Enterprise integration module not available")
             except Exception as e:
                 self.logger.warning(f"[Zone6/Enterprise] ⚠ Error: {e}")
+
+            # v240.0: DI Intelligence Services — register with ServiceContainer
+            # Activates: CollaborationEngine, CodeOwnership, ReviewWorkflow, LSP, IDE
+            try:
+                from backend.core.di.container import create_container
+                from backend.core.di.intelligence_services import (
+                    register_intelligence_services,
+                    initialize_intelligence_services,
+                )
+                if os.getenv("JARVIS_DI_INTELLIGENCE_ENABLED", "true").lower() in (
+                    "true", "1", "yes"
+                ):
+                    _di_container = create_container()
+                    _reg_status = register_intelligence_services(_di_container)
+                    _init_status = await asyncio.wait_for(
+                        initialize_intelligence_services(_di_container),
+                        timeout=SERVICE_TIMEOUT,
+                    )
+                    _active = sum(1 for v in _init_status.values() if v == "initialized")
+                    self.logger.info(
+                        f"[Zone6/DI] ✓ Intelligence services: {_active}/{len(_init_status)} active"
+                    )
+                    self._di_container = _di_container
+                else:
+                    self.logger.info("[Zone6/DI] ○ Disabled via JARVIS_DI_INTELLIGENCE_ENABLED")
+            except asyncio.CancelledError:
+                raise
+            except asyncio.TimeoutError:
+                self.logger.warning(f"[Zone6/DI] ⏱️ Timed out after {SERVICE_TIMEOUT}s")
+            except ImportError:
+                self.logger.debug("[Zone6/DI] DI container module not available")
+            except Exception as e:
+                self.logger.warning(f"[Zone6/DI] ⚠ Error: {e}")
 
             # v239.0: System Service Registry — Phase 6 (Training pipeline adapters)
             if self._service_registry:
