@@ -69270,6 +69270,8 @@ class JarvisSystemKernel:
                 progress = 73 + min(6, int(elapsed / 10))  # 6% over 60s
             elif status == "healthy":
                 progress = 80
+                # v236.2: Raise ceiling so progress=80 isn't capped at 77 (72+5)
+                self._current_startup_progress = 80
             else:
                 progress = 73
         else:
@@ -71104,6 +71106,13 @@ class JarvisSystemKernel:
                                 _trinity_startup_timed_out = True  # v222.0: Track for result handling
                                 self.logger.error(f"[Trinity] Trinity phase timeout after {trinity_budget}s")
                                 self.logger.warning("[Trinity] Consider increasing JARVIS_TRINITY_BUDGET if startup needs more time")
+                                # v236.2: Broadcast progress so ProgressController knows we're still alive
+                                self._current_startup_progress = 78
+                                await self._broadcast_startup_progress(
+                                    stage="trinity",
+                                    message=f"Component startup timed out after {trinity_budget}s, probing health",
+                                    progress=78,
+                                )
                                 # v228.0: Check live health before blanket-marking error
                                 for comp_key, comp_status_key in [("jarvis-prime", "jarvis_prime"), ("reactor-core", "reactor_core")]:
                                     actual_port = self._get_component_port(comp_status_key)
@@ -71117,6 +71126,13 @@ class JarvisSystemKernel:
                                 _trinity_startup_error = True
                                 _trinity_startup_timed_out = True  # v222.0: Treat exceptions as timeout for status
                                 self.logger.error(f"[Trinity] Unexpected error during startup: {e}")
+                                # v236.2: Broadcast progress so ProgressController knows we're still alive
+                                self._current_startup_progress = 78
+                                await self._broadcast_startup_progress(
+                                    stage="trinity",
+                                    message=f"Component startup error, probing health: {e}",
+                                    progress=78,
+                                )
                                 # v228.0: Check live health before blanket-marking error
                                 for comp_key, comp_status_key in [("jarvis-prime", "jarvis_prime"), ("reactor-core", "reactor_core")]:
                                     actual_port = self._get_component_port(comp_status_key)
@@ -71269,7 +71285,15 @@ class JarvisSystemKernel:
                         base_timeout=trinity_timeout,
                         integrator_name="Trinity/Legacy",
                     )
-                    
+
+                    # v236.2: Broadcast progress after component startup returns (legacy path)
+                    self._current_startup_progress = 78
+                    await self._broadcast_startup_progress(
+                        stage="trinity",
+                        message="Component startup phase complete (legacy)",
+                        progress=78,
+                    )
+
                     if _legacy_timed_out:
                         _trinity_startup_timed_out = True  # v222.0: Track for result handling
                         self.logger.error(f"[Trinity] Component startup timeout: {_legacy_timeout_context}")
