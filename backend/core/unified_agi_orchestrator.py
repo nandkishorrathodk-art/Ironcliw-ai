@@ -91,6 +91,11 @@ from typing import (
 
 from backend.core.async_safety import LazyAsyncLock, TimeoutConfig, get_shutdown_event
 
+try:
+    from backend.core.async_safety import create_safe_task as safe_create_task
+except ImportError:
+    safe_create_task = None
+
 logger = logging.getLogger(__name__)
 
 # Type Variables
@@ -522,7 +527,7 @@ class UnifiedEventBus:
             await self.initialize()
 
         self._running = True
-        self._worker_task = asyncio.create_task(self._process_events())
+        self._worker_task = safe_create_task(self._process_events(), name="agi_event_bus_worker") if safe_create_task else asyncio.create_task(self._process_events())
         logger.info("[AGI EventBus] Started")
 
     async def stop(self) -> None:
@@ -559,6 +564,8 @@ class UnifiedEventBus:
                             subscriber.handle_event(event),
                             timeout=30.0
                         )
+                    except asyncio.CancelledError:
+                        raise
                     except Exception as e:
                         logger.error(f"[AGI EventBus] Subscriber error: {e}")
 
@@ -669,7 +676,7 @@ class PersistentStateManager:
 
             # Start sync task
             if self.config.state_persistence:
-                self._sync_task = asyncio.create_task(self._sync_loop())
+                self._sync_task = safe_create_task(self._sync_loop(), name="agi_state_sync") if safe_create_task else asyncio.create_task(self._sync_loop())
 
             logger.info("[AGI State] Initialized")
 
@@ -952,7 +959,10 @@ class LearningPipeline:
 
             # Check if batch threshold reached
             if len(self._experience_queue) >= self.config.learning_batch_size:
-                asyncio.create_task(self._trigger_training())
+                if safe_create_task:
+                    safe_create_task(self._trigger_training(), name="agi_training_trigger")
+                else:
+                    asyncio.create_task(self._trigger_training())
 
             return experience.experience_id
 
@@ -1000,6 +1010,8 @@ class LearningPipeline:
 
                 logger.info(f"[AGI Learning] Training batch {batch_id} {status}")
 
+            except asyncio.CancelledError:
+                raise
             except Exception as e:
                 logger.error(f"[AGI Learning] Training error: {e}")
             finally:
@@ -1249,7 +1261,7 @@ class CrossRepoHealthAggregator:
 
     async def start(self) -> None:
         """Start health monitoring."""
-        self._check_task = asyncio.create_task(self._health_check_loop())
+        self._check_task = safe_create_task(self._health_check_loop(), name="agi_health_check") if safe_create_task else asyncio.create_task(self._health_check_loop())
         logger.info("[AGI Health] Aggregator started")
 
     async def stop(self) -> None:
@@ -1350,6 +1362,8 @@ class CrossRepoHealthAggregator:
 
             return ComponentHealth(component=component, status=HealthStatus.UNKNOWN)
 
+        except asyncio.CancelledError:
+            raise
         except Exception as e:
             return ComponentHealth(
                 component=component,
@@ -1457,6 +1471,8 @@ class UnifiedAGIOrchestrator:
             logger.info("[AGI Orchestrator] v100.0 started successfully")
             return True
 
+        except asyncio.CancelledError:
+            raise
         except Exception as e:
             logger.error(f"[AGI Orchestrator] Failed to start: {e}")
             traceback.print_exc()

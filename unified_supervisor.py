@@ -60952,6 +60952,22 @@ class JarvisSystemKernel:
             except Exception:
                 pass
 
+        # v240.0: Shutdown AGI Orchestrator (EventBus, StateManager, LearningPipeline)
+        try:
+            from backend.core.unified_agi_orchestrator import stop_agi_orchestrator
+            await asyncio.wait_for(stop_agi_orchestrator(), timeout=10.0)
+            self.logger.info("[Kernel] AGI Orchestrator stopped")
+        except Exception:
+            pass
+
+        # v240.0: Shutdown Enterprise Integration (ComponentRegistry, RecoveryEngine)
+        try:
+            from backend.core.enterprise_supervisor_integration import enterprise_shutdown
+            await asyncio.wait_for(enterprise_shutdown(), timeout=10.0)
+            self.logger.info("[Kernel] Enterprise Integration stopped")
+        except Exception:
+            pass
+
         # Stop backend deterministically (in-process first, then subprocess fallback)
         if self._backend_server or self._backend_server_task:
             await self._stop_backend_in_process(
@@ -71616,6 +71632,62 @@ class JarvisSystemKernel:
 
             self._update_component_status("enterprise", "complete", f"Enterprise: {len(successful)}/{len(services)} active")
 
+            # v240.0: AGI Orchestrator — cross-repo intelligence coordination
+            # Activates: EventBus, PersistentStateManager, LearningPipeline,
+            #            AgentRegistry, CrossRepoHealthAggregator
+            try:
+                from backend.core.unified_agi_orchestrator import (
+                    start_agi_orchestrator,
+                )
+                if os.getenv("AGI_ORCHESTRATOR_ENABLED", "true").lower() in ("true", "1", "yes"):
+                    _agi_started = await asyncio.wait_for(
+                        start_agi_orchestrator(), timeout=SERVICE_TIMEOUT,
+                    )
+                    if _agi_started:
+                        self.logger.info("[Zone6/AGIOrch] ✓ AGI Orchestrator started")
+                    else:
+                        self.logger.warning("[Zone6/AGIOrch] ⚠ AGI Orchestrator failed to start")
+                else:
+                    self.logger.info("[Zone6/AGIOrch] ○ Disabled via AGI_ORCHESTRATOR_ENABLED")
+            except asyncio.CancelledError:
+                raise
+            except asyncio.TimeoutError:
+                self.logger.warning(f"[Zone6/AGIOrch] ⏱️ Timed out after {SERVICE_TIMEOUT}s")
+            except ImportError:
+                self.logger.debug("[Zone6/AGIOrch] AGI Orchestrator module not available")
+            except Exception as e:
+                self.logger.warning(f"[Zone6/AGIOrch] ⚠ Error: {e}")
+
+            # v240.0: Enterprise Startup Integration — structured component lifecycle
+            # Activates: ComponentRegistry DAG, RecoveryEngine, StartupSummary
+            try:
+                from backend.core.enterprise_supervisor_integration import (
+                    enterprise_startup,
+                    is_enterprise_mode_available,
+                )
+                if is_enterprise_mode_available() and os.getenv(
+                    "JARVIS_ENTERPRISE_MODE", "true"
+                ).lower() in ("true", "1", "yes"):
+                    _ent_result = await asyncio.wait_for(
+                        enterprise_startup(), timeout=SERVICE_TIMEOUT * 2,
+                    )
+                    _ent_status = getattr(_ent_result, "overall_status", "UNKNOWN")
+                    _ent_ok = getattr(_ent_result, "success", False)
+                    if _ent_ok:
+                        self.logger.info(f"[Zone6/Enterprise] ✓ Enterprise startup: {_ent_status}")
+                    else:
+                        self.logger.warning(f"[Zone6/Enterprise] ⚠ Enterprise startup: {_ent_status}")
+                else:
+                    self.logger.info("[Zone6/Enterprise] ○ Disabled or not available")
+            except asyncio.CancelledError:
+                raise
+            except asyncio.TimeoutError:
+                self.logger.warning(f"[Zone6/Enterprise] ⏱️ Timed out after {SERVICE_TIMEOUT * 2}s")
+            except ImportError:
+                self.logger.debug("[Zone6/Enterprise] Enterprise integration module not available")
+            except Exception as e:
+                self.logger.warning(f"[Zone6/Enterprise] ⚠ Error: {e}")
+
             # v239.0: System Service Registry — Phase 6 (Training pipeline adapters)
             if self._service_registry:
                 _training_phase = 6
@@ -72273,6 +72345,12 @@ class JarvisSystemKernel:
                         return (True, f"Cleanup: {s.get('registered_tasks', 0)} tasks ({s.get('critical_tasks', 0)} critical)")
 
                     async def cleanup(self) -> None:
+                        # Execute all registered cleanup handlers before tearing down
+                        if self._rcc:
+                            try:
+                                await self._rcc.execute_cleanup()
+                            except Exception:
+                                pass
                         self._rcc = None
 
                 class _HealthCheckOrchestratorAdapter(SystemService):
@@ -72749,20 +72827,20 @@ class JarvisSystemKernel:
                     self.logger.info(f"[Kernel] Phase 11 operational intelligence services: {_ssr_r11}")
 
                     # W33: CacheInvalidationCoordinator → CacheHierarchyManager broadcast
+                    # CacheHierarchyManager is registered directly (no adapter wrapper)
+                    # Its invalidation method is delete(key), not invalidate()
                     _cic_svc = self._service_registry.get("cache_invalidation")
                     _cic = _cic_svc._cic if _cic_svc else None
-                    _chm = self._service_registry.get("cache_hierarchy")
-                    if _cic and _chm:
-                        _chm_inner = getattr(_chm, '_chm', None)
-                        if _chm_inner and hasattr(_chm_inner, 'invalidate'):
-                            async def _cic_broadcast(inv_type: str, targets: list) -> None:
-                                for _t in targets:
-                                    try:
-                                        await _chm_inner.invalidate(_t)
-                                    except Exception:
-                                        pass
-                            _cic._broadcast_callback = _cic_broadcast
-                            self.logger.debug("[Kernel] W33: CacheInvalidation → CacheHierarchy broadcast wired")
+                    _chm_direct = self._service_registry.get("cache_hierarchy")
+                    if _cic and _chm_direct and hasattr(_chm_direct, 'delete'):
+                        async def _cic_broadcast(inv_type: str, targets: list, _chm_ref=_chm_direct) -> None:
+                            for _t in targets:
+                                try:
+                                    await _chm_ref.delete(_t)
+                                except Exception:
+                                    pass
+                        _cic._broadcast_callback = _cic_broadcast
+                        self.logger.debug("[Kernel] W33: CacheInvalidation → CacheHierarchy broadcast wired")
 
                     # W34: HealthCheckOrchestrator → all SSR services (exclude self)
                     _hco_svc = self._service_registry.get("health_check_orchestrator")
@@ -72783,18 +72861,21 @@ class JarvisSystemKernel:
                         self.logger.debug(f"[Kernel] W34: HealthCheckOrchestrator registered {len(self._service_registry._services) - 1} checks")
 
                     # W35: AnomalyDetector ← HealthAggregator alert callback
+                    # HealthAggregator is registered directly (no adapter wrapper)
+                    # Callback signature: (str, SubsystemHealth) → Awaitable[None]
                     _ad_svc = self._service_registry.get("anomaly_detector")
                     _ad = _ad_svc._ad if _ad_svc else None
-                    _ha = self._service_registry.get("health_aggregator")
-                    if _ad and _ha:
-                        _ha_inner = getattr(_ha, '_ha', None)
-                        if _ha_inner and hasattr(_ha_inner, 'register_alert_callback'):
-                            async def _ha_to_ad_cb(alert_data: dict) -> None:
-                                _metrics = {k: float(v) for k, v in alert_data.items() if isinstance(v, (int, float))}
-                                if _metrics:
-                                    await _ad.record_observation("health", _metrics, metadata=alert_data)
-                            _ha_inner.register_alert_callback(_ha_to_ad_cb)
-                            self.logger.debug("[Kernel] W35: HealthAggregator → AnomalyDetector wired")
+                    _ha_direct = self._service_registry.get("health_aggregator")
+                    if _ad and _ha_direct and hasattr(_ha_direct, 'register_alert_callback'):
+                        async def _ha_to_ad_cb(name: str, health, _ad_ref=_ad) -> None:
+                            _metrics = {
+                                "response_time_ms": health.response_time_ms,
+                                "is_healthy": 1.0 if health.status == "healthy" else 0.0,
+                            }
+                            _meta = {"subsystem": name, "status": health.status, "message": health.message}
+                            await _ad_ref.record_observation("health", _metrics, metadata=_meta)
+                        _ha_direct.register_alert_callback(_ha_to_ad_cb)
+                        self.logger.debug("[Kernel] W35: HealthAggregator → AnomalyDetector wired")
 
                     # W36: AlertingManager ← AnomalyDetector handler
                     _am_svc = self._service_registry.get("alerting_manager")
@@ -72822,40 +72903,45 @@ class JarvisSystemKernel:
                         _cs.schedule("autoscale_evaluate", "*/2 * * * *", _asc_evaluate_job, enabled=True)
                         self.logger.debug("[Kernel] W37: AutoScaling evaluate scheduled every 2min via CronScheduler")
 
-                    # W38: ResourceCleanupCoordinator → all SSR services
+                    # W38: ResourceCleanupCoordinator → kernel-level resources
+                    # NOTE: SSR services are NOT registered here because SSR.shutdown_all()
+                    # already calls each service's cleanup() in reverse activation order.
+                    # Registering them here would cause double-cleanup. Instead, RCC handles
+                    # non-SSR kernel resources (aiohttp sessions, background tasks, etc.)
                     _rcc_svc = self._service_registry.get("resource_cleanup")
                     _rcc = _rcc_svc._rcc if _rcc_svc else None
                     if _rcc:
-                        for _svc_name, _svc_desc in self._service_registry._services.items():
-                            if _svc_desc.initialized and _svc_desc.service:
-                                _svc_ref = _svc_desc.service
-                                _is_critical = _svc_name in ("health_aggregator", "event_sourcing", "cache_hierarchy")
-                                # Wrap cleanup() (returns None) into bool-returning handler
-                                async def _make_cleanup_handler(_s=_svc_ref):
-                                    try:
-                                        await _s.cleanup()
-                                        return True
-                                    except Exception:
-                                        return False
-                                _rcc.register_cleanup(
-                                    _svc_name,
-                                    _make_cleanup_handler,
-                                    priority=20 if _is_critical else 50,
-                                    critical=_is_critical,
-                                )
-                        self.logger.debug(f"[Kernel] W38: ResourceCleanup registered {len(self._service_registry._services)} handlers")
+                        _rcc_count = 0
+                        # Register kernel-level aiohttp session cleanup
+                        _http_sess = getattr(self, '_http_session', None)
+                        if _http_sess:
+                            async def _cleanup_http(_s=_http_sess):
+                                try:
+                                    await _s.close()
+                                    return True
+                                except Exception:
+                                    return False
+                            _rcc.register_cleanup("kernel_http_session", _cleanup_http, priority=40)
+                            _rcc_count += 1
+                        # Register kernel-level background task cancellation
+                        _bg_tasks = getattr(self, '_background_tasks', None)
+                        if _bg_tasks:
+                            async def _cleanup_bg_tasks(_tasks=_bg_tasks):
+                                try:
+                                    for _t in list(_tasks):
+                                        if not _t.done():
+                                            _t.cancel()
+                                    return True
+                                except Exception:
+                                    return False
+                            _rcc.register_cleanup("kernel_background_tasks", _cleanup_bg_tasks, priority=30, critical=True)
+                            _rcc_count += 1
+                        self.logger.debug(f"[Kernel] W38: ResourceCleanup registered {_rcc_count} kernel handlers")
 
-                    # W39: CronScheduler periodic jobs (health sweeps, anomaly baselines)
-                    if _cs and _hco:
-                        async def _health_sweep_job() -> None:
-                            try:
-                                for _chk_name in list(_hco._checks.keys()):
-                                    await _hco.check_now(_chk_name)
-                            except Exception:
-                                pass
-                        _cs.schedule("health_sweep", "*/5 * * * *", _health_sweep_job, enabled=True)
-                        self.logger.debug("[Kernel] W39: Health sweep scheduled every 5min")
-
+                    # W39: CronScheduler periodic jobs
+                    # NOTE: No cron health sweep — HealthCheckOrchestrator has its own
+                    # background loop (check_interval), and SSR health_check_all() runs
+                    # every 10s in the monitoring loop. Adding a third would triple-fire.
                     if _cs and _ad:
                         async def _anomaly_baseline_job() -> None:
                             try:
@@ -72883,7 +72969,18 @@ class JarvisSystemKernel:
                         self.logger.debug("[Kernel] W40: GDM registered 12 Phase 10+11 features")
 
                     # W41: SSR stats → component_status with Phase 10+11 counts
+                    # Recompute P8/P9 counts locally (cannot rely on Phase 9 try-block vars)
                     _stats = self._service_registry.stats
+                    _p8_cnt = sum(
+                        1 for n in ("process_health_predictor", "self_healing_orchestrator",
+                                    "load_shedding_controller", "workload_balancer", "trinity_health_monitor")
+                        if self._service_registry.get(n)
+                    )
+                    _p9_cnt = sum(
+                        1 for n in ("ipc_hub", "distributed_state", "trinity_orchestration",
+                                    "data_flywheel", "experience_forwarder", "training_orchestrator", "collective_ai")
+                        if self._service_registry.get(n)
+                    )
                     _p10_count = sum(
                         1 for n in ("connection_pool_manager", "secret_vault", "batch_processor",
                                     "performance_profiler", "service_mesh_router", "cron_scheduler")
@@ -72897,7 +72994,7 @@ class JarvisSystemKernel:
                     self._update_component_status(
                         "system_services", "running",
                         f"{_stats['active']}/{_stats['total_registered']} active "
-                        f"(P7: cross-repo, P8: {_p8_count} self-heal, P9: {_p9_count} intelligence, "
+                        f"(P7: cross-repo, P8: {_p8_cnt} self-heal, P9: {_p9_cnt} intelligence, "
                         f"P10: {_p10_count} infra, P11: {_p11_count} ops-intel)"
                     )
 
@@ -75402,7 +75499,7 @@ class JarvisSystemKernel:
                         except Exception:
                             pass
 
-                # v4: Feed AutoScalingController metrics + evaluate every 5th cycle
+                # v4: Feed AutoScalingController metrics (evaluate() driven by CronScheduler W37)
                 _asc_mon = getattr(self, '_auto_scaling_controller', None)
                 if not _asc_mon:
                     _asc_s = self._service_registry.get("auto_scaling_controller") if self._service_registry else None
@@ -75413,9 +75510,6 @@ class JarvisSystemKernel:
                         _cpu = _ps_asc.cpu_percent(interval=None)
                         _mem = _ps_asc.virtual_memory().percent
                         _asc_mon.record_metrics(_cpu, _mem)
-                        _cyc = getattr(self, '_monitoring_cycle_count', 0)
-                        if _cyc % 5 == 0:
-                            await _asc_mon.evaluate()
                     except Exception:
                         pass
 

@@ -53,6 +53,11 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Set, Union
 
+try:
+    from backend.core.async_safety import shielded_wait_for
+except ImportError:
+    shielded_wait_for = None
+
 from backend.core.component_registry import (
     ComponentDefinition,
     ComponentRegistry,
@@ -226,6 +231,8 @@ class EnterpriseStartupOrchestrator:
                     await handler(event, data)
                 else:
                     handler(event, data)
+            except asyncio.CancelledError:
+                raise
             except Exception as e:
                 logger.warning(
                     f"Event handler error for {event.value}: {e}",
@@ -421,10 +428,17 @@ class EnterpriseStartupOrchestrator:
         try:
             # Use custom starter if registered, otherwise mark healthy
             if name in self._component_starters:
-                success = await asyncio.wait_for(
-                    self._component_starters[name](),
-                    timeout=defn.startup_timeout,
-                )
+                if shielded_wait_for:
+                    success = await shielded_wait_for(
+                        self._component_starters[name](),
+                        timeout=defn.startup_timeout,
+                        name=f"enterprise_start_{name}",
+                    )
+                else:
+                    success = await asyncio.wait_for(
+                        self._component_starters[name](),
+                        timeout=defn.startup_timeout,
+                    )
             else:
                 # No custom starter - default to success (component is in-process)
                 success = True
@@ -449,6 +463,9 @@ class EnterpriseStartupOrchestrator:
         except asyncio.TimeoutError:
             error = TimeoutError(f"Startup timeout ({defn.startup_timeout}s)")
             return await self._handle_failure(name, error, start)
+
+        except asyncio.CancelledError:
+            raise
 
         except Exception as e:
             return await self._handle_failure(name, e, start)

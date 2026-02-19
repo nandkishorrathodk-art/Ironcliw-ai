@@ -271,6 +271,8 @@ class EnterpriseIntegration:
 
             return self._startup_result
 
+        except asyncio.CancelledError:
+            raise
         except Exception as e:
             logger.error(f"Enterprise startup failed: {e}", exc_info=True)
             return StartupResult(

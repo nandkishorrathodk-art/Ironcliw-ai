@@ -17,6 +17,7 @@ Version: 1.0.0
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 from typing import Any, Dict, List, Optional, Type
@@ -297,6 +298,8 @@ async def initialize_intelligence_services(container: Any) -> Dict[str, str]:
             except Exception as e:
                 status[service_type.__name__] = f"failed: {e}"
 
+    except asyncio.CancelledError:
+        raise
     except Exception as e:
         logger.error(f"Intelligence services initialization failed: {e}")
         status["_container"] = f"initialization_failed: {e}"
@@ -319,6 +322,8 @@ async def shutdown_intelligence_services(container: Any) -> None:
     try:
         await container.shutdown_all()
         logger.info("Intelligence services shutdown complete")
+    except asyncio.CancelledError:
+        raise
     except Exception as e:
         logger.error(f"Error during intelligence services shutdown: {e}")
 
