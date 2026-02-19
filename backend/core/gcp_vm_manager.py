@@ -2650,7 +2650,21 @@ class GCPVMManager:
         return False
 
     def _update_ip_index(self, vm: VMInstance) -> None:
-        """Update the IP-to-VM index when a VM's IP changes."""
+        """Update the IP-to-VM index when a VM's IP changes.
+
+        v236.3 (M1 fix): Clears stale IPs that previously mapped to this VM.
+        Without this, old IPs remain in the index after GCP reassignment,
+        causing activity attribution to the wrong VM.
+        """
+        # Clear any stale IPs that previously mapped to this VM
+        stale_ips = [
+            ip for ip, name in list(self._ip_to_vm.items())
+            if name == vm.name
+        ]
+        for ip in stale_ips:
+            del self._ip_to_vm[ip]
+
+        # Set current IPs
         if vm.ip_address:
             self._ip_to_vm[vm.ip_address] = vm.name
         if vm.internal_ip:
@@ -3702,12 +3716,19 @@ class GCPVMManager:
         url = f"http://{vm.ip_address}:{port}"
 
         # Set environment variables (consumed by PrimeClient, HybridBackendClient, etc.)
+        # v236.3 (H2 fix): Parity with _propagate_invincible_node_url() — same env vars
         os.environ["JARVIS_PRIME_URL"] = url
         os.environ["GCP_PRIME_ENDPOINT"] = url
+        os.environ["JARVIS_PRIME_CLOUD_RUN_URL"] = url
         os.environ["JARVIS_PRIME_API_URL"] = url
         os.environ["JARVIS_HOLLOW_CLIENT_ACTIVE"] = "true"
         os.environ["JARVIS_INVINCIBLE_NODE_IP"] = vm.ip_address
         os.environ["JARVIS_INVINCIBLE_NODE_PORT"] = str(port)
+
+        # v236.3 (H2 fix): Vision server endpoint (LLaVA on port 8001)
+        _vision_port = os.getenv("JARVIS_PRIME_VISION_PORT", "8001")
+        os.environ["JARVIS_PRIME_VISION_URL"] = f"http://{vm.ip_address}:{_vision_port}"
+        os.environ["JARVIS_PRIME_VISION_PORT"] = _vision_port
 
         logger.info(
             f"[EndpointPropagation] v236.3: Propagating VM '{vm.name}' "
@@ -3764,13 +3785,90 @@ class GCPVMManager:
         vm.metadata["endpoint_propagated_at"] = time.time()
         vm.metadata["endpoint_url"] = url
 
-        # Record activity — the VM is now serving traffic
-        # (This prevents immediate termination by the cost tracker)
-        vm.record_activity()
+        # v236.3 (C3 fix): Only update last_activity_time, NOT component_usage_count.
+        # record_activity() increments usage count, which inflates efficiency score
+        # and prevents cost tracker from ever terminating idle VMs. Endpoint
+        # propagation is an infrastructure event, not real application traffic.
+        vm.last_activity_time = time.time()
 
         logger.info(
             f"[EndpointPropagation] v236.3: VM '{vm.name}' fully integrated "
             f"into routing layer at {url}"
+        )
+        return True
+
+    async def _ensure_endpoint_depropagated(self, vm: VMInstance) -> bool:
+        """v236.3: Demote a VM's endpoint from the routing layer when health fails.
+
+        Symmetric counterpart to _ensure_endpoint_propagated(). Called when a
+        previously-propagated VM's health endpoint fails consecutive checks.
+        Clears env vars, notifies PrimeRouter + UnifiedModelServing to fall back
+        to local inference, and clears Trinity event so orchestrator can re-provision.
+
+        ROOT CAUSE FIX for C1: _clear_invincible_node_url() in unified_supervisor
+        has zero callers — the monitoring loop never detected inference-level
+        unhealthiness (only checked GCP VM state). This method provides the
+        demotion path that was previously unreachable dead code.
+        """
+        if not vm.metadata.get("endpoint_propagated"):
+            return False  # Nothing to demote
+
+        url = vm.metadata.get("endpoint_url", "unknown")
+
+        logger.warning(
+            f"[EndpointDemotion] v236.3: Demoting VM '{vm.name}' "
+            f"endpoint {url} — health endpoint unresponsive"
+        )
+
+        # Clear hollow client env vars (consumers check these for routing)
+        # Note: Don't clear JARVIS_PRIME_URL — local Prime might still use it
+        os.environ.pop("JARVIS_HOLLOW_CLIENT_ACTIVE", None)
+        os.environ.pop("JARVIS_INVINCIBLE_NODE_IP", None)
+        os.environ.pop("JARVIS_INVINCIBLE_NODE_PORT", None)
+        os.environ.pop("JARVIS_PRIME_VISION_URL", None)
+        os.environ.pop("JARVIS_PRIME_VISION_PORT", None)
+
+        # Notify PrimeRouter to demote back to local
+        try:
+            from backend.core.prime_router import notify_gcp_vm_unhealthy
+            await notify_gcp_vm_unhealthy()
+            logger.info("[EndpointDemotion] PrimeRouter demoted from GCP")
+        except ImportError:
+            logger.debug("[EndpointDemotion] PrimeRouter not available")
+        except Exception as e:
+            logger.debug(f"[EndpointDemotion] PrimeRouter demotion: {e}")
+
+        # Notify UnifiedModelServing to demote from GCP
+        try:
+            from backend.intelligence.unified_model_serving import (
+                notify_gcp_endpoint_unhealthy,
+            )
+            await notify_gcp_endpoint_unhealthy()
+            logger.info("[EndpointDemotion] UnifiedModelServing demoted from GCP")
+        except ImportError:
+            logger.debug("[EndpointDemotion] UnifiedModelServing not available")
+        except Exception as e:
+            logger.debug(f"[EndpointDemotion] ModelServing demotion: {e}")
+
+        # Clear Trinity GCP ready event so orchestrator can re-provision
+        try:
+            from backend.supervisor.cross_repo_startup_orchestrator import (
+                _trinity_gcp_ready_event,
+            )
+            if _trinity_gcp_ready_event is not None and _trinity_gcp_ready_event.is_set():
+                _trinity_gcp_ready_event.clear()
+                logger.info("[EndpointDemotion] Trinity GCP ready event cleared")
+        except (ImportError, Exception):
+            pass
+
+        # Clear propagation metadata — allows re-propagation if VM recovers
+        vm.metadata["endpoint_propagated"] = False
+        vm.metadata["endpoint_demoted_at"] = time.time()
+        vm.metadata["endpoint_demoted_reason"] = "health_check_failed"
+
+        logger.info(
+            f"[EndpointDemotion] v236.3: VM '{vm.name}' fully demoted from "
+            f"routing layer. Traffic will fall back to local inference."
         )
         return True
 
@@ -6638,6 +6736,53 @@ class GCPVMManager:
                                 logger.debug(
                                     f"[MonitorLoop] Endpoint propagation deferred "
                                     f"for '{vm_name}': {ep_err}"
+                                )
+
+                        # === STEP 2c: Endpoint health verification (v236.3) ===
+                        # ROOT CAUSE FIX (C1): Previously, `is_healthy` only checked
+                        # GCP VM state (RUNNING), not actual inference readiness.
+                        # A VM can be RUNNING in GCP while J-Prime is crashed/OOM.
+                        # PrimeRouter stayed promoted to dead endpoint because
+                        # _clear_invincible_node_url() had ZERO callers.
+                        # Now: For propagated VMs, ping the actual health endpoint.
+                        # After 2 consecutive failures, demote the routing layer.
+                        elif vm.metadata.get("endpoint_propagated") and is_healthy:
+                            try:
+                                _is_inv = (
+                                    vm_name.startswith("jarvis-prime-node")
+                                    or vm.metadata.get("vm_class") == "invincible"
+                                )
+                                _ep_port = int(os.getenv(
+                                    "JARVIS_PRIME_PORT" if _is_inv else "GCP_BACKEND_PORT",
+                                    "8000",
+                                ))
+                                endpoint_ready, _ = await self._ping_health_endpoint(
+                                    vm.ip_address, _ep_port, timeout=10.0
+                                )
+                                if not endpoint_ready:
+                                    # Track consecutive failures in metadata
+                                    _fc = vm.metadata.get("_ep_fail_count", 0) + 1
+                                    vm.metadata["_ep_fail_count"] = _fc
+                                    if _fc >= 2:
+                                        logger.warning(
+                                            f"[MonitorLoop] v236.3: VM '{vm_name}' health "
+                                            f"endpoint failed {_fc} consecutive checks — "
+                                            f"demoting from routing layer"
+                                        )
+                                        await self._ensure_endpoint_depropagated(vm)
+                                        vm.metadata["_ep_fail_count"] = 0
+                                    else:
+                                        logger.info(
+                                            f"[MonitorLoop] VM '{vm_name}' health endpoint "
+                                            f"failed (attempt {_fc}/2, will demote on next)"
+                                        )
+                                else:
+                                    # Reset failure counter on success
+                                    vm.metadata["_ep_fail_count"] = 0
+                            except Exception as hc_err:
+                                logger.debug(
+                                    f"[MonitorLoop] Health verification deferred "
+                                    f"for '{vm_name}': {hc_err}"
                                 )
 
                     except Exception as metrics_error:
