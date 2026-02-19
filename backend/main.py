@@ -316,13 +316,48 @@ if sys.platform == "darwin":  # macOS specific
     # Note: OBJC_DISABLE_INITIALIZE_FORK_SAFETY already set in fork-safety section above
     os.environ["PYTHONUNBUFFERED"] = "1"
 
-# Enable HuggingFace/Transformers offline mode to prevent network timeouts
-# Models are already cached locally - no need for network requests
-# This prevents "ReadTimeoutError" when checking for model updates
-os.environ["HF_HUB_OFFLINE"] = "1"
-os.environ["TRANSFORMERS_OFFLINE"] = "1"
-os.environ["HF_DATASETS_OFFLINE"] = "1"
-os.environ["HF_HUB_DISABLE_TELEMETRY"] = "1"  # Also disable telemetry
+# HuggingFace/Transformers offline mode — intelligent cache-aware activation.
+# Only enable offline mode when ALL required model caches are verified present.
+# This prevents first-run failures while still avoiding network timeouts once cached.
+# Override with JARVIS_HF_OFFLINE=1 (force offline) or JARVIS_HF_OFFLINE=0 (force online).
+os.environ["HF_HUB_DISABLE_TELEMETRY"] = "1"  # Always disable telemetry
+
+def _check_hf_models_cached() -> bool:
+    """Check if essential HuggingFace Hub models are cached locally."""
+    hf_hub_cache = os.path.join(
+        os.getenv("HF_HOME", os.path.join(os.path.expanduser("~"), ".cache", "huggingface")),
+        "hub",
+    )
+    # Models that must be cached for offline mode to work
+    required_caches = [
+        "models--speechbrain--spkrec-ecapa-voxceleb",   # Speaker verification
+        "models--Systran--faster-whisper-base",          # StreamingSTT
+    ]
+    for model_dir in required_caches:
+        snapshot_dir = os.path.join(hf_hub_cache, model_dir, "snapshots")
+        if not os.path.isdir(snapshot_dir):
+            return False
+        # Verify at least one snapshot revision exists with files
+        revisions = os.listdir(snapshot_dir)
+        if not any(os.listdir(os.path.join(snapshot_dir, r)) for r in revisions if os.path.isdir(os.path.join(snapshot_dir, r))):
+            return False
+    return True
+
+_hf_offline_override = os.getenv("JARVIS_HF_OFFLINE", "").lower()
+if _hf_offline_override == "1":
+    os.environ["HF_HUB_OFFLINE"] = "1"
+    os.environ["TRANSFORMERS_OFFLINE"] = "1"
+    os.environ["HF_DATASETS_OFFLINE"] = "1"
+elif _hf_offline_override == "0":
+    os.environ.pop("HF_HUB_OFFLINE", None)
+    os.environ.pop("TRANSFORMERS_OFFLINE", None)
+    os.environ.pop("HF_DATASETS_OFFLINE", None)
+elif _check_hf_models_cached():
+    # All models cached — safe to go offline (prevents ReadTimeoutError)
+    os.environ["HF_HUB_OFFLINE"] = "1"
+    os.environ["TRANSFORMERS_OFFLINE"] = "1"
+    os.environ["HF_DATASETS_OFFLINE"] = "1"
+# else: leave online — models need to be downloaded first
 
 # =============================================================================
 # CRITICAL: Python 3.9 Compatibility Patch - MUST be before ANY package imports

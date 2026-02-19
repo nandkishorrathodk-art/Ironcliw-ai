@@ -1198,16 +1198,34 @@ class ParallelInitializer:
             # 4. VAD (Voice Activity Detection) Model
             # =========================================================
             def load_vad_model():
-                """Heavy loader for VAD model."""
+                """Heavy loader for VAD model.
+
+                Uses torch.hub with cache-aware source selection:
+                - source='local' when cache exists (no network, no timeout)
+                - source='github' as fallback for first download
+                """
                 try:
                     import torch
+                    # Check if Silero VAD is already cached locally
+                    hub_dir = torch.hub.get_dir()
+                    local_cache = os.path.join(hub_dir, "snakers4_silero-vad_master")
+                    if os.path.isdir(local_cache):
+                        # Cache exists — load directly, no network validation
+                        source = "local"
+                        repo = local_cache
+                    else:
+                        # First download — must fetch from GitHub
+                        source = "github"
+                        repo = "snakers4/silero-vad"
+
                     vad_model, utils = torch.hub.load(
-                        repo_or_dir='snakers4/silero-vad',
+                        repo_or_dir=repo,
                         model='silero_vad',
                         force_reload=False,
                         onnx=True,  # Use ONNX for speed
+                        source=source,
                     )
-                    logger.info("   [BACKGROUND] VAD (Silero) loaded")
+                    logger.info(f"   [BACKGROUND] VAD (Silero) loaded (source={source})")
                     return {"model": vad_model, "utils": utils}
                 except Exception as e:
                     logger.warning(f"   [BACKGROUND] VAD load failed: {e}")

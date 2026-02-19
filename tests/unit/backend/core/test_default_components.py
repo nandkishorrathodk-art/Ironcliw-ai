@@ -66,6 +66,7 @@ class TestCrossRepoComponents:
         assert jarvis_prime.criticality == Criticality.DEGRADED_OK
         assert jarvis_prime.process_type == ProcessType.SUBPROCESS
         # repo_path should be a resolved absolute path, NOT a shell-syntax literal
+        assert jarvis_prime.repo_path is not None, "repo_path must be set for subprocess components"
         assert "${" not in jarvis_prime.repo_path, "repo_path must not contain unresolved shell variables"
         assert Path(jarvis_prime.repo_path).is_absolute(), "repo_path must be an absolute path"
         assert "local-inference" in jarvis_prime.provides_capabilities
@@ -73,6 +74,7 @@ class TestCrossRepoComponents:
         assert "embeddings" in jarvis_prime.provides_capabilities
         assert jarvis_prime.health_check_type == HealthCheckType.HTTP
         # health_endpoint should contain a resolved port number
+        assert jarvis_prime.health_endpoint is not None, "health_endpoint must be set for HTTP health checks"
         assert "${" not in jarvis_prime.health_endpoint, "health_endpoint must not contain unresolved shell variables"
         assert jarvis_prime.health_endpoint.startswith("http://localhost:")
         assert jarvis_prime.health_endpoint.endswith("/health")
@@ -103,6 +105,7 @@ class TestCrossRepoComponents:
         assert reactor_core.criticality == Criticality.OPTIONAL
         assert reactor_core.process_type == ProcessType.SUBPROCESS
         # repo_path should be a resolved absolute path, NOT a shell-syntax literal
+        assert reactor_core.repo_path is not None, "repo_path must be set for subprocess components"
         assert "${" not in reactor_core.repo_path, "repo_path must not contain unresolved shell variables"
         assert Path(reactor_core.repo_path).is_absolute(), "repo_path must be an absolute path"
         assert "training" in reactor_core.provides_capabilities
@@ -111,6 +114,7 @@ class TestCrossRepoComponents:
         assert "jarvis-prime" in reactor_core.dependencies
         assert reactor_core.health_check_type == HealthCheckType.HTTP
         # health_endpoint should contain a resolved port number
+        assert reactor_core.health_endpoint is not None, "health_endpoint must be set for HTTP health checks"
         assert "${" not in reactor_core.health_endpoint, "health_endpoint must not contain unresolved shell variables"
         assert reactor_core.health_endpoint.startswith("http://localhost:")
         assert reactor_core.health_endpoint.endswith("/health")

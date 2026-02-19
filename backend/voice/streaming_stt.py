@@ -93,18 +93,46 @@ class StreamingSTTEngine:
         self._loop = asyncio.get_running_loop()
         self._transcript_queue = asyncio.Queue()
 
-        # Load faster-whisper model
+        # Load faster-whisper model — cache-aware offline resilience
         try:
             from faster_whisper import WhisperModel
 
             def _load():
                 compute_type = os.getenv("JARVIS_STT_COMPUTE_TYPE", "int8")
                 device = os.getenv("JARVIS_STT_DEVICE", "cpu")
-                return WhisperModel(
-                    _MODEL_SIZE,
-                    device=device,
-                    compute_type=compute_type,
-                )
+                try:
+                    return WhisperModel(
+                        _MODEL_SIZE,
+                        device=device,
+                        compute_type=compute_type,
+                    )
+                except Exception as first_err:
+                    # If offline mode blocked a cache-miss download, temporarily
+                    # allow online access for this one-time model download.
+                    if "outgoing traffic has been disabled" in str(first_err) \
+                            or "HF_HUB_OFFLINE" in str(first_err):
+                        logger.info(
+                            f"[StreamingSTT] Model not cached, temporarily "
+                            f"enabling online download for {_MODEL_SIZE}..."
+                        )
+                        prev_offline = os.environ.get("HF_HUB_OFFLINE")
+                        os.environ.pop("HF_HUB_OFFLINE", None)
+                        os.environ.pop("TRANSFORMERS_OFFLINE", None)
+                        try:
+                            model = WhisperModel(
+                                _MODEL_SIZE,
+                                device=device,
+                                compute_type=compute_type,
+                            )
+                            logger.info("[StreamingSTT] Model downloaded and cached")
+                            return model
+                        finally:
+                            # Restore offline mode after download
+                            if prev_offline is not None:
+                                os.environ["HF_HUB_OFFLINE"] = prev_offline
+                                os.environ["TRANSFORMERS_OFFLINE"] = prev_offline
+                    else:
+                        raise
 
             self._model = await self._loop.run_in_executor(None, _load)
             logger.info(
