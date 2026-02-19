@@ -858,33 +858,60 @@ class UnifiedVoiceOrchestrator:
 
     async def _execute_say(self, text: str) -> None:
         """
-        Execute TTS via AudioBus when enabled, else Trinity/direct fallback.
+        Execute TTS — routes through AudioBus when device is held, else legacy.
 
-        v4.0 Changes:
-        - AudioBus path: routes through UnifiedTTSEngine → AudioBus (single speaker)
-        - Feature flag: JARVIS_AUDIO_BUS_ENABLED controls routing
-        - Falls back to Trinity → direct 'say' when AudioBus unavailable
+        v236.6: Probe FullDuplexDevice state ONCE at entry. When the device is
+        held, ALL legacy paths (Trinity MacOSSayEngine/Pyttsx3/EdgeTTS, raw
+        ``say``) open conflicting audio streams → static/mixing artifacts.
+        Only AudioBus TTS (``say -o file`` → PlaybackRingBuffer → single stream)
+        is safe when the device is held.
 
-        v3.1 Changes (preserved as fallback):
-        - Trinity Voice Coordinator with multi-engine fallback
-        - Engine health tracking
+        Decision tree:
+          bus.is_running=True  → AudioBus TTS only; skip speech on failure
+          bus.is_running=False → AudioBus TTS → Trinity → direct say (all safe)
         """
-        # --- AudioBus path (Layer 1) ---
+        # v236.6: Probe actual bus state ONCE — gates all downstream paths.
+        # This replaces the per-path checks from v236.5.
+        _device_held = False
+        try:
+            from backend.audio.audio_bus import AudioBus as _ABProbe
+            _ab = _ABProbe.get_instance_safe()
+            _device_held = _ab is not None and _ab.is_running
+        except ImportError:
+            pass
+
+        # --- AudioBus TTS path (safe whether device held or free) ---
+        # Uses `say -o tempfile` (no audio device access) then routes audio
+        # through FullDuplexDevice's PlaybackRingBuffer (single stream).
         audio_bus_enabled = os.getenv(
             "JARVIS_AUDIO_BUS_ENABLED", "false"
         ).lower() in ("true", "1", "yes")
 
-        if audio_bus_enabled:
+        if audio_bus_enabled or _device_held:
             try:
                 from backend.voice.engines.unified_tts_engine import get_tts_engine
                 tts = await get_tts_engine()
                 await tts.speak(text, play_audio=True)
-                logger.debug("[UnifiedVoice v4.0] Spoke via AudioBus/UnifiedTTSEngine")
+                logger.debug("[UnifiedVoice v236.6] Spoke via AudioBus/UnifiedTTSEngine")
                 return
             except Exception as e:
-                logger.warning(f"[UnifiedVoice v4.0] AudioBus path failed: {e}, falling back")
+                if _device_held:
+                    # Device is held — Trinity engines (raw say/pyttsx3/afplay)
+                    # would all open conflicting audio streams → static.
+                    # Better to skip speech than produce artifacts.
+                    logger.warning(
+                        f"[UnifiedVoice v236.6] AudioBus TTS failed while device "
+                        f"held: {e} — skipping speech to prevent static"
+                    )
+                    return
+                logger.warning(
+                    f"[UnifiedVoice v236.6] AudioBus path failed: {e}, "
+                    f"falling back to legacy (device free)"
+                )
 
-        # --- Trinity path (v3.1 fallback) ---
+        # === Below this point: device is NOT held — all paths are safe ===
+
+        # --- Trinity path (v3.1 fallback, device-free only) ---
         trinity_success = False
 
         try:
@@ -943,27 +970,8 @@ class UnifiedVoiceOrchestrator:
         except Exception as e:
             logger.debug(f"[UnifiedVoice v3.1] Trinity: {e}, using direct fallback")
 
-        # --- Direct 'say' fallback ---
-        # v236.5: Only skip raw `say` when FullDuplexDevice ACTUALLY holds the
-        # device (bus.is_running == True).  If AudioBus failed to start or
-        # hasn't started yet, the device is free and raw `say` works fine.
+        # --- Direct 'say' fallback (device-free only) ---
         if not trinity_success:
-            _device_held = False
-            try:
-                from backend.audio.audio_bus import AudioBus as _ABFallback
-                _fb_bus = _ABFallback.get_instance_safe()
-                if _fb_bus is not None and _fb_bus.is_running:
-                    _device_held = True
-            except ImportError:
-                pass
-
-            if _device_held:
-                logger.warning(
-                    "[UnifiedVoice v236.5] Skipping raw 'say' fallback — "
-                    "FullDuplexDevice holds audio device"
-                )
-                return
-
             try:
                 cmd = [
                     "say",

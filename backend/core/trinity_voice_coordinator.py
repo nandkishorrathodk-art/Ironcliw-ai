@@ -947,6 +947,21 @@ class TTSEngine(ABC):
         }
 
 
+def _is_audio_device_held() -> bool:
+    """v236.6: Check if FullDuplexDevice currently holds the audio device.
+
+    When True, opening ANY additional audio stream (say, pyttsx3, afplay,
+    sd.InputStream, sd.OutputStream) causes device contention → static.
+    Only AudioBus-routed playback (via PlaybackRingBuffer) is safe.
+    """
+    try:
+        from backend.audio.audio_bus import AudioBus
+        bus = AudioBus.get_instance_safe()
+        return bus is not None and bus.is_running
+    except ImportError:
+        return False
+
+
 class MacOSSayEngine(TTSEngine):
     """macOS 'say' command engine (fastest, most reliable on macOS)."""
 
@@ -1101,7 +1116,17 @@ class MacOSSayEngine(TTSEngine):
         personality: VoicePersonality,
         timeout: float
     ) -> bool:
-        """Speak using macOS say command."""
+        """Speak using macOS say command.
+
+        v236.6: Defense-in-depth — refuse to open raw `say` subprocess when
+        FullDuplexDevice holds the audio device.  The primary guard is in
+        UnifiedVoiceOrchestrator._execute_say(), but this prevents contention
+        if the engine is called from any other path.
+        """
+        if _is_audio_device_held():
+            self.last_error = "FullDuplexDevice holds audio device"
+            return False
+
         try:
             async with self._lock:
                 resolved_voice = await self._resolve_voice_name(personality.voice_name)
@@ -1205,11 +1230,18 @@ class Pyttsx3Engine(TTSEngine):
         personality: VoicePersonality,
         timeout: float
     ) -> bool:
-        """Speak using pyttsx3 or AudioBus/UnifiedTTSEngine when enabled."""
-        # AudioBus path — bypass pyttsx3 entirely
-        _bus_enabled = os.getenv(
+        """Speak using pyttsx3 or AudioBus/UnifiedTTSEngine when enabled.
+
+        v236.6: Probe actual bus state instead of env var. When device is held,
+        pyttsx3.runAndWait() opens a conflicting audio stream → static.
+        """
+        # v236.6: Check actual bus state (not env var) — AudioBus TTS uses
+        # `say -o file` (no device) then routes through PlaybackRingBuffer.
+        _device_held = _is_audio_device_held()
+        _bus_enabled = _device_held or os.getenv(
             "JARVIS_AUDIO_BUS_ENABLED", "false"
         ).lower() in ("true", "1", "yes")
+
         if _bus_enabled:
             try:
                 tts = await self._get_tts()
@@ -1217,7 +1249,10 @@ class Pyttsx3Engine(TTSEngine):
                     await tts.speak(message, play_audio=True)
                     return True
             except Exception:
-                pass  # Fall through to pyttsx3
+                if _device_held:
+                    # Cannot fall through to pyttsx3 — would cause static
+                    self.last_error = "FullDuplexDevice holds audio device"
+                    return False
 
         if not self._engine:
             return False
@@ -1341,8 +1376,16 @@ class EdgeTTSEngine(TTSEngine):
         personality: VoicePersonality,
         timeout: float
     ) -> bool:
-        """Speak using Edge TTS."""
+        """Speak using Edge TTS.
+
+        v236.6: Defense-in-depth — refuse to launch `afplay`/`mpg123` when
+        FullDuplexDevice holds the audio device.
+        """
         if not EDGE_TTS_AVAILABLE:
+            return False
+
+        if _is_audio_device_held():
+            self.last_error = "FullDuplexDevice holds audio device"
             return False
 
         try:
