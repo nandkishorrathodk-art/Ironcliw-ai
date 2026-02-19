@@ -60410,6 +60410,10 @@ class JarvisSystemKernel:
         except Exception:
             pass
 
+        # v236.0: Clear vision server endpoint vars (symmetric with _propagate)
+        os.environ.pop("JARVIS_PRIME_VISION_URL", None)
+        os.environ.pop("JARVIS_PRIME_VISION_PORT", None)
+
         # v235.1: Clear Trinity GCP ready event so orchestrator knows to re-provision
         try:
             from backend.supervisor.cross_repo_startup_orchestrator import (

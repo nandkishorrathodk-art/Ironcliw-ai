@@ -658,6 +658,21 @@ class PrimeClient:
             metadata={"inference_time": data.get("x_inference_time_seconds")},
         )
 
+    async def _reset_vision_session(self) -> None:
+        """v236.0: Reset vision session when host changes (Issue D fix).
+
+        Called by update_endpoint() and demote_to_fallback() so the vision
+        session reconnects to the new IP instead of using a stale connection.
+        """
+        if self._vision_session and not self._vision_session.closed:
+            try:
+                await self._vision_session.close()
+            except Exception:
+                pass
+        self._vision_session = None
+        self._vision_healthy = False
+        self._vision_last_check = 0.0
+
     async def close(self) -> None:
         """Close the client and cleanup resources."""
         if self._health_check_task:
@@ -717,6 +732,9 @@ class PrimeClient:
                 pass
             self._pool = PrimeConnectionPool(self._config)
             await self._pool.initialize()
+
+            # v236.0: Reset vision session so it reconnects to new host (Issue D fix)
+            await self._reset_vision_session()
 
             # Reset circuit breaker for fresh start
             self._circuit = PrimeCircuitBreaker(self._config)
@@ -782,6 +800,9 @@ class PrimeClient:
             await self._pool.initialize()
             self._circuit = PrimeCircuitBreaker(self._config)
             await self._check_health()
+
+            # v236.0: Reset vision session — local Prime has no vision server (Issue D fix)
+            await self._reset_vision_session()
 
             self._endpoint_source = "local"
             self._fallback_host = None

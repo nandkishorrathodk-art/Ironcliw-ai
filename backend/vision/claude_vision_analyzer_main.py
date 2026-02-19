@@ -4693,16 +4693,19 @@ class ClaudeVisionAnalyzer:
     async def _call_jprime_vision(self, image_base64: str, prompt: str) -> str:
         """Call J-Prime LLaVA vision server (port 8001). CPU inference ~30-60s.
 
-        F3: Applies same prompt enhancement as Claude path.
+        Note: Does NOT re-apply _enhance_prompt_for_ui_elements() because:
+        1. The dispatch point already passes enhanced_prompt (prompt + region_info)
+        2. LLaVA's 4096-token context can't afford the ~500-token enhancement prefix
+           that _call_claude_api adds (Claude has 200K context, LLaVA doesn't)
+        3. The enhancement framework is tuned for Claude's reasoning — LLaVA performs
+           better with direct, concise prompts
         """
         client = await self._get_prime_vision_client()
         if client is None:
             raise RuntimeError("J-Prime vision client not available")
-        # F3: Apply the same prompt enhancement that _call_claude_api uses
-        enhanced = self._enhance_prompt_for_ui_elements(prompt)
         response = await client.send_vision_request(
             image_base64=image_base64,
-            prompt=enhanced,
+            prompt=prompt,
             max_tokens=self.config.max_tokens,
             temperature=0.1,
             timeout=self.config.jprime_vision_timeout,
