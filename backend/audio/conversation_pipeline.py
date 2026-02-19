@@ -237,6 +237,7 @@ class ConversationPipeline:
             self._session = None
 
         self._running = False
+        self._resume_event.set()  # Unblock if paused, loop will see _running=False
         if self._run_task is not None:
             self._run_task.cancel()
             try:
@@ -264,6 +265,8 @@ class ConversationPipeline:
         The loop continues from where it left off with the full
         session transcript intact.
         """
+        if not self.is_paused:
+            return
         self._resume_event.set()
         logger.info("[ConvPipeline] Resumed")
 
