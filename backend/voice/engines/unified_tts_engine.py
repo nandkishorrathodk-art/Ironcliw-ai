@@ -604,7 +604,24 @@ class UnifiedTTSEngine:
             raise
 
     async def _play_audio(self, audio_data: bytes, sample_rate: int):
-        """Play audio — routes through AudioBus when enabled, else sounddevice."""
+        """Play audio — routes through AudioBus when active, else sounddevice.
+
+        v236.4: Dynamic AudioBus detection at call time.
+        Root cause fix: The init-time ``_audio_bus_enabled`` flag can be stale
+        (TTS singleton created before env var is set). More critically, when
+        FullDuplexDevice holds the audio device in duplex mode, opening a second
+        OutputStream via ``sd.play()`` triggers PortAudio error -9986
+        (``paInternalError`` / Audio Unit: Invalid Property Value).
+
+        Strategy:
+        1. Probe AudioBus at call time (not init-time flag) — if running, it
+           owns the audio device exclusively.
+        2. Route through ``bus.play_audio()`` which writes into the existing
+           FullDuplexDevice output stream (zero device contention).
+        3. If AudioBus IS running but ``play_audio()`` fails → RAISE (do NOT
+           fall through to ``sd.play()`` which will always fail with -9986).
+        4. If AudioBus is NOT running → ``sd.play()`` is safe (no contention).
+        """
         try:
             # Load audio from bytes
             audio_buffer = io.BytesIO(audio_data)
@@ -612,18 +629,54 @@ class UnifiedTTSEngine:
             if sr != sample_rate:
                 sample_rate = sr
 
-            if self._audio_bus_enabled:
-                try:
-                    from backend.audio.audio_bus import get_audio_bus_safe
-                    bus = get_audio_bus_safe()
-                    if bus is not None and bus.is_running:
-                        audio_np = np.asarray(data, dtype=np.float32)
-                        await bus.play_audio(audio_np, sample_rate)
-                        return
-                except ImportError:
-                    pass  # AudioBus not available, fall through
+            # Dynamic AudioBus detection — check BOTH env var (re-read at call
+            # time) AND actual singleton state.  Either condition means the
+            # AudioBus/FullDuplexDevice may hold the audio device.
+            _ab_flag = os.getenv(
+                "JARVIS_AUDIO_BUS_ENABLED", "false"
+            ).lower() in ("true", "1", "yes")
 
-            # Legacy path: direct sounddevice playback
+            _bus = None
+            _bus_running = False
+            try:
+                from backend.audio.audio_bus import AudioBus as _ABClass
+                _bus = _ABClass.get_instance_safe()
+                _bus_running = _bus is not None and _bus.is_running
+            except ImportError:
+                pass  # AudioBus module not installed
+
+            if _ab_flag or _bus_running:
+                # AudioBus path — FullDuplexDevice owns the audio device.
+                # sd.play() MUST NOT be used (would trigger -9986).
+                if _bus is not None and _bus_running:
+                    audio_np = np.asarray(data, dtype=np.float32)
+                    await _bus.play_audio(audio_np, sample_rate)
+                    return
+                else:
+                    # Flag says enabled but bus not running yet — cannot use
+                    # sd.play() either (FullDuplexDevice may be initialising).
+                    # Wait briefly for bus to become available.
+                    for _retry in range(5):
+                        await asyncio.sleep(0.5)
+                        try:
+                            from backend.audio.audio_bus import AudioBus as _ABRetry
+                            _bus = _ABRetry.get_instance_safe()
+                            if _bus is not None and _bus.is_running:
+                                audio_np = np.asarray(data, dtype=np.float32)
+                                await _bus.play_audio(audio_np, sample_rate)
+                                return
+                        except ImportError:
+                            break
+                    # Exhausted retries — AudioBus enabled but unavailable.
+                    # Do NOT fall through to sd.play().
+                    logger.warning(
+                        "[TTS] AudioBus enabled but not running after 2.5s — "
+                        "skipping playback to avoid PortAudio -9986"
+                    )
+                    return
+
+            # Legacy path: direct sounddevice playback.
+            # Safe ONLY when AudioBus/FullDuplexDevice is NOT active.
             loop = asyncio.get_event_loop()
             await loop.run_in_executor(
                 None, lambda: sd.play(data, sample_rate) or sd.wait()
@@ -655,13 +708,23 @@ class UnifiedTTSEngine:
         if not self.active_engine:
             await self.initialize()
 
-        if not self._audio_bus_enabled:
+        # v236.4: Dynamic AudioBus detection (same pattern as _play_audio).
+        _ab_flag = os.getenv(
+            "JARVIS_AUDIO_BUS_ENABLED", "false"
+        ).lower() in ("true", "1", "yes")
+        _bus = None
+        try:
+            from backend.audio.audio_bus import AudioBus as _ABStream
+            _bus = _ABStream.get_instance_safe()
+        except ImportError:
+            pass
+
+        if not (_ab_flag or (_bus is not None and _bus.is_running)):
             await self.speak(text, play_audio=play_audio, source=source)
             return
 
         try:
-            from backend.audio.audio_bus import get_audio_bus_safe
-            bus = get_audio_bus_safe()
+            bus = _bus
             if bus is None or not bus.is_running:
                 await self.speak(text, play_audio=play_audio, source=source)
                 return

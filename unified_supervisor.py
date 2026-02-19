@@ -13063,17 +13063,36 @@ class AsyncVoiceNarrator:
                     )
 
             if not _used_audiobus_tts:
-                # Fallback: raw `say` subprocess (AudioBus disabled or TTS failed)
-                self._process = await asyncio.create_subprocess_exec(
-                    "say",
-                    "-v", self.voice,
-                    "-r", str(self.rate),
-                    text,
-                    stdout=asyncio.subprocess.DEVNULL,
-                    stderr=asyncio.subprocess.DEVNULL,
-                )
+                # v236.4: Guard — when AudioBus/FullDuplexDevice holds the audio
+                # device, raw `say` opens a second output stream → static.
+                # Only fall back to raw `say` when AudioBus is genuinely inactive.
+                _skip_raw_say = False
+                if _ab_active:
+                    try:
+                        from backend.audio.audio_bus import AudioBus as _ABGuard
+                        _guard_bus = _ABGuard.get_instance_safe()
+                        if _guard_bus is not None and _guard_bus.is_running:
+                            _unified_logger.warning(
+                                "[Voice v236.4] AudioBus TTS failed but device is "
+                                "held — skipping raw say to avoid static"
+                            )
+                            _skip_raw_say = True
+                    except ImportError:
+                        pass
 
-                await asyncio.wait_for(self._process.communicate(), timeout=30.0)
+                if not _skip_raw_say:
+                    # Fallback: raw `say` subprocess (AudioBus not active)
+                    self._process = await asyncio.create_subprocess_exec(
+                        "say",
+                        "-v", self.voice,
+                        "-r", str(self.rate),
+                        text,
+                        stdout=asyncio.subprocess.DEVNULL,
+                        stderr=asyncio.subprocess.DEVNULL,
+                    )
+                    await asyncio.wait_for(
+                        self._process.communicate(), timeout=30.0
+                    )
 
             self._messages_spoken += 1
 
