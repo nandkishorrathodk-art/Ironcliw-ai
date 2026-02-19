@@ -26,6 +26,7 @@ import asyncio
 import json
 import logging
 import os
+import random
 import sys
 import time
 import yaml
@@ -2877,7 +2878,8 @@ class GCPVMManager:
                         else:
                             logger.warning(f"[v155.0] Firewall check error: {e}")
                         if attempt < max_retries - 1:
-                            await asyncio.sleep(2 ** attempt)  # Exponential backoff
+                            _delay = (2 ** attempt) * (1.0 + random.uniform(-0.25, 0.25))
+                            await asyncio.sleep(_delay)
                             continue
                         return False
                     # 404 = rule doesn't exist, we'll create it
@@ -2960,7 +2962,8 @@ class GCPVMManager:
                     logger.warning(f"[v155.0] ⚠️ Firewall rule creation error (attempt {attempt + 1}): {e}")
 
                 if attempt < max_retries - 1:
-                    await asyncio.sleep(2 ** attempt)
+                    _delay = (2 ** attempt) * (1.0 + random.uniform(-0.25, 0.25))
+                    await asyncio.sleep(_delay)
 
         # All retries exhausted
         logger.error(

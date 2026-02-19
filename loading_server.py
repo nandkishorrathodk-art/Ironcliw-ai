@@ -142,7 +142,7 @@ import aiohttp
 from aiohttp import web, WSCloseCode
 
 from backend.core.secure_logging import sanitize_for_log
-from backend.core.async_safety import create_safe_task
+from backend.core.async_safety import create_safe_task, shielded_wait_for
 
 # Configure logging with structured format
 logging.basicConfig(
@@ -3302,7 +3302,7 @@ class ConnectionManager:
             for ws in self._connections:
                 try:
                     if not ws.closed:
-                        await asyncio.wait_for(ws.send_str(message), timeout=5.0)
+                        await shielded_wait_for(ws.send_str(message), timeout=5.0, name="ws_broadcast")
                         metrics.websocket_messages_sent += 1
                         successful += 1
                         # v87.0: Update last seen timestamp on successful send
@@ -3472,9 +3472,10 @@ class ConnectionManager:
                 try:
                     # Create close task with timeout
                     close_tasks.append(
-                        asyncio.wait_for(
+                        shielded_wait_for(
                             ws.close(code=WSCloseCode.GOING_AWAY, message=b'Server shutting down'),
-                            timeout=2.0
+                            timeout=2.0,
+                            name="ws_close",
                         )
                     )
                 except Exception:
