@@ -365,8 +365,11 @@ class VMInstance:
 
         self.cost_efficiency_score = min(100.0, self.cost_efficiency_score)
 
-        # Confidence = how much real data backs this score
-        # 70% based on data signals, 30% based on time running
+        # Confidence = how sure are we about the efficiency score?
+        # Key insight (v236.2): Absence of data IS data after sufficient time.
+        # A VM with 0 usage, 0% CPU, 0 memory after extended uptime is
+        # CONFIDENTLY UNUSED — not "uncertain."  Previous formula capped at
+        # 0.30 for zero-signal VMs, preventing auto-termination forever.
         data_signals = 0
         if self.component_usage_count > 0:
             data_signals += 1
@@ -374,8 +377,20 @@ class VMInstance:
             data_signals += 1
         if self.memory_used_gb > 0:
             data_signals += 1
+
         time_factor = min(1.0, uptime_minutes / ramp_minutes)  # 0→1 over ramp period
-        self.score_confidence = min(1.0, (data_signals / 3.0) * 0.7 + time_factor * 0.3)
+
+        if data_signals > 0:
+            # Active VM: confidence based on data richness + time
+            self.score_confidence = min(
+                1.0, (data_signals / 3.0) * 0.7 + time_factor * 0.3
+            )
+        else:
+            # Zero-signal VM: confidence GROWS with time because "no activity
+            # after extended uptime" is a strong signal, not weak.
+            # Reaches 0.60 at 2x ramp (~60 min), 0.80 at 4x ramp (~120 min).
+            extended_factor = min(1.0, uptime_minutes / (ramp_minutes * 4.0))
+            self.score_confidence = min(1.0, time_factor * 0.3 + extended_factor * 0.5)
 
     def record_activity(self):
         """Record that VM components were used"""
@@ -3518,6 +3533,56 @@ class GCPVMManager:
             except Exception as e:
                 logger.warning(f"[VMSync] v235.3: VM discovery scan failed: {e}")
 
+        # ═══════════════════════════════════════════════════════════════════
+        # v236.2: Post-adoption Spot VM de-duplication
+        # ═══════════════════════════════════════════════════════════════════
+        # After adopting all discovered VMs, enforce the singleton invariant:
+        # at most ONE Spot VM should exist. If multiple were adopted (e.g.,
+        # previous session crashed leaving 2 VMs running), keep the newest
+        # and schedule older ones for termination.
+        # ═══════════════════════════════════════════════════════════════════
+        try:
+            spot_vms = [
+                (name, vm_inst)
+                for name, vm_inst in self.managed_vms.items()
+                if vm_inst.state == VMState.RUNNING
+                and not name.startswith("jarvis-prime-node")
+                and vm_inst.metadata.get("vm_class") != "invincible"
+            ]
+            if len(spot_vms) > 1:
+                spot_vms.sort(key=lambda x: x[1].created_at)
+                keeper = spot_vms[-1]
+                terminated = []
+                for dup_name, dup_vm in spot_vms[:-1]:
+                    logger.warning(
+                        f"[VMSync] v236.2: Duplicate Spot VM '{dup_name}' "
+                        f"(age={((time.time() - dup_vm.created_at) / 3600):.1f}h) "
+                        f"— terminating (keeping newest '{keeper[0]}')"
+                    )
+                    try:
+                        await asyncio.to_thread(
+                            self.instances_client.delete,
+                            project=self.config.project_id,
+                            zone=self.config.zone,
+                            instance=dup_name,
+                        )
+                        async with self._vm_lock:
+                            if dup_name in self.managed_vms:
+                                del self.managed_vms[dup_name]
+                        terminated.append(dup_name)
+                    except Exception as del_err:
+                        logger.warning(
+                            f"[VMSync] v236.2: Failed to terminate duplicate "
+                            f"'{dup_name}': {del_err}"
+                        )
+                if terminated:
+                    logger.info(
+                        f"[VMSync] v236.2: Terminated {len(terminated)} duplicate "
+                        f"Spot VM(s): {terminated}"
+                    )
+        except Exception as dedup_err:
+            logger.debug(f"[VMSync] v236.2: Post-adoption dedup failed: {dedup_err}")
+
         # Summary logging
         parts = []
         if stale_vms:
@@ -3837,6 +3902,32 @@ class GCPVMManager:
                 trigger_reason="auto_offload",
             )
             
+            # v236.2: Post-creation singleton enforcement.
+            # If another Spot VM was created concurrently (e.g., by a parallel
+            # code path or a supervisor restart timing window), the newest one
+            # wins and older ones are terminated immediately.
+            if vm and vm.state == VMState.RUNNING:
+                try:
+                    async with self._vm_lock:
+                        spot_vms = [
+                            (n, v) for n, v in self.managed_vms.items()
+                            if v.state == VMState.RUNNING
+                            and not n.startswith("jarvis-prime-node")
+                            and v.metadata.get("vm_class") != "invincible"
+                            and n != vm.name  # Exclude the one we just created
+                        ]
+                    for dup_name, dup_vm in spot_vms:
+                        logger.warning(
+                            f"[v236.2] Post-creation dedup: terminating older "
+                            f"Spot VM '{dup_name}' (age={dup_vm.uptime_hours:.1f}h)"
+                        )
+                        await self.terminate_vm(
+                            dup_name,
+                            reason=f"Post-creation singleton (v236.2). New VM: {vm.name}",
+                        )
+                except Exception as pc_dedup_err:
+                    logger.debug(f"[v236.2] Post-creation dedup check failed: {pc_dedup_err}")
+
             # v213.0: Wait for IP assignment with retry loop
             # GCP can take a few seconds to assign the external IP after VM creation
             if vm and vm.state == VMState.RUNNING:
@@ -6253,6 +6344,45 @@ class GCPVMManager:
                 # Check if we should exit after sleep
                 if not self.is_monitoring:
                     break
+
+                # ═══════════════════════════════════════════════════════════════
+                # v236.2: Spot VM Singleton Enforcement (Duplicate Detection)
+                # ═══════════════════════════════════════════════════════════════
+                # Root cause: Multiple Spot VMs can coexist when created in
+                # separate supervisor cycles or timing windows. Keep the
+                # newest (most likely to have fresh startup script), terminate
+                # older duplicates immediately — don't wait for age/confidence
+                # gates that may never fire for zero-signal VMs.
+                # ═══════════════════════════════════════════════════════════════
+                try:
+                    async with self._vm_lock:
+                        spot_vms = [
+                            (name, vm_inst)
+                            for name, vm_inst in self.managed_vms.items()
+                            if vm_inst.state == VMState.RUNNING
+                            and not name.startswith("jarvis-prime-node")
+                            and vm_inst.metadata.get("vm_class") != "invincible"
+                        ]
+                    if len(spot_vms) > 1:
+                        # Sort by creation time — newest last
+                        spot_vms.sort(key=lambda x: x[1].created_at)
+                        keeper = spot_vms[-1]  # Keep the newest
+                        for dup_name, dup_vm in spot_vms[:-1]:
+                            logger.warning(
+                                f"🗑️ [v236.2] Duplicate Spot VM detected: "
+                                f"terminating '{dup_name}' "
+                                f"(age={dup_vm.uptime_hours:.1f}h, usage={dup_vm.component_usage_count}) "
+                                f"— keeping newest '{keeper[0]}'"
+                            )
+                            await self.terminate_vm(
+                                dup_name,
+                                reason=(
+                                    f"Duplicate Spot VM (v236.2 singleton enforcement). "
+                                    f"Keeping newer VM '{keeper[0]}'"
+                                ),
+                            )
+                except Exception as dedup_err:
+                    logger.debug(f"[v236.2] Spot VM dedup check failed: {dedup_err}")
 
                 for vm_name, vm in list(self.managed_vms.items()):
                     # === STEP 1: Always update cost (no GCP API needed) ===
