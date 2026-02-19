@@ -6360,6 +6360,8 @@ class SupervisorEventBus:
                 result = handler(event)
                 if asyncio.iscoroutine(result):
                     await asyncio.wait_for(result, timeout=2.0)
+            except asyncio.CancelledError:
+                raise
             except (asyncio.TimeoutError, Exception):
                 pass
 
@@ -7630,6 +7632,8 @@ class DockerDaemonManager(ResourceManagerBase):
             return False
         except asyncio.TimeoutError:
             return False
+        except asyncio.CancelledError:
+            raise
         except Exception:
             return False
 
@@ -7720,6 +7724,8 @@ class DockerDaemonManager(ResourceManagerBase):
                 return b'Docker Desktop.exe' in stdout
 
             return False
+        except asyncio.CancelledError:
+            raise
         except Exception:
             return False
 
@@ -7735,6 +7741,8 @@ class DockerDaemonManager(ResourceManagerBase):
             return proc.returncode == 0
         except asyncio.TimeoutError:
             return False
+        except asyncio.CancelledError:
+            raise
         except Exception:
             return False
 
@@ -7750,6 +7758,8 @@ class DockerDaemonManager(ResourceManagerBase):
             return proc.returncode == 0
         except asyncio.TimeoutError:
             return False
+        except asyncio.CancelledError:
+            raise
         except Exception:
             return False
 
@@ -7839,6 +7849,8 @@ class DockerDaemonManager(ResourceManagerBase):
                 return proc.returncode == 0
 
             return False
+        except asyncio.CancelledError:
+            raise
         except Exception as e:
             self._logger.error(f"Error launching Docker: {e}")
             return False
@@ -7907,6 +7919,8 @@ class DockerDaemonManager(ResourceManagerBase):
                 return proc.returncode == 0
 
             return False
+        except asyncio.CancelledError:
+            raise
         except Exception as e:
             self._logger.error(f"Error stopping Docker: {e}")
             return False
@@ -9518,6 +9532,8 @@ class DynamicPortManager(ResourceManagerBase):
 
         except self._psutil.NoSuchProcess:
             return True  # Process already gone
+        except asyncio.CancelledError:
+            raise
         except Exception as e:
             self._logger.error(f"Error killing process {pid}: {e}")
             return False
@@ -10543,6 +10559,8 @@ class SystemServiceRegistry:
                     "[SSR] Activated %s in %.0fms (+%.1fMB)",
                     desc.name, desc.init_time_ms, desc.memory_delta_mb,
                 )
+            except asyncio.CancelledError:
+                raise
             except Exception as e:
                 desc.error = str(e)
                 desc.healthy = False
@@ -10565,6 +10583,8 @@ class SystemServiceRegistry:
                 desc.healthy = healthy
                 desc.error = None if healthy else msg
                 results[name] = (healthy, msg)
+            except asyncio.CancelledError:
+                raise
             except Exception as e:
                 desc.healthy = False
                 desc.error = str(e)
@@ -10582,6 +10602,8 @@ class SystemServiceRegistry:
                     await asyncio.wait_for(
                         desc.service.cleanup(), timeout=timeout_per,
                     )
+                except asyncio.CancelledError:
+                    raise
                 except Exception as e:
                     logger.warning("[SSR] Cleanup error for %s: %s", name, e)
                 desc.initialized = False
@@ -11316,6 +11338,8 @@ class DynamicRAMMonitor:
                 "is_under_pressure": is_under_pressure or pressure_level >= 2,
             }
 
+        except asyncio.CancelledError:
+            raise
         except Exception as e:
             _unified_logger.debug(f"Failed to get macOS memory pressure: {e}")
             return {
@@ -60502,6 +60526,8 @@ class JarvisSystemKernel:
             if self._n_optic_nerve and getattr(self._n_optic_nerve, '_is_running', False):
                 await asyncio.wait_for(self._n_optic_nerve.stop(), timeout=5.0)
                 self.logger.info("[Kernel] N-Optic Nerve stopped")
+        except asyncio.CancelledError:
+            raise
         except (asyncio.TimeoutError, Exception) as e:
             self.logger.debug(f"[Kernel] N-Optic stop error: {e}")
 
@@ -60509,6 +60535,8 @@ class JarvisSystemKernel:
             if self._ghost_hands_orchestrator and getattr(self._ghost_hands_orchestrator, '_is_running', False):
                 await asyncio.wait_for(self._ghost_hands_orchestrator.stop(), timeout=5.0)
                 self.logger.info("[Kernel] Ghost Hands Orchestrator stopped")
+        except asyncio.CancelledError:
+            raise
         except (asyncio.TimeoutError, Exception) as e:
             self.logger.debug(f"[Kernel] Ghost Hands stop error: {e}")
 
@@ -61944,6 +61972,8 @@ class JarvisSystemKernel:
                         )
                         if _gcp_cred_ok:
                             return True
+                    except asyncio.CancelledError:
+                        raise
                     except (asyncio.TimeoutError, Exception):
                         pass
 
@@ -63427,6 +63457,8 @@ class JarvisSystemKernel:
                             self._narrator.narrate_phase_start("trinity"),
                             timeout=_narrator_timeout,
                         )
+                    except asyncio.CancelledError:
+                        raise
                     except (asyncio.TimeoutError, Exception):
                         pass  # Non-fatal — TTS timeout doesn't block startup
                 # v223.0: Rich startup narrator for Trinity phase
@@ -63436,6 +63468,8 @@ class JarvisSystemKernel:
                             self._startup_narrator.announce_trinity_init(),
                             timeout=_narrator_timeout,
                         )
+                    except asyncio.CancelledError:
+                        raise
                     except (asyncio.TimeoutError, Exception):
                         pass
                 # v223.0: Emit orchestrator event for Trinity startup
@@ -67919,6 +67953,8 @@ class JarvisSystemKernel:
                             self._screen_analyzer.stop_monitoring(),
                             timeout=5.0
                         )
+                    except asyncio.CancelledError:
+                        raise
                     except (asyncio.TimeoutError, Exception) as stop_err:
                         self.logger.debug(f"[ScreenObservation] Cleanup after failure: {stop_err}")
                 self._screen_analyzer = None
