@@ -8748,6 +8748,47 @@ class SmartWatchdog:
 
 
 # =============================================================================
+# v239.0: SYSTEM SERVICE ABC — Forward declaration for CostTracker et al.
+# (Full SystemServiceRegistry remains at its original location below.)
+# =============================================================================
+
+class SystemService(ABC):
+    """Uniform lifecycle contract for all system services.
+
+    Every service activated via the SystemServiceRegistry MUST implement
+    these three methods.  Classes that already have start()/stop() or
+    initialize()/cleanup() should add thin wrappers that delegate.
+    """
+
+    @abstractmethod
+    async def initialize(self) -> None:
+        """Set up resources.  Called once during activation."""
+
+    @abstractmethod
+    async def health_check(self) -> Tuple[bool, str]:
+        """Return (healthy, message).  Called periodically by the registry."""
+
+    @abstractmethod
+    async def cleanup(self) -> None:
+        """Release resources.  Called during shutdown."""
+
+
+@dataclass
+class ServiceDescriptor:
+    """Metadata for a single service managed by the registry."""
+    name: str
+    service: 'SystemService'
+    phase: int                                        # startup phase (1-9)
+    depends_on: List[str] = field(default_factory=list)
+    enabled_env: Optional[str] = None                 # per-service kill-switch
+    initialized: bool = False
+    healthy: bool = True
+    error: Optional[str] = None
+    init_time_ms: float = 0.0
+    memory_delta_mb: float = 0.0
+
+
+# =============================================================================
 # COST TRACKER
 # =============================================================================
 class CostTracker(ResourceManagerBase, SystemService):
@@ -10589,43 +10630,9 @@ class ResourceManagerRegistry:
 
 # =============================================================================
 # v239.0: SYSTEM SERVICE REGISTRY — Uniform lifecycle for dead-code activation
+# NOTE: SystemService ABC + ServiceDescriptor are forward-declared before
+#       CostTracker (line ~8750) to resolve class ordering dependency.
 # =============================================================================
-
-class SystemService(ABC):
-    """Uniform lifecycle contract for all system services.
-
-    Every service activated via the SystemServiceRegistry MUST implement
-    these three methods.  Classes that already have start()/stop() or
-    initialize()/cleanup() should add thin wrappers that delegate.
-    """
-
-    @abstractmethod
-    async def initialize(self) -> None:
-        """Set up resources.  Called once during activation."""
-
-    @abstractmethod
-    async def health_check(self) -> Tuple[bool, str]:
-        """Return (healthy, message).  Called periodically by the registry."""
-
-    @abstractmethod
-    async def cleanup(self) -> None:
-        """Release resources.  Called during shutdown."""
-
-
-@dataclass
-class ServiceDescriptor:
-    """Metadata for a single service managed by the registry."""
-    name: str
-    service: SystemService
-    phase: int                                        # startup phase (1-9)
-    depends_on: List[str] = field(default_factory=list)
-    enabled_env: Optional[str] = None                 # per-service kill-switch
-    initialized: bool = False
-    healthy: bool = True
-    error: Optional[str] = None
-    init_time_ms: float = 0.0
-    memory_delta_mb: float = 0.0
-
 
 class SystemServiceRegistry:
     """Manages lifecycle of system services in dependency-ordered waves.
