@@ -1200,6 +1200,8 @@ try:
         # v210.0: Safe fire-and-forget task wrapper
         create_safe_task,
         wait_for_fire_and_forget_tasks,
+        # v261.0: Shield critical wait_for() calls from task cancellation
+        shielded_wait_for,
     )
     ASYNC_SAFETY_AVAILABLE = True
 except ImportError:
@@ -1214,6 +1216,20 @@ except ImportError:
     async_with_retry = None
     async_with_backpressure = None
     async_safe_operation = None
+
+    # v261.0: Fallback for shielded_wait_for when async_safety not available
+    async def shielded_wait_for(coro_or_task, timeout: float, *, name: str = "shielded_op"):
+        """Fallback shielded_wait_for — uses asyncio.shield to prevent task cancellation on timeout."""
+        if asyncio.iscoroutine(coro_or_task):
+            task = asyncio.ensure_future(coro_or_task)
+        else:
+            task = coro_or_task
+        try:
+            return await asyncio.wait_for(asyncio.shield(task), timeout=timeout)
+        except asyncio.TimeoutError:
+            logging.warning("[AsyncSafety-Fallback] shielded_wait_for '%s' timed out after %.1fs (task continues)", name, timeout)
+            raise
+
     # v210.0: Fallback for create_safe_task with proper exception handling
     # Global set to hold references to fire-and-forget tasks (prevent GC)
     _fallback_fire_and_forget_tasks: set = set()
@@ -6359,7 +6375,8 @@ class SupervisorEventBus:
             try:
                 result = handler(event)
                 if asyncio.iscoroutine(result):
-                    await asyncio.wait_for(result, timeout=2.0)
+                    # v261.0: Shield event handlers — slow handler shouldn't lose its work
+                    await shielded_wait_for(result, timeout=2.0, name="event_handler")
             except asyncio.CancelledError:
                 raise
             except (asyncio.TimeoutError, Exception):
@@ -7631,8 +7648,20 @@ class DockerDaemonManager(ResourceManagerBase):
         except FileNotFoundError:
             return False
         except asyncio.TimeoutError:
+            # v261.0: Kill orphaned subprocess on timeout
+            try:
+                proc.kill()
+                await proc.wait()
+            except Exception:
+                pass
             return False
         except asyncio.CancelledError:
+            # v261.0: Kill orphaned subprocess on cancellation
+            try:
+                proc.kill()
+                await proc.wait()
+            except Exception:
+                pass
             raise
         except Exception:
             return False
@@ -7693,6 +7722,7 @@ class DockerDaemonManager(ResourceManagerBase):
 
     async def _check_process_running(self) -> bool:
         """Check if Docker process is running."""
+        proc = None
         try:
             if self.platform == 'darwin':
                 # Check for Docker Desktop on macOS
@@ -7724,7 +7754,23 @@ class DockerDaemonManager(ResourceManagerBase):
                 return b'Docker Desktop.exe' in stdout
 
             return False
+        except asyncio.TimeoutError:
+            # v261.0: Kill orphaned subprocess on timeout
+            if proc is not None:
+                try:
+                    proc.kill()
+                    await proc.wait()
+                except Exception:
+                    pass
+            return False
         except asyncio.CancelledError:
+            # v261.0: Kill orphaned subprocess on cancellation
+            if proc is not None:
+                try:
+                    proc.kill()
+                    await proc.wait()
+                except Exception:
+                    pass
             raise
         except Exception:
             return False
@@ -7740,8 +7786,20 @@ class DockerDaemonManager(ResourceManagerBase):
             await asyncio.wait_for(proc.communicate(), timeout=self.health_check_timeout)
             return proc.returncode == 0
         except asyncio.TimeoutError:
+            # v261.0: Kill orphaned subprocess on timeout
+            try:
+                proc.kill()
+                await proc.wait()
+            except Exception:
+                pass
             return False
         except asyncio.CancelledError:
+            # v261.0: Kill orphaned subprocess on cancellation
+            try:
+                proc.kill()
+                await proc.wait()
+            except Exception:
+                pass
             raise
         except Exception:
             return False
@@ -7757,8 +7815,20 @@ class DockerDaemonManager(ResourceManagerBase):
             await asyncio.wait_for(proc.communicate(), timeout=self.health_check_timeout)
             return proc.returncode == 0
         except asyncio.TimeoutError:
+            # v261.0: Kill orphaned subprocess on timeout
+            try:
+                proc.kill()
+                await proc.wait()
+            except Exception:
+                pass
             return False
         except asyncio.CancelledError:
+            # v261.0: Kill orphaned subprocess on cancellation
+            try:
+                proc.kill()
+                await proc.wait()
+            except Exception:
+                pass
             raise
         except Exception:
             return False
@@ -7814,6 +7884,7 @@ class DockerDaemonManager(ResourceManagerBase):
 
     async def _launch_docker_app(self) -> bool:
         """Launch Docker Desktop application."""
+        proc = None
         try:
             if self.platform == 'darwin':
                 app_path = self.docker_app_path_macos
@@ -7849,7 +7920,23 @@ class DockerDaemonManager(ResourceManagerBase):
                 return proc.returncode == 0
 
             return False
+        except asyncio.TimeoutError:
+            # v261.0: Kill orphaned subprocess on timeout
+            if proc is not None:
+                try:
+                    proc.kill()
+                    await proc.wait()
+                except Exception:
+                    pass
+            return False
         except asyncio.CancelledError:
+            # v261.0: Kill orphaned subprocess on cancellation
+            if proc is not None:
+                try:
+                    proc.kill()
+                    await proc.wait()
+                except Exception:
+                    pass
             raise
         except Exception as e:
             self._logger.error(f"Error launching Docker: {e}")
@@ -7898,7 +7985,7 @@ class DockerDaemonManager(ResourceManagerBase):
     async def stop_daemon(self) -> bool:
         """Stop Docker daemon/Desktop gracefully."""
         self._logger.info("Stopping Docker daemon...")
-
+        proc = None
         try:
             if self.platform == 'darwin':
                 proc = await asyncio.create_subprocess_exec(
@@ -7919,7 +8006,23 @@ class DockerDaemonManager(ResourceManagerBase):
                 return proc.returncode == 0
 
             return False
+        except asyncio.TimeoutError:
+            # v261.0: Kill orphaned subprocess on timeout
+            if proc is not None:
+                try:
+                    proc.kill()
+                    await proc.wait()
+                except Exception:
+                    pass
+            return False
         except asyncio.CancelledError:
+            # v261.0: Kill orphaned subprocess on cancellation
+            if proc is not None:
+                try:
+                    proc.kill()
+                    await proc.wait()
+                except Exception:
+                    pass
             raise
         except Exception as e:
             self._logger.error(f"Error stopping Docker: {e}")
@@ -8690,19 +8793,23 @@ class CostTracker(ResourceManagerBase, SystemService):
         self._cost_events: List[Dict[str, Any]] = []
         self._alert_callbacks: List[Callable[[Dict[str, Any]], Awaitable[None]]] = []
 
-    async def initialize(self) -> bool:
-        """Initialize cost tracker and load persisted state."""
+    async def initialize(self) -> None:  # type: ignore[override]
+        """Initialize cost tracker and load persisted state.
+
+        Overrides ResourceManagerBase.initialize() -> bool to conform to
+        the SystemService ABC contract (-> None).  The bool return is not
+        consumed by the service registry.
+        """
         if not self.enabled:
             self._logger.info("Cost tracking disabled")
             self._initialized = True
-            return True
+            return
 
         # Load persisted state
         await self._load_state()
 
         self._initialized = True
         self._logger.success("Cost tracker initialized")
-        return True
 
     async def health_check(self) -> Tuple[bool, str]:
         """Check cost tracker health and budget status."""
@@ -10614,18 +10721,34 @@ class SystemServiceRegistry:
     def _topological_sort(
         self, services: List[ServiceDescriptor],
     ) -> List[ServiceDescriptor]:
-        """Kahn-style topological sort respecting depends_on within a phase."""
+        """Three-color DFS topological sort with cycle detection.
+
+        Sorts services within a single phase by their ``depends_on``
+        edges.  Cross-phase dependencies are NOT represented in
+        ``name_map`` (they were already initialized in an earlier
+        phase), so they are intentionally skipped during traversal.
+
+        Raises ``ValueError`` if a circular dependency is detected
+        among within-phase services.
+        """
         name_map = {s.name: s for s in services}
-        visited: set = set()
+        permanent: set = set()   # black — fully processed
+        temporary: set = set()   # gray  — currently on the stack
         result: List[ServiceDescriptor] = []
 
         def _visit(s: ServiceDescriptor) -> None:
-            if s.name in visited:
+            if s.name in permanent:
                 return
-            visited.add(s.name)
+            if s.name in temporary:
+                raise ValueError(
+                    f"[SSR] Circular dependency detected: {s.name}"
+                )
+            temporary.add(s.name)
             for dep in s.depends_on:
-                if dep in name_map:
+                if dep in name_map:          # within-phase only
                     _visit(name_map[dep])
+            temporary.remove(s.name)
+            permanent.add(s.name)
             result.append(s)
 
         for s in services:
@@ -51608,11 +51731,10 @@ class HealthAggregator(SystemService):
         self._last_result: Optional[HealthCheckResult] = None
         self._alert_callbacks: List[Callable[[str, SubsystemHealth], Awaitable[None]]] = []
 
-    async def initialize(self) -> bool:
-        """Initialize the health aggregator."""
+    async def initialize(self) -> None:
+        """Initialize the health aggregator and start periodic check loop."""
         self._running = True
         self._check_task = create_safe_task(self._check_loop())
-        return True
 
     async def cleanup(self) -> None:
         """Cleanup health aggregator resources."""
@@ -51624,9 +51746,19 @@ class HealthAggregator(SystemService):
             except asyncio.CancelledError:
                 pass
 
-    # ── SystemService ABC ──────────────────────────────────────────
     async def health_check(self) -> Tuple[bool, str]:
-        return (True, f"HealthAggregator: {len(self._subsystems)} subsystems monitored")
+        """Return aggregated health across all registered subsystems."""
+        if self._last_result:
+            _total = len(self._last_result.subsystem_health)
+            _healthy = sum(
+                1 for s in self._last_result.subsystem_health.values()
+                if s.healthy
+            )
+            return (
+                self._last_result.overall_healthy,
+                f"HealthAggregator: {_healthy}/{_total} subsystems healthy",
+            )
+        return (True, f"HealthAggregator: {len(self._subsystems)} subsystems registered (no check yet)")
 
     def register_subsystem(
         self,
@@ -60522,9 +60654,10 @@ class JarvisSystemKernel:
         self._perm_status_cls = None
 
         # v250.0: Visual Pipeline teardown (N-Optic → Ghost Hands order)
+        # v261.0: Use shielded_wait_for — stop() must complete even if parent times out
         try:
             if self._n_optic_nerve and getattr(self._n_optic_nerve, '_is_running', False):
-                await asyncio.wait_for(self._n_optic_nerve.stop(), timeout=5.0)
+                await shielded_wait_for(self._n_optic_nerve.stop(), timeout=5.0, name="n_optic_stop")
                 self.logger.info("[Kernel] N-Optic Nerve stopped")
         except asyncio.CancelledError:
             raise
@@ -60533,7 +60666,7 @@ class JarvisSystemKernel:
 
         try:
             if self._ghost_hands_orchestrator and getattr(self._ghost_hands_orchestrator, '_is_running', False):
-                await asyncio.wait_for(self._ghost_hands_orchestrator.stop(), timeout=5.0)
+                await shielded_wait_for(self._ghost_hands_orchestrator.stop(), timeout=5.0, name="ghost_hands_stop")
                 self.logger.info("[Kernel] Ghost Hands Orchestrator stopped")
         except asyncio.CancelledError:
             raise
@@ -63453,9 +63586,11 @@ class JarvisSystemKernel:
                 _narrator_timeout = _get_env_float("JARVIS_TRINITY_NARRATOR_TIMEOUT", 10.0)
                 if self._narrator:
                     try:
-                        await asyncio.wait_for(
+                        # v261.0: Shield narration — TTS should finish even if we move on
+                        await shielded_wait_for(
                             self._narrator.narrate_phase_start("trinity"),
                             timeout=_narrator_timeout,
+                            name="narrator_trinity_start",
                         )
                     except asyncio.CancelledError:
                         raise
@@ -63464,9 +63599,11 @@ class JarvisSystemKernel:
                 # v223.0: Rich startup narrator for Trinity phase
                 if self._startup_narrator:
                     try:
-                        await asyncio.wait_for(
+                        # v261.0: Shield narration — TTS should finish even if we move on
+                        await shielded_wait_for(
                             self._startup_narrator.announce_trinity_init(),
                             timeout=_narrator_timeout,
+                            name="startup_narrator_trinity",
                         )
                     except asyncio.CancelledError:
                         raise
