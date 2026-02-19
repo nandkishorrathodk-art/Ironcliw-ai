@@ -63791,6 +63791,12 @@ class JarvisSystemKernel:
                     suggestion="Increase JARVIS_TWO_TIER_INIT_TIMEOUT or check component health"
                 )
 
+            # v242.0: Wire VBIA adapter into ModeDispatcher for biometric auth
+            # and continuous speaker verification (Gaps 1, 4).
+            if self._mode_dispatcher is not None and self._vbia_adapter is not None:
+                self._mode_dispatcher.set_vbia_adapter(self._vbia_adapter)
+                self.logger.debug("[Phase4] VBIA adapter → ModeDispatcher")
+
             # v256.1: Reset two_tier stall timer by advancing progress (R3-#3).
             # Don't transition to trinity yet — that happens at line ~61905.
             if self._startup_watchdog:
@@ -71773,6 +71779,15 @@ class JarvisSystemKernel:
                         self._voice_unlock_service = _voice_svc
                         _voice_unlock_status["initialized"] = True
                         self.logger.info("[Zone6/VoiceUnlock] ✓ Core service ready")
+
+                        # v242.0: Wire into ModeDispatcher for biometric mode
+                        if self._mode_dispatcher is not None:
+                            self._mode_dispatcher.set_voice_unlock_service(
+                                self._voice_unlock_service
+                            )
+                            self.logger.debug(
+                                "[Zone6/VoiceUnlock] Wired into ModeDispatcher"
+                            )
                     else:
                         self.logger.warning("[Zone6/VoiceUnlock] ⚠ Core service unavailable")
 
