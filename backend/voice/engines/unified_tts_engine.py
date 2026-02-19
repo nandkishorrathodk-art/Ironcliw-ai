@@ -451,6 +451,12 @@ class UnifiedTTSEngine:
             name="unified-tts", engine=preferred_engine, language="en", speed=1.0
         )
 
+        # v236.5: Ensure voice is set from env var when not explicitly provided.
+        # Without this, MacOSTTSEngine omits `-v` flag from `say` command and
+        # macOS uses system default voice (e.g. Samantha) instead of Daniel.
+        if not self.config.voice:
+            self.config.voice = os.getenv("JARVIS_VOICE_NAME", "Daniel")
+
         # TTS engines
         self.engines: Dict[TTSEngine, Optional[BaseTTSEngine]] = {
             TTSEngine.PIPER: None,
