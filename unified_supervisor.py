@@ -13035,64 +13035,53 @@ class AsyncVoiceNarrator:
             self._last_spoken_text = text
             self._last_spoken_time = now
 
-            # v236.4: AudioBus-aware TTS routing to prevent device contention.
-            # Root cause: When AudioBus is active, FullDuplexDevice holds the audio
-            # device in duplex mode at 48kHz.  A raw `say` subprocess opens a SECOND
-            # output stream → CoreAudio mixing conflicts → audible static.
-            # Fix: Route through UnifiedTTSEngine which uses `say -o <file>` (writes
-            # to disk, no playback device) then plays audio through AudioBus —
-            # single output stream, zero device contention.
-            _ab_active = os.getenv(
-                "JARVIS_AUDIO_BUS_ENABLED", "false"
-            ).lower() in ("true", "1", "yes")
+            # v236.5: AudioBus-aware TTS routing to prevent device contention.
+            #
+            # When FullDuplexDevice HOLDS the audio device (bus.is_running),
+            # raw `say` opens a second CoreAudio stream → static / mixing.
+            # Route through UnifiedTTSEngine which uses `say -o <file>`
+            # (writes to disk) then plays via AudioBus (single stream).
+            #
+            # When AudioBus is NOT running (failed / not started), the device
+            # is free — raw `say` is safe and preferred (no TTS init overhead).
+            _device_held = False
+            try:
+                from backend.audio.audio_bus import AudioBus as _ABProbe
+                _probe_bus = _ABProbe.get_instance_safe()
+                _device_held = _probe_bus is not None and _probe_bus.is_running
+            except ImportError:
+                pass
 
             _used_audiobus_tts = False
-            if _ab_active:
+            if _device_held:
+                # FullDuplexDevice holds audio device — must route via TTS engine
                 try:
                     from backend.voice.engines.unified_tts_engine import get_tts_engine
                     tts = await asyncio.wait_for(get_tts_engine(), timeout=5.0)
                     await asyncio.wait_for(tts.speak(text, play_audio=True), timeout=30.0)
                     _used_audiobus_tts = True
-                    _unified_logger.debug(
-                        f"[Voice v236.4] Spoke via AudioBus TTS (no device contention)"
-                    )
                 except Exception as tts_err:
-                    _unified_logger.debug(
-                        f"[Voice v236.4] AudioBus TTS failed: {tts_err}, "
-                        f"falling back to raw say"
+                    # Device is held but TTS failed — skip speech entirely
+                    # rather than cause static with raw `say`.
+                    _unified_logger.warning(
+                        f"[Voice v236.5] AudioBus TTS failed while device held: "
+                        f"{tts_err} — skipping speech"
                     )
+                    _used_audiobus_tts = True  # prevent raw say fallback
 
             if not _used_audiobus_tts:
-                # v236.4: Guard — when AudioBus/FullDuplexDevice holds the audio
-                # device, raw `say` opens a second output stream → static.
-                # Only fall back to raw `say` when AudioBus is genuinely inactive.
-                _skip_raw_say = False
-                if _ab_active:
-                    try:
-                        from backend.audio.audio_bus import AudioBus as _ABGuard
-                        _guard_bus = _ABGuard.get_instance_safe()
-                        if _guard_bus is not None and _guard_bus.is_running:
-                            _unified_logger.warning(
-                                "[Voice v236.4] AudioBus TTS failed but device is "
-                                "held — skipping raw say to avoid static"
-                            )
-                            _skip_raw_say = True
-                    except ImportError:
-                        pass
-
-                if not _skip_raw_say:
-                    # Fallback: raw `say` subprocess (AudioBus not active)
-                    self._process = await asyncio.create_subprocess_exec(
-                        "say",
-                        "-v", self.voice,
-                        "-r", str(self.rate),
-                        text,
-                        stdout=asyncio.subprocess.DEVNULL,
-                        stderr=asyncio.subprocess.DEVNULL,
-                    )
-                    await asyncio.wait_for(
-                        self._process.communicate(), timeout=30.0
-                    )
+                # Device is free — raw `say` is safe (no contention)
+                self._process = await asyncio.create_subprocess_exec(
+                    "say",
+                    "-v", self.voice,
+                    "-r", str(self.rate),
+                    text,
+                    stdout=asyncio.subprocess.DEVNULL,
+                    stderr=asyncio.subprocess.DEVNULL,
+                )
+                await asyncio.wait_for(
+                    self._process.communicate(), timeout=30.0
+                )
 
             self._messages_spoken += 1
 

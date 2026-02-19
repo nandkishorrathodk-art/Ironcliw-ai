@@ -944,25 +944,25 @@ class UnifiedVoiceOrchestrator:
             logger.debug(f"[UnifiedVoice v3.1] Trinity: {e}, using direct fallback")
 
         # --- Direct 'say' fallback ---
-        # v236.4: When AudioBus/FullDuplexDevice is active, raw `say` opens a
-        # second CoreAudio output stream → mixing artifacts (static).  Skip it.
+        # v236.5: Only skip raw `say` when FullDuplexDevice ACTUALLY holds the
+        # device (bus.is_running == True).  If AudioBus failed to start or
+        # hasn't started yet, the device is free and raw `say` works fine.
         if not trinity_success:
-            _ab_active_for_fallback = os.getenv(
-                "JARVIS_AUDIO_BUS_ENABLED", "false"
-            ).lower() in ("true", "1", "yes")
-            if _ab_active_for_fallback:
-                # Also probe actual singleton to catch runtime-started AudioBus
-                try:
-                    from backend.audio.audio_bus import AudioBus as _ABFallback
-                    _fb_bus = _ABFallback.get_instance_safe()
-                    if _fb_bus is not None and _fb_bus.is_running:
-                        logger.warning(
-                            "[UnifiedVoice v236.4] Skipping raw 'say' fallback — "
-                            "AudioBus holds audio device (would cause static)"
-                        )
-                        return
-                except ImportError:
-                    pass
+            _device_held = False
+            try:
+                from backend.audio.audio_bus import AudioBus as _ABFallback
+                _fb_bus = _ABFallback.get_instance_safe()
+                if _fb_bus is not None and _fb_bus.is_running:
+                    _device_held = True
+            except ImportError:
+                pass
+
+            if _device_held:
+                logger.warning(
+                    "[UnifiedVoice v236.5] Skipping raw 'say' fallback — "
+                    "FullDuplexDevice holds audio device"
+                )
+                return
 
             try:
                 cmd = [
