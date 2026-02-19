@@ -592,6 +592,12 @@ class ModeDispatcher:
         """Start continuous speaker verification during conversation mode."""
         if self._audio_bus is None:
             return
+        if self._voice_unlock_service is None:
+            logger.debug(
+                "[ModeDispatcher] Speaker verification skipped: "
+                "no voice unlock service"
+            )
+            return
 
         import numpy as np
 
@@ -678,6 +684,9 @@ class ModeDispatcher:
                 # Run verification
                 try:
                     confidence = await self._verify_speaker_identity(audio_data)
+                    if confidence == 0.0:
+                        # No service processed the audio — skip this cycle
+                        continue
                     self._last_speaker_confidence = confidence
 
                     # Feed result to VBIA adapter cache (only if above threshold;
