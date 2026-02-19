@@ -206,6 +206,8 @@ class ConversationPipeline:
         self._session: Optional[ConversationSession] = None
         self._sentence_splitter = SentenceSplitter()
         self._running = False
+        self._resume_event = asyncio.Event()
+        self._resume_event.set()  # Start unpaused
         self._run_task: Optional[asyncio.Task] = None
 
         # System prompt for conversation mode
@@ -242,6 +244,33 @@ class ConversationPipeline:
             except asyncio.CancelledError:
                 pass
             self._run_task = None
+
+    async def pause(self) -> None:
+        """
+        Pause the conversation loop without ending the session.
+
+        The loop stops listening/responding but the session transcript
+        is preserved. Call resume() to continue.
+        """
+        if not self._running:
+            return
+        self._resume_event.clear()
+        logger.info("[ConvPipeline] Paused")
+
+    async def resume(self) -> None:
+        """
+        Resume a paused conversation loop.
+
+        The loop continues from where it left off with the full
+        session transcript intact.
+        """
+        self._resume_event.set()
+        logger.info("[ConvPipeline] Resumed")
+
+    @property
+    def is_paused(self) -> bool:
+        """Whether the conversation loop is currently paused."""
+        return self._running and not self._resume_event.is_set()
 
     async def run(self) -> None:
         """
@@ -285,6 +314,13 @@ class ConversationPipeline:
     async def _conversation_loop(self) -> None:
         """Core conversation loop: listen → understand → respond → repeat."""
         while self._running and self._session is not None:
+            # Wait if paused (biometric auth in progress)
+            if not self._resume_event.is_set():
+                logger.debug("[ConvPipeline] Waiting for resume...")
+                await self._resume_event.wait()
+                if not self._running:
+                    break
+
             if self._session.is_expired:
                 logger.info("[ConvPipeline] Session expired")
                 break
@@ -633,6 +669,7 @@ class ConversationPipeline:
         """Get pipeline status."""
         return {
             "running": self._running,
+            "paused": self.is_paused,
             "session": self._session.to_dict() if self._session else None,
             "stt_running": (
                 self._streaming_stt.is_running
