@@ -74,7 +74,8 @@ logger = logging.getLogger("TrinityProbe")
 
 # Default ports for Trinity components
 JARVIS_API_PORT = int(os.getenv("JARVIS_API_PORT", "8001"))
-JARVIS_PRIME_PORT = int(os.getenv("JARVIS_PRIME_PORT", "8000"))
+# v238.0: Default 8001 to match trinity_config.py v192.2 alignment
+JARVIS_PRIME_PORT = int(os.getenv("JARVIS_PRIME_PORT", "8001"))
 REACTOR_CORE_PORT = int(os.getenv("REACTOR_CORE_PORT", "8090"))
 
 

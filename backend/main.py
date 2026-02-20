@@ -6028,10 +6028,173 @@ async def health_readiness_tier():
     }
 
 
+# ---------------------------------------------------------------------------
+# Bridge Health Collection (v238.0)
+# ---------------------------------------------------------------------------
+async def _collect_bridge_health() -> dict:
+    """Collect health status from all bridge modules (v238.0).
+
+    Each bridge is checked independently — a single bridge failure
+    never blocks reporting of other bridges.
+    """
+    bridges: dict = {}
+
+    # SupervisorProgressBridge
+    try:
+        from core.supervisor.supervisor_integration import get_progress_bridge
+        pb = get_progress_bridge()
+        if pb is None:
+            bridges["supervisor_progress"] = {
+                "status": "unavailable", "initialized": False,
+            }
+        else:
+            _init = getattr(pb, "_initialized", False)
+            bridges["supervisor_progress"] = {
+                "status": "healthy" if _init else "degraded",
+                "initialized": _init,
+            }
+    except ImportError:
+        bridges["supervisor_progress"] = {
+            "status": "unavailable", "initialized": False,
+        }
+    except Exception as e:
+        bridges["supervisor_progress"] = {
+            "status": "error", "initialized": False, "error": str(e)[:100],
+        }
+
+    # ContextIntegrationBridge
+    try:
+        from core.context.context_integration_bridge import get_integration_bridge
+        cib = get_integration_bridge()
+        bridges["context_integration"] = {
+            "status": "healthy" if cib is not None else "unavailable",
+            "initialized": cib is not None,
+        }
+    except ImportError:
+        bridges["context_integration"] = {
+            "status": "unavailable", "initialized": False,
+        }
+    except Exception as e:
+        bridges["context_integration"] = {
+            "status": "error", "initialized": False, "error": str(e)[:100],
+        }
+
+    # ConfigurationSupervisorIntegration
+    try:
+        from core.configuration.supervisor_integration import get_config_bridge
+        cb = get_config_bridge()
+        if cb is None:
+            bridges["configuration"] = {
+                "status": "unavailable", "initialized": False,
+            }
+        else:
+            _h = getattr(cb, "is_healthy", None)
+            healthy = _h() if callable(_h) else (_h if isinstance(_h, bool) else True)
+            bridges["configuration"] = {
+                "status": "healthy" if healthy else "degraded",
+                "initialized": True,
+            }
+    except ImportError:
+        bridges["configuration"] = {
+            "status": "unavailable", "initialized": False,
+        }
+    except Exception as e:
+        bridges["configuration"] = {
+            "status": "error", "initialized": False, "error": str(e)[:100],
+        }
+
+    # SecuritySupervisorIntegration
+    try:
+        from core.security.supervisor_integration import get_security_bridge
+        sb = get_security_bridge()
+        if sb is None:
+            bridges["security"] = {
+                "status": "unavailable", "initialized": False,
+            }
+        else:
+            _h = getattr(sb, "is_healthy", None)
+            healthy = _h() if callable(_h) else (_h if isinstance(_h, bool) else True)
+            bridges["security"] = {
+                "status": "healthy" if healthy else "degraded",
+                "initialized": True,
+            }
+    except ImportError:
+        bridges["security"] = {
+            "status": "unavailable", "initialized": False,
+        }
+    except Exception as e:
+        bridges["security"] = {
+            "status": "error", "initialized": False, "error": str(e)[:100],
+        }
+
+    # ResourceManagementSupervisorIntegration
+    try:
+        from core.resource_management.supervisor_integration import get_resource_bridge
+        rb = get_resource_bridge()
+        if rb is None:
+            bridges["resource_management"] = {
+                "status": "unavailable", "initialized": False,
+            }
+        else:
+            _h = getattr(rb, "is_healthy", None)
+            healthy = _h() if callable(_h) else (_h if isinstance(_h, bool) else True)
+            bridges["resource_management"] = {
+                "status": "healthy" if healthy else "degraded",
+                "initialized": True,
+            }
+    except ImportError:
+        bridges["resource_management"] = {
+            "status": "unavailable", "initialized": False,
+        }
+    except Exception as e:
+        bridges["resource_management"] = {
+            "status": "error", "initialized": False, "error": str(e)[:100],
+        }
+
+    # TrinityBridgeAdapter
+    try:
+        from system.trinity_bridge_adapter import get_trinity_bridge
+        tb = get_trinity_bridge()
+        if tb is None:
+            bridges["trinity_bridge"] = {"status": "unavailable", "initialized": False}
+        else:
+            _h = getattr(tb, "is_healthy", None)
+            is_h = _h() if callable(_h) else (_h if isinstance(_h, bool) else False)
+            bridges["trinity_bridge"] = {
+                "status": "healthy" if is_h else "degraded",
+                "initialized": True,
+            }
+    except ImportError:
+        bridges["trinity_bridge"] = {"status": "unavailable", "initialized": False}
+    except Exception as e:
+        bridges["trinity_bridge"] = {
+            "status": "error", "initialized": False, "error": str(e)[:100],
+        }
+
+    # Compute overall status
+    statuses = [b["status"] for b in bridges.values()]
+    if not statuses:
+        overall = "unavailable"
+    elif all(s == "healthy" for s in statuses):
+        overall = "healthy"
+    elif all(s in ("unavailable", "error") for s in statuses):
+        overall = "unavailable"
+    elif any(s in ("degraded", "error") for s in statuses):
+        overall = "degraded"
+    else:
+        overall = "healthy"
+
+    return {
+        "overall": overall,
+        "bridges": bridges,
+    }
+
+
 # Full Health check endpoint (comprehensive but slower)
 @app.api_route("/health", methods=["GET", "HEAD"])
 async def health_check():
     """Quick health check endpoint"""
+    bridge_health = await _collect_bridge_health()
     vision_details = {}
     ml_audio_details = {}
     vision_status = {}
@@ -6151,7 +6314,7 @@ async def health_check():
         coding_council_details = {"enabled": False, "error": str(e)}
 
     return {
-        "status": "healthy",
+        "status": "degraded" if bridge_health["overall"] == "degraded" else "healthy",
         "mode": "optimized" if OPTIMIZE_STARTUP else "legacy",
         "parallel_imports": PARALLEL_IMPORTS,
         "lazy_models": LAZY_LOAD_MODELS,
@@ -6164,7 +6327,18 @@ async def health_check():
         "voice_unlock": voice_unlock_details,
         "component_manager": component_manager_details,
         "coding_council": coding_council_details,
+        "bridge_health": bridge_health,
     }
+
+
+@app.api_route("/health/bridges", methods=["GET", "HEAD"])
+async def health_bridges():
+    """Detailed bridge health status (v238.0).
+
+    Returns granular health for all bridge modules that connect
+    JARVIS subsystems. Used by supervisor for degradation detection.
+    """
+    return await _collect_bridge_health()
 
 
 # ============================================================================

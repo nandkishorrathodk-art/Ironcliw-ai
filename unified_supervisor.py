@@ -2692,8 +2692,11 @@ class SystemKernelConfig:
     prime_cloud_run_url: Optional[str] = field(default_factory=lambda: os.environ.get("JARVIS_PRIME_CLOUD_RUN_URL"))
     prime_enabled: bool = field(default_factory=lambda: _get_env_bool("JARVIS_PRIME_ENABLED", True))
     reactor_enabled: bool = field(default_factory=lambda: _get_env_bool("REACTOR_CORE_ENABLED", True))
-    prime_api_port: int = field(default_factory=lambda: _get_env_int("JARVIS_PRIME_API_PORT", 8011))
-    reactor_api_port: int = field(default_factory=lambda: _get_env_int("REACTOR_CORE_API_PORT", 8012))
+    # v238.0: Rewired to use SAME env vars as Trinity launcher.
+    # Previously defaulted to 8011/8012 (ghost ports never actually used by Trinity).
+    # Now reads TRINITY_JPRIME_PORT / TRINITY_REACTOR_PORT with correct defaults.
+    prime_api_port: int = field(default_factory=lambda: _get_env_int("TRINITY_JPRIME_PORT", _get_env_int("JARVIS_PRIME_PORT", 8001)))
+    reactor_api_port: int = field(default_factory=lambda: _get_env_int("TRINITY_REACTOR_PORT", _get_env_int("REACTOR_CORE_API_PORT", 8090)))
 
     # ═══════════════════════════════════════════════════════════════════════════
     # DOCKER
@@ -2722,7 +2725,7 @@ class SystemKernelConfig:
     # v210.0: Added default names for auto-creation - no manual setup required
     invincible_node_static_ip_name: str = field(default_factory=lambda: os.environ.get("GCP_VM_STATIC_IP_NAME", "jarvis-prime-ip"))
     invincible_node_instance_name: str = field(default_factory=lambda: os.environ.get("GCP_VM_INSTANCE_NAME", "jarvis-prime-node"))
-    invincible_node_port: int = field(default_factory=lambda: _get_env_int("JARVIS_PRIME_PORT", 8000))
+    invincible_node_port: int = field(default_factory=lambda: _get_env_int("JARVIS_PRIME_PORT", 8001))
     invincible_node_health_timeout: float = field(default_factory=lambda: _get_env_float("GCP_STATIC_VM_HEALTH_TIMEOUT", 300.0))
 
     # ═══════════════════════════════════════════════════════════════════════════
@@ -5111,7 +5114,7 @@ class LiveProgressDashboard:
             },
             "jarvis-prime": {
                 "status": "pending",
-                "port": int(os.getenv("TRINITY_JPRIME_PORT", "8000")),
+                "port": int(os.getenv("TRINITY_JPRIME_PORT", os.getenv("JARVIS_PRIME_PORT", "8001"))),
                 "pid": None
             },
             "reactor-core": {
@@ -53502,8 +53505,8 @@ class ComprehensiveZombieCleanup:
             ports["jarvis-websocket"] = [ws_port]
 
         # Trinity ports from environment
-        jprime_port = int(os.getenv("TRINITY_JPRIME_PORT", "8000"))
-        reactor_port = int(os.getenv("TRINITY_REACTOR_PORT", "8090"))
+        jprime_port = int(os.getenv("TRINITY_JPRIME_PORT", os.getenv("JARVIS_PRIME_PORT", "8001")))
+        reactor_port = int(os.getenv("TRINITY_REACTOR_PORT", os.getenv("REACTOR_CORE_PORT", "8090")))
         ports["jarvis-prime"] = [jprime_port]
         ports["reactor-core"] = [reactor_port]
 
@@ -56427,7 +56430,10 @@ class TrinityIntegrator:
 
         # Initialize components
         if jprime_path:
-            jprime_port = int(os.getenv("TRINITY_JPRIME_PORT", "8000"))
+            # v238.0: Default 8001 (was 8000). Aligns with trinity_config.py v192.2
+            # which changed to 8001 to avoid conflicts with unified_supervisor.
+            # Resolution chain: TRINITY_JPRIME_PORT → JARVIS_PRIME_PORT → 8001
+            jprime_port = int(os.getenv("TRINITY_JPRIME_PORT", os.getenv("JARVIS_PRIME_PORT", "8001")))
             self._jprime = TrinityComponent(
                 name="jarvis-prime",
                 repo_path=jprime_path,
@@ -56440,6 +56446,7 @@ class TrinityIntegrator:
 
         if reactor_path:
             reactor_port = int(os.getenv("TRINITY_REACTOR_PORT", "8090"))
+            # Note: config.reactor_api_port reads same env var (v238.0 alignment)
             self._reactor = TrinityComponent(
                 name="reactor-core",
                 repo_path=reactor_path,
@@ -57194,6 +57201,12 @@ class TrinityIntegrator:
             env["TRINITY_COMPONENT"] = component.name
             env["TRINITY_PORT"] = str(component.port)
             env["TRINITY_ENABLED"] = "true"
+
+            # v238.0: Signal to child processes that they're orchestrated by
+            # the unified supervisor. Prevents duplicate startup attempts from
+            # other supervisors (e.g., reactor-core's run_supervisor.py).
+            env["JARVIS_ORCHESTRATED_BY"] = "unified_supervisor"
+            env["JARVIS_SUPERVISOR_PID"] = str(os.getpid())
 
             # v216.0: jarvis-prime specific optimizations
             # These enable local ML on hardware with <32GB RAM (e.g., 16GB MacBooks)
@@ -62617,7 +62630,7 @@ class JarvisSystemKernel:
                 try:
                     # Import TrinityIntegrator to start Prime
                     prime_repo = os.getenv("JARVIS_PRIME_REPO_PATH", os.path.expanduser("~/Documents/repos/JARVIS-Prime"))
-                    prime_port = int(os.getenv("TRINITY_JPRIME_PORT", "8000"))
+                    prime_port = int(os.getenv("TRINITY_JPRIME_PORT", os.getenv("JARVIS_PRIME_PORT", "8001")))
                     
                     if not os.path.exists(prime_repo):
                         self.logger.warning(f"[EarlyPrime] Prime repo not found: {prime_repo}")
