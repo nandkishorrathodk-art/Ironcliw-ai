@@ -304,33 +304,38 @@ class AudioBus:
         self._config = config or DeviceConfig()
         self._loop = asyncio.get_running_loop()
 
-        # Initialize resamplers
-        self._resampler_down = Resampler(
-            self._config.sample_rate, self._config.internal_rate
-        )
+        # Initialize playback resampler (always required).
         self._resampler_up = Resampler(
             self._config.internal_rate, self._config.sample_rate
         )
 
-        # Initialize AEC at internal rate
-        self._aec = AcousticEchoCanceller(
-            frame_size=self._config.internal_frame_size,
-            sample_rate=self._config.internal_rate,
-        )
-
-        # Initialize full-duplex device
+        # Initialize audio device (duplex when possible, output-only fallback).
         self._device = FullDuplexDevice(self._config)
         await self._device.start()
 
-        # Register our callback to receive raw mic frames
-        self._device.add_capture_callback(self._on_mic_frame)
+        # Input processing is only enabled when capture is active.
+        if self._device.input_enabled:
+            self._resampler_down = Resampler(
+                self._config.sample_rate, self._config.internal_rate
+            )
+            self._aec = AcousticEchoCanceller(
+                frame_size=self._config.internal_frame_size,
+                sample_rate=self._config.internal_rate,
+            )
+            self._device.add_capture_callback(self._on_mic_frame)
+        else:
+            self._resampler_down = None
+            self._aec = None
 
         # Create local speaker sink
         self._local_sink = LocalSpeakerSink(self._device, self._resampler_up)
         self._sinks["local"] = self._local_sink
 
         self._running = True
-        logger.info("[AudioBus] Started — all audio routing through bus")
+        logger.info(
+            "[AudioBus] Started — all audio routing through bus "
+            f"(mode={'duplex' if self._device.input_enabled else 'output-only'})"
+        )
 
     async def stop(self) -> None:
         """Stop the audio bus and release all resources."""
@@ -340,7 +345,8 @@ class AudioBus:
         self._running = False
 
         if self._device is not None:
-            self._device.remove_capture_callback(self._on_mic_frame)
+            if self._device.input_enabled:
+                self._device.remove_capture_callback(self._on_mic_frame)
             await self._device.stop()
 
         self._sinks.clear()
@@ -529,6 +535,7 @@ class AudioBus:
             "running": self._running,
             "device_running": self._device.is_running if self._device else False,
             "mic_consumers": len(self._mic_consumers),
+            "input_enabled": self._device.input_enabled if self._device else False,
             "sinks": list(self._sinks.keys()),
             "playback_buffered": (
                 self._device.playback_buffer.available

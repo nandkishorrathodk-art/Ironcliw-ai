@@ -22,7 +22,7 @@ import logging
 import os
 import threading
 from dataclasses import dataclass, field
-from typing import Callable, List, Optional
+from typing import Any, Callable, List, Optional
 
 import numpy as np
 
@@ -48,6 +48,8 @@ class DeviceConfig:
     channels: int = 1
     dtype: str = "float32"
     playback_buffer_seconds: float = 2.0  # Ring buffer capacity
+    require_input: bool = False           # Fail startup if no input device
+    allow_output_only: bool = True        # Degrade to output-only when no input
 
     def __post_init__(self):
         # Allow env var overrides
@@ -63,6 +65,16 @@ class DeviceConfig:
         self.playback_buffer_seconds = float(os.getenv(
             "JARVIS_AUDIO_BUFFER_SECONDS", str(self.playback_buffer_seconds)
         ))
+        require_input_env = os.getenv("JARVIS_AUDIO_REQUIRE_INPUT")
+        if require_input_env is not None:
+            self.require_input = require_input_env.lower() in (
+                "1", "true", "yes", "on"
+            )
+        allow_output_only_env = os.getenv("JARVIS_AUDIO_ALLOW_OUTPUT_ONLY")
+        if allow_output_only_env is not None:
+            self.allow_output_only = allow_output_only_env.lower() in (
+                "1", "true", "yes", "on"
+            )
 
         dev_in = os.getenv("JARVIS_AUDIO_INPUT_DEVICE")
         if dev_in is not None:
@@ -98,7 +110,7 @@ class FullDuplexDevice:
 
     def __init__(self, config: Optional[DeviceConfig] = None):
         self.config = config or DeviceConfig()
-        self._stream: Optional["sd.Stream"] = None
+        self._stream: Optional[Any] = None
         self._playback_buffer = PlaybackRingBuffer(
             capacity_frames=self.config.playback_buffer_frames
         )
@@ -115,6 +127,8 @@ class FullDuplexDevice:
 
         self._running = False
         self._started_event = asyncio.Event()
+        self._input_enabled = True
+        self._mode = "duplex"
 
     @property
     def sample_rate(self) -> int:
@@ -154,6 +168,14 @@ class FullDuplexDevice:
                 dtype=self.config.dtype,
                 callback=self._audio_callback,
                 finished_callback=self._stream_finished,
+            ) if self._input_enabled else sd.OutputStream(
+                samplerate=self.config.sample_rate,
+                blocksize=self.config.frame_size,
+                device=self.config.output_device,
+                channels=self.config.channels,
+                dtype=self.config.dtype,
+                callback=self._output_only_callback,
+                finished_callback=self._stream_finished,
             )
             self._stream.start()
             self._running = True
@@ -162,7 +184,7 @@ class FullDuplexDevice:
             in_device_label = (
                 self.config.input_device
                 if self.config.input_device is not None
-                else "default"
+                else "none"
             )
             out_device_label = (
                 self.config.output_device
@@ -174,6 +196,7 @@ class FullDuplexDevice:
                 f"[FullDuplexDevice] Started: sr={self.config.sample_rate}, "
                 f"frame={self.config.frame_size} samples "
                 f"({self.config.frame_duration_ms}ms), "
+                f"mode={self._mode}, "
                 f"in={in_device_label}, "
                 f"out={out_device_label}"
             )
@@ -209,42 +232,99 @@ class FullDuplexDevice:
             default_input = None
             default_output = None
 
-        input_device = (
-            int(self.config.input_device)
-            if self.config.input_device is not None
-            else default_input
+        output_device = self._resolve_device(
+            devices=devices,
+            configured=self.config.output_device,
+            default=default_output,
+            direction="output",
         )
-        output_device = (
-            int(self.config.output_device)
-            if self.config.output_device is not None
-            else default_output
+        if output_device is None:
+            raise RuntimeError("No valid output device available")
+
+        input_device = self._resolve_device(
+            devices=devices,
+            configured=self.config.input_device,
+            default=default_input,
+            direction="input",
         )
-
-        if input_device is None or input_device < 0:
-            raise RuntimeError("No valid default input device available")
-        if output_device is None or output_device < 0:
-            raise RuntimeError("No valid default output device available")
-
-        try:
-            sd.check_input_settings(
-                device=input_device,
-                channels=self.config.channels,
-                samplerate=self.config.sample_rate,
-                dtype=self.config.dtype,
-            )
-            sd.check_output_settings(
-                device=output_device,
-                channels=self.config.channels,
-                samplerate=self.config.sample_rate,
-                dtype=self.config.dtype,
-            )
-        except Exception as e:
-            raise RuntimeError(
-                f"Audio device validation failed (in={input_device}, out={output_device}): {e}"
-            ) from e
+        if input_device is None:
+            if self.config.require_input:
+                raise RuntimeError("No valid input device available (required)")
+            if self.config.allow_output_only:
+                self._input_enabled = False
+                self._mode = "output-only"
+                logger.warning(
+                    "[FullDuplexDevice] No valid input device available; "
+                    "starting output-only mode"
+                )
+            else:
+                raise RuntimeError("No valid input device available")
+        else:
+            self._input_enabled = True
+            self._mode = "duplex"
 
         self.config.input_device = input_device
         self.config.output_device = output_device
+
+    def _resolve_device(
+        self,
+        *,
+        devices: List[dict],
+        configured: Optional[int],
+        default: Optional[int],
+        direction: str,
+    ) -> Optional[int]:
+        """Resolve first valid device index for input or output direction."""
+        assert sd is not None  # guarded by caller
+        if direction not in ("input", "output"):
+            raise ValueError(f"Unsupported direction: {direction}")
+
+        cap_key = "max_input_channels" if direction == "input" else "max_output_channels"
+
+        candidates: List[int] = []
+        seen = set()
+
+        def _add_candidate(idx: Optional[int]) -> None:
+            if idx is None:
+                return
+            try:
+                val = int(idx)
+            except Exception:
+                return
+            if val < 0 or val in seen:
+                return
+            seen.add(val)
+            candidates.append(val)
+
+        _add_candidate(configured)
+        _add_candidate(default)
+        for idx, dev in enumerate(devices):
+            try:
+                if int(dev.get(cap_key, 0)) >= self.config.channels:
+                    _add_candidate(idx)
+            except Exception:
+                continue
+
+        for candidate in candidates:
+            try:
+                if direction == "input":
+                    sd.check_input_settings(
+                        device=candidate,
+                        channels=self.config.channels,
+                        samplerate=self.config.sample_rate,
+                        dtype=self.config.dtype,
+                    )
+                else:
+                    sd.check_output_settings(
+                        device=candidate,
+                        channels=self.config.channels,
+                        samplerate=self.config.sample_rate,
+                        dtype=self.config.dtype,
+                    )
+                return candidate
+            except Exception:
+                continue
+        return None
 
     async def stop(self) -> None:
         """Close the stream and release resources."""
@@ -339,6 +419,22 @@ class FullDuplexDevice:
                     # Never let a consumer crash the audio thread
                     pass
 
+    def _output_only_callback(
+        self,
+        outdata: np.ndarray,
+        frames: int,
+        time_info: "sd.CallbackTimeInfo",
+        status: "sd.CallbackFlags",
+    ) -> None:
+        """sounddevice output-only callback — playback path without mic capture."""
+        if status:
+            logger.debug(f"[FullDuplexDevice] Output stream status: {status}")
+
+        out_flat = outdata[:, 0] if outdata.ndim == 2 else outdata
+        self._playback_buffer.read(out_flat)
+        with self._output_frame_lock:
+            self._last_output_frame = out_flat.copy()
+
     def _stream_finished(self) -> None:
         """Called when the stream finishes (e.g., device disconnected)."""
         logger.warning("[FullDuplexDevice] Stream finished unexpectedly")
@@ -354,17 +450,29 @@ class FullDuplexDevice:
             return {"error": "sounddevice not available"}
 
         try:
+            defaults = getattr(sd.default, "device", (None, None))
+            default_output = (
+                defaults[1]
+                if isinstance(defaults, (tuple, list)) and len(defaults) >= 2
+                else None
+            )
             info = {
-                "input": sd.query_devices(
-                    self.config.input_device or sd.default.device[0]
+                "input": (
+                    sd.query_devices(self.config.input_device)
+                    if self.config.input_device is not None
+                    else None
                 ),
-                "output": sd.query_devices(
-                    self.config.output_device or sd.default.device[1]
+                "output": (
+                    sd.query_devices(self.config.output_device)
+                    if self.config.output_device is not None
+                    else sd.query_devices(default_output) if default_output is not None else None
                 ),
                 "sample_rate": self.config.sample_rate,
                 "frame_size": self.config.frame_size,
                 "frame_duration_ms": self.config.frame_duration_ms,
                 "running": self._running,
+                "mode": self._mode,
+                "input_enabled": self._input_enabled,
             }
             return info
         except Exception as e:
@@ -377,3 +485,8 @@ class FullDuplexDevice:
             return True
         except asyncio.TimeoutError:
             return False
+
+    @property
+    def input_enabled(self) -> bool:
+        """Whether microphone capture is active."""
+        return self._input_enabled
