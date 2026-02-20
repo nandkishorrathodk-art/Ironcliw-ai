@@ -790,17 +790,27 @@ except ImportError:
 # Used by logger, banners, dashboard, health report, phase headers.
 
 # Log level emoji indicators
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 🎨 VISUAL IDENTITY SYSTEM — Emoji-driven UX for enterprise CLI output
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Every log line, dashboard cell, and status indicator gets a visual identity.
+# Emojis create instant cognitive mapping: see it → know it → act on it.
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+# 📊 Log level → emoji mapping (instant severity recognition)
 _LEVEL_EMOJI = {
-    "DEBUG":    "⚙️ ",
-    "INFO":     "🔵",
+    "DEBUG":    "🔍",
+    "INFO":     "💎",
     "WARNING":  "⚠️ ",
     "ERROR":    "🔴",
     "CRITICAL": "💀",
     "SUCCESS":  "✅",
     "PHASE":    "🟣",
+    "STARTUP":  "🌅",
+    "METRIC":   "📈",
 }
 
-# Log section emoji indicators
+# 🏷️ Log section → emoji mapping (visual navigation through log output)
 _SECTION_EMOJI = {
     "BOOT":         "🚀",
     "CONFIG":       "⚙️ ",
@@ -817,33 +827,46 @@ _SECTION_EMOJI = {
     "STORAGE":      "💾",
     "PROCESS":      "⚡",
     "DEV":          "🛠️ ",
+    "SECURITY":     "🔐",
+    "BRIDGE":       "🌉",
+    "VISION":       "👁️ ",
+    "INFERENCE":    "🤖",
+    "TRAINING":     "🎓",
+    "RECOVERY":     "🩺",
+    "LIFECYCLE":    "♻️ ",
 }
 
-# Zone architecture emoji indicators
+# 🏛️ Zone architecture → emoji mapping (monolith zone navigation)
 _ZONE_EMOJI = {
-    "0": "🛡️ ",
-    "1": "🏗️ ",
-    "2": "🔧",
-    "3": "☁️ ",
-    "4": "🧠",
-    "5": "🎯",
-    "6": "⚡",
-    "7": "🚀",
+    "0": "🛡️ ",   # Early Protection — signal guards, venv isolation
+    "1": "🏗️ ",   # Foundation — imports, config dataclasses
+    "2": "🔧",    # Core Utilities — logger, locks, circuit breakers
+    "3": "☁️ ",   # Resources — Docker, GCP, ports, storage
+    "4": "🧠",    # Intelligence — ML, routing, goal inference
+    "5": "🎯",    # Orchestration — signals, zombies, hot reload, Trinity
+    "6": "⚡",    # The Kernel — lock, IPC, JarvisSystemKernel
+    "7": "🚀",    # Entry Point — CLI, main()
 }
 
-# Component status emoji indicators
+# 🚦 Component status → emoji mapping (traffic-light semantics)
 _STATUS_EMOJI = {
-    "pending":     "⏳",
-    "starting":    "🔄",
-    "healthy":     "✅",
-    "degraded":    "⚠️ ",
-    "error":       "❌",
-    "stopped":     "⏹️ ",
-    "skipped":     "⏭️ ",
-    "unavailable": "🚫",
+    "pending":       "⏳",
+    "starting":      "🔄",
+    "healthy":       "✅",
+    "degraded":      "⚠️ ",
+    "error":         "❌",
+    "stopped":       "⏹️ ",
+    "skipped":       "⏭️ ",
+    "unavailable":   "🚫",
+    "recovering":    "🩺",
+    "initializing":  "🌀",
+    "ready":         "🟢",
+    "warming_up":    "🔥",
+    "shutting_down": "🌙",
+    "recycling":     "♻️ ",
 }
 
-# Issue category emoji indicators
+# 📂 Issue category → emoji mapping (problem domain at a glance)
 _CATEGORY_EMOJI = {
     "General":        "📋",
     "GCP":            "☁️ ",
@@ -856,14 +879,49 @@ _CATEGORY_EMOJI = {
     "Filesystem":     "📂",
     "Import":         "📦",
     "Config":         "⚙️ ",
+    "Memory":         "🧊",
+    "Concurrency":    "🔀",
+    "Authentication": "🔐",
+    "Performance":    "⚡",
+    "Vision":         "👁️ ",
+    "Model":          "🤖",
 }
 
-# Issue severity emoji indicators
+# 🚨 Issue severity → emoji mapping (escalation at a glance)
 _SEVERITY_EMOJI = {
     "info":     "ℹ️ ",
     "warning":  "⚠️ ",
     "error":    "❌",
     "critical": "🚨",
+    "fatal":    "💀",
+}
+
+# 🔗 Cross-repo component → emoji mapping (system-of-systems identity)
+_REPO_EMOJI = {
+    "jarvis":       "🏠",   # JARVIS Body (macOS orchestrator)
+    "jarvis-prime": "🧠",   # JARVIS Prime (Mind / inference)
+    "reactor-core": "⚛️ ",  # Reactor Core (Training / learning)
+    "trinity":      "🔱",   # Trinity (Cross-repo orchestration)
+    "gcp":          "☁️ ",  # Google Cloud Platform
+    "docker":       "🐳",   # Docker containers
+}
+
+# 🎯 Feature capability → emoji mapping (what JARVIS can do)
+_CAPABILITY_EMOJI = {
+    "self_healing":    "🔄",
+    "zero_touch":      "🤖",
+    "cross_repo":      "🔗",
+    "voice":           "🎙️",
+    "vision":          "👁️ ",
+    "inference":       "🧠",
+    "training":        "🎓",
+    "gcp":             "☁️ ",
+    "docker":          "🐳",
+    "hot_reload":      "🔥",
+    "circuit_breaker": "⚡",
+    "dashboard":       "📊",
+    "security":        "🔐",
+    "orchestration":   "🎯",
 }
 
 # =============================================================================
@@ -8481,7 +8539,7 @@ class SmartWatchdog:
     
     Usage:
         watchdog = SmartWatchdog(
-            endpoint="http://10.128.0.5:8000/health/startup",
+            endpoint="http://10.128.0.5:8001/health/startup",
             component_name="GCP-Prime-VM",
             logger=self.logger,
         )
@@ -8513,7 +8571,7 @@ class SmartWatchdog:
         Initialize SmartWatchdog.
         
         Args:
-            endpoint: Health endpoint URL (e.g., "http://10.128.0.5:8000/health/startup")
+            endpoint: Health endpoint URL (e.g., "http://10.128.0.5:8001/health/startup")
             component_name: Human-readable name for logging
             logger: Logger instance (uses print if None)
             poll_interval: Override JARVIS_WATCHDOG_POLL_INTERVAL
@@ -9362,7 +9420,7 @@ class DynamicPortManager(ResourceManagerBase):
     - Distributed locking for port reservation
 
     Environment Configuration:
-    - JARVIS_PORT: Primary API port (default: 8000)
+    - JARVIS_PORT: Primary API port (default: 8010)
     - JARVIS_FALLBACK_PORTS: Comma-separated fallback ports (default: 8001,8002,8003)
     - JARVIS_WEBSOCKET_PORT: WebSocket port (default: 8765)
     - JARVIS_DYNAMIC_PORT_ENABLED: Enable dynamic range (default: true)
@@ -17608,7 +17666,7 @@ class ParallelProcessCleaner:
         ]
 
         # Required ports to check
-        self.required_ports = [8010, 8000, 8090, 3000, 3001]
+        self.required_ports = [8010, 8001, 8090, 3000, 3001]
 
         # Cleanup timeouts
         self.cleanup_timeout_sigint = 1.0
@@ -18123,7 +18181,7 @@ class ComprehensiveZombieCleanup:
 
     Provides ultra-robust cleanup across all three repos:
     - JARVIS (main AI agent) - port 8010
-    - JARVIS-Prime (J-Prime Mind) - port 8000
+    - JARVIS-Prime (J-Prime Mind) - port 8001
     - Reactor-Core (Nerves) - port 8090
 
     Features:
@@ -18139,14 +18197,14 @@ class ComprehensiveZombieCleanup:
     # Trinity ports by service
     TRINITY_PORTS = {
         "jarvis-body": [8010],
-        "jarvis-prime": [8000],
+        "jarvis-prime": [8001],
         "reactor-core": [8090],
     }
 
     # Process patterns by repo
     REPO_PATTERNS = {
         "jarvis": ["run_supervisor.py", "start_system.py", "unified_supervisor.py", "jarvis", "uvicorn.*8010"],
-        "jarvis-prime": ["trinity_orchestrator.*jarvis-prime", "jarvis.prime", "uvicorn.*8000"],
+        "jarvis-prime": ["trinity_orchestrator.*jarvis-prime", "jarvis.prime", "uvicorn.*8001"],
         "reactor-core": ["trinity_orchestrator.*reactor-core", "reactor.core", "uvicorn.*8090"],
     }
 
@@ -40481,7 +40539,7 @@ class ConfigurationManager:
             "app.version": "1.0.0",
             "app.debug": False,
             "server.host": "0.0.0.0",
-            "server.port": 8000,
+            "server.port": 8010,
             "server.workers": 4,
             "database.pool_size": 10,
             "database.timeout": 30,
@@ -53431,7 +53489,7 @@ class ComprehensiveZombieCleanup:
 
     This system provides ultra-robust cleanup across all services:
     - JARVIS (main backend) - typically port 8010
-    - JARVIS-Prime (J-Prime Mind) - typically port 8000
+    - JARVIS-Prime (J-Prime Mind) - typically port 8001
     - Reactor-Core (Nerves) - typically port 8090
 
     Features:
@@ -59241,7 +59299,7 @@ def get_trinity_connector() -> UnifiedTrinityConnector:
                     name="jarvis",
                     service_type=ModularServiceType.JARVIS,
                     host="localhost",
-                    port=int(os.getenv("JARVIS_BACKEND_PORT", "8000")),
+                    port=int(os.getenv("JARVIS_BACKEND_PORT", "8010")),
                     health_endpoint="/health",
                 )
                 _logger = logging.getLogger("unified_supervisor.trinity")
@@ -60365,7 +60423,7 @@ class JarvisSystemKernel:
         Usage:
             # Watch GCP VM startup
             result, state = await self.watch_component_startup_with_smartwatchdog(
-                endpoint=f"http://{vm_ip}:8000/health/startup",
+                endpoint=f"http://{vm_ip}:8001/health/startup",
                 component_name="GCP-Prime-VM",
                 progress_callback=update_dashboard,
             )
@@ -60398,19 +60456,19 @@ class JarvisSystemKernel:
     async def watch_gcp_vm_startup(
         self,
         vm_ip: str,
-        port: int = 8000,
+        port: int = 8001,
         progress_callback: Optional[Callable[[int, str, str], None]] = None,
     ) -> Tuple[bool, str]:
         """
         v223.0: Watch GCP VM startup using SmartWatchdog with /health/startup endpoint.
-        
+
         This is a drop-in enhancement for the existing GCP VM health checking.
         It uses the new /health/startup endpoint for granular progress tracking
         and implements intelligent stall detection.
-        
+
         Args:
             vm_ip: IP address of the GCP VM
-            port: Port number (default 8000)
+            port: Port number (default 8001 — J-Prime on GCP)
             progress_callback: Optional callback(pct, phase, detail) for dashboard
         
         Returns:
@@ -61587,40 +61645,59 @@ class JarvisSystemKernel:
         " ╚════╝ ╚═╝  ╚═╝╚═╝  ╚═╝  ╚═══╝  ╚═╝╚══════╝"
     )
 
-    # v228.1: Zone architecture data for DRY banner rendering
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # 🏛️ ZONE ARCHITECTURE — The monolith's skeletal structure
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # Each zone is a logical layer in the unified supervisor monolith.
+    # Zones load sequentially (0→7), each building on the previous.
+    # This data drives the startup banner, diagnostics, and dashboards.
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     _ZONE_DATA = [
-        ("0", "Early Protection", "Signal guards, venv activation"),
-        ("1", "Foundation", "Imports, SystemKernelConfig"),
-        ("2", "Core Utilities", "Logger, Lock, CircuitBreaker"),
-        ("3", "Resources", "Docker, GCP, Ports, Storage"),
-        ("4", "Intelligence", "ML, Routing, Goal Inference"),
-        ("5", "Orchestration", "Signals, Zombies, Hot Reload, Trinity"),
-        ("6", "The Kernel", "Lock, IPC, JarvisSystemKernel"),
-        ("7", "Entry Point", "CLI, main()"),
+        ("0", "🛡️  Early Protection",  "Signal guards, venv isolation, crash recovery"),
+        ("1", "🏗️  Foundation",         "Imports, SystemKernelConfig, Rich theming"),
+        ("2", "🔧 Core Utilities",     "UnifiedLogger, DLM, CircuitBreaker, LiveSpinner"),
+        ("3", "☁️  Resources",          "Docker, GCP VM Manager, Ports, Storage, Cost Tracker"),
+        ("4", "🧠 Intelligence",       "ML routing, Goal Inference, Model Serving, Vision"),
+        ("5", "🎯 Orchestration",      "Signals, Zombies, Hot Reload, Trinity, DMS Watchdog"),
+        ("6", "⚡ The Kernel",          "StartupLock, IPC, JarvisSystemKernel, Lifecycle"),
+        ("7", "🚀 Entry Point",        "CLI parser, main(), Dashboard, Monitors"),
     ]
 
     def _print_startup_banner(self) -> None:
         """
-        v228.1: Print enterprise startup banner with vibrant Rich CLI.
+        v238.0: Print enterprise startup banner with vibrant Rich CLI.
 
-        Features emoji-coded zone architecture, dramatic ASCII art,
-        color-coded feature badges, and professional panel styling.
-        Falls back to plain text if Rich is unavailable.
+        🎨 Features:
+        - Dramatic ASCII art logo with gradient styling
+        - Emoji-coded zone architecture tree
+        - Color-coded feature badges and capability tags
+        - System-of-systems identity (JARVIS + Prime + Reactor)
+        - Professional double-border panel styling
+        - Graceful plain-text fallback for non-Rich terminals
         """
         if RICH_AVAILABLE and _rich_console:
             try:
-                # ASCII art logo with vibrant styling
+                # 🎆 ASCII art logo with vibrant styling
                 logo_text = RichText(self._JARVIS_ASCII_LOGO, style="jarvis.logo")
 
-                # Version badge
+                # 🏷️ Version badge with build identity
                 version_line = RichText()
                 version_line.append("⚡ ", style="bold bright_yellow")
-                version_line.append("Unified System Kernel v1.0.0", style="jarvis.highlight")
+                version_line.append("Unified System Kernel", style="jarvis.highlight")
+                version_line.append(f" v{KERNEL_VERSION}", style="jarvis.version")
                 version_line.append("  │  ", style="jarvis.separator")
-                version_line.append("Enterprise Edition (v228.1)", style="jarvis.subtitle")
+                version_line.append("Enterprise Edition (v238.0)", style="jarvis.subtitle")
                 version_line.append(" ⚡", style="bold bright_yellow")
 
-                # Feature badges with distinct emojis and colors
+                # 🏗️ System identity — the three pillars
+                system_identity = RichText()
+                system_identity.append("🏠 JARVIS Body", style="bold bright_cyan")
+                system_identity.append("  ←→  ", style="dim bright_white")
+                system_identity.append("🧠 J-Prime Mind", style="bold bright_magenta")
+                system_identity.append("  ←→  ", style="dim bright_white")
+                system_identity.append("⚛️  Reactor Core", style="bold bright_yellow")
+
+                # 🔗 Feature badges — core capabilities
                 features = RichText()
                 features.append("🔄 Self-Healing", style="jarvis.tag.healing")
                 features.append("  •  ", style="jarvis.dim")
@@ -61630,7 +61707,7 @@ class JarvisSystemKernel:
                 features.append("  •  ", style="jarvis.dim")
                 features.append("🔱 Trinity-Ready", style="jarvis.tag.trinity")
 
-                # Capability tags row
+                # 🎯 Capability tags — what's under the hood
                 capabilities = RichText()
                 capabilities.append("☁️  GCP", style="jarvis.tag.gcp")
                 capabilities.append("  •  ", style="jarvis.dim")
@@ -61639,12 +61716,17 @@ class JarvisSystemKernel:
                 capabilities.append("🧠 Intelligence", style="jarvis.section.intelligence")
                 capabilities.append("  •  ", style="jarvis.dim")
                 capabilities.append("🐳 Docker", style="jarvis.section.docker")
+                capabilities.append("  •  ", style="jarvis.dim")
+                capabilities.append("👁️  Vision", style="bold bright_white")
+                capabilities.append("  •  ", style="jarvis.dim")
+                capabilities.append("🔐 Security", style="bold bright_red")
 
-                # Compose into panel
+                # 🎨 Compose into panel
                 banner_content = RichGroup(
                     RichAlign.center(logo_text),
                     RichText(),  # spacer
                     RichAlign.center(version_line),
+                    RichAlign.center(system_identity),
                     RichText(),  # spacer
                     RichAlign.center(features),
                     RichAlign.center(capabilities),
@@ -61658,15 +61740,15 @@ class JarvisSystemKernel:
                     padding=(1, 3),
                 ))
 
-                # Zone architecture as Tree with emojis
+                # 🏛️ Zone architecture as Tree with emojis
                 zone_tree = RichTree(
-                    "🏛️  [jarvis.highlight]Zone Architecture Overview[/jarvis.highlight]",
+                    "🏛️  [jarvis.highlight]Zone Architecture[/jarvis.highlight]"
+                    "  [jarvis.dim]— Monolith Kernel Layer Map[/jarvis.dim]",
                     guide_style="jarvis.border",
                 )
                 for num, name, desc in self._ZONE_DATA:
-                    zone_emoji = _ZONE_EMOJI.get(num, "📦")
                     zone_tree.add(
-                        f"{zone_emoji} [jarvis.zone.num]Zone {num}[/jarvis.zone.num]"
+                        f"[jarvis.zone.num]Zone {num}[/jarvis.zone.num]"
                         f" [jarvis.separator]│[/jarvis.separator] "
                         f"[jarvis.zone.name]{name}[/jarvis.zone.name]"
                         f" [jarvis.separator]—[/jarvis.separator] "
@@ -61680,20 +61762,21 @@ class JarvisSystemKernel:
             except Exception as rich_err:
                 self.logger.debug(f"[Kernel] Rich banner failed, using fallback: {rich_err}")
 
-        # =========================================================================
-        # FALLBACK PLAIN TEXT BANNER
-        # =========================================================================
+        # =====================================================================
+        # 📺 FALLBACK PLAIN TEXT BANNER (for terminals without Rich)
+        # =====================================================================
         self.logger.info("")
-        self.logger.info("╔═════════════════════════════════════════════════════════════════════╗")
-        self.logger.info("║        ⚡ JARVIS UNIFIED SYSTEM KERNEL v1.0.0 ⚡                    ║")
-        self.logger.info("║                 Enterprise Edition (v228.1)                         ║")
-        self.logger.info("╠═════════════════════════════════════════════════════════════════════╣")
-        self.logger.info("║  🔄 Self-Healing • 🤖 Zero-Touch • 🔗 Cross-Repo • 🔱 Trinity     ║")
-        self.logger.info("╚═════════════════════════════════════════════════════════════════════╝")
+        self.logger.info("╔═══════════════════════════════════════════════════════════════════════╗")
+        self.logger.info("║           ⚡ JARVIS UNIFIED SYSTEM KERNEL ⚡                          ║")
+        self.logger.info("║                  Enterprise Edition v238.0                            ║")
+        self.logger.info("╠═══════════════════════════════════════════════════════════════════════╣")
+        self.logger.info("║  🏠 Body  ←→  🧠 Mind  ←→  ⚛️  Reactor                                ║")
+        self.logger.info("║  🔄 Self-Healing • 🤖 Zero-Touch • 🔗 Cross-Repo • 🔱 Trinity        ║")
+        self.logger.info("║  ☁️  GCP • 🎙️ Voice • 🧠 Intelligence • 🐳 Docker • 👁️  Vision • 🔐  ║")
+        self.logger.info("╚═══════════════════════════════════════════════════════════════════════╝")
         self.logger.info("")
         for num, name, desc in self._ZONE_DATA:
-            zone_emoji = _ZONE_EMOJI.get(num, "📦")
-            self.logger.info(f"  {zone_emoji} Zone {num}: {name:<18} │ {desc}")
+            self.logger.info(f"  Zone {num} │ {name:<24} │ {desc}")
         self.logger.info("")
 
     def _print_completion_banner(
@@ -72223,7 +72306,7 @@ class JarvisSystemKernel:
             async def detect_stale_ports() -> tuple:
                 """Detect processes holding JARVIS ports without proper registration."""
                 # Trinity ports to check
-                ports_to_check = [8000, 8010, 8090]  # J-Prime, JARVIS, Reactor
+                ports_to_check = [8001, 8010, 8090]  # J-Prime, JARVIS, Reactor
                 stale_pids = []
                 try:
                     import psutil
@@ -73901,7 +73984,7 @@ class JarvisSystemKernel:
 
         # 4. Fallback defaults
         defaults = {"jarvis_prime": 8001, "reactor_core": 8090}
-        return defaults.get(component, 8000)
+        return defaults.get(component, 8010)
 
     async def _reconcile_component_status(self) -> None:
         """
@@ -78365,7 +78448,7 @@ class JarvisSystemKernel:
             prime_status = await self._check_trinity_component(
                 "jarvis-prime",
                 self.config.prime_repo_path,
-                self.config.prime_api_port if hasattr(self.config, 'prime_api_port') else 8000
+                self.config.prime_api_port if hasattr(self.config, 'prime_api_port') else 8001
             )
             trinity_status["components"]["jarvis-prime"] = prime_status
             if not prime_status.get("healthy", False):
@@ -78580,51 +78663,59 @@ import argparse
 
 def create_argument_parser() -> argparse.ArgumentParser:
     """
-    Create the unified CLI argument parser.
+    🎮 Create the unified CLI argument parser.
 
     Merges all flags from run_supervisor.py and start_system.py into
-    a single comprehensive CLI interface.
+    a single comprehensive CLI interface with emoji-coded help groups.
     """
     parser = argparse.ArgumentParser(
         prog="unified_supervisor",
         description=f"""
-╔══════════════════════════════════════════════════════════════════════════════╗
-║  JARVIS UNIFIED SYSTEM KERNEL v{KERNEL_VERSION}                                          ║
-╠══════════════════════════════════════════════════════════════════════════════╣
-║  The monolithic kernel that runs the entire JARVIS AI Agent system.          ║
-║                                                                              ║
-║  This is the SINGLE COMMAND needed to run JARVIS - it handles everything:    ║
-║  • Process management and cleanup                                            ║
-║  • Docker daemon management                                                  ║
-║  • GCP resource orchestration                                                ║
-║  • ML intelligence layer                                                     ║
-║  • Trinity cross-repo integration                                            ║
-║  • Hot reload for development                                                ║
-╚══════════════════════════════════════════════════════════════════════════════╝
+╔══════════════════════════════════════════════════════════════════════════════════╗
+║  ⚡ JARVIS UNIFIED SYSTEM KERNEL v{KERNEL_VERSION:<8}                                        ║
+║     🏠 Body  ←→  🧠 Mind  ←→  ⚛️  Reactor                                       ║
+╠══════════════════════════════════════════════════════════════════════════════════╣
+║                                                                                  ║
+║  The monolithic kernel that runs the entire JARVIS AI ecosystem.                 ║
+║  One command to rule them all — process management, orchestration,               ║
+║  intelligence, and cross-repo integration in a single entry point.               ║
+║                                                                                  ║
+║  🚀 Startup & Lifecycle      🔄 Self-Healing & Recovery                          ║
+║  🐳 Docker Management        ☁️  GCP Resource Orchestration                       ║
+║  🧠 ML Intelligence Layer    🔱 Trinity Cross-Repo Integration                   ║
+║  🎙️ Voice & Audio Pipeline   👁️  Vision & Screen Analysis                        ║
+║  🔐 Security & Auth          🔥 Hot Reload for Development                       ║
+║  📊 Dashboard & Monitoring   🌉 Bridge Health Aggregation                        ║
+║                                                                                  ║
+╚══════════════════════════════════════════════════════════════════════════════════╝
         """,
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-Examples:
-  python unified_supervisor.py                  # Start JARVIS (default)
-  python unified_supervisor.py --status         # Check if running
-  python unified_supervisor.py --shutdown       # Stop JARVIS
-  python unified_supervisor.py --restart        # Restart JARVIS
-  python unified_supervisor.py --cleanup        # Clean up zombie processes
-  python unified_supervisor.py --debug          # Start with debug logging
+⚡ Quick Start:
+  python unified_supervisor.py                  # 🚀 Start JARVIS (default)
+  python unified_supervisor.py --status         # 🔍 Check if running
+  python unified_supervisor.py --shutdown       # 🛑 Stop JARVIS
+  python unified_supervisor.py --restart        # 🔄 Restart JARVIS
+  python unified_supervisor.py --cleanup        # 🧹 Clean up zombie processes
+  python unified_supervisor.py --debug          # 🔍 Start with debug logging
+  python unified_supervisor.py --dashboard      # 📊 Show system dashboard
 
-Environment Variables:
-  JARVIS_MODE                 Operating mode (supervisor|standalone|minimal)
-  JARVIS_BACKEND_PORT         Backend server port (auto-detected if not set)
-  JARVIS_DEV_MODE             Enable dev mode / hot reload (true|false)
-  JARVIS_DEBUG                Enable debug logging (true|false)
-  TRINITY_ENABLED             Enable Trinity cross-repo integration (true|false)
+🌍 Environment Variables:
+  JARVIS_MODE                 🎮 Operating mode (supervisor|standalone|minimal)
+  JARVIS_BACKEND_PORT         🔌 Backend server port (auto-detected if not set)
+  JARVIS_PRIME_PORT           🧠 J-Prime server port (default: 8001)
+  TRINITY_REACTOR_PORT        ⚛️  Reactor Core port (default: 8090)
+  JARVIS_DEV_MODE             🛠️  Enable dev mode / hot reload (true|false)
+  JARVIS_DEBUG                🔍 Enable debug logging (true|false)
+  TRINITY_ENABLED             🔱 Enable Trinity cross-repo integration (true|false)
+  VISION_PROVIDER             👁️  Vision backend (auto|claude_api|jprime_llava)
         """,
     )
 
     # =========================================================================
-    # CONTROL COMMANDS
+    # 🎮 CONTROL COMMANDS
     # =========================================================================
-    control = parser.add_argument_group("Control Commands")
+    control = parser.add_argument_group("🎮 Control Commands")
     control.add_argument(
         "--status",
         action="store_true",
@@ -78664,9 +78755,9 @@ Environment Variables:
     )
 
     # =========================================================================
-    # OPERATING MODE
+    # 🎯 OPERATING MODE
     # =========================================================================
-    mode = parser.add_argument_group("Operating Mode")
+    mode = parser.add_argument_group("🎯 Operating Mode")
     mode.add_argument(
         "--mode",
         choices=["supervisor", "standalone", "minimal"],
@@ -78685,9 +78776,9 @@ Environment Variables:
     )
 
     # =========================================================================
-    # NETWORK
+    # 🌐 NETWORK
     # =========================================================================
-    network = parser.add_argument_group("Network")
+    network = parser.add_argument_group("🌐 Network")
     network.add_argument(
         "--port", "-p",
         type=int,
@@ -78712,9 +78803,9 @@ Environment Variables:
     )
 
     # =========================================================================
-    # DOCKER
+    # 🐳 DOCKER
     # =========================================================================
-    docker = parser.add_argument_group("Docker")
+    docker = parser.add_argument_group("🐳 Docker")
     docker.add_argument(
         "--skip-docker",
         action="store_true",
@@ -78727,9 +78818,9 @@ Environment Variables:
     )
 
     # =========================================================================
-    # GCP
+    # ☁️  GCP / CLOUD
     # =========================================================================
-    gcp = parser.add_argument_group("GCP / Cloud")
+    gcp = parser.add_argument_group("☁️  GCP / Cloud")
     gcp.add_argument(
         "--skip-gcp",
         action="store_true",
@@ -78782,9 +78873,9 @@ Environment Variables:
     )
 
     # =========================================================================
-    # COST OPTIMIZATION
+    # 💰 COST OPTIMIZATION
     # =========================================================================
-    cost = parser.add_argument_group("Cost Optimization")
+    cost = parser.add_argument_group("💰 Cost Optimization")
     cost.add_argument(
         "--no-scale-to-zero",
         action="store_true",
@@ -78804,9 +78895,9 @@ Environment Variables:
     )
 
     # =========================================================================
-    # INTELLIGENCE / ML
+    # 🧠 INTELLIGENCE / ML
     # =========================================================================
-    ml = parser.add_argument_group("Intelligence / ML")
+    ml = parser.add_argument_group("🧠 Intelligence / ML")
     ml.add_argument(
         "--goal-preset",
         choices=["auto", "aggressive", "balanced", "conservative"],
@@ -78824,9 +78915,9 @@ Environment Variables:
     )
 
     # =========================================================================
-    # VOICE / AUDIO
+    # 🎙️ VOICE / AUDIO
     # =========================================================================
-    voice = parser.add_argument_group("Voice / Audio")
+    voice = parser.add_argument_group("🎙️ Voice / Audio")
     voice.add_argument(
         "--skip-voice",
         action="store_true",
@@ -78844,9 +78935,9 @@ Environment Variables:
     )
 
     # =========================================================================
-    # TWO-TIER SECURITY / AGI OS (v200.0)
+    # 🔐 TWO-TIER SECURITY / AGI OS (v200.0)
     # =========================================================================
-    security = parser.add_argument_group("Two-Tier Security / AGI OS")
+    security = parser.add_argument_group("🔐 Two-Tier Security / AGI OS")
     security.add_argument(
         "--skip-two-tier",
         action="store_true",
@@ -78876,9 +78967,9 @@ Environment Variables:
     )
 
     # =========================================================================
-    # TRINITY
+    # 🔱 TRINITY / CROSS-REPO
     # =========================================================================
-    trinity = parser.add_argument_group("Trinity / Cross-Repo")
+    trinity = parser.add_argument_group("🔱 Trinity / Cross-Repo")
     trinity.add_argument(
         "--skip-trinity",
         action="store_true",
@@ -78914,9 +79005,9 @@ Environment Variables:
         help="Display unified Trinity status dashboard (Prime + Reactor + Invincible)",
     )
     # =========================================================================
-    # DEVELOPMENT
+    # 🛠️  DEVELOPMENT
     # =========================================================================
-    dev = parser.add_argument_group("Development")
+    dev = parser.add_argument_group("🛠️  Development")
     dev.add_argument(
         "--no-hot-reload",
         action="store_true",
@@ -78946,9 +79037,9 @@ Environment Variables:
     )
 
     # =========================================================================
-    # UI / DISPLAY (v249.0)
+    # 🎨 UI / DISPLAY (v249.0)
     # =========================================================================
-    ui_group = parser.add_argument_group("UI / Display")
+    ui_group = parser.add_argument_group("🎨 UI / Display")
     ui_group.add_argument(
         "--ui",
         choices=["rich", "plain", "json", "auto"],
@@ -78975,9 +79066,9 @@ Environment Variables:
     )
 
     # =========================================================================
-    # TASK EXECUTION
+    # 🤖 TASK EXECUTION
     # =========================================================================
-    task = parser.add_argument_group("Task Execution")
+    task = parser.add_argument_group("🤖 Task Execution")
     task.add_argument(
         "--task", "-t",
         metavar="GOAL",
@@ -78998,9 +79089,9 @@ Environment Variables:
     )
 
     # =========================================================================
-    # ADVANCED
+    # ⚙️  ADVANCED
     # =========================================================================
-    advanced = parser.add_argument_group("Advanced")
+    advanced = parser.add_argument_group("⚙️  Advanced")
     # v220.3: Enhanced --force with automatic stale lock cleanup
     advanced.add_argument(
         "--force", "-f",
@@ -80907,9 +80998,10 @@ async def handle_monitor_prime() -> int:
     box = get_cli_box(width=70)
 
     print()
-    print(box.bold(box.BLUE) + box.header() + box.RESET)
-    print(box.bold(box.BLUE) + box.line("J-PRIME STATUS MONITOR") + box.RESET)
-    print(box.bold(box.BLUE) + box.separator() + box.RESET)
+    print(box.bold(box.MAGENTA) + box.header() + box.RESET)
+    print(box.bold(box.MAGENTA) + box.line("🧠 J-PRIME STATUS MONITOR") + box.RESET)
+    print(box.bold(box.MAGENTA) + box.line(box.dim("   The Mind — LLM Inference & Reasoning Engine")) + box.RESET)
+    print(box.bold(box.MAGENTA) + box.separator() + box.RESET)
 
     # Get port from environment (same source as TrinityIntegrator)
     prime_port = int(os.getenv("TRINITY_JPRIME_PORT", os.getenv("JARVIS_PRIME_PORT", "8001")))
@@ -80943,20 +81035,20 @@ async def handle_monitor_prime() -> int:
     if trinity_status:
         prime_data = trinity_status.get("components", {}).get("jarvis-prime", {})
 
-    # Display kernel status
+    # 🔌 Display kernel connection status
     if kernel_running:
-        print(box.line(f"Kernel:       {box.green('Running')}"))
+        print(box.line(f"🔌 Kernel:     {box.green('✅ Running')}"))
     else:
-        print(box.line(f"Kernel:       {box.yellow('Not running')} (direct health check)"))
+        print(box.line(f"🔌 Kernel:     {box.yellow('⚠️  Not running')} {box.dim('(direct health check)')}"))
 
     print(box.separator())
 
-    # Display Prime configuration
-    print(box.line(f"Host:         {prime_host}"))
-    print(box.line(f"Port:         {prime_port}"))
+    # 🌐 Display Prime network configuration
+    print(box.line(f"🌐 Host:       {box.cyan(prime_host)}"))
+    print(box.line(f"🔌 Port:       {box.cyan(str(prime_port))}"))
 
     if prime_data:
-        # Use IPC data
+        # 📊 IPC data — rich component status
         configured = prime_data.get("configured", False)
         state = prime_data.get("state", "unknown")
         running = prime_data.get("running", False)
@@ -80965,21 +81057,23 @@ async def handle_monitor_prime() -> int:
         repo_path = prime_data.get("repo_path")
         restart_count = prime_data.get("restart_count", 0)
 
-        print(box.line(f"Configured:   {box.green('Yes') if configured else box.red('No')}"))
-        print(box.line(f"State:        {state}"))
-        print(box.line(f"Running:      {box.green('Yes') if running else box.red('No')}"))
-        print(box.line(f"Healthy:      {box.green('Yes') if healthy else box.red('No')}"))
+        print(box.separator())
+        print(box.line(box.bold("📊 Component Status")))
+        print(box.line(f"  ⚙️  Configured: {box.green('✅ Yes') if configured else box.red('❌ No')}"))
+        print(box.line(f"  🔄 State:      {box.cyan(state)}"))
+        print(box.line(f"  🟢 Running:    {box.green('✅ Yes') if running else box.red('❌ No')}"))
+        print(box.line(f"  💚 Healthy:    {box.green('✅ Yes') if healthy else box.red('❌ No')}"))
         if pid:
-            print(box.line(f"PID:          {pid}"))
+            print(box.line(f"  🆔 PID:        {pid}"))
         if repo_path:
-            print(box.line(f"Repo:         {box.dim(str(repo_path))}"))
+            print(box.line(f"  📂 Repo:       {box.dim(str(repo_path))}"))
         if restart_count > 0:
-            print(box.line(f"Restarts:     {box.yellow(str(restart_count))}"))
+            print(box.line(f"  🔄 Restarts:   {box.yellow(str(restart_count))}"))
 
     else:
-        # Direct HTTP health check
+        # 🩺 Direct HTTP health check
         print(box.separator())
-        print(box.line(box.cyan("Direct Health Check")))
+        print(box.line(box.cyan("🩺 Direct Health Check")))
 
         try:
             import aiohttp
@@ -80988,29 +81082,36 @@ async def handle_monitor_prime() -> int:
                 async with session.get(url, timeout=aiohttp.ClientTimeout(total=5)) as resp:
                     if resp.status == 200:
                         health = await resp.json()
-                        print(box.line(f"Reachable:    {box.green('Yes')}"))
+                        print(box.line(f"  🌐 Reachable:  {box.green('✅ Yes')}"))
                         status = health.get("status", "unknown")
                         if status == "healthy":
-                            print(box.line(f"Status:       {box.green(status)}"))
+                            print(box.line(f"  💚 Status:     {box.green('✅ ' + status)}"))
                         else:
-                            print(box.line(f"Status:       {box.yellow(status)}"))
+                            print(box.line(f"  ⚠️  Status:     {box.yellow(status)}"))
                         if health.get("model_loaded"):
-                            print(box.line(f"Model:        {box.green('Loaded')}"))
+                            print(box.line(f"  🤖 Model:      {box.green('✅ Loaded')}"))
                         if health.get("active_model"):
-                            print(box.line(f"Model:        {health['active_model']}"))
+                            print(box.line(f"  🏷️  Active:     {health['active_model']}"))
+                        # v238.0: Show bridge status if available
+                        if health.get("jarvis_bridge_enabled") is not None:
+                            bridge_ok = health.get("jarvis_bridge_enabled", False)
+                            print(box.line(f"  🌉 Bridge:     {box.green('✅ Active') if bridge_ok else box.yellow('⚠️  Inactive')}"))
+                        if health.get("jarvis_prime_bridge_enabled") is not None:
+                            inf_ok = health.get("jarvis_prime_bridge_enabled", False)
+                            print(box.line(f"  🤖 Inference:  {box.green('✅ Active') if inf_ok else box.yellow('⚠️  Inactive')}"))
                     else:
-                        print(box.line(f"Reachable:    {box.yellow(f'Yes (HTTP {resp.status})')}"))
+                        print(box.line(f"  🌐 Reachable:  {box.yellow(f'⚠️  Yes (HTTP {resp.status})')}"))
         except Exception:
-            print(box.line(f"Reachable:    {box.red('No (connection failed)')}"))
+            print(box.line(f"  🌐 Reachable:  {box.red('❌ No (connection failed)')}"))
 
-    print(box.footer())
+    print(box.bold(box.MAGENTA) + box.footer() + box.RESET)
 
-    # Quick actions
+    # ⚡ Quick actions with emojis
     print()
-    print(f"{box.BOLD}Quick Actions:{box.RESET}")
-    print(f"  - Full status:  python unified_supervisor.py --status")
-    print(f"  - Start kernel: python unified_supervisor.py")
-    print(f"  - Health check: curl http://{prime_host}:{prime_port}/health")
+    print(f"{box.BOLD}⚡ Quick Actions:{box.RESET}")
+    print(f"  🔍 Full status:  {box.CYAN}python unified_supervisor.py --status{box.RESET}")
+    print(f"  🚀 Start kernel: {box.CYAN}python unified_supervisor.py{box.RESET}")
+    print(f"  🩺 Health check: {box.CYAN}curl http://{prime_host}:{prime_port}/health{box.RESET}")
     print()
 
     return 0
