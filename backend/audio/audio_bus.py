@@ -64,15 +64,29 @@ class Resampler:
                 f"interpolation: {from_rate} -> {to_rate}"
             )
 
-    def process(self, data: np.ndarray) -> np.ndarray:
-        """Resample audio data."""
+    def process(
+        self, data: np.ndarray, end_of_data: bool = False
+    ) -> np.ndarray:
+        """Resample audio data.
+
+        Args:
+            data: Input audio (float32).
+            end_of_data: If True, tells libsamplerate this is the final
+                chunk — flushes internal filter state so no trailing
+                samples are held.  Use True for complete utterances,
+                False for streaming chunks.
+
+        v237.0: Added end_of_data to prevent trailing-sample loss.
+        """
         if self.from_rate == self.to_rate:
             return data
 
         if self._use_libsamplerate and self._resampler is not None:
-            return self._resampler.process(data, self._ratio)
+            return self._resampler.process(
+                data, self._ratio, end_of_data=end_of_data
+            )
 
-        # Fallback: linear interpolation
+        # Fallback: linear interpolation (end_of_data N/A)
         n_out = int(len(data) * self._ratio)
         if n_out == 0:
             return np.zeros(0, dtype=np.float32)
@@ -203,22 +217,69 @@ class AudioSink(ABC):
 
 
 class LocalSpeakerSink(AudioSink):
-    """Routes audio through the FullDuplexDevice playback path."""
+    """Routes audio through the FullDuplexDevice playback path.
+
+    v237.0: Paced chunked writes prevent ring-buffer overflow and
+    silent data loss for utterances longer than the buffer capacity.
+    Fixed elif branch that corrupted audio already at device rate.
+    """
+
+    # Polling interval while waiting for ring-buffer space (seconds).
+    _PACE_POLL_INTERVAL: float = 0.005  # 5 ms
 
     def __init__(self, device: FullDuplexDevice, resampler: Resampler):
         self._device = device
         self._resampler = resampler
 
     async def write(self, audio: np.ndarray, sample_rate: int) -> None:
-        """Resample to device rate and queue for playback."""
-        if sample_rate != self._device.sample_rate:
-            # Create a one-shot resampler for non-standard rates
-            temp_resampler = Resampler(sample_rate, self._device.sample_rate)
-            audio = temp_resampler.process(audio)
-        elif self._resampler.from_rate != self._device.sample_rate:
-            audio = self._resampler.process(audio)
+        """Resample to device rate and queue for playback with pacing.
 
-        self._device.write_playback(audio)
+        v237.0 fixes:
+        - Chunked writes with back-pressure so no audio is silently dropped.
+        - Removed buggy elif that applied 16k→48k resampler to 48kHz audio.
+        - Passes end_of_data=True to flush resampler filter state.
+        """
+        if sample_rate != self._device.sample_rate:
+            # Create a one-shot resampler for this complete utterance
+            temp_resampler = Resampler(sample_rate, self._device.sample_rate)
+            audio = temp_resampler.process(audio, end_of_data=True)
+        # v237.0: Removed the elif branch.  When sample_rate already equals
+        # device_rate, NO resampling is needed — the old elif incorrectly
+        # applied the 16k→48k up-resampler to already-48kHz audio, producing
+        # garbled output ("hallucinations").
+
+        # Ensure float32 dtype for the ring buffer
+        if audio.dtype != np.float32:
+            audio = audio.astype(np.float32)
+
+        # --- Paced chunked write (v237.0) ---
+        # Write in chunks, waiting for ring-buffer space between chunks.
+        # This guarantees ALL audio reaches the speaker — no silent drops.
+        offset = 0
+        total = len(audio)
+        max_wait_s = (total / self._device.sample_rate) + 10.0  # generous timeout
+        import time as _time
+        deadline = _time.monotonic() + max_wait_s
+
+        while offset < total and self._device.is_running:
+            free = self._device.playback_buffer.free_space
+            if free <= 0:
+                if _time.monotonic() > deadline:
+                    logger.warning(
+                        "[LocalSpeakerSink] Paced-write timeout — "
+                        f"dropped {total - offset}/{total} frames"
+                    )
+                    break
+                await asyncio.sleep(self._PACE_POLL_INTERVAL)
+                continue
+
+            chunk = audio[offset : offset + free]
+            written = self._device.write_playback(chunk)
+            if written <= 0:
+                # Buffer unexpectedly full; yield and retry
+                await asyncio.sleep(self._PACE_POLL_INTERVAL)
+                continue
+            offset += written
 
 
 class WebSocketSink(AudioSink):
@@ -259,8 +320,9 @@ class AudioBus:
         # These are set during start()
         self._device: Optional[FullDuplexDevice] = None
         self._aec: Optional[AcousticEchoCanceller] = None
-        self._resampler_down: Optional[Resampler] = None  # 48k -> 16k
-        self._resampler_up: Optional[Resampler] = None    # 16k -> 48k
+        self._resampler_down: Optional[Resampler] = None      # 48k -> 16k (mic)
+        self._resampler_aec_ref: Optional[Resampler] = None  # 48k -> 16k (AEC ref)
+        self._resampler_up: Optional[Resampler] = None       # 16k -> 48k
         self._config: Optional[DeviceConfig] = None
 
         # Mic consumers receive AEC-cleaned, 16kHz float32 frames
@@ -318,6 +380,12 @@ class AudioBus:
             self._resampler_down = Resampler(
                 self._config.sample_rate, self._config.internal_rate
             )
+            # v237.0: Separate resampler for AEC reference signal.
+            # Using the SAME stateful resampler for both mic and reference
+            # contaminated the internal filter state, degrading AEC quality.
+            self._resampler_aec_ref = Resampler(
+                self._config.sample_rate, self._config.internal_rate
+            )
             self._aec = AcousticEchoCanceller(
                 frame_size=self._config.internal_frame_size,
                 sample_rate=self._config.internal_rate,
@@ -325,6 +393,7 @@ class AudioBus:
             self._device.add_capture_callback(self._on_mic_frame)
         else:
             self._resampler_down = None
+            self._resampler_aec_ref = None
             self._aec = None
 
         # Create local speaker sink
@@ -360,15 +429,28 @@ class AudioBus:
     # ---- Output (TTS → Speaker) ----
 
     async def play_audio(
-        self, audio: np.ndarray, sample_rate: int, sink_id: str = "local"
+        self,
+        audio: np.ndarray,
+        sample_rate: int,
+        sink_id: str = "local",
+        wait_for_drain: bool = False,
     ) -> None:
         """
         Play a complete audio buffer through the specified sink.
+
+        v237.0: Added *wait_for_drain* — when True the call blocks until
+        the ring buffer has been fully consumed by the audio callback,
+        ensuring callers know when playback actually finishes (not just
+        when data is queued).  This is critical for correct speech-state
+        tracking and prevents consecutive utterances from overflowing
+        the ring buffer.
 
         Args:
             audio: float32 audio data
             sample_rate: Sample rate of the audio
             sink_id: Which sink to route to (default "local" speaker)
+            wait_for_drain: If True, wait until the ring buffer empties
+                before returning.
         """
         sink = self._sinks.get(sink_id)
         if sink is None:
@@ -379,6 +461,29 @@ class AudioBus:
                 return
 
         await sink.write(audio, sample_rate)
+
+        if wait_for_drain and self._device is not None:
+            # Wait until the audio callback has fully consumed the buffer.
+            # Generous timeout: expected drain time + 5 s headroom.
+            import time as _time
+
+            drain_timeout = (
+                (self._device.playback_buffer.available / self._device.sample_rate)
+                + 5.0
+            )
+            deadline = _time.monotonic() + drain_timeout
+            while (
+                self._running
+                and self._device.is_running
+                and self._device.playback_buffer.available > 0
+            ):
+                if _time.monotonic() > deadline:
+                    logger.warning(
+                        "[AudioBus] play_audio drain timeout — "
+                        f"{self._device.playback_buffer.available} frames remain"
+                    )
+                    break
+                await asyncio.sleep(0.010)  # 10 ms polling
 
     async def play_stream(
         self,
@@ -492,10 +597,12 @@ class AudioBus:
                 internal_frame = raw_frame
 
             # 2. Get AEC reference (last output at device rate, downsampled)
+            # v237.0: Use dedicated _resampler_aec_ref to avoid contaminating
+            # the mic resampler's internal filter state.
             if self._device is not None and self._aec is not None:
                 ref_device = self._device.get_last_output_frame()
-                if self._resampler_down is not None:
-                    ref_internal = self._resampler_down.process(ref_device)
+                if self._resampler_aec_ref is not None:
+                    ref_internal = self._resampler_aec_ref.process(ref_device)
                 else:
                     ref_internal = ref_device
 

@@ -722,8 +722,17 @@ class UnifiedTTSEngine:
 
             if _bus_running:
                 # FullDuplexDevice holds device — route through its stream.
+                # v237.0: wait_for_drain=True ensures we block until the
+                # ring buffer is fully consumed by the audio callback.
+                # Without this, _play_audio() returned immediately after
+                # *queueing* data, causing:
+                #   1. Speech-state manager to deactivate mic gate too early
+                #   2. Consecutive utterances to overflow the ring buffer
+                #      (silent data drops → truncated / garbled audio)
                 audio_np = np.asarray(data, dtype=np.float32)
-                await _bus.play_audio(audio_np, sample_rate)
+                await _bus.play_audio(
+                    audio_np, sample_rate, wait_for_drain=True
+                )
                 return
                 # If play_audio() raises, exception propagates — we do NOT
                 # fall through to sd.play() (would always fail with -9986).
