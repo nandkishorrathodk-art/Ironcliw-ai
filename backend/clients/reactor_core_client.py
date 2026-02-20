@@ -123,6 +123,12 @@ class ReactorCoreConfig:
     api_key: str = field(
         default_factory=lambda: os.getenv("REACTOR_CORE_API_KEY", "")
     )
+    status_path: str = field(
+        default_factory=lambda: os.getenv("REACTOR_CORE_STATUS_PATH", "/api/v1/status")
+    )
+    scout_topics_path: str = field(
+        default_factory=lambda: os.getenv("REACTOR_CORE_SCOUT_TOPICS_PATH", "/api/v1/scout/topics")
+    )
 
     # Connection Settings
     max_retries: int = field(
@@ -601,7 +607,7 @@ class ReactorCoreClient:
             return {}
 
         try:
-            data = await self._request("GET", "/api/status")
+            data = await self._request("GET", self._normalize_api_path(self.config.status_path))
             return data or {}
         except Exception as e:
             logger.warning(f"[ReactorClient] Failed to get status: {e}")
@@ -974,8 +980,10 @@ class ReactorCoreClient:
         self,
         topic: str,
         category: str = "general",
-        priority: str = "normal",
+        priority: Union[str, int] = "normal",
         urls: Optional[List[str]] = None,
+        added_by: str = "jarvis_agent",
+        metadata: Optional[Dict[str, Any]] = None,
     ) -> bool:
         """
         Add a new learning topic for the Scout to explore.
@@ -985,6 +993,8 @@ class ReactorCoreClient:
             category: Topic category
             priority: Topic priority
             urls: Optional seed URLs
+            added_by: Source identity for traceability
+            metadata: Optional topic metadata
 
         Returns:
             True if added successfully
@@ -996,12 +1006,23 @@ class ReactorCoreClient:
             payload = {
                 "topic": topic,
                 "category": category,
-                "priority": priority,
+                "priority": self._normalize_topic_priority(priority),
                 "urls": urls or [],
-                "added_by": "jarvis_agent",
+                "added_by": added_by,
+                "metadata": metadata or {},
             }
 
-            data = await self._request("POST", "/api/scout/topics", json=payload)
+            data = await self._request(
+                "POST",
+                self._normalize_api_path(self.config.scout_topics_path),
+                json=payload,
+            )
+            if data is None:
+                logger.warning(
+                    "[ReactorClient] Scout topic submission returned no data "
+                    "(endpoint unavailable or request rejected)"
+                )
+                return False
             return data.get("added", False) if data else False
 
         except Exception as e:
@@ -1054,6 +1075,48 @@ class ReactorCoreClient:
     # Private Methods
     # =========================================================================
 
+    @staticmethod
+    def _normalize_api_path(path: str) -> str:
+        """Normalize API paths so config overrides remain safe and deterministic."""
+        normalized = (path or "").strip()
+        if not normalized:
+            return "/"
+        if not normalized.startswith("/"):
+            normalized = f"/{normalized}"
+        return normalized
+
+    @staticmethod
+    def _normalize_topic_priority(priority: Union[str, int]) -> str:
+        """Normalize mixed priority formats (numeric/string) to API-safe strings."""
+        if isinstance(priority, bool):
+            return "normal"
+        if isinstance(priority, int):
+            if priority <= 1:
+                return "critical"
+            if priority == 2:
+                return "high"
+            if priority == 3:
+                return "normal"
+            if priority == 4:
+                return "low"
+            return "background"
+
+        normalized = str(priority).strip().lower()
+        if normalized.isdigit():
+            return ReactorCoreClient._normalize_topic_priority(int(normalized))
+
+        alias_map = {
+            "urgent": "critical",
+            "critical": "critical",
+            "high": "high",
+            "normal": "normal",
+            "medium": "normal",
+            "default": "normal",
+            "low": "low",
+            "background": "background",
+        }
+        return alias_map.get(normalized, "normal")
+
     async def _request(
         self,
         method: str,
@@ -1095,6 +1158,7 @@ class ReactorCoreClient:
                     if response.status == 200:
                         return await response.json()
                     elif response.status == 404:
+                        logger.warning(f"[ReactorClient] {method} {path}: 404 Not Found")
                         return None
                     else:
                         text = await response.text()

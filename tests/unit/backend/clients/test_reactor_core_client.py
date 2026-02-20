@@ -41,7 +41,7 @@ def client() -> ReactorCoreClient:
 
 
 # =========================================================================
-# Tests -- The 3 known-wrong paths
+# Tests -- Core endpoint paths
 # =========================================================================
 
 class TestEndpointPaths:
@@ -99,10 +99,9 @@ class TestOtherEndpointPaths:
         await client.get_status()
 
         call_args = client._request.call_args
-        _method, path = call_args[0][0], call_args[0][1]
-        # /api/status does not match any known Reactor-Core route;
-        # This test documents the current path (no known correct route).
-        assert path == "/api/status"
+        method, path = call_args[0][0], call_args[0][1]
+        assert method == "GET"
+        assert path == "/api/v1/status"
 
     async def test_get_pipeline_state_path(self, client: ReactorCoreClient):
         client._request = AsyncMock(return_value={"stage": "idle"})
@@ -156,9 +155,21 @@ class TestOtherEndpointPaths:
         call_args = client._request.call_args
         method, path = call_args[0][0], call_args[0][1]
         assert method == "POST"
-        # /api/scout/topics has no known Reactor-Core route;
-        # This test documents the current path.
-        assert path == "/api/scout/topics"
+        assert path == "/api/v1/scout/topics"
+
+    async def test_add_learning_topic_accepts_int_priority_and_added_by(self, client: ReactorCoreClient):
+        client._request = AsyncMock(return_value={"added": True})
+
+        await client.add_learning_topic(
+            topic="reinforcement learning",
+            priority=5,
+            added_by="jarvis_auto_learn",
+        )
+
+        call_args = client._request.call_args
+        payload = call_args.kwargs["json"]
+        assert payload["priority"] == "background"
+        assert payload["added_by"] == "jarvis_auto_learn"
 
 
 # =========================================================================

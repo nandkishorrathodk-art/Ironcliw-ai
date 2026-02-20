@@ -62,6 +62,23 @@ class TestReactorPipelineE2E:
                 assert "phase" in data
 
     @pytest.mark.asyncio
+    async def test_scout_topic_endpoint_accepts_topics(self):
+        """Verify Scout topic enqueue endpoint exists and accepts valid payloads."""
+        async with aiohttp.ClientSession() as session:
+            payload = {
+                "topic": "Python asyncio cancellation best practices",
+                "category": "general",
+                "priority": 5,
+                "urls": [],
+                "added_by": "jarvis_contract_test",
+            }
+            async with session.post(f"{REACTOR_URL}/api/v1/scout/topics", json=payload) as resp:
+                assert resp.status == 200
+                data = await resp.json()
+                assert "added" in data
+                assert "topic_id" in data
+
+    @pytest.mark.asyncio
     async def test_client_paths_match_server(self):
         """Verify ReactorCoreClient endpoint paths resolve (no 404s)."""
         from backend.clients.reactor_core_client import (
