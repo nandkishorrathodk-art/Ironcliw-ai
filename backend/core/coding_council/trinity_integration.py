@@ -61,6 +61,8 @@ try:
         HeartbeatValidator,
         HeartbeatStatus,
         ComponentHealth,
+        acquire_shared_heartbeat_validator,
+        release_shared_heartbeat_validator,
         CrossRepoSync,
         RepoState,
         SyncStatus,
@@ -299,6 +301,8 @@ class CodingCouncilTrinityBridge:
         self._multi_transport: Optional[MultiTransport] = None
         self._message_queue: Optional[PersistentMessageQueue] = None
         self._heartbeat_validator: Optional[HeartbeatValidator] = None
+        self._uses_shared_heartbeat_validator = False
+        self._staleness_callback_handle: Optional[Callable] = None
         self._cross_repo_sync: Optional[CrossRepoSync] = None
 
         # Message subscriptions
@@ -478,12 +482,15 @@ class CodingCouncilTrinityBridge:
             # v90.0: Fixed parameter to match HeartbeatValidator.__init__ signature
             # HeartbeatValidator only takes heartbeat_dir, other config is internal
             heartbeat_dir = trinity_dir / "heartbeats"
-            self._heartbeat_validator = HeartbeatValidator(
-                heartbeat_dir=heartbeat_dir,
-            )
             try:
-                await asyncio.wait_for(self._heartbeat_validator.start(), timeout=_step_timeout)
-                self._heartbeat_validator.on_staleness(self._on_component_stale)
+                self._heartbeat_validator = await asyncio.wait_for(
+                    acquire_shared_heartbeat_validator(heartbeat_dir=heartbeat_dir),
+                    timeout=_step_timeout,
+                )
+                self._uses_shared_heartbeat_validator = True
+                self._staleness_callback_handle = self._heartbeat_validator.on_staleness(
+                    self._on_component_stale
+                )
                 logger.info("[CodingCouncilTrinity] HeartbeatValidator started")
             except asyncio.TimeoutError:
                 logger.warning(f"[CodingCouncilTrinity] HeartbeatValidator start timed out ({_step_timeout}s)")
@@ -561,10 +568,17 @@ class CodingCouncilTrinityBridge:
 
         if self._heartbeat_validator:
             try:
-                await self._heartbeat_validator.stop()
+                if self._staleness_callback_handle:
+                    self._heartbeat_validator.off_status_change(self._staleness_callback_handle)
+                    self._staleness_callback_handle = None
+                if self._uses_shared_heartbeat_validator:
+                    await release_shared_heartbeat_validator(self._heartbeat_validator)
+                else:
+                    await self._heartbeat_validator.stop()
             except Exception as e:
                 logger.error(f"[CodingCouncilTrinity] HeartbeatValidator shutdown error: {e}")
             self._heartbeat_validator = None
+            self._uses_shared_heartbeat_validator = False
 
         if self._message_queue:
             try:

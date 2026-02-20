@@ -1673,16 +1673,6 @@ class ParallelInitializer:
             conn_mgr.set_proxy_ready(False)
 
             proxy_manager = get_proxy_manager()
-            if not proxy_manager.is_running():
-                # Start proxy asynchronously with timeout protection
-                try:
-                    await asyncio.wait_for(
-                        proxy_manager.start(force_restart=False),
-                        timeout=30.0  # 30s max for proxy startup
-                    )
-                except asyncio.TimeoutError:
-                    logger.warning("⚠️ Cloud SQL proxy startup timeout (30s) - will verify DB-level readiness")
-                    # Continue anyway - proxy might still be starting, gate will verify
 
             # Start health monitor in background (non-blocking, tracked)
             if TASK_MANAGER_AVAILABLE:
@@ -1701,6 +1691,9 @@ class ParallelInitializer:
             # Store in app state
             self.app.state.cloud_sql_proxy_manager = proxy_manager
 
+            ensure_timeout = float(os.getenv("CLOUDSQL_PARALLEL_INIT_ENSURE_TIMEOUT", "45.0"))
+            max_start_attempts = int(os.getenv("CLOUDSQL_PARALLEL_INIT_MAX_START_ATTEMPTS", "3"))
+
             # v86.0: Use ProxyReadinessGate for DB-level verification
             # This performs actual SELECT 1 query, not just TCP port check
             async def verify_db_level_readiness():
@@ -1710,14 +1703,19 @@ class ParallelInitializer:
                 This replaces the old TCP-only check with actual database verification.
                 """
                 try:
-                    # Wait for DB-level readiness (SELECT 1 verification)
-                    # Timeout of 30s matches proxy startup timeout
-                    result = await readiness_gate.wait_for_ready(timeout=30.0)
+                    # Use authoritative control-plane path: proactive startup + DB-level
+                    # verification in one coordinated flow.
+                    result = await readiness_gate.ensure_proxy_ready(
+                        timeout=ensure_timeout,
+                        auto_start=True,
+                        max_start_attempts=max_start_attempts,
+                        notify_cross_repo=True,
+                    )
 
                     if result.state == ReadinessState.READY:
                         # DB-level verified! Signal readiness
                         conn_mgr.set_proxy_ready(True)
-                        port = proxy_manager.config.get('cloud_sql', {}).get('port', 5432)
+                        port = proxy_manager.effective_port
                         logger.info(f"   ✅ Cloud SQL DB-level ready on 127.0.0.1:{port} (verified via SELECT 1)")
                         if result.message:
                             logger.info(f"      {result.message}")
@@ -1772,8 +1770,11 @@ class ParallelInitializer:
                 )
                 self._tasks.append(ready_task)
 
-            port = proxy_manager.config.get('cloud_sql', {}).get('port', 5432)
-            logger.info(f"   Cloud SQL proxy starting on 127.0.0.1:{port} (DB-level verification pending)")
+            configured_port = proxy_manager.config.get('cloud_sql', {}).get('port', 5432)
+            logger.info(
+                f"   Cloud SQL proxy bootstrap initialized on 127.0.0.1:{configured_port} "
+                f"(authoritative DB verification pending)"
+            )
 
         except ImportError as e:
             # Handle case where cloud_sql_connection_manager doesn't have new APIs yet

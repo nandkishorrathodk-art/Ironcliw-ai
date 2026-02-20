@@ -29,6 +29,9 @@ from .heartbeat_validator import (
     HeartbeatValidator,
     HeartbeatStatus,
     ComponentHealth,
+    acquire_shared_heartbeat_validator,
+    release_shared_heartbeat_validator,
+    get_shared_heartbeat_validator_refcount,
 )
 from .cross_repo_sync import (
     CrossRepoSync,
@@ -47,6 +50,9 @@ __all__ = [
     "HeartbeatValidator",
     "HeartbeatStatus",
     "ComponentHealth",
+    "acquire_shared_heartbeat_validator",
+    "release_shared_heartbeat_validator",
+    "get_shared_heartbeat_validator_refcount",
     "CrossRepoSync",
     "RepoState",
     "SyncStatus",

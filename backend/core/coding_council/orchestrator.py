@@ -147,6 +147,8 @@ try:
         MultiTransport,
         PersistentMessageQueue,
         HeartbeatValidator,
+        acquire_shared_heartbeat_validator,
+        release_shared_heartbeat_validator,
         CrossRepoSync,
     )
     TRINITY_AVAILABLE = True
@@ -1311,6 +1313,7 @@ class UnifiedCodingCouncil:
         self._multi_transport: Optional[MultiTransport] = None
         self._message_queue: Optional[PersistentMessageQueue] = None
         self._heartbeat_validator: Optional[HeartbeatValidator] = None
+        self._uses_shared_heartbeat_validator = False
         self._cross_repo_sync: Optional[CrossRepoSync] = None
 
         # =================================================================
@@ -1539,8 +1542,11 @@ class UnifiedCodingCouncil:
                 self._message_queue = PersistentMessageQueue()
                 await asyncio.wait_for(self._message_queue.start(), timeout=_trinity_step_timeout)
 
-                self._heartbeat_validator = HeartbeatValidator()
-                await asyncio.wait_for(self._heartbeat_validator.start(), timeout=_trinity_step_timeout)
+                self._heartbeat_validator = await asyncio.wait_for(
+                    acquire_shared_heartbeat_validator(),
+                    timeout=_trinity_step_timeout,
+                )
+                self._uses_shared_heartbeat_validator = True
 
                 self._cross_repo_sync = CrossRepoSync()
                 await asyncio.wait_for(
@@ -1741,9 +1747,14 @@ class UnifiedCodingCouncil:
 
         if self._heartbeat_validator:
             try:
-                await self._heartbeat_validator.stop()
+                if self._uses_shared_heartbeat_validator:
+                    await release_shared_heartbeat_validator(self._heartbeat_validator)
+                else:
+                    await self._heartbeat_validator.stop()
             except Exception as e:
                 logger.warning(f"[CodingCouncil] Heartbeat validator shutdown error: {e}")
+            self._heartbeat_validator = None
+            self._uses_shared_heartbeat_validator = False
 
         if self._message_queue:
             try:

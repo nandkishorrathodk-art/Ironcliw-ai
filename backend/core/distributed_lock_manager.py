@@ -920,14 +920,22 @@ class DistributedLockManager:
             if len(temp_files) > DLM_CLEANUP_MAX_FILES:
                 logger.warning(
                     f"[v3.5] {len(temp_files)} orphaned temp files exceeds cap "
-                    f"({DLM_CLEANUP_MAX_FILES}) — processing oldest {DLM_CLEANUP_MAX_FILES} only"
+                    f"({DLM_CLEANUP_MAX_FILES}) — processing first {DLM_CLEANUP_MAX_FILES} only"
                 )
-                # Sort by name (which includes PID/counter) and take first N
-                temp_files = temp_files[:DLM_CLEANUP_MAX_FILES]
+                # Deterministic ordering for reproducible cleanup behavior.
+                temp_files = sorted(temp_files)[:DLM_CLEANUP_MAX_FILES]
 
             current_time = time.time()
+            cleanup_started_at = time.monotonic()
+            cleanup_budget = max(0.25, DLM_CLEANUP_TEMP_TIMEOUT * 0.8)
+            deferred_count = 0
 
-            for temp_name in temp_files:
+            for idx, temp_name in enumerate(temp_files):
+                elapsed = time.monotonic() - cleanup_started_at
+                if elapsed >= cleanup_budget:
+                    deferred_count = len(temp_files) - idx
+                    break
+
                 temp_path = self.config.lock_dir / temp_name
 
                 try:
@@ -965,8 +973,19 @@ class DistributedLockManager:
                                         except OSError:
                                             return False
 
+                                    # Deadline-aware timeout keeps startup bounded even
+                                    # when lock dirs contain many temp files.
+                                    remaining_files = max(1, len(temp_files) - idx)
+                                    remaining_budget = max(
+                                        0.05,
+                                        cleanup_budget - (time.monotonic() - cleanup_started_at),
+                                    )
+                                    pid_check_timeout = max(
+                                        0.05,
+                                        min(0.2, remaining_budget / remaining_files),
+                                    )
                                     pid_alive = await _run_blocking(
-                                        _check_pid, timeout=2.0
+                                        _check_pid, timeout=pid_check_timeout
                                     )
                                     if pid_alive is None:
                                         # Timeout checking PID — skip this file
@@ -991,6 +1010,12 @@ class DistributedLockManager:
                     pass  # Already gone
                 except Exception as e:
                     logger.debug(f"[v2.0] Error checking temp file {temp_name}: {e}")
+
+            if deferred_count > 0:
+                logger.info(
+                    f"[v3.6] Temp cleanup budget reached ({cleanup_budget:.2f}s) — "
+                    f"deferred {deferred_count} temp file(s) to cleanup loop"
+                )
 
         except Exception as e:
             logger.error(f"[v2.0] Error in temp file cleanup: {e}")
@@ -1774,6 +1799,9 @@ class DistributedLockManager:
             try:
                 await asyncio.sleep(self.config.cleanup_interval_seconds)
                 await self._cleanup_stale_locks()
+                temp_cleaned = await self._cleanup_orphaned_temp_files()
+                if temp_cleaned > 0:
+                    logger.info(f"[v3.6] Cleanup loop removed {temp_cleaned} orphaned temp file(s)")
             except asyncio.CancelledError:
                 logger.info("Stale lock cleanup loop cancelled")
                 break

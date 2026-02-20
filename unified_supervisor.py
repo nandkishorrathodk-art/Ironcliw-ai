@@ -77106,6 +77106,8 @@ class JarvisSystemKernel:
             "port": None,
             "connection_name": None,
             "fallback_to_sqlite": False,
+            "db_ready": False,
+            "gate_state": None,
         }
 
         # v2.0.0: Register that supervisor is managing proxy lifecycle
@@ -77181,9 +77183,6 @@ class JarvisSystemKernel:
                     # v224.0: Pick up effective port from existing proxy
                     result["port"] = proxy_manager.effective_port
                     self._cloud_sql_proxy_manager = proxy_manager
-                    # v2.0.0: Signal proxy is ready to waiting components
-                    if signal_proxy_ready:
-                        signal_proxy_ready()
                 else:
                     # Start proxy
                     self.logger.info("[CloudSQL] Starting proxy process...")
@@ -77230,16 +77229,64 @@ class JarvisSystemKernel:
 
                         # Store reference for shutdown cleanup
                         self._cloud_sql_proxy_manager = proxy_manager
-
-                        # v2.0.0: Signal proxy is ready to waiting components
-                        if signal_proxy_ready:
-                            signal_proxy_ready()
                     else:
                         self.logger.warning("[CloudSQL] Proxy failed to start, using SQLite")
                         result["fallback_to_sqlite"] = True
                         # v2.0.0: Signal proxy failed so waiting components can fallback
                         if signal_proxy_failed:
                             signal_proxy_failed()
+
+                # Authoritative DB-level verification through ProxyReadinessGate.
+                # Process-level "running" is not enough for downstream safety.
+                if result["running"]:
+                    try:
+                        try:
+                            from intelligence.cloud_sql_connection_manager import (
+                                get_readiness_gate,
+                                ReadinessState,
+                            )
+                        except ImportError:
+                            from backend.intelligence.cloud_sql_connection_manager import (
+                                get_readiness_gate,
+                                ReadinessState,
+                            )
+
+                        service_timeout = float(os.getenv("JARVIS_SERVICE_TIMEOUT", "30.0"))
+                        configured_timeout = float(os.getenv("CLOUDSQL_ENSURE_READY_TIMEOUT", "60.0"))
+                        gate_timeout = min(configured_timeout, max(8.0, service_timeout - 2.0))
+
+                        gate = get_readiness_gate()
+                        gate_result = await gate.ensure_proxy_ready(
+                            timeout=gate_timeout,
+                            auto_start=True,
+                            max_start_attempts=3,
+                            notify_cross_repo=True,
+                        )
+                        result["gate_state"] = gate_result.state.value
+                        result["gate_reason"] = gate_result.failure_reason
+
+                        if gate_result.state == ReadinessState.READY:
+                            result["db_ready"] = True
+                            if signal_proxy_ready:
+                                signal_proxy_ready()
+                        else:
+                            result["fallback_to_sqlite"] = True
+                            self.logger.warning(
+                                "[CloudSQL] Proxy process running but DB-level readiness is %s "
+                                "(reason=%s) - enabling SQLite fallback",
+                                gate_result.state.value,
+                                gate_result.failure_reason or "unknown",
+                            )
+                            if signal_proxy_failed:
+                                signal_proxy_failed()
+                    except Exception as gate_err:
+                        self.logger.warning(
+                            f"[CloudSQL] DB-level readiness verification unavailable: {gate_err}"
+                        )
+                        # Keep legacy behavior if gate integration cannot run.
+                        result["db_ready"] = result["running"]
+                        if result["running"] and signal_proxy_ready:
+                            signal_proxy_ready()
 
             except ImportError as e:
                 self.logger.warning(f"[CloudSQL] Proxy manager not available: {e}")

@@ -30,6 +30,7 @@ import asyncio
 import json
 import logging
 import os
+import threading
 import time
 from dataclasses import dataclass, field
 from enum import Enum
@@ -40,6 +41,20 @@ from typing import Any, Callable, Coroutine, Dict, List, Optional
 # as "backend.core.coding_council.trinity.heartbeat_validator" vs
 # "core.coding_council.trinity.heartbeat_validator"
 logger = logging.getLogger("jarvis.trinity.heartbeat_validator")
+
+# Shared-validator lifecycle (single monitor loop per process).
+_shared_validator_lock = threading.Lock()
+_shared_validators: Dict[str, "HeartbeatValidator"] = {}
+_shared_validator_refcounts: Dict[str, int] = {}
+
+
+def _shared_key_for_dir(heartbeat_dir: Optional[Path]) -> str:
+    """Normalize heartbeat dir into a stable registry key."""
+    effective_dir = heartbeat_dir or (Path.home() / ".jarvis" / "trinity" / "heartbeats")
+    try:
+        return str(effective_dir.expanduser().resolve())
+    except Exception:
+        return str(effective_dir.expanduser())
 
 
 class HeartbeatStatus(Enum):
@@ -445,7 +460,14 @@ class HeartbeatValidator:
         """Register callback for status changes."""
         self._callbacks.append(callback)
 
-    def on_staleness(self, callback: Callable[[str, float], Coroutine]) -> None:
+    def off_status_change(self, callback: Callable[[str, HeartbeatStatus, HeartbeatStatus], Coroutine]) -> None:
+        """Remove a previously registered status-change callback."""
+        try:
+            self._callbacks.remove(callback)
+        except ValueError:
+            pass
+
+    def on_staleness(self, callback: Callable[[str, float], Coroutine]) -> Callable:
         """
         v93.0: Register callback for when a component becomes stale or dead.
 
@@ -485,6 +507,7 @@ class HeartbeatValidator:
 
         self._callbacks.append(staleness_wrapper)
         logger.debug("[HeartbeatValidator] Staleness callback registered")
+        return staleness_wrapper
 
     async def get_healthy_components(self, component_type: Optional[str] = None) -> List[ComponentHealth]:
         """Get list of healthy components."""
@@ -951,3 +974,86 @@ class HeartbeatValidator:
                 by_type[health.component_type]["healthy"] += 1
 
         return by_type
+
+
+async def acquire_shared_heartbeat_validator(
+    heartbeat_dir: Optional[Path] = None
+) -> HeartbeatValidator:
+    """
+    Acquire a process-wide shared HeartbeatValidator instance.
+
+    This prevents multiple monitor loops from scanning the same heartbeat files
+    and emitting duplicate transitions in one process.
+    """
+    key = _shared_key_for_dir(heartbeat_dir)
+    should_start = False
+    with _shared_validator_lock:
+        if key not in _shared_validators:
+            _shared_validators[key] = HeartbeatValidator(heartbeat_dir=heartbeat_dir)
+            _shared_validator_refcounts[key] = 0
+            should_start = True
+
+        _shared_validator_refcounts[key] = _shared_validator_refcounts.get(key, 0) + 1
+        validator = _shared_validators[key]
+        refcount = _shared_validator_refcounts[key]
+
+    if validator is None:
+        raise RuntimeError("Failed to create shared HeartbeatValidator")
+
+    if should_start:
+        try:
+            await validator.start()
+        except Exception:
+            with _shared_validator_lock:
+                if _shared_validators.get(key) is validator:
+                    _shared_validators.pop(key, None)
+                _shared_validator_refcounts[key] = max(0, _shared_validator_refcounts.get(key, 1) - 1)
+                if _shared_validator_refcounts.get(key, 0) == 0:
+                    _shared_validator_refcounts.pop(key, None)
+            raise
+
+    logger.debug("[HeartbeatValidator] Shared instance acquired (key=%s, refs=%d)", key, refcount)
+    return validator
+
+
+async def release_shared_heartbeat_validator(
+    validator: Optional[HeartbeatValidator] = None
+) -> None:
+    """Release a shared validator lease; stops monitor when last lease is released."""
+    key = _shared_key_for_dir(None)
+    to_stop: Optional[HeartbeatValidator] = None
+    with _shared_validator_lock:
+        if validator is not None:
+            key = ""
+            for candidate_key, candidate_validator in _shared_validators.items():
+                if candidate_validator is validator:
+                    key = candidate_key
+                    break
+            if not key:
+                logger.debug("[HeartbeatValidator] Ignoring release for non-shared validator instance")
+                return
+
+        if key not in _shared_validators:
+            return
+
+        if _shared_validator_refcounts.get(key, 0) > 0:
+            _shared_validator_refcounts[key] -= 1
+
+        refcount = _shared_validator_refcounts.get(key, 0)
+        if refcount == 0:
+            to_stop = _shared_validators.pop(key)
+            _shared_validator_refcounts.pop(key, None)
+
+    if to_stop is not None:
+        await to_stop.stop()
+
+    logger.debug("[HeartbeatValidator] Shared instance released (key=%s, refs=%d)", key, refcount)
+
+
+def get_shared_heartbeat_validator_refcount(heartbeat_dir: Optional[Path] = None) -> int:
+    """Return current lease count for shared HeartbeatValidator instances."""
+    key = _shared_key_for_dir(heartbeat_dir) if heartbeat_dir is not None else None
+    with _shared_validator_lock:
+        if key is None:
+            return sum(_shared_validator_refcounts.values())
+        return _shared_validator_refcounts.get(key, 0)
