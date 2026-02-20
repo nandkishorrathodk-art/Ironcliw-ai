@@ -1443,6 +1443,14 @@ except ImportError:
     get_component_registry = None
     EnterpriseComponentStatus = None
 
+# Enterprise Default Components — canonical component definitions for the registry
+try:
+    from backend.core.default_components import register_default_components
+    ENTERPRISE_DEFAULTS_AVAILABLE = True
+except ImportError:
+    ENTERPRISE_DEFAULTS_AVAILABLE = False
+    register_default_components = None
+
 # =============================================================================
 # v210.0: MODULAR INTEGRATION HELPERS
 # =============================================================================
@@ -71903,6 +71911,57 @@ class JarvisSystemKernel:
                 self._readiness_manager.mark_component_ready("voice_biometrics", voice_ready)
 
             self._update_component_status("enterprise", "complete", f"Enterprise: {len(successful)}/{len(services)} active")
+
+            # v238.0: Populate ComponentRegistry with canonical component definitions
+            # This MUST happen before health contracts — the aggregator needs components
+            # registered to aggregate their health. Recovery engine and capability router
+            # also depend on registry population.
+            if ENTERPRISE_DEFAULTS_AVAILABLE and ENTERPRISE_REGISTRY_AVAILABLE:
+                try:
+                    _reg = get_component_registry()
+                    register_default_components(_reg)
+                    self.logger.info(
+                        f"[Zone6] ComponentRegistry populated with "
+                        f"{len(_reg.all_definitions())} default components"
+                    )
+                except Exception as _rd_err:
+                    self.logger.debug(f"[Zone6] Default component registration skipped: {_rd_err}")
+
+            # v238.0: Cross-repo capability registration in CapabilityRouter
+            # Maps capability names to their primary providers and fallbacks so the
+            # router can dynamically route requests across the Trinity (Body/Mind/Nerves).
+            if ENTERPRISE_CAPABILITY_AVAILABLE and ENTERPRISE_REGISTRY_AVAILABLE:
+                try:
+                    _reg = get_component_registry()
+                    _cap_router = get_capability_router(_reg)
+
+                    # Inference: jarvis-prime (primary) → claude-api (fallback)
+                    _cap_router.register_provider("inference", "jarvis-prime")
+                    _cap_router.register_fallback("inference", "claude-api")
+
+                    # Embeddings: jarvis-prime (primary) → openai-api (fallback)
+                    _cap_router.register_provider("embeddings", "jarvis-prime")
+                    _cap_router.register_fallback("embeddings", "openai-api")
+
+                    # Training: reactor-core (primary), no fallback (optional capability)
+                    _cap_router.register_provider("training", "reactor-core")
+
+                    # Fine-tuning: reactor-core (primary), no fallback
+                    _cap_router.register_provider("fine-tuning", "reactor-core")
+
+                    # Voice auth: voice-unlock (in-process)
+                    _cap_router.register_provider("voice-auth", "voice-unlock")
+
+                    # GCP VM: gcp-prewarm (optional)
+                    _cap_router.register_provider("gcp-vm-ready", "gcp-prewarm")
+
+                    _cap_count = len(getattr(_cap_router, '_capability_providers', {}))
+                    self.logger.info(
+                        f"[Zone6] CapabilityRouter: {_cap_count} capabilities registered "
+                        f"across Trinity providers"
+                    )
+                except Exception as _cr_err:
+                    self.logger.debug(f"[Zone6] Capability registration skipped: {_cr_err}")
 
             # v238.0: Health Contract Enforcement — aggregate health from all components
             # Uses SystemHealthAggregator to determine system-level health status
