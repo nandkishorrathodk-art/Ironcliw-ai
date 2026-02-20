@@ -54,12 +54,14 @@ import json
 import logging
 import os
 import time
+from collections import deque
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum, auto
 from pathlib import Path
-from typing import Any, AsyncIterator, Callable, Dict, List, Optional, Set
+from typing import Any, AsyncIterator, Callable, Deque, Dict, List, Optional, Set
 from uuid import uuid4
 
 import aiofiles
@@ -355,6 +357,31 @@ class CrossRepoStateInitializer:
         # Prevents deadlock scenarios where crashed processes leave locks hanging
         self._lock_manager: Optional[DistributedLockManager] = None
         self._state_write_lock = asyncio.Lock()
+        # v256.0: Dedicated state I/O executor prevents startup model-loading tasks
+        # from starving critical cross-repo state writes on the default executor.
+        _default_state_workers = max(1, min(4, (os.cpu_count() or 2) // 2))
+        _state_workers = max(
+            1,
+            _get_env_int("JARVIS_STATE_WRITE_EXECUTOR_WORKERS", _default_state_workers),
+        )
+        self._state_write_executor = self._create_state_write_executor(_state_workers)
+        self._state_write_workers = _state_workers
+
+        # v256.0: Adaptive write-time forecasting model (no fixed global timeout).
+        _seed_ewma = _get_env_float(
+            "JARVIS_STATE_WRITE_EWMA_SEED",
+            max(0.05, self.config.state_update_interval_seconds * 0.05),
+        )
+        self._state_write_ewma_seconds = max(0.01, _seed_ewma)
+        self._state_write_jitter_seconds = 0.0
+        self._state_write_history: Deque[float] = deque(
+            maxlen=max(8, _get_env_int("JARVIS_STATE_WRITE_HISTORY_SIZE", 32))
+        )
+        self._state_write_timeout_streak = 0
+        self._state_write_extension_events = 0
+        self._state_write_total_extensions = 0
+        self._state_write_total_writes = 0
+        self._state_write_last_duration_seconds = 0.0
 
         # Background tasks
         self._heartbeat_task: Optional[asyncio.Task] = None
@@ -373,6 +400,29 @@ class CrossRepoStateInitializer:
                 "helicone_tracking": True,
             }
         )
+
+    @staticmethod
+    def _create_state_write_executor(workers: int) -> ThreadPoolExecutor:
+        """Create dedicated executor for cross-repo state writes."""
+        return ThreadPoolExecutor(
+            max_workers=workers,
+            thread_name_prefix="jarvis_state_io",
+        )
+
+    def _ensure_state_write_executor(self) -> ThreadPoolExecutor:
+        """
+        Ensure a usable state write executor exists.
+
+        Recreates the executor after shutdown when the singleton instance is
+        reused across module namespace boundaries.
+        """
+        executor = self._state_write_executor
+        if executor is None or getattr(executor, "_shutdown", False):
+            self._state_write_executor = self._create_state_write_executor(
+                self._state_write_workers
+            )
+            executor = self._state_write_executor
+        return executor
 
     async def initialize(self) -> bool:
         """
@@ -469,6 +519,12 @@ class CrossRepoStateInitializer:
         # Update state to offline
         self._jarvis_state.status = StateStatus.OFFLINE
         await self._write_jarvis_state()
+
+        # v256.0: Release dedicated state write executor.
+        try:
+            self._state_write_executor.shutdown(wait=False, cancel_futures=True)
+        except Exception as e:
+            logger.debug(f"[CrossRepoState] State write executor shutdown warning: {e}")
 
         logger.info("[CrossRepoState] ✅ Shutdown complete")
 
@@ -954,6 +1010,114 @@ class CrossRepoStateInitializer:
     # State Management
     # =========================================================================
 
+    @staticmethod
+    def _percentile(sorted_values: List[float], percentile: float) -> float:
+        """Compute percentile via linear interpolation."""
+        if not sorted_values:
+            return 0.0
+        if len(sorted_values) == 1:
+            return sorted_values[0]
+
+        p = min(100.0, max(0.0, percentile))
+        rank = (len(sorted_values) - 1) * (p / 100.0)
+        lower = int(rank)
+        upper = min(len(sorted_values) - 1, lower + 1)
+        weight = rank - lower
+        return (
+            sorted_values[lower] * (1.0 - weight)
+            + sorted_values[upper] * weight
+        )
+
+    def _forecast_state_write_window(self) -> float:
+        """
+        Forecast next write wait window from recent latency + jitter + pressure.
+
+        This is not a fixed global timeout. It's a dynamic window used to check
+        progress while allowing the write to continue extending as needed.
+        """
+        recent = sorted(self._state_write_history)
+        p95 = self._percentile(recent, 95.0) if recent else self._state_write_ewma_seconds
+        base = max(
+            self._state_write_ewma_seconds + (2.0 * self._state_write_jitter_seconds),
+            p95,
+            0.01,
+        )
+
+        backoff_factor = max(
+            0.05,
+            _get_env_float("JARVIS_STATE_WRITE_BACKOFF_FACTOR", 0.35),
+        )
+        pressure_multiplier = 1.0 + (self._state_write_timeout_streak * backoff_factor)
+        projected = base * max(1.25, pressure_multiplier)
+
+        interval_anchor = max(
+            0.25,
+            self.config.state_update_interval_seconds,
+            self.config.heartbeat_interval_seconds * 0.5,
+        )
+        floor = max(
+            0.05,
+            _get_env_float("JARVIS_STATE_WRITE_FORECAST_FLOOR", interval_anchor * 0.1),
+        )
+        cap = max(
+            floor,
+            _get_env_float("JARVIS_STATE_WRITE_FORECAST_CAP", interval_anchor * 4.0),
+        )
+        return min(max(projected, floor), cap)
+
+    def _record_state_write_completion(
+        self,
+        duration_seconds: float,
+        extension_count: int,
+    ) -> None:
+        """Update adaptive forecast metrics from completed write."""
+        alpha = min(
+            0.95,
+            max(0.05, _get_env_float("JARVIS_STATE_WRITE_EWMA_ALPHA", 0.35)),
+        )
+        jitter_alpha = min(
+            0.95,
+            max(0.05, _get_env_float("JARVIS_STATE_WRITE_JITTER_ALPHA", alpha)),
+        )
+
+        prev_ewma = self._state_write_ewma_seconds
+        self._state_write_ewma_seconds = (
+            alpha * duration_seconds
+            + (1.0 - alpha) * prev_ewma
+        )
+
+        deviation = abs(duration_seconds - self._state_write_ewma_seconds)
+        self._state_write_jitter_seconds = (
+            jitter_alpha * deviation
+            + (1.0 - jitter_alpha) * self._state_write_jitter_seconds
+        )
+
+        self._state_write_history.append(duration_seconds)
+        self._state_write_last_duration_seconds = duration_seconds
+        self._state_write_total_writes += 1
+        self._state_write_total_extensions += extension_count
+
+        if extension_count == 0:
+            self._state_write_timeout_streak = 0
+        else:
+            self._state_write_extension_events += 1
+
+    def _state_write_metrics(self) -> Dict[str, Any]:
+        """Expose adaptive writer health for diagnostics/observability."""
+        p95 = self._percentile(sorted(self._state_write_history), 95.0)
+        return {
+            "executor_workers": self._state_write_workers,
+            "writes_total": self._state_write_total_writes,
+            "extensions_total": self._state_write_total_extensions,
+            "extension_events": self._state_write_extension_events,
+            "timeout_streak": self._state_write_timeout_streak,
+            "last_duration_seconds": round(self._state_write_last_duration_seconds, 6),
+            "ewma_seconds": round(self._state_write_ewma_seconds, 6),
+            "jitter_seconds": round(self._state_write_jitter_seconds, 6),
+            "p95_seconds": round(p95, 6),
+            "forecast_window_seconds": round(self._forecast_state_write_window(), 6),
+        }
+
     async def _write_jarvis_state(self) -> None:
         """Write JARVIS state to vbia_state.json (thread-safe).
 
@@ -976,8 +1140,10 @@ class CrossRepoStateInitializer:
         is sufficient. No cross-process file lock is needed. The in-process
         ``_state_write_lock`` (asyncio.Lock) prevents intra-instance races.
 
-        The ``run_in_executor`` call is also wrapped in a timeout to prevent
-        thread pool saturation from stalling this method indefinitely.
+        v256.0: Uses a dedicated state I/O executor plus adaptive forecasting.
+        Instead of dropping a cycle on fixed timeout, the writer predicts a
+        dynamic wait window from observed latency and extends wait windows until
+        completion. This preserves state consistency under executor pressure.
         """
         state_file = self._state_files["vbia_state"]
 
@@ -985,31 +1151,83 @@ class CrossRepoStateInitializer:
         self._jarvis_state.last_update = datetime.now().isoformat()
         _serialized = json.dumps(asdict(self._jarvis_state), indent=2)
 
-        # v254.0: Configurable timeout for executor write (default 5s).
-        # If the default ThreadPoolExecutor is saturated (startup), this prevents
-        # the method from blocking indefinitely.
-        _executor_write_timeout = _get_env_float(
-            "JARVIS_STATE_WRITE_TIMEOUT", 5.0
-        )
-
         # Serialize local writes to prevent same-process write interleaving.
         async with self._state_write_lock:
             loop = asyncio.get_running_loop()
-            try:
-                await asyncio.wait_for(
-                    loop.run_in_executor(
-                        None, self._write_file_sync, str(state_file), _serialized
+            executor = self._ensure_state_write_executor()
+            write_future = loop.run_in_executor(
+                executor,
+                self._write_file_sync,
+                str(state_file),
+                _serialized,
+            )
+            write_start = time.monotonic()
+            extension_count = 0
+            stall_log_interval = max(
+                0.25,
+                _get_env_float(
+                    "JARVIS_STATE_WRITE_STALL_LOG_INTERVAL",
+                    max(
+                        self.config.state_update_interval_seconds,
+                        self.config.heartbeat_interval_seconds * 0.5,
                     ),
-                    timeout=_executor_write_timeout,
-                )
-            except asyncio.TimeoutError:
-                logger.warning(
-                    f"[CrossRepoState] vbia_state write timed out after "
-                    f"{_executor_write_timeout}s (executor saturated) — "
-                    f"skipping this cycle"
-                )
+                ),
+            )
+            next_stall_log_at = write_start + stall_log_interval
+            write_succeeded = False
+
+            try:
+                while True:
+                    wait_window = self._forecast_state_write_window()
+                    try:
+                        await asyncio.wait_for(
+                            asyncio.shield(write_future),
+                            timeout=wait_window,
+                        )
+                        write_succeeded = True
+                        break
+                    except asyncio.TimeoutError:
+                        extension_count += 1
+                        self._state_write_timeout_streak = min(
+                            10_000,
+                            self._state_write_timeout_streak + 1,
+                        )
+                        elapsed = time.monotonic() - write_start
+                        now = time.monotonic()
+                        if now >= next_stall_log_at:
+                            logger.warning(
+                                "[CrossRepoState] vbia_state write still pending "
+                                f"after {elapsed:.2f}s (forecast_window={wait_window:.2f}s, "
+                                f"streak={self._state_write_timeout_streak}) — extending wait"
+                            )
+                            next_stall_log_at = now + stall_log_interval
             except OSError as e:
                 logger.warning(f"[CrossRepoState] vbia_state write failed: {e}")
+            except asyncio.CancelledError:
+                # Preserve write consistency whenever possible even during shutdown.
+                if not write_future.done():
+                    cancel_grace = max(
+                        0.25,
+                        _get_env_float(
+                            "JARVIS_STATE_WRITE_CANCEL_GRACE",
+                            self._forecast_state_write_window(),
+                        ),
+                    )
+                    try:
+                        await asyncio.wait_for(
+                            asyncio.shield(write_future),
+                            timeout=cancel_grace,
+                        )
+                    except Exception:
+                        pass
+                raise
+            finally:
+                if write_succeeded:
+                    write_duration = time.monotonic() - write_start
+                    self._record_state_write_completion(
+                        write_duration,
+                        extension_count=extension_count,
+                    )
 
     async def update_jarvis_status(self, status: StateStatus, metrics: Optional[Dict[str, Any]] = None) -> None:
         """
@@ -1511,6 +1729,7 @@ class CrossRepoStateInitializer:
             },
             "jarvis_initialized": self._initialized,
             "uptime_seconds": time.time() - self._start_time,
+            "state_write_metrics": self._state_write_metrics(),
         }
 
     # =========================================================================
