@@ -277,6 +277,88 @@ del _os, _sys, _Path, _ensure_venv_python
 
 
 # =============================================================================
+# EARLY RUNTIME PATH RESOLUTION (before heavy imports)
+# =============================================================================
+# Resolve writable runtime directories for lock/cache/log/state I/O before any
+# module-level imports that might touch filesystem paths.
+# =============================================================================
+import os as _runtime_os
+import tempfile as _runtime_tempfile
+from pathlib import Path as _RuntimePath
+
+
+def _is_writable_dir(path: _RuntimePath) -> bool:
+    """Check whether a directory can be created and written to."""
+    try:
+        path.mkdir(parents=True, exist_ok=True)
+        probe = path / f".jarvis_write_probe_{_runtime_os.getpid()}"
+        probe.write_text("ok")
+        probe.unlink(missing_ok=True)
+        return True
+    except Exception:
+        return False
+
+
+def _configure_runtime_paths() -> None:
+    """
+    Resolve canonical writable runtime directories for this process.
+
+    Candidate order:
+    1) Explicit JARVIS_HOME (if writable)
+    2) ~/.jarvis
+    3) <repo>/.jarvis_runtime
+    4) /tmp/jarvis_<uid>
+    """
+    script_dir = _RuntimePath(__file__).parent.resolve()
+    explicit_home = _runtime_os.environ.get("JARVIS_HOME", "").strip()
+
+    candidates = []
+    if explicit_home:
+        candidates.append(_RuntimePath(explicit_home).expanduser())
+    candidates.extend(
+        [
+            _RuntimePath.home() / ".jarvis",
+            _RuntimePath(_runtime_tempfile.gettempdir())
+            / f"jarvis_{getattr(_runtime_os, 'getuid', lambda: _runtime_os.getpid())()}",
+            script_dir / ".jarvis_runtime",
+        ]
+    )
+
+    runtime_home = None
+    for candidate in candidates:
+        if _is_writable_dir(candidate):
+            runtime_home = candidate
+            break
+
+    if runtime_home is None:
+        runtime_home = _RuntimePath(_runtime_tempfile.gettempdir()) / "jarvis_fallback"
+        runtime_home.mkdir(parents=True, exist_ok=True)
+
+    lock_dir = runtime_home / "locks"
+    cache_dir = runtime_home / "cache"
+    log_dir = runtime_home / "logs"
+    cross_repo_dir = runtime_home / "cross_repo"
+    trinity_readiness_dir = runtime_home / "trinity" / "readiness"
+
+    for path in (lock_dir, cache_dir, log_dir, cross_repo_dir, trinity_readiness_dir):
+        path.mkdir(parents=True, exist_ok=True)
+
+    # Export resolved runtime paths so imported modules use the same roots.
+    _runtime_os.environ["JARVIS_HOME"] = str(runtime_home)
+    _runtime_os.environ["JARVIS_LOCK_DIR"] = str(lock_dir)
+    _runtime_os.environ["JARVIS_CACHE_DIR"] = str(cache_dir)
+    _runtime_os.environ["JARVIS_LOG_DIR"] = str(log_dir)
+    _runtime_os.environ["JARVIS_CROSS_REPO_DIR"] = str(cross_repo_dir)
+    _runtime_os.environ["JARVIS_TRINITY_DIR"] = str(trinity_readiness_dir)
+
+
+_configure_runtime_paths()
+
+# Clean up bootstrap-only imports.
+del _runtime_os, _runtime_tempfile, _RuntimePath, _is_writable_dir, _configure_runtime_paths
+
+
+# =============================================================================
 # FAST EARLY-EXIT FOR RUNNING KERNEL
 # =============================================================================
 # Check runs BEFORE heavy imports (PyTorch, transformers, GCP libs).
@@ -305,11 +387,14 @@ def _fast_kernel_check() -> bool:
     if any(flag in _sys.argv for flag in action_flags):
         return False  # Need full initialization
 
-    # Check if IPC socket exists
-    sock_path = _Path.home() / ".jarvis" / "locks" / "kernel.sock"
+    # Check if IPC socket exists in resolved lock directory.
+    lock_dir = _Path(
+        _os.environ.get("JARVIS_LOCK_DIR", str(_Path.home() / ".jarvis" / "locks"))
+    ).expanduser()
+    sock_path = lock_dir / "kernel.sock"
     if not sock_path.exists():
         # Try legacy path
-        sock_path = _Path.home() / ".jarvis" / "locks" / "supervisor.sock"
+        sock_path = lock_dir / "supervisor.sock"
         if not sock_path.exists():
             return False  # No kernel running
 
@@ -1578,10 +1663,10 @@ KERNEL_NAME = "JARVIS Unified System Kernel"
 # Default paths (dynamically resolved at runtime)
 PROJECT_ROOT = Path(__file__).parent.resolve()
 BACKEND_DIR = PROJECT_ROOT / "backend"
-JARVIS_HOME = Path.home() / ".jarvis"
-LOCKS_DIR = JARVIS_HOME / "locks"
-CACHE_DIR = JARVIS_HOME / "cache"
-LOGS_DIR = JARVIS_HOME / "logs"
+JARVIS_HOME = Path(os.getenv("JARVIS_HOME", str(Path.home() / ".jarvis"))).expanduser()
+LOCKS_DIR = Path(os.getenv("JARVIS_LOCK_DIR", str(JARVIS_HOME / "locks"))).expanduser()
+CACHE_DIR = Path(os.getenv("JARVIS_CACHE_DIR", str(JARVIS_HOME / "cache"))).expanduser()
+LOGS_DIR = Path(os.getenv("JARVIS_LOG_DIR", str(JARVIS_HOME / "logs"))).expanduser()
 
 # IPC socket paths
 KERNEL_SOCKET_PATH = LOCKS_DIR / "kernel.sock"
@@ -62429,7 +62514,14 @@ class JarvisSystemKernel:
                 self.logger.debug(f"[Narrator] IntelligentStartupNarrator start failed: {sn_err}")
 
         # Voice narrator startup announcement
-        if self._narrator:
+        # Prefer IntelligentStartupNarrator when available to keep startup speech
+        # on a single orchestrated path (prevents duplicate/overlapping startup audio).
+        _allow_legacy_startup_narration = os.getenv(
+            "JARVIS_LEGACY_STARTUP_NARRATION", "false"
+        ).strip().lower() in ("1", "true", "yes", "on")
+        if self._narrator and (
+            self._startup_narrator is None or _allow_legacy_startup_narration
+        ):
             try:
                 await self._narrator.narrate_startup_begin()
             except Exception as narr_err:

@@ -41,6 +41,7 @@ import logging
 import os
 import signal
 import sys
+import tempfile
 import threading
 import time
 import traceback
@@ -56,9 +57,41 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 _diag_logger = logging.getLogger("jarvis.shutdown.diagnostics")
 _diag_logger.setLevel(logging.DEBUG)
 
-# Ensure we have a handler for the diagnostic logger
-_diag_log_dir = Path.home() / ".jarvis" / "trinity"
-_diag_log_dir.mkdir(parents=True, exist_ok=True)
+def _resolve_diag_log_dir() -> Path:
+    """Resolve a writable diagnostics directory with deterministic fallback."""
+    explicit = os.environ.get("JARVIS_SHUTDOWN_DIAG_DIR", "").strip()
+    jarvis_home = Path(
+        os.environ.get("JARVIS_HOME", str(Path.home() / ".jarvis"))
+    ).expanduser()
+
+    candidates = []
+    if explicit:
+        candidates.append(Path(explicit).expanduser())
+    candidates.extend(
+        [
+            jarvis_home / "trinity",
+            Path(tempfile.gettempdir()) / "jarvis" / "trinity",
+        ]
+    )
+
+    for path in candidates:
+        try:
+            path.mkdir(parents=True, exist_ok=True)
+            probe = path / f".diag_probe_{os.getpid()}"
+            probe.write_text("ok")
+            probe.unlink(missing_ok=True)
+            return path
+        except Exception:
+            continue
+
+    # Last resort: current working directory.
+    fallback = Path.cwd() / ".jarvis_diag"
+    fallback.mkdir(parents=True, exist_ok=True)
+    return fallback
+
+
+# Ensure we have a writable diagnostics directory.
+_diag_log_dir = _resolve_diag_log_dir()
 
 _diag_log_file = _diag_log_dir / "shutdown_diagnostics.log"
 _forensics_file = _diag_log_dir / "shutdown_forensics.json"

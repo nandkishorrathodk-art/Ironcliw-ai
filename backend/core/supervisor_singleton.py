@@ -56,6 +56,7 @@ import os
 import signal
 import socket
 import sys
+import tempfile
 import threading
 import time
 import urllib.request
@@ -96,15 +97,65 @@ def _get_env_int(key: str, default: int) -> int:
     except ValueError:
         return default
 
+
+def _is_writable_dir(path: Path) -> bool:
+    """Check if a directory is writable by creating/removing a probe file."""
+    try:
+        path.mkdir(parents=True, exist_ok=True)
+        probe = path / f".write_probe_{os.getpid()}"
+        probe.write_text("ok")
+        probe.unlink(missing_ok=True)
+        return True
+    except Exception:
+        return False
+
+
+def _resolve_writable_lock_dir() -> Path:
+    """Resolve a writable lock directory with deterministic fallback."""
+    env_lock = os.environ.get("JARVIS_LOCK_DIR", "").strip()
+    env_home = os.environ.get("JARVIS_HOME", "").strip()
+    home_root = Path(env_home).expanduser() if env_home else (Path.home() / ".jarvis")
+
+    candidates = []
+    if env_lock:
+        candidates.append(Path(env_lock).expanduser())
+    candidates.extend(
+        [
+            home_root / "locks",
+            Path(tempfile.gettempdir()) / "jarvis" / "locks",
+        ]
+    )
+
+    for candidate in candidates:
+        if _is_writable_dir(candidate):
+            return candidate
+
+    # Last resort: best-effort /tmp lock directory.
+    fallback = Path(tempfile.gettempdir()) / f"jarvis_{os.getpid()}" / "locks"
+    fallback.mkdir(parents=True, exist_ok=True)
+    return fallback
+
+
 # Lock file location - configurable via environment
-LOCK_DIR = _get_env_path("JARVIS_LOCK_DIR", Path.home() / ".jarvis" / "locks")
+LOCK_DIR = _resolve_writable_lock_dir()
+os.environ["JARVIS_LOCK_DIR"] = str(LOCK_DIR)
+
+_resolved_home = Path(
+    os.environ.get("JARVIS_HOME", str(LOCK_DIR.parent))
+).expanduser()
+if not _is_writable_dir(_resolved_home):
+    _resolved_home = LOCK_DIR.parent
+os.environ["JARVIS_HOME"] = str(_resolved_home)
+
 SUPERVISOR_LOCK_FILE = LOCK_DIR / "supervisor.lock"
 SUPERVISOR_STATE_FILE = LOCK_DIR / "supervisor.state"
 SUPERVISOR_IPC_SOCKET = LOCK_DIR / "supervisor.sock"
 
 # v115.0: Cross-repo state directory
-CROSS_REPO_DIR = _get_env_path("JARVIS_CROSS_REPO_DIR", Path.home() / ".jarvis" / "cross_repo")
-TRINITY_READINESS_DIR = _get_env_path("JARVIS_TRINITY_DIR", Path.home() / ".jarvis" / "trinity" / "readiness")
+CROSS_REPO_DIR = _get_env_path("JARVIS_CROSS_REPO_DIR", _resolved_home / "cross_repo")
+TRINITY_READINESS_DIR = _get_env_path("JARVIS_TRINITY_DIR", _resolved_home / "trinity" / "readiness")
+os.environ.setdefault("JARVIS_CROSS_REPO_DIR", str(CROSS_REPO_DIR))
+os.environ.setdefault("JARVIS_TRINITY_DIR", str(TRINITY_READINESS_DIR))
 
 # v115.0: Configurable thresholds
 STALE_LOCK_THRESHOLD = _get_env_float("JARVIS_STALE_LOCK_THRESHOLD", 90.0)  # Reduced from 300s

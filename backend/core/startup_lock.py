@@ -39,7 +39,12 @@ from typing import Optional, IO
 
 logger = logging.getLogger("jarvis.startup_lock")
 
-DEFAULT_STATE_DIR = Path("~/.jarvis/state").expanduser()
+_jarvis_home = Path(
+    os.environ.get("JARVIS_HOME", str(Path.home() / ".jarvis"))
+).expanduser()
+DEFAULT_STATE_DIR = Path(
+    os.environ.get("JARVIS_STATE_DIR", str(_jarvis_home / "state"))
+).expanduser()
 
 
 class StartupLock:

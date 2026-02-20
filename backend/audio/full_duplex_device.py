@@ -138,6 +138,14 @@ class FullDuplexDevice:
             raise ImportError("sounddevice is not installed")
 
         try:
+            if os.getenv("JARVIS_AUDIO_VALIDATE_DEVICES", "true").lower() in (
+                "1",
+                "true",
+                "yes",
+                "on",
+            ):
+                self._validate_device_selection()
+
             self._stream = sd.Stream(
                 samplerate=self.config.sample_rate,
                 blocksize=self.config.frame_size,
@@ -151,16 +159,92 @@ class FullDuplexDevice:
             self._running = True
             self._started_event.set()
 
+            in_device_label = (
+                self.config.input_device
+                if self.config.input_device is not None
+                else "default"
+            )
+            out_device_label = (
+                self.config.output_device
+                if self.config.output_device is not None
+                else "default"
+            )
+
             logger.info(
                 f"[FullDuplexDevice] Started: sr={self.config.sample_rate}, "
                 f"frame={self.config.frame_size} samples "
                 f"({self.config.frame_duration_ms}ms), "
-                f"in={self.config.input_device or 'default'}, "
-                f"out={self.config.output_device or 'default'}"
+                f"in={in_device_label}, "
+                f"out={out_device_label}"
             )
         except Exception as e:
             logger.error(f"[FullDuplexDevice] Failed to start: {e}")
             raise
+
+    def _validate_device_selection(self) -> None:
+        """
+        Validate and resolve duplex device selection before opening the stream.
+
+        This prevents PortAudio device=-1 startup failures and avoids partially
+        initialized audio state that can manifest as startup noise/static.
+        """
+        assert sd is not None  # guarded by caller
+
+        try:
+            devices = sd.query_devices()
+        except Exception as e:
+            raise RuntimeError(f"Unable to query audio devices: {e}") from e
+
+        if not devices:
+            raise RuntimeError("No audio devices available")
+
+        default_input = None
+        default_output = None
+        try:
+            defaults = getattr(sd.default, "device", None)
+            if isinstance(defaults, (tuple, list)) and len(defaults) >= 2:
+                default_input = int(defaults[0]) if defaults[0] is not None else None
+                default_output = int(defaults[1]) if defaults[1] is not None else None
+        except Exception:
+            default_input = None
+            default_output = None
+
+        input_device = (
+            int(self.config.input_device)
+            if self.config.input_device is not None
+            else default_input
+        )
+        output_device = (
+            int(self.config.output_device)
+            if self.config.output_device is not None
+            else default_output
+        )
+
+        if input_device is None or input_device < 0:
+            raise RuntimeError("No valid default input device available")
+        if output_device is None or output_device < 0:
+            raise RuntimeError("No valid default output device available")
+
+        try:
+            sd.check_input_settings(
+                device=input_device,
+                channels=self.config.channels,
+                samplerate=self.config.sample_rate,
+                dtype=self.config.dtype,
+            )
+            sd.check_output_settings(
+                device=output_device,
+                channels=self.config.channels,
+                samplerate=self.config.sample_rate,
+                dtype=self.config.dtype,
+            )
+        except Exception as e:
+            raise RuntimeError(
+                f"Audio device validation failed (in={input_device}, out={output_device}): {e}"
+            ) from e
+
+        self.config.input_device = input_device
+        self.config.output_device = output_device
 
     async def stop(self) -> None:
         """Close the stream and release resources."""
