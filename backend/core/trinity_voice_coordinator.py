@@ -34,6 +34,7 @@ import hashlib
 import sqlite3
 import uuid
 import random
+import platform
 import weakref
 from enum import Enum, auto
 from dataclasses import dataclass, field
@@ -128,6 +129,16 @@ def _env_path(key: str, default: Path) -> Path:
     if value is None:
         return default
     return Path(value).expanduser()
+
+
+def _allow_pyttsx3_on_darwin() -> bool:
+    """
+    pyttsx3 on macOS uses PyObjC/AppKit and can abort the process when invoked
+    from worker threads. Keep it opt-in on Darwin.
+    """
+    return os.getenv("JARVIS_TTS_ALLOW_PYTTSX3_DARWIN", "").strip().lower() in (
+        "1", "true", "yes", "on"
+    )
 
 
 # =============================================================================
@@ -1727,11 +1738,15 @@ class TrinityVoiceCoordinator:
         logger.info("[TrinityVoice] Initializing TTS engines...")
 
         # Initialize engines in priority order
-        engines_to_init: List[TTSEngine] = [
-            MacOSSayEngine(self.config),
-            Pyttsx3Engine(self.config),
-            EdgeTTSEngine(self.config),
-        ]
+        engines_to_init: List[TTSEngine] = [MacOSSayEngine(self.config)]
+        if platform.system() != "Darwin" or _allow_pyttsx3_on_darwin():
+            engines_to_init.append(Pyttsx3Engine(self.config))
+        else:
+            logger.info(
+                "[TrinityVoice] Skipping pyttsx3 on macOS "
+                "(set JARVIS_TTS_ALLOW_PYTTSX3_DARWIN=true to enable)"
+            )
+        engines_to_init.append(EdgeTTSEngine(self.config))
 
         for engine in engines_to_init:
             if await engine.initialize():
@@ -1970,12 +1985,22 @@ class TrinityVoiceCoordinator:
                     if voice_line and voice_line.split()
                 ]
                 available_voice_names_lower = {name.lower() for name in available_voice_names}
+                enforce_canonical = _env_bool("JARVIS_ENFORCE_CANONICAL_VOICE", True)
 
                 # If configured voice exists, keep it to preserve deterministic startup voice.
                 if default_voice.lower() in available_voice_names_lower:
                     detected_voice = default_voice
                     logger.info(
                         f"[Trinity Voice] Using configured voice: {default_voice}"
+                    )
+                elif enforce_canonical:
+                    # Keep canonical identity deterministic even when unavailable.
+                    # This prevents silent fallback to a different voice persona.
+                    detected_voice = default_voice
+                    logger.warning(
+                        "[Trinity Voice] Canonical voice '%s' unavailable; "
+                        "retaining canonical selection (speech may fail until installed)",
+                        default_voice,
                     )
                 else:
                     # Dynamic fallback chain from environment (comma-separated).
@@ -2171,7 +2196,10 @@ class TrinityVoiceCoordinator:
         # Engine ordering is context-aware and environment-driven.
         # For startup/narrator contexts we prefer macOS `say` first to keep voice
         # timbre consistent and avoid noisy fallback engines during boot.
-        default_engine_order = "macos_say,pyttsx3,edge_tts"
+        if platform.system() == "Darwin" and not _allow_pyttsx3_on_darwin():
+            default_engine_order = "macos_say,edge_tts"
+        else:
+            default_engine_order = "macos_say,pyttsx3,edge_tts"
         if announcement.context in (VoiceContext.STARTUP, VoiceContext.NARRATOR):
             order_raw = os.getenv("JARVIS_STARTUP_TTS_ENGINE_ORDER", default_engine_order)
         else:

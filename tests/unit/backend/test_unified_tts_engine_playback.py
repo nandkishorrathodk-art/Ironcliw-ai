@@ -9,6 +9,7 @@ import pytest
 import soundfile as sf
 
 from backend.voice.engines.unified_tts_engine import UnifiedTTSEngine
+from backend.voice.engines.base_tts_engine import TTSEngine
 
 
 def _wav_bytes(sample_rate: int = 22050) -> bytes:
@@ -64,3 +65,38 @@ async def test_play_audio_prefers_afplay_on_macos_when_bus_not_running(monkeypat
     await engine._play_audio(audio_bytes, sample_rate)
 
     assert called["afplay"] == 1
+
+
+def test_pyttsx3_disabled_by_default_on_macos(monkeypatch):
+    """Darwin fallback order should not include pyttsx3 unless explicitly enabled."""
+    monkeypatch.setattr(
+        "backend.voice.engines.unified_tts_engine.platform.system",
+        lambda: "Darwin",
+    )
+    monkeypatch.delenv("JARVIS_TTS_ALLOW_PYTTSX3_DARWIN", raising=False)
+    monkeypatch.setenv("JARVIS_CANONICAL_VOICE_NAME", "Daniel")
+    monkeypatch.setenv("JARVIS_VOICE_NAME", "Samantha")
+    monkeypatch.setenv("JARVIS_ENFORCE_CANONICAL_VOICE", "true")
+
+    engine = UnifiedTTSEngine(
+        preferred_engine=TTSEngine.PYTTSX3,
+        enable_cache=False,
+    )
+
+    assert engine.preferred_engine == TTSEngine.MACOS
+    assert engine.config.voice == "Daniel"
+    assert TTSEngine.PYTTSX3 not in engine.fallback_order
+
+
+def test_pyttsx3_can_be_explicitly_enabled_on_macos(monkeypatch):
+    """Darwin path should allow pyttsx3 when opt-in env var is set."""
+    monkeypatch.setattr(
+        "backend.voice.engines.unified_tts_engine.platform.system",
+        lambda: "Darwin",
+    )
+    monkeypatch.setenv("JARVIS_TTS_ALLOW_PYTTSX3_DARWIN", "true")
+    monkeypatch.setenv("JARVIS_ENFORCE_CANONICAL_VOICE", "false")
+
+    engine = UnifiedTTSEngine(enable_cache=False)
+
+    assert TTSEngine.PYTTSX3 in engine.fallback_order

@@ -33,6 +33,28 @@ from .base_tts_engine import BaseTTSEngine, TTSChunk, TTSConfig, TTSEngine, TTSR
 
 logger = logging.getLogger(__name__)
 
+
+def _env_flag(name: str, default: str = "false") -> bool:
+    """Parse boolean environment flags consistently."""
+    return os.getenv(name, default).strip().lower() in ("1", "true", "yes", "on")
+
+
+def _canonical_voice_name() -> str:
+    """Resolve canonical voice identity for deterministic TTS."""
+    canonical = os.getenv("JARVIS_CANONICAL_VOICE_NAME", "").strip()
+    if canonical:
+        return canonical
+    env_voice = os.getenv("JARVIS_VOICE_NAME", "Daniel").strip()
+    return env_voice or "Daniel"
+
+
+def _allow_pyttsx3_on_darwin() -> bool:
+    """
+    pyttsx3 on macOS can load AppKit via PyObjC from worker threads, which is
+    unsafe during async startup. Keep it opt-in for Darwin.
+    """
+    return _env_flag("JARVIS_TTS_ALLOW_PYTTSX3_DARWIN", "false")
+
 # =============================================================================
 # SINGLETON ACCESSOR
 # =============================================================================
@@ -303,7 +325,7 @@ class MacOSTTSEngine(BaseTTSEngine):
                     voices.append(voice_name)
             return voices
         except Exception:
-            return ["Alex", "Samantha", "Victoria", "Daniel"]
+            return ["Daniel", "Alex", "Samantha", "Victoria"]
 
     async def cleanup(self):
         """Cleanup resources"""
@@ -452,11 +474,26 @@ class UnifiedTTSEngine:
             name="unified-tts", engine=preferred_engine, language="en", speed=1.0
         )
 
-        # v236.5: Ensure voice is set from env var when not explicitly provided.
-        # Without this, MacOSTTSEngine omits `-v` flag from `say` command and
-        # macOS uses system default voice (e.g. Samantha) instead of Daniel.
-        if not self.config.voice:
-            self.config.voice = os.getenv("JARVIS_VOICE_NAME", "Daniel")
+        self._is_macos = platform.system() == "Darwin"
+        self._allow_pyttsx3 = (not self._is_macos) or _allow_pyttsx3_on_darwin()
+
+        canonical_voice = _canonical_voice_name()
+        if _env_flag("JARVIS_ENFORCE_CANONICAL_VOICE", "true"):
+            self.config.voice = canonical_voice
+        elif not self.config.voice:
+            # Keep voice deterministic when not explicitly configured.
+            self.config.voice = os.getenv("JARVIS_VOICE_NAME", canonical_voice)
+
+        if (
+            self.preferred_engine == TTSEngine.PYTTSX3
+            and self._is_macos
+            and not self._allow_pyttsx3
+        ):
+            logger.warning(
+                "[TTS] pyttsx3 is disabled on macOS by default; "
+                "using macOS 'say' engine instead"
+            )
+            self.preferred_engine = TTSEngine.MACOS
 
         # TTS engines
         self.engines: Dict[TTSEngine, Optional[BaseTTSEngine]] = {
@@ -467,9 +504,7 @@ class UnifiedTTSEngine:
         }
 
         self.active_engine = None
-        self.fallback_order = [
-            TTSEngine.PIPER, TTSEngine.MACOS, TTSEngine.PYTTSX3, TTSEngine.GTTS
-        ]
+        self.fallback_order = self._build_fallback_order()
 
         # Feature flag for AudioBus routing
         self._audio_bus_enabled = os.getenv(
@@ -483,7 +518,22 @@ class UnifiedTTSEngine:
         self.total_requests = 0
         self.total_latency_ms = 0.0
 
-        logger.info(f"🔊 Unified TTS Engine initialized (preferred: {preferred_engine.value})")
+        logger.info(
+            f"🔊 Unified TTS Engine initialized (preferred: {self.preferred_engine.value})"
+        )
+
+    def _build_fallback_order(self) -> List[TTSEngine]:
+        """
+        Build deterministic fallback order.
+
+        On macOS we keep pyttsx3 opt-in because PyObjC/AppKit initialization
+        from executor threads can crash the interpreter.
+        """
+        order: List[TTSEngine] = [TTSEngine.PIPER, TTSEngine.MACOS]
+        if self._allow_pyttsx3:
+            order.append(TTSEngine.PYTTSX3)
+        order.append(TTSEngine.GTTS)
+        return order
 
     async def initialize(self):
         """Initialize preferred and fallback engines"""
@@ -516,6 +566,17 @@ class UnifiedTTSEngine:
         """Initialize specific TTS engine"""
         if self.engines[engine_type] is not None:
             return self.engines[engine_type]
+
+        if (
+            engine_type == TTSEngine.PYTTSX3
+            and self._is_macos
+            and not self._allow_pyttsx3
+        ):
+            logger.info(
+                "[TTS] Skipping pyttsx3 engine on macOS "
+                "(set JARVIS_TTS_ALLOW_PYTTSX3_DARWIN=true to enable)"
+            )
+            return None
 
         try:
             if engine_type == TTSEngine.PIPER:
@@ -811,6 +872,9 @@ class UnifiedTTSEngine:
 
     def set_voice(self, voice: str):
         """Set voice for synthesis"""
+        if _env_flag("JARVIS_ENFORCE_CANONICAL_VOICE", "true"):
+            self.config.voice = _canonical_voice_name()
+            return
         self.config.voice = voice
 
     def set_speed(self, speed: float):

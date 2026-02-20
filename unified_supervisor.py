@@ -60944,7 +60944,8 @@ class JarvisSystemKernel:
 
         Does NOT wait for graceful shutdown - uses kill signals.
         """
-        self.logger.warning(
+        _shutdown_log = self.logger.info if expected else self.logger.warning
+        _shutdown_log(
             f"[Kernel] ⚠️ Emergency shutdown initiated (reason={reason}, expected={expected})"
         )
         self._state = KernelState.SHUTTING_DOWN
@@ -60952,68 +60953,75 @@ class JarvisSystemKernel:
         # v258.4: Publish shutdown phase to Trinity IPC for cross-repo consumers.
         _publish_system_phase_to_trinity("shutdown", {"reason": reason, "expected": expected})
 
-        # v181.0: Write crash marker for next startup
-        # v205.0: Use asyncio.to_thread to avoid blocking the event loop
-        # v242.5: Enriched with diagnostic context (JSON) for crash forensics
-        try:
-            crash_marker = LOCKS_DIR / "kernel_crash.marker"
+        crash_marker = LOCKS_DIR / "kernel_crash.marker"
+        if expected:
+            # Expected shutdown paths should not create crash-recovery markers.
+            try:
+                if crash_marker.exists():
+                    await asyncio.to_thread(crash_marker.unlink)
+            except Exception:
+                pass
+        else:
+            # v181.0: Write crash marker for next startup
+            # v205.0: Use asyncio.to_thread to avoid blocking the event loop
+            # v242.5: Enriched with diagnostic context (JSON) for crash forensics
+            try:
+                def _write_crash_marker() -> None:
+                    """Sync helper for crash marker write — captures diagnostic snapshot."""
+                    crash_marker.parent.mkdir(parents=True, exist_ok=True)
+                    # v242.5: Capture diagnostic context for next-startup forensics
+                    uptime = time.time() - self._started_at if self._started_at else 0.0
+                    diag = {
+                        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+                        "epoch": time.time(),
+                        "pid": os.getpid(),
+                        "kernel_state": self._state.value if self._state else "unknown",
+                        "shutdown_mode": "emergency",
+                        "shutdown_reason": reason,
+                        "expected": bool(expected),
+                        "uptime_seconds": round(uptime, 1),
+                        "component_status": {},
+                    }
+                    # Capture component status snapshot (what was running/failed)
+                    try:
+                        for comp_name, comp_info in (self._component_status or {}).items():
+                            diag["component_status"][comp_name] = comp_info.get("status", "unknown")
+                    except Exception:
+                        pass
+                    # Capture Trinity component states
+                    try:
+                        if self._trinity and hasattr(self._trinity, "_components"):
+                            trinity_states = {}
+                            for name, comp in self._trinity._components.items():
+                                trinity_states[name] = {
+                                    "running": getattr(comp, "is_running", False),
+                                    "pid": getattr(comp, "pid", None),
+                                }
+                            diag["trinity_components"] = trinity_states
+                    except Exception:
+                        pass
+                    # Capture memory info if psutil available
+                    try:
+                        import psutil
+                        proc = psutil.Process(os.getpid())
+                        mem = proc.memory_info()
+                        diag["memory_rss_mb"] = round(mem.rss / (1024 * 1024), 1)
+                        diag["memory_vms_mb"] = round(mem.vms / (1024 * 1024), 1)
+                        diag["system_memory_pct"] = round(psutil.virtual_memory().percent, 1)
+                    except Exception:
+                        pass
+                    try:
+                        crash_marker.write_text(json.dumps(diag, indent=2))
+                    except Exception:
+                        # Fallback to plain text if JSON serialization fails
+                        crash_marker.write_text(
+                            f"Emergency shutdown at {time.strftime('%Y-%m-%d %H:%M:%S')} "
+                            f"(reason={reason}, expected={expected})"
+                        )
 
-            def _write_crash_marker() -> None:
-                """Sync helper for crash marker write — captures diagnostic snapshot."""
-                crash_marker.parent.mkdir(parents=True, exist_ok=True)
-                # v242.5: Capture diagnostic context for next-startup forensics
-                uptime = time.time() - self._started_at if self._started_at else 0.0
-                diag = {
-                    "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
-                    "epoch": time.time(),
-                    "pid": os.getpid(),
-                    "kernel_state": self._state.value if self._state else "unknown",
-                    "shutdown_mode": "emergency",
-                    "shutdown_reason": reason,
-                    "expected": bool(expected),
-                    "uptime_seconds": round(uptime, 1),
-                    "component_status": {},
-                }
-                # Capture component status snapshot (what was running/failed)
-                try:
-                    for comp_name, comp_info in (self._component_status or {}).items():
-                        diag["component_status"][comp_name] = comp_info.get("status", "unknown")
-                except Exception:
-                    pass
-                # Capture Trinity component states
-                try:
-                    if self._trinity and hasattr(self._trinity, "_components"):
-                        trinity_states = {}
-                        for name, comp in self._trinity._components.items():
-                            trinity_states[name] = {
-                                "running": getattr(comp, "is_running", False),
-                                "pid": getattr(comp, "pid", None),
-                            }
-                        diag["trinity_components"] = trinity_states
-                except Exception:
-                    pass
-                # Capture memory info if psutil available
-                try:
-                    import psutil
-                    proc = psutil.Process(os.getpid())
-                    mem = proc.memory_info()
-                    diag["memory_rss_mb"] = round(mem.rss / (1024 * 1024), 1)
-                    diag["memory_vms_mb"] = round(mem.vms / (1024 * 1024), 1)
-                    diag["system_memory_pct"] = round(psutil.virtual_memory().percent, 1)
-                except Exception:
-                    pass
-                try:
-                    crash_marker.write_text(json.dumps(diag, indent=2))
-                except Exception:
-                    # Fallback to plain text if JSON serialization fails
-                    crash_marker.write_text(
-                        f"Emergency shutdown at {time.strftime('%Y-%m-%d %H:%M:%S')} "
-                        f"(reason={reason}, expected={expected})"
-                    )
-
-            await asyncio.to_thread(_write_crash_marker)
-        except Exception:
-            pass
+                await asyncio.to_thread(_write_crash_marker)
+            except Exception:
+                pass
 
         # v181.0/v206.0: Stop Trinity components FIRST (prevents orphaned processes)
         # v206.0: PILLAR 5 - Use tiered_stop() for idempotent, bounded, never-raises cleanup
@@ -61421,7 +61429,9 @@ class JarvisSystemKernel:
             self.logger.debug(f"[Kernel] Final task drain error: {e}")
 
         self._state = KernelState.STOPPED
-        self.logger.warning("[Kernel] ⚠️ Emergency shutdown complete")
+        (_shutdown_log if expected else self.logger.warning)(
+            "[Kernel] ⚠️ Emergency shutdown complete"
+        )
 
     async def emergency_shutdown(
         self,
@@ -83458,10 +83468,24 @@ async def async_main(args: argparse.Namespace) -> int:
 
             # Step 1: Ensure kernel shutdown is complete
             if kernel._state not in (KernelState.STOPPED, KernelState.INITIALIZING):
-                kernel.logger.warning("[Kernel] Forcing shutdown in finally block...")
                 try:
+                    startup_failure_states = (
+                        KernelState.PREFLIGHT,
+                        KernelState.STARTING_RESOURCES,
+                        KernelState.STARTING_BACKEND,
+                        KernelState.STARTING_INTELLIGENCE,
+                        KernelState.STARTING_TRINITY,
+                        KernelState.FAILED,
+                    )
                     expected_finally_shutdown = (
-                        kernel._state == KernelState.SHUTTING_DOWN and exit_code in (0, 130)
+                        (kernel._state == KernelState.SHUTTING_DOWN and exit_code in (0, 130, 143))
+                        or (
+                            exit_code not in (0, 130, 143)
+                            and kernel._state in startup_failure_states
+                        )
+                    )
+                    (kernel.logger.info if expected_finally_shutdown else kernel.logger.warning)(
+                        "[Kernel] Forcing shutdown in finally block..."
                     )
                     finally_shutdown_timeout = max(
                         5.0,
