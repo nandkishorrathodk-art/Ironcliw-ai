@@ -246,18 +246,55 @@ async def get_tls_semaphore(host: str, port: int) -> asyncio.Semaphore:
         return semaphore
 
 
-async def _mark_tls_operation_start(host: str, port: int, sequence: int) -> None:
-    """v133.0: Mark that a TLS operation is starting."""
+def _mark_tls_operation_start(host: str, port: int, sequence: int) -> None:
+    """
+    v133.0: Mark that a TLS operation is starting.
+    v3.2: Made synchronous — these only do a dict write under a threading lock.
+    Being async meant the `finally` cleanup could be interrupted by CancelledError
+    mid-await, leaving stale entries in _active_tls_operations.
+    """
     key = f"{host}:{port}:seq{sequence}"
     with _tls_registry_lock:
         _active_tls_operations[key] = time.time()
 
 
-async def _mark_tls_operation_end(host: str, port: int, sequence: int) -> None:
-    """v133.0: Mark that a TLS operation has ended."""
+def _mark_tls_operation_end(host: str, port: int, sequence: int) -> None:
+    """
+    v133.0: Mark that a TLS operation has ended.
+    v3.2: Made synchronous — guarantees cleanup in finally blocks even during
+    CancelledError propagation (sync calls can't be interrupted by cancellation).
+    """
     key = f"{host}:{port}:seq{sequence}"
     with _tls_registry_lock:
         _active_tls_operations.pop(key, None)
+
+
+def _cleanup_stale_tls_operations(max_age_seconds: float = 120.0) -> int:
+    """
+    v3.2: Remove stale entries from _active_tls_operations.
+
+    If a task was cancelled in a way that bypassed the finally block (e.g.,
+    event loop shutdown, SIGTERM), stale entries accumulate. This periodic
+    cleanup prevents phantom "operation in progress" flags from blocking
+    future operations.
+
+    Returns:
+        Number of stale entries removed.
+    """
+    now = time.time()
+    stale_keys = []
+    with _tls_registry_lock:
+        for key, start_time in _active_tls_operations.items():
+            if (now - start_time) > max_age_seconds:
+                stale_keys.append(key)
+        for key in stale_keys:
+            _active_tls_operations.pop(key, None)
+    if stale_keys:
+        logger.warning(
+            f"[TLS Factory v3.2] Cleaned up {len(stale_keys)} stale TLS operations "
+            f"(age > {max_age_seconds}s): {stale_keys}"
+        )
+    return len(stale_keys)
 
 
 # =============================================================================
@@ -324,6 +361,9 @@ async def tls_safe_connect(
     last_error = None
     conn = None
 
+    # v3.2: Clean up any stale TLS operation entries from previously cancelled tasks
+    _cleanup_stale_tls_operations()
+
     for attempt in range(max_retries):
         # v133.0: Get unique sequence number for strict ordering
         sequence = _get_next_connection_sequence()
@@ -334,7 +374,7 @@ async def tls_safe_connect(
 
             async with tls_semaphore:
                 # v133.0: Mark operation start for monitoring
-                await _mark_tls_operation_start(host, port, sequence)
+                _mark_tls_operation_start(host, port, sequence)
 
                 try:
                     # v133.0: Extended settling time (100ms instead of 50ms)
@@ -388,7 +428,7 @@ async def tls_safe_connect(
 
                 finally:
                     # v133.0: Always mark operation end
-                    await _mark_tls_operation_end(host, port, sequence)
+                    _mark_tls_operation_end(host, port, sequence)
 
         except asyncio.InvalidStateError as e:
             # TLS race condition - the exact bug we're protecting against
@@ -536,6 +576,9 @@ async def tls_safe_create_pool(
     last_error = None
     pool = None
 
+    # v3.2: Clean up any stale TLS operation entries from previously cancelled tasks
+    _cleanup_stale_tls_operations()
+
     for attempt in range(max_retries):
         # v133.0: Get unique sequence number for this attempt
         sequence = _get_next_connection_sequence()
@@ -568,7 +611,7 @@ async def tls_safe_create_pool(
                 Each new connection in the pool goes through this callback.
                 """
                 init_seq = _get_next_connection_sequence()
-                await _mark_tls_operation_start(host, port, init_seq)
+                _mark_tls_operation_start(host, port, init_seq)
                 try:
                     async with tls_semaphore:
                         # v133.0: Extended delay (100ms) for TLS state to settle
@@ -585,7 +628,7 @@ async def tls_safe_create_pool(
                             logger.debug(f"[TLS Factory v133.0] Pool init verify failed: {verify_err}")
                             raise
                 finally:
-                    await _mark_tls_operation_end(host, port, init_seq)
+                    _mark_tls_operation_end(host, port, init_seq)
 
             # v133.0: CRITICAL - Always start with min_size=1 to force sequential setup
             initial_min_size = 1
@@ -601,7 +644,7 @@ async def tls_safe_create_pool(
 
             # v133.0: Acquire semaphore for pool creation itself
             async with tls_semaphore:
-                await _mark_tls_operation_start(host, port, sequence)
+                _mark_tls_operation_start(host, port, sequence)
                 try:
                     pool = await asyncio.wait_for(
                         asyncpg.create_pool(
@@ -621,7 +664,7 @@ async def tls_safe_create_pool(
                         timeout=pool_creation_timeout
                     )
                 finally:
-                    await _mark_tls_operation_end(host, port, sequence)
+                    _mark_tls_operation_end(host, port, sequence)
 
             # v133.0: Brief pause before verification
             await asyncio.sleep(0.05)

@@ -55382,6 +55382,15 @@ class StartupWatchdog:
             os.environ.get("JARVIS_DMS_PROGRESS_WINDOW", "120")
         )  # Consider progress "advancing" if it changed within this window
 
+        # v3.2: Parallel initializer coordination — DMS defers to parallel_init's
+        # component-level watchdog during phases where it's active. This prevents
+        # two independent watchdogs fighting over the same component lifecycle.
+        # parallel_init signals activity via notify_parallel_init_heartbeat().
+        self._parallel_init_active: bool = False
+        self._parallel_init_last_heartbeat: float = 0.0
+        # Phases where parallel_init manages component lifecycle
+        self._parallel_init_managed_phases: set = {"backend", "two_tier", "agi_os", "enterprise"}
+
         # v232.2: Execution mode awareness — dynamic constraint calculation
         self._execution_mode: str = "local_prime"  # "gcp_golden", "gcp_standard", "local_prime"
         self._is_fallback_mode: bool = False
@@ -55558,6 +55567,49 @@ class StartupWatchdog:
                 f"[DMS] v232.2: Phase timeouts recalculated for {execution_mode} mode "
                 f"(RAM: {self._ram_gb:.0f}GB, fallback: {is_fallback})"
             )
+
+    def notify_parallel_init_active(self, active: bool = True) -> None:
+        """
+        v3.2: Signal that parallel_initializer's component-level watchdog is active.
+
+        When active, DMS defers escalation beyond 'diagnostic' for managed phases
+        because parallel_init is already handling component lifecycle (cancellation,
+        dependency cascades, fast-forward). DMS still monitors and warns, but won't
+        restart or rollback the whole phase while parallel_init is managing components.
+        """
+        self._parallel_init_active = active
+        if active:
+            self._parallel_init_last_heartbeat = time.time()
+            self._logger.debug("[DMS] v3.2: Parallel initializer signaled ACTIVE")
+        else:
+            self._logger.debug("[DMS] v3.2: Parallel initializer signaled INACTIVE")
+
+    def notify_parallel_init_heartbeat(self, completed_component: str = "") -> None:
+        """
+        v3.2: Heartbeat from parallel_initializer — a component completed/progressed.
+
+        Updates the DMS heartbeat timer so it knows the system is making progress
+        even if the kernel-level phase progress value hasn't changed.
+        """
+        self._parallel_init_last_heartbeat = time.time()
+        # Also reset the DMS stall timer — component completion IS progress
+        self._last_progress_time = time.time()
+
+    def _is_parallel_init_managing(self) -> bool:
+        """
+        v3.2: Check if parallel_init is actively managing the current phase.
+
+        Returns True if:
+        1. parallel_init signaled active
+        2. Current phase is in the managed set
+        3. Last heartbeat was within 90s (not stale)
+        """
+        if not self._parallel_init_active:
+            return False
+        if self._current_phase not in self._parallel_init_managed_phases:
+            return False
+        staleness = time.time() - self._parallel_init_last_heartbeat
+        return staleness < 90.0  # 90s heartbeat timeout
 
     def _detect_hollow_client_mode(self) -> bool:
         """
@@ -55907,6 +55959,17 @@ class StartupWatchdog:
         # Graduated mode: escalate through actions
         if self._recovery_mode == "graduated":
             action = self._get_escalated_action(phase, action)
+
+        # v3.2: Cap escalation when parallel_init is actively managing components.
+        # parallel_init handles component-level cancellation, dependency cascades,
+        # and fast-forward — DMS should only warn/diagnose, not restart/rollback
+        # the entire phase while components are being individually managed.
+        if action in ("restart", "rollback") and self._is_parallel_init_managing():
+            self._logger.info(
+                f"[DMS] v3.2: Escalation '{action}' capped to 'diagnostic' — "
+                f"parallel_initializer is actively managing {phase} components"
+            )
+            action = "diagnostic"
         
         if action == "warn":
             self._warnings_issued[phase] = self._warnings_issued.get(phase, 0) + 1
@@ -62592,6 +62655,19 @@ class JarvisSystemKernel:
             rollback_callback=self._dms_rollback_callback,
         )
         await self._startup_watchdog.start()
+
+        # v3.2: Wire DMS ↔ parallel_initializer coordination
+        # parallel_init heartbeats component completions to DMS, and DMS defers
+        # escalation beyond 'diagnostic' while parallel_init is active.
+        try:
+            from core.parallel_initializer import set_dms_heartbeat_callback
+            set_dms_heartbeat_callback(
+                heartbeat_fn=self._startup_watchdog.notify_parallel_init_heartbeat,
+                active_fn=self._startup_watchdog.notify_parallel_init_active,
+            )
+            self.logger.debug("[Kernel] v3.2: DMS ↔ parallel_init coordination wired")
+        except ImportError:
+            self.logger.debug("[Kernel] v3.2: parallel_initializer not available for DMS wiring")
 
         # v232.2: Set initial execution mode for DMS dynamic constraints
         _golden_active = os.getenv("JARVIS_GCP_USE_GOLDEN_IMAGE", "false").lower() == "true"

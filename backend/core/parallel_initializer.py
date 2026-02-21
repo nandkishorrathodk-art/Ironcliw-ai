@@ -304,6 +304,49 @@ class AdaptiveThresholdCalculator:
 # Module-level singleton (created lazily in ParallelInitializer.__init__)
 _adaptive_calculator: Optional[AdaptiveThresholdCalculator] = None
 
+# v3.2: DMS coordination — module-level callback for heartbeating to kernel's
+# StartupWatchdog. Set by kernel during startup via set_dms_heartbeat_callback().
+# parallel_initializer calls this on each component completion so DMS knows
+# the system is making progress even if kernel-level phase progress hasn't changed.
+_dms_heartbeat_callback: Optional[Callable[[str], None]] = None
+_dms_active_callback: Optional[Callable[[bool], None]] = None
+
+
+def set_dms_heartbeat_callback(
+    heartbeat_fn: Callable[[str], None],
+    active_fn: Callable[[bool], None],
+) -> None:
+    """
+    v3.2: Register DMS coordination callbacks.
+
+    Called by the kernel during startup to wire parallel_initializer to the DMS.
+
+    Args:
+        heartbeat_fn: Called with component name on each completion.
+        active_fn: Called with True when parallel init starts, False when done.
+    """
+    global _dms_heartbeat_callback, _dms_active_callback
+    _dms_heartbeat_callback = heartbeat_fn
+    _dms_active_callback = active_fn
+
+
+def _signal_dms_heartbeat(component_name: str) -> None:
+    """v3.2: Signal component completion to DMS (if wired)."""
+    if _dms_heartbeat_callback:
+        try:
+            _dms_heartbeat_callback(component_name)
+        except Exception:
+            pass
+
+
+def _signal_dms_active(active: bool) -> None:
+    """v3.2: Signal parallel init active/inactive to DMS (if wired)."""
+    if _dms_active_callback:
+        try:
+            _dms_active_callback(active)
+        except Exception:
+            pass
+
 
 def get_adaptive_calculator() -> AdaptiveThresholdCalculator:
     global _adaptive_calculator
@@ -331,6 +374,10 @@ class ComponentInit:
     error: Optional[str] = None
     priority: int = 50  # 0-100, lower = earlier
     dependencies: List[str] = field(default_factory=list)
+    # v3.2: Soft dependencies — component still runs but gets informed about failures.
+    # Unlike hard dependencies (which cascade-skip), soft deps let the component
+    # initialize with degraded functionality and log WHY it's degraded.
+    soft_dependencies: List[str] = field(default_factory=list)
     is_critical: bool = False
     # v2.0: Circuit breaker fields
     is_interactive: bool = False  # True for components needed for user interaction
@@ -508,7 +555,11 @@ class ParallelInitializer:
 
         # Phase 3: Voice System (parallel - INTERACTIVE components!)
         # These are needed for user interaction - mark as interactive with faster thresholds
-        self._add_component("speaker_verification", priority=30, stale_threshold=40.0)
+        # v3.2: soft_dependencies=["learning_database"] — speaker verification still runs
+        # without Cloud SQL (gracefully degrades) but gets infrastructure failure context
+        # in logs instead of silently finding learning_db=None.
+        self._add_component("speaker_verification", priority=30, stale_threshold=40.0,
+                            soft_dependencies=["learning_database"])
         # Voice unlock API is INTERACTIVE - needed for unlock commands
         self._add_component("voice_unlock_api", priority=30, is_interactive=True, stale_threshold=20.0)
         # JARVIS voice API is INTERACTIVE - needed for voice commands
@@ -538,6 +589,7 @@ class ParallelInitializer:
         priority: int = 50,
         is_critical: bool = False,
         dependencies: List[str] = None,
+        soft_dependencies: List[str] = None,
         is_interactive: bool = False,
         stale_threshold: float = 30.0
     ):
@@ -551,6 +603,7 @@ class ParallelInitializer:
             priority=priority,
             is_critical=is_critical,
             dependencies=dependencies or [],
+            soft_dependencies=soft_dependencies or [],
             is_interactive=is_interactive,
             stale_threshold_seconds=effective_threshold,
         )
@@ -630,6 +683,9 @@ class ParallelInitializer:
         logger.info("=" * 60)
 
         self.app.state.startup_phase = "INITIALIZING"
+
+        # v3.2: Signal DMS that parallel_init is managing component lifecycle
+        _signal_dms_active(True)
 
         # =========================================================================
         # v131.0: OOM PREVENTION - Pre-flight memory check before heavy components
@@ -797,9 +853,15 @@ class ParallelInitializer:
                 message="JARVIS Online" if success else f"JARVIS Online (degraded: {', '.join(failed_critical)})"
             )
 
+            # v3.2: Signal DMS that parallel_init is done managing
+            _signal_dms_active(False)
+
         except Exception as e:
             logger.error(f"Background initialization error: {e}", exc_info=True)
             self.app.state.startup_phase = "ERROR"
+
+            # v3.2: Signal DMS inactive even on error
+            _signal_dms_active(False)
 
             # Broadcast error state
             broadcaster = get_startup_broadcaster()
@@ -862,6 +924,66 @@ class ParallelInitializer:
         else:
             return "not_ready"
 
+    def _get_failed_soft_deps(self, comp: ComponentInit) -> List[str]:
+        """
+        v3.2: Check soft dependencies and return names of failed/skipped ones.
+
+        Soft dependencies don't block initialization — the component still runs.
+        But this lets the component log WHY it's degraded instead of silently
+        discovering missing state (e.g., learning_db=None).
+
+        Returns:
+            List of soft dependency names that are FAILED or SKIPPED.
+            Empty list means all soft deps are healthy.
+        """
+        failed = []
+        for dep_name in comp.soft_dependencies:
+            dep_comp = self.components.get(dep_name)
+            if dep_comp and dep_comp.phase in (InitPhase.FAILED, InitPhase.SKIPPED):
+                failed.append(dep_name)
+        return failed
+
+    def _get_infrastructure_failure_context(self, comp_name: str) -> Optional[str]:
+        """
+        v3.2: Build a human-readable infrastructure failure chain for a component.
+
+        Traces through both hard and soft dependencies to find the root cause.
+        Example: "speaker_verification → learning_database (SKIPPED: Dependency
+        'cloud_sql_proxy' failed) → cloud_sql_proxy (FAILED: DB check failed)"
+
+        Returns:
+            Failure chain string, or None if no infrastructure failures affect this component.
+        """
+        comp = self.components.get(comp_name)
+        if comp is None:
+            return None
+
+        all_deps = comp.dependencies + comp.soft_dependencies
+        if not all_deps:
+            return None
+
+        failed_chains = []
+        for dep_name in all_deps:
+            dep_comp = self.components.get(dep_name)
+            if dep_comp and dep_comp.phase in (InitPhase.FAILED, InitPhase.SKIPPED):
+                chain = f"{dep_name} ({dep_comp.phase.value}"
+                if dep_comp.error:
+                    chain += f": {dep_comp.error}"
+                chain += ")"
+                # Check if this dep itself had a dependency that failed (root cause)
+                for sub_dep_name in dep_comp.dependencies:
+                    sub_dep = self.components.get(sub_dep_name)
+                    if sub_dep and sub_dep.phase in (InitPhase.FAILED, InitPhase.SKIPPED):
+                        chain += f" ← {sub_dep_name} ({sub_dep.phase.value}"
+                        if sub_dep.error:
+                            chain += f": {sub_dep.error}"
+                        chain += ")"
+                failed_chains.append(chain)
+
+        if failed_chains:
+            return " | ".join(failed_chains)
+        return None
+
     def _should_fast_forward_startup(self) -> bool:
         """
         v125.0: Check if we should fast-forward startup due to infrastructure failure.
@@ -899,13 +1021,42 @@ class ParallelInitializer:
 
         return False
 
+    def _has_hard_dep_on_failed_infra(self, comp: ComponentInit) -> bool:
+        """
+        v3.2: Check if component has a hard dependency (direct or transitive)
+        on any FAILED/SKIPPED component.
+
+        Soft dependencies don't count — those components should still run degraded.
+        """
+        visited = set()
+
+        def _check(c: ComponentInit) -> bool:
+            if c.name in visited:
+                return False
+            visited.add(c.name)
+            for dep_name in c.dependencies:  # Only hard deps
+                dep = self.components.get(dep_name)
+                if dep is None:
+                    continue
+                if dep.phase in (InitPhase.FAILED, InitPhase.SKIPPED):
+                    return True
+                if _check(dep):
+                    return True
+            return False
+
+        return _check(comp)
+
     async def _fast_forward_remaining_components(self):
         """
-        v3.0: Fast-forward all remaining PENDING and RUNNING components to SKIPPED.
+        v3.0: Fast-forward remaining PENDING and RUNNING components to SKIPPED.
 
         v125.0 only skipped PENDING components. v3.0 also cancels RUNNING
         components because infrastructure failure makes their work pointless —
         they'll just burn timeout budget retrying failed connections.
+
+        v3.2: Only skip components with hard dependency chains to failed
+        infrastructure. Components with only soft dependencies still run
+        (degraded) — fast-forward shouldn't kill them.
 
         This prevents the 600s global startup timeout from triggering.
         """
@@ -914,6 +1065,13 @@ class ParallelInitializer:
 
         for comp in self.components.values():
             async with self._phase_lock:
+                if comp.phase not in (InitPhase.PENDING, InitPhase.RUNNING):
+                    continue
+
+                # v3.2: Only skip if hard dependency chain leads to failed infra
+                if not self._has_hard_dep_on_failed_infra(comp):
+                    continue
+
                 if comp.phase == InitPhase.PENDING:
                     await self._mark_skipped(
                         comp.name,
@@ -932,8 +1090,8 @@ class ParallelInitializer:
         total = skipped_count + cancelled_count
         if total > 0:
             logger.warning(
-                f"[v3.0] Fast-forward: {skipped_count} skipped, "
-                f"{cancelled_count} cancelled (infrastructure failure)"
+                f"[v3.2] Fast-forward: {skipped_count} skipped, "
+                f"{cancelled_count} cancelled (hard-dep on failed infrastructure)"
             )
             self._update_progress()
 
@@ -1105,6 +1263,15 @@ class ParallelInitializer:
                 logger.warning(f"⚠️ {name}: {reason} — skipping")
                 await self._mark_skipped(name, reason)
                 return
+
+        # v3.2: Log soft dependency failures — component still runs but with context
+        failed_soft_deps = self._get_failed_soft_deps(comp)
+        if failed_soft_deps:
+            infra_ctx = self._get_infrastructure_failure_context(name)
+            logger.warning(
+                f"⚠️ {name}: soft dependencies failed {failed_soft_deps} — "
+                f"initializing with degraded functionality. Root cause: {infra_ctx}"
+            )
 
         comp.phase = InitPhase.RUNNING
         comp.start_time = time.time()
@@ -1292,6 +1459,9 @@ class ParallelInitializer:
                 logger.info(f"[READY] {name} ({duration_ms:.0f}ms)")
             else:
                 logger.info(f"[READY] {name}")
+
+            # v3.2: Heartbeat to DMS — component completion IS progress
+            _signal_dms_heartbeat(name)
 
             # Broadcast completion via WebSocket (with timeout to prevent blocking)
             try:
@@ -1537,6 +1707,14 @@ class ParallelInitializer:
             # 3. Speaker Verification Service (if learning_db available)
             # =========================================================
             learning_db = getattr(self.app.state, 'learning_db', None)
+            # v3.2: Log infrastructure failure context if learning_db unavailable
+            if not learning_db:
+                infra_ctx = self._get_infrastructure_failure_context("speaker_verification")
+                if infra_ctx:
+                    logger.warning(
+                        f"   Speaker verification (AI Loader): no learning_db — "
+                        f"infrastructure failure: {infra_ctx}"
+                    )
 
             def load_speaker_verification():
                 """Heavy loader for speaker verification service."""
@@ -2299,9 +2477,30 @@ class ParallelInitializer:
             # Try initialization with retries (only if gate didn't give definitive answer)
             max_retries = 3
             retry_delay = 2.0
+            # v3.2: Track component elapsed time so per-attempt timeouts don't
+            # exceed the component's stale_threshold. Without this, worst case
+            # is 3×20s + 15s gate wait = 75s, which exceeds the 60s stale_threshold
+            # and gets killed by the watchdog before retries complete.
+            _comp = self.components.get("learning_database")
+            _comp_budget = (_comp.stale_threshold_seconds - 5.0) if _comp else 55.0  # 5s safety margin
+            _comp_start = (_comp.start_time if _comp else None) or time.time()
 
             for attempt in range(max_retries):
                 try:
+                    # v3.2: Check remaining time budget before each attempt
+                    _elapsed = time.time() - _comp_start
+                    _remaining = _comp_budget - _elapsed
+                    if _remaining < 5.0:
+                        logger.warning(
+                            f"   Learning DB: only {_remaining:.1f}s remaining in component budget "
+                            f"(elapsed {_elapsed:.1f}s) — aborting retries, using SQLite"
+                        )
+                        await asyncio.wait_for(learning_db.initialize(), timeout=min(max(_remaining, 3.0), 10.0))
+                        self.app.state.learning_db = learning_db
+                        _learning_db_stored = True
+                        logger.info("   ✅ Learning database ready (SQLite fallback, budget exhausted)")
+                        return
+
                     # v238.0: Before each retry, re-check gate state — if it transitioned
                     # to UNAVAILABLE since we started, bail immediately instead of wasting
                     # another 20s timeout.
@@ -2318,7 +2517,7 @@ class ParallelInitializer:
                                     f"   Gate now {_gs.value} — aborting retry {attempt+1}, "
                                     f"falling to SQLite"
                                 )
-                                await asyncio.wait_for(learning_db.initialize(), timeout=20.0)
+                                await asyncio.wait_for(learning_db.initialize(), timeout=min(_remaining, 20.0))
                                 self.app.state.learning_db = learning_db
                                 _learning_db_stored = True
                                 logger.info("   ✅ Learning database ready (SQLite fallback, mid-retry gate check)")
@@ -2337,8 +2536,9 @@ class ParallelInitializer:
                             pass
                         learning_db = JARVISLearningDatabase()
 
-                    # Initialize with timeout per attempt
-                    await asyncio.wait_for(learning_db.initialize(), timeout=20.0)
+                    # v3.2: Per-attempt timeout bounded by remaining budget
+                    _per_attempt_timeout = min(20.0, _remaining - 2.0)  # 2s buffer
+                    await asyncio.wait_for(learning_db.initialize(), timeout=_per_attempt_timeout)
                     self.app.state.learning_db = learning_db
                     _learning_db_stored = True
                     logger.info("   ✅ Learning database ready (hybrid CloudSQL + SQLite)")
@@ -2897,6 +3097,16 @@ class ParallelInitializer:
 
                 profiles = len(service.speaker_profiles)
                 logger.info(f"   Speaker verification ready ({profiles} profiles)")
+            else:
+                # v3.2: Log infrastructure failure context instead of silent None check
+                infra_ctx = self._get_infrastructure_failure_context("speaker_verification")
+                if infra_ctx:
+                    logger.warning(
+                        f"   Speaker verification: no learning_db available — "
+                        f"infrastructure failure: {infra_ctx}"
+                    )
+                else:
+                    logger.info("   Speaker verification: no learning_db — skipping profile load")
 
         except Exception as e:
             logger.warning(f"Speaker verification failed: {e}")
