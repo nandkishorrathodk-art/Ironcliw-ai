@@ -2895,6 +2895,23 @@ class AdvancedAsyncPipeline:
                     # - Voice drift detection and adaptation
                     # =====================================================================
                     logger.info(f"🔓 [LOCK-UNLOCK-EXECUTE] Attempting enhanced VBI verification...")
+                    _strict_unlock = os.getenv(
+                        "JARVIS_STRICT_VOICE_UNLOCK", "true"
+                    ).lower() in ("1", "true", "yes", "on")
+                    _trusted_unlock_context = bool(
+                        (metadata or {}).get("unlock_preverified")
+                        or (metadata or {}).get("vbia_verified")
+                    )
+                    if _strict_unlock and not audio_data and not _trusted_unlock_context:
+                        logger.warning(
+                            "🔒 [LOCK-UNLOCK-SECURITY] Unlock denied: no voice audio for VBIA/PAVA verification"
+                        )
+                        return (
+                            False,
+                            "Voice verification is required to unlock. Please repeat the unlock command and speak clearly.",
+                            "verification_required",
+                            step_times,
+                        )
 
                     vbi_verified = False
                     vbi_result = None
@@ -3043,30 +3060,17 @@ class AdvancedAsyncPipeline:
                                 timeout=20.0  # 20 second max for full unlock flow
                             )
                         else:
-                            # Text-only unlock (no audio available)
-                            logger.info(f"🔓 [LOCK-UNLOCK-TEXT] Text-only unlock request: '{text}'")
-                            # Direct unlock using internal method with proper context dicts
-                            context_analysis = {
-                                "unlock_type": "text_command",
-                                "verification_score": 0.95,
-                                "confidence": 0.95,
-                                "speaker_verified": True,
-                                "text_command": text
-                            }
-                            scenario_analysis = {
-                                "scenario": "text_unlock",
-                                "risk_level": "low",
-                                "unlock_allowed": True,
-                                "reason": "text_command_from_authenticated_session"
-                            }
-                            result = await asyncio.wait_for(
-                                unlock_service._perform_unlock(
-                                    speaker_name=speaker_name or user_name,
-                                    context_analysis=context_analysis,
-                                    scenario_analysis=scenario_analysis
-                                ),
-                                timeout=15.0  # 15 second max for text unlock
+                            # Fail closed for unlock without fresh biometric evidence.
+                            logger.warning(
+                                "🔒 [LOCK-UNLOCK-SECURITY] Text-only unlock denied in strict mode"
                             )
+                            result = {
+                                "success": False,
+                                "message": (
+                                    "Unlock denied. Voice biometric verification is required."
+                                ),
+                                "action": "verification_required",
+                            }
 
                         success = result.get("success", False)
                         message = result.get("message", "Screen unlock attempted")
@@ -3148,10 +3152,12 @@ class AdvancedAsyncPipeline:
 
                         except Exception as e2:
                             logger.error(f"🔓 [LOCK-UNLOCK-ERROR] Keychain fallback failed: {e2}", exc_info=True)
-                            # Final fallback to controller (no voice verification)
-                            logger.info(f"🔓 [LOCK-UNLOCK-FALLBACK] Final fallback to controller.unlock_screen()")
-                            success, message = await controller.unlock_screen()
-                            action = "unlocked"
+                            success = False
+                            message = (
+                                "Unlock failed after biometric verification path error. "
+                                "Please try again."
+                            )
+                            action = "unlock_failed"
 
                     except Exception as e:
                         logger.error(f"🔓 [LOCK-UNLOCK-ERROR] Unlock failed: {e}", exc_info=True)
@@ -3193,12 +3199,18 @@ class AdvancedAsyncPipeline:
                                     action = "unlocked"
                             except Exception as verify_error:
                                 logger.error(f"❌ [LOCK-UNLOCK-FALLBACK] Voice verification in exception handler failed: {verify_error}")
-                                success, message = await controller.unlock_screen()
-                                action = "unlocked"
+                                success = False
+                                message = "Voice verification failed during unlock recovery."
+                                action = "verification_failed"
                         else:
-                            logger.warning(f"⚠️ [LOCK-UNLOCK-FALLBACK] No audio data in exception handler - proceeding without verification")
-                            success, message = await controller.unlock_screen()
-                            action = "unlocked"
+                            logger.warning(
+                                "🔒 [LOCK-UNLOCK-SECURITY] No audio data in exception handler - failing closed"
+                            )
+                            success = False
+                            message = (
+                                "Unlock denied. Voice biometric verification is required."
+                            )
+                            action = "verification_required"
 
                 step_times["execute"] = (time.time() - step_start) * 1000
                 logger.info(

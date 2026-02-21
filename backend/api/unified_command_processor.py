@@ -1243,9 +1243,15 @@ class UnifiedCommandProcessor:
     async def process_command(
         self, command_text: str, websocket=None, audio_data: bytes = None,
         speaker_name: str = None, deadline: Optional[float] = None,
+        source_context: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """Process any command through unified pipeline with FULL context awareness including voice authentication"""
         logger.info(f"[UNIFIED] Processing with context awareness: '{command_text}'")
+
+        source_context = source_context or {}
+        allow_during_tts_interrupt = bool(
+            source_context.get("allow_during_tts_interrupt", False)
+        )
 
         # =========================================================================
         # 🔇 SELF-VOICE SUPPRESSION - Prevent JARVIS echo/hallucinations
@@ -1257,7 +1263,7 @@ class UnifiedCommandProcessor:
         try:
             from agi_os.realtime_voice_communicator import get_voice_communicator
             voice_comm = await asyncio.wait_for(get_voice_communicator(), timeout=0.5)
-            if voice_comm and voice_comm.is_speaking:
+            if voice_comm and voice_comm.is_speaking and not allow_during_tts_interrupt:
                 logger.warning(f"🔇 [SELF-VOICE-SUPPRESSION] Rejecting command while JARVIS is speaking: '{command_text[:50]}...'")
                 return {
                     "success": False,
@@ -1266,6 +1272,10 @@ class UnifiedCommandProcessor:
                     "message": "Command rejected - JARVIS is currently speaking",
                     "original_command": command_text
                 }
+            if voice_comm and voice_comm.is_speaking and allow_during_tts_interrupt:
+                logger.debug(
+                    "[UNIFIED] Bypassing self-voice suppression for confirmed barge-in command"
+                )
         except Exception as e:
             logger.debug(f"[UNIFIED] Self-voice check skipped: {e}")
 

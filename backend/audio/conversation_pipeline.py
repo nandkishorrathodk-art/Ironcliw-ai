@@ -24,6 +24,7 @@ Architecture:
 """
 
 import asyncio
+import inspect
 import io
 import logging
 import os
@@ -78,6 +79,14 @@ _EXIT_PATTERN = re.compile(
     r"stop\s+(?:talking|listening|the\s+conversation)|"
     r"jarvis\s+(?:stop|quit)"
     r")[\s.!?]*$",
+    re.IGNORECASE,
+)
+_LOCK_SCREEN_PATTERN = re.compile(
+    r"\block\s+(?:my\s+)?(?:screen|computer|mac)\b",
+    re.IGNORECASE,
+)
+_UNLOCK_SCREEN_PATTERN = re.compile(
+    r"\bunlock\s+(?:my\s+)?(?:screen|computer|mac)\b",
     re.IGNORECASE,
 )
 
@@ -774,18 +783,59 @@ class ConversationPipeline:
         self,
         user_text: str,
         intent_decision: Optional[Dict[str, Any]] = None,
+        *,
+        allow_auth_redirect: bool = True,
     ) -> bool:
         """Execute a user turn as an actionable command and speak structured outcome."""
         if self._session is None:
             return False
 
+        lowered = (user_text or "").strip().lower()
+        if allow_auth_redirect and _UNLOCK_SCREEN_PATTERN.search(lowered):
+            logger.info(
+                "[ConvPipeline] Routing unlock command through biometric flow"
+            )
+            return await self._handle_authenticate_turn(user_text)
+
+        await self._interrupt_output_for_user_command()
+
         command_processor = await self._get_command_processor()
         if command_processor is None:
             return False
 
+        pre_ack_text: Optional[str] = None
+        if _LOCK_SCREEN_PATTERN.search(lowered):
+            # Locking can silence output immediately; acknowledge before executing.
+            pre_ack_text = "Locking your screen now."
+            await self._speak_sentence(pre_ack_text, asyncio.Event())
+
         result: Any = None
         try:
-            result = await command_processor.process_command(user_text)
+            process_kwargs: Dict[str, Any] = {}
+            try:
+                params = inspect.signature(command_processor.process_command).parameters
+                accepts_var_kwargs = any(
+                    p.kind == inspect.Parameter.VAR_KEYWORD
+                    for p in params.values()
+                )
+                if "audio_data" in params:
+                    process_kwargs["audio_data"] = None
+                if "speaker_name" in params:
+                    process_kwargs["speaker_name"] = None
+                if "source_context" in params or accepts_var_kwargs:
+                    process_kwargs["source_context"] = {
+                        "source": "conversation_pipeline",
+                        "allow_during_tts_interrupt": True,
+                        "intent_route": (
+                            intent_decision.get("route")
+                            if isinstance(intent_decision, dict)
+                            else "execute"
+                        ),
+                    }
+            except (TypeError, ValueError):
+                pass
+
+            result = await command_processor.process_command(user_text, **process_kwargs)
         except Exception as e:
             logger.error("[ConvPipeline] Command execution error: %s", e)
             response_text = "I could not execute that command right now."
@@ -800,6 +850,9 @@ class ConversationPipeline:
                     if not success
                     else "I ran that command."
                 )
+            if pre_ack_text and success:
+                # Already acknowledged before lock execution; don't wait on post-lock TTS.
+                response_text = pre_ack_text
 
         if self._barge_in is not None:
             self._barge_in.reset()
@@ -809,7 +862,9 @@ class ConversationPipeline:
             else asyncio.Event()
         )
 
-        await self._speak_sentence(response_text, cancel_event)
+        should_speak_response = not (pre_ack_text and response_text == pre_ack_text)
+        if should_speak_response and response_text:
+            await self._speak_sentence(response_text, cancel_event)
         self._session.add_turn("assistant", response_text)
         logger.info(
             "[ConvPipeline] Command response (%s): %s",
@@ -835,6 +890,8 @@ class ConversationPipeline:
         """
         if self._session is None:
             return False
+
+        await self._interrupt_output_for_user_command()
 
         # --- Preferred path: ModeDispatcher biometric flow ---
         dispatcher = self._mode_dispatcher
@@ -880,6 +937,27 @@ class ConversationPipeline:
                             "[ConvPipeline] Biometric auth timed out after %.0fs",
                             auth_timeout,
                         )
+                        try:
+                            if not biometric_task.done():
+                                biometric_task.cancel()
+                                try:
+                                    await biometric_task
+                                except asyncio.CancelledError:
+                                    pass
+                            if getattr(dispatcher, "current_mode", None) == VoiceMode.BIOMETRIC:
+                                await dispatcher.return_from_biometric()
+                            dispatcher._last_biometric_result = {
+                                "success": False,
+                                "verified": False,
+                                "unlocked": False,
+                                "reason": "authentication_timed_out",
+                                "message": "Voice authentication timed out. Please try again.",
+                            }
+                        except Exception as timeout_recovery_error:
+                            logger.warning(
+                                "[ConvPipeline] Timeout recovery failed: %s",
+                                timeout_recovery_error,
+                            )
                     except asyncio.CancelledError:
                         pass
                     except Exception as e:
@@ -890,9 +968,17 @@ class ConversationPipeline:
                 # ModeDispatcher's _on_biometric_done callback will
                 # switch back to previous mode and resume conversation.
                 # Record the authentication attempt in session transcript.
+                biometric_result = getattr(dispatcher, "_last_biometric_result", None)
+                status_text = (
+                    biometric_result.get("message")
+                    if isinstance(biometric_result, dict)
+                    and isinstance(biometric_result.get("message"), str)
+                    and biometric_result.get("message")
+                    else "Voice authentication completed."
+                )
                 self._session.add_turn(
                     "assistant",
-                    "Voice authentication completed.",
+                    status_text,
                 )
                 logger.info("[ConvPipeline] Biometric auth flow completed")
                 return True
@@ -906,7 +992,30 @@ class ConversationPipeline:
         return await self._execute_command_turn(
             user_text=user_text,
             intent_decision={"intent": "authenticate", "route": "authenticate"},
+            allow_auth_redirect=False,
         )
+
+    async def _interrupt_output_for_user_command(self) -> None:
+        """Force-stop current assistant output before executing user command/auth."""
+        if self._barge_in is not None:
+            try:
+                self._barge_in.get_cancel_event().set()
+            except Exception:
+                pass
+
+        if self._audio_bus is not None:
+            try:
+                self._audio_bus.flush_playback()
+            except Exception:
+                pass
+
+        try:
+            from backend.core.unified_speech_state import get_speech_state_manager
+
+            manager = await get_speech_state_manager()
+            await manager.stop_speaking()
+        except Exception:
+            pass
 
     def _extract_command_response(self, result: Any) -> str:
         """Normalize UnifiedCommandProcessor output into a speakable sentence."""

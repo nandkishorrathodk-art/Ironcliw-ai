@@ -1,3 +1,5 @@
+import asyncio
+
 import pytest
 
 from backend.audio.conversation_pipeline import (
@@ -26,6 +28,16 @@ class _CommandProcessor:
 
     async def process_command(self, text: str):
         self.calls.append(text)
+        return {"success": True, "response": self.response}
+
+
+class _CommandProcessorWithKwargs:
+    def __init__(self, response="Executed"):
+        self.calls = []
+        self.response = response
+
+    async def process_command(self, text: str, **kwargs):
+        self.calls.append({"text": text, "kwargs": kwargs})
         return {"success": True, "response": self.response}
 
 
@@ -91,6 +103,89 @@ async def test_execute_command_turn_speaks_and_appends_assistant_turn():
     assert pipeline._session.turns[-1].role == "assistant"
     assert "opened Safari" in pipeline._session.turns[-1].text
     assert tts.spoken
+
+
+@pytest.mark.asyncio
+async def test_execute_command_turn_passes_source_context_when_supported():
+    command_processor = _CommandProcessorWithKwargs(response="Done.")
+    pipeline = ConversationPipeline(
+        command_processor=command_processor,
+        tts_engine=_TTS(),
+    )
+    pipeline._session = ConversationSession()
+    pipeline._session.add_turn("user", "open safari")
+
+    handled = await pipeline._execute_command_turn(
+        "open safari",
+        intent_decision={"intent": "system_command", "route": "execute"},
+    )
+
+    assert handled is True
+    assert len(command_processor.calls) == 1
+    kwargs = command_processor.calls[0]["kwargs"]
+    assert kwargs["source_context"]["source"] == "conversation_pipeline"
+    assert kwargs["source_context"]["allow_during_tts_interrupt"] is True
+
+
+@pytest.mark.asyncio
+async def test_execute_command_turn_redirects_unlock_to_auth(monkeypatch):
+    command_processor = _CommandProcessor(response="should not execute")
+    pipeline = ConversationPipeline(
+        command_processor=command_processor,
+        tts_engine=_TTS(),
+    )
+    pipeline._session = ConversationSession()
+    pipeline._session.add_turn("user", "unlock my screen")
+
+    calls = {"auth": 0}
+
+    async def _fake_auth(_text: str) -> bool:
+        calls["auth"] += 1
+        return True
+
+    monkeypatch.setattr(pipeline, "_handle_authenticate_turn", _fake_auth)
+
+    handled = await pipeline._execute_command_turn("unlock my screen")
+
+    assert handled is True
+    assert calls["auth"] == 1
+    assert command_processor.calls == []
+
+
+@pytest.mark.asyncio
+async def test_handle_authenticate_turn_timeout_recovers_mode(monkeypatch):
+    from backend.audio.mode_dispatcher import VoiceMode
+
+    class _TimeoutDispatcher:
+        def __init__(self):
+            self._biometric_task = None
+            self._last_biometric_result = None
+            self.current_mode = VoiceMode.COMMAND
+            self.returned = 0
+
+        async def switch_mode(self, mode):
+            self.current_mode = mode
+            self._biometric_task = asyncio.create_task(asyncio.sleep(3600))
+
+        async def return_from_biometric(self):
+            self.returned += 1
+            self.current_mode = VoiceMode.COMMAND
+
+    dispatcher = _TimeoutDispatcher()
+    pipeline = ConversationPipeline(
+        mode_dispatcher=dispatcher,
+        tts_engine=_TTS(),
+    )
+    pipeline._session = ConversationSession()
+    pipeline._session.add_turn("user", "unlock my screen")
+    monkeypatch.setenv("JARVIS_BIOMETRIC_AUTH_TIMEOUT", "0.01")
+
+    handled = await pipeline._handle_authenticate_turn("unlock my screen")
+
+    assert handled is True
+    assert dispatcher.returned == 1
+    assert dispatcher._biometric_task.done() is True
+    assert dispatcher._last_biometric_result["reason"] == "authentication_timed_out"
 
 
 @pytest.mark.asyncio

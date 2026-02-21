@@ -86,6 +86,7 @@ class ModeDispatcher:
         self._biometric_task: Optional[asyncio.Task] = None
         self._biometric_audio_queue: queue.SimpleQueue = queue.SimpleQueue()
         self._biometric_audio_consumer: Optional[Callable] = None
+        self._last_biometric_result: Optional[Dict[str, Any]] = None
 
         # Lazy-loaded service references (set by supervisor after two-tier init)
         self._audio_bus = None
@@ -257,9 +258,33 @@ class ModeDispatcher:
             ):
                 await self._conversation_pipeline.pause()
 
+            async def _run_biometric_with_timeout() -> None:
+                auth_timeout = float(
+                    os.getenv("JARVIS_BIOMETRIC_AUTH_TIMEOUT", "25")
+                )
+                try:
+                    await asyncio.wait_for(
+                        self._run_biometric_authentication(),
+                        timeout=auth_timeout,
+                    )
+                except asyncio.TimeoutError:
+                    logger.warning(
+                        "[ModeDispatcher] Biometric auth timed out after %.0fs",
+                        auth_timeout,
+                    )
+                    self._last_biometric_result = {
+                        "success": False,
+                        "verified": False,
+                        "unlocked": False,
+                        "reason": "authentication_timed_out",
+                        "message": "Voice authentication timed out. Please try again.",
+                    }
+                except asyncio.CancelledError:
+                    raise
+
             # Launch biometric authentication as background task
             self._biometric_task = asyncio.ensure_future(
-                self._run_biometric_authentication()
+                _run_biometric_with_timeout()
             )
             self._biometric_task.add_done_callback(
                 self._on_biometric_done
@@ -377,6 +402,7 @@ class ModeDispatcher:
         import numpy as np
 
         try:
+            self._last_biometric_result = None
             # 1. Register mic consumer on AudioBus for AEC-cleaned capture
             # Drain any stale frames from previous attempt
             while not self._biometric_audio_queue.empty():
@@ -397,40 +423,41 @@ class ModeDispatcher:
             # 2. Speak challenge via TTS->AudioBus for AEC reference
             await self._speak_biometric("Verifying your voice now.")
 
-            # 3. Capture audio for verification (2.5 seconds of AEC-cleaned audio)
-            capture_duration = float(
-                os.getenv("JARVIS_BIOMETRIC_CAPTURE_DURATION", "2.5")
-            )
-            await asyncio.sleep(capture_duration)
-
-            # 4. Drain queue and concatenate frames (thread-safe snapshot)
-            frames: List[Any] = []
-            while not self._biometric_audio_queue.empty():
-                try:
-                    frames.append(self._biometric_audio_queue.get_nowait())
-                except queue.Empty:
-                    break
-
-            if not frames:
+            # 3. Capture audio for verification with dynamic VAD-aware stop.
+            audio_data = await self._capture_biometric_audio()
+            if audio_data is None or audio_data.size == 0:
                 await self._speak_biometric(
                     "I couldn't capture your voice. Please try again."
                 )
+                self._last_biometric_result = {
+                    "success": False,
+                    "verified": False,
+                    "unlocked": False,
+                    "reason": "no_audio_captured",
+                    "message": "I couldn't capture your voice. Please try again.",
+                }
                 return
-
-            audio_data = np.concatenate(frames)
 
             # Unregister consumer before processing (stop capturing)
             self._unregister_biometric_consumer()
 
             # 5. Run authentication
             auth_result = await self._authenticate_voice(audio_data)
+            self._last_biometric_result = auth_result
 
             # 6. Speak result via TTS->AudioBus
-            if auth_result.get("success"):
+            if auth_result.get("success") and auth_result.get("unlocked", False):
                 speaker = auth_result.get("speaker", "")
                 await self._speak_biometric(
                     f"Voice verified. Welcome back, {speaker}." if speaker
                     else "Voice verified. Unlocking now."
+                )
+            elif auth_result.get("verified", False):
+                await self._speak_biometric(
+                    auth_result.get(
+                        "message",
+                        "Voice verified, but I couldn't complete the unlock.",
+                    )
                 )
             else:
                 reason = auth_result.get("reason", "verification failed")
@@ -458,51 +485,270 @@ class ModeDispatcher:
                 except queue.Empty:
                     break
 
+    async def _capture_biometric_audio(self):
+        """Capture biometric audio with speech-aware dynamic stop."""
+        import numpy as np
+
+        max_capture_seconds = float(
+            os.getenv("JARVIS_BIOMETRIC_CAPTURE_MAX_SECONDS", "6.0")
+        )
+        min_voiced_frames = int(
+            os.getenv("JARVIS_BIOMETRIC_MIN_VOICED_FRAMES", "6")
+        )
+        end_silence_seconds = float(
+            os.getenv("JARVIS_BIOMETRIC_END_SILENCE_SECONDS", "0.7")
+        )
+        voice_energy_threshold = float(
+            os.getenv("JARVIS_BIOMETRIC_VOICE_ENERGY_THRESHOLD", "0.004")
+        )
+        poll_interval = 0.02
+
+        frames: List[Any] = []
+        voiced_frames = 0
+        speech_started_at: Optional[float] = None
+        last_voiced_at: Optional[float] = None
+        started_at = time.monotonic()
+
+        while (time.monotonic() - started_at) < max_capture_seconds:
+            had_frame = False
+            now = time.monotonic()
+
+            while not self._biometric_audio_queue.empty():
+                try:
+                    frame = self._biometric_audio_queue.get_nowait()
+                except queue.Empty:
+                    break
+
+                had_frame = True
+                if frame is None or getattr(frame, "size", 0) == 0:
+                    continue
+                frames.append(frame)
+
+                try:
+                    energy = float(np.mean(np.abs(frame)))
+                except Exception:
+                    energy = 0.0
+                if energy >= voice_energy_threshold:
+                    voiced_frames += 1
+                    last_voiced_at = now
+                    if speech_started_at is None:
+                        speech_started_at = now
+
+            if (
+                speech_started_at is not None
+                and voiced_frames >= min_voiced_frames
+                and last_voiced_at is not None
+                and (now - last_voiced_at) >= end_silence_seconds
+            ):
+                break
+
+            if not had_frame:
+                await asyncio.sleep(poll_interval)
+
+        if speech_started_at is None or voiced_frames < min_voiced_frames:
+            return None
+        if not frames:
+            return None
+
+        return np.concatenate(frames)
+
     async def _authenticate_voice(self, audio_data) -> Dict[str, Any]:
         """
         Run voice authentication through IntelligentVoiceUnlockService.
 
         Falls back to VBIA adapter if the unlock service is unavailable.
         """
-        # Primary: IntelligentVoiceUnlockService
+        verify_timeout = float(
+            os.getenv("JARVIS_BIOMETRIC_VERIFY_TIMEOUT", "12.0")
+        )
+        unlock_timeout = float(
+            os.getenv("JARVIS_BIOMETRIC_UNLOCK_TIMEOUT", "12.0")
+        )
+        init_timeout = float(
+            os.getenv("JARVIS_BIOMETRIC_INIT_TIMEOUT", "12.0")
+        )
+
+        # Primary: strict verify -> authorized unlock
         if self._voice_unlock_service is not None:
             try:
-                result = await asyncio.wait_for(
-                    self._voice_unlock_service.process_voice_unlock_command(
+                if not getattr(self._voice_unlock_service, "initialized", False):
+                    await asyncio.wait_for(
+                        self._voice_unlock_service.initialize(),
+                        timeout=init_timeout,
+                    )
+
+                from backend.voice_unlock.voice_biometric_intelligence import (
+                    get_voice_biometric_intelligence,
+                )
+
+                vbi = await get_voice_biometric_intelligence()
+                verification = await asyncio.wait_for(
+                    vbi.verify_and_announce(
                         audio_data=audio_data,
                         context={
                             "source": "mode_dispatcher",
+                            "command_type": "verify_only",
+                            "mode": "biometric",
                             "previous_mode": (
                                 self._previous_mode.value
                                 if self._previous_mode else "unknown"
                             ),
                             "aec_cleaned": True,
                         },
+                        speak=False,
                     ),
-                    timeout=float(os.getenv("JARVIS_BIOMETRIC_AUTH_TIMEOUT", "25")),
+                    timeout=verify_timeout,
                 )
-                return result
+
+                if not verification or not getattr(verification, "verified", False):
+                    confidence = float(
+                        getattr(verification, "confidence", 0.0) or 0.0
+                    )
+                    return {
+                        "success": False,
+                        "verified": False,
+                        "unlocked": False,
+                        "confidence": confidence,
+                        "reason": (
+                            f"voice verification failed ({confidence:.0%})"
+                            if confidence > 0
+                            else "voice verification failed"
+                        ),
+                        "message": "Voice verification failed. Unlock denied.",
+                    }
+
+                speaker = (
+                    getattr(verification, "speaker_name", None)
+                    or "owner"
+                )
+                confidence = float(
+                    getattr(verification, "confidence", 0.0) or 0.0
+                )
+                context_analysis = {
+                    "unlock_type": "mode_dispatcher_biometric",
+                    "verification_score": confidence,
+                    "confidence": confidence,
+                    "speaker_verified": True,
+                }
+                scenario_analysis = {
+                    "scenario": "mode_dispatcher_biometric",
+                    "risk_level": "low" if confidence >= 0.85 else "medium",
+                    "unlock_allowed": True,
+                    "reason": f"VBIA/PAVA verified at {confidence:.1%} confidence",
+                }
+                unlock_result = await asyncio.wait_for(
+                    self._voice_unlock_service._perform_unlock(
+                        speaker_name=speaker,
+                        context_analysis=context_analysis,
+                        scenario_analysis=scenario_analysis,
+                    ),
+                    timeout=unlock_timeout,
+                )
+
+                unlocked = bool(unlock_result.get("success", False))
+                return {
+                    "success": unlocked,
+                    "verified": True,
+                    "unlocked": unlocked,
+                    "confidence": confidence,
+                    "speaker": speaker,
+                    "reason": unlock_result.get(
+                        "reason",
+                        "unlocked" if unlocked else "unlock_failed",
+                    ),
+                    "message": unlock_result.get(
+                        "message",
+                        "Voice verified. Unlocking now." if unlocked else "Voice verified, but unlock failed.",
+                    ),
+                }
             except asyncio.TimeoutError:
-                logger.warning("[ModeDispatcher] Voice unlock timed out")
-                return {"success": False, "reason": "Authentication timed out"}
+                logger.warning("[ModeDispatcher] Voice biometric flow timed out")
+                return {
+                    "success": False,
+                    "verified": False,
+                    "unlocked": False,
+                    "reason": "authentication_timed_out",
+                    "message": "Voice authentication timed out.",
+                }
             except Exception as e:
                 logger.error(f"[ModeDispatcher] Voice unlock error: {e}")
                 # Fall through to VBIA fallback intentionally
 
-        # Fallback: TieredVBIAAdapter
+        # Fallback: TieredVBIAAdapter verification only + unlock service execution
         if self._vbia_adapter is not None:
             try:
                 threshold = float(os.getenv("JARVIS_BIOMETRIC_THRESHOLD", "0.85"))
                 passed, confidence = await self._vbia_adapter.verify_speaker(threshold)
+                if not passed:
+                    return {
+                        "success": False,
+                        "verified": False,
+                        "unlocked": False,
+                        "confidence": confidence,
+                        "reason": "below threshold",
+                        "message": "Voice verification below threshold.",
+                    }
+
+                if self._voice_unlock_service is None:
+                    return {
+                        "success": False,
+                        "verified": True,
+                        "unlocked": False,
+                        "confidence": confidence,
+                        "reason": "no_unlock_service",
+                        "message": "Voice verified, but unlock service is unavailable.",
+                    }
+
+                if not getattr(self._voice_unlock_service, "initialized", False):
+                    await asyncio.wait_for(
+                        self._voice_unlock_service.initialize(),
+                        timeout=init_timeout,
+                    )
+
+                unlock_result = await asyncio.wait_for(
+                    self._voice_unlock_service._perform_unlock(
+                        speaker_name="owner",
+                        context_analysis={
+                            "unlock_type": "mode_dispatcher_vbia_fallback",
+                            "verification_score": confidence,
+                            "confidence": confidence,
+                            "speaker_verified": True,
+                        },
+                        scenario_analysis={
+                            "scenario": "mode_dispatcher_vbia_fallback",
+                            "risk_level": "low" if confidence >= 0.85 else "medium",
+                            "unlock_allowed": True,
+                            "reason": f"VBIA adapter verified at {confidence:.1%}",
+                        },
+                    ),
+                    timeout=unlock_timeout,
+                )
+                unlocked = bool(unlock_result.get("success", False))
                 return {
-                    "success": passed,
+                    "success": unlocked,
+                    "verified": True,
+                    "unlocked": unlocked,
                     "confidence": confidence,
-                    "reason": "verified" if passed else "below threshold",
+                    "speaker": "owner",
+                    "reason": unlock_result.get(
+                        "reason",
+                        "unlocked" if unlocked else "unlock_failed",
+                    ),
+                    "message": unlock_result.get(
+                        "message",
+                        "Voice verified. Unlocking now." if unlocked else "Voice verified, but unlock failed.",
+                    ),
                 }
             except Exception as e:
                 logger.error(f"[ModeDispatcher] VBIA fallback error: {e}")
 
-        return {"success": False, "reason": "No authentication service available"}
+        return {
+            "success": False,
+            "verified": False,
+            "unlocked": False,
+            "reason": "No authentication service available",
+            "message": "No voice authentication service is available.",
+        }
 
     async def _speak_biometric(self, text: str) -> None:
         """
@@ -571,10 +817,11 @@ class ModeDispatcher:
     def _on_biometric_done(self, task: asyncio.Task) -> None:
         """Handle biometric task completion - return to previous mode."""
         if task.cancelled():
-            return
-        exc = task.exception()
-        if exc is not None:
-            logger.error(f"[ModeDispatcher] Biometric task failed: {exc}")
+            logger.warning("[ModeDispatcher] Biometric task cancelled")
+        else:
+            exc = task.exception()
+            if exc is not None:
+                logger.error(f"[ModeDispatcher] Biometric task failed: {exc}")
         # Return to previous mode
         if self._current_mode == VoiceMode.BIOMETRIC:
             try:
