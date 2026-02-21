@@ -6154,7 +6154,7 @@ async def _collect_bridge_health() -> dict:
     # TrinityBridgeAdapter
     try:
         from system.trinity_bridge_adapter import get_trinity_bridge
-        tb = get_trinity_bridge()
+        tb = await get_trinity_bridge()  # v3.2: was missing await — coroutine never ran
         if tb is None:
             bridges["trinity_bridge"] = {"status": "unavailable", "initialized": False}
         else:

@@ -22279,16 +22279,24 @@ class PersistentConversationMemoryAgent:
 
         # Unpack results — treat per-query timeouts as empty results, not failures
         if isinstance(results[0], BaseException):
+            # v3.2: Truncate exception text — DB errors can contain stored data
+            _err0 = str(results[0])
             self._logger.warning(
-                "[MemoryAgent] Boot interactions query failed: %s", results[0]
+                "[MemoryAgent] Boot interactions query failed: %s (%s)",
+                type(results[0]).__name__,
+                _err0[:200] + ("..." if len(_err0) > 200 else ""),
             )
             interactions = []
         else:
             interactions = results[0]
 
         if isinstance(results[1], BaseException):
+            # v3.2: Truncate exception text — DB errors can contain stored data
+            _err1 = str(results[1])
             self._logger.warning(
-                "[MemoryAgent] Boot preferences query failed: %s", results[1]
+                "[MemoryAgent] Boot preferences query failed: %s (%s)",
+                type(results[1]).__name__,
+                _err1[:200] + ("..." if len(_err1) > 200 else ""),
             )
             preferences = []
         else:
