@@ -60437,6 +60437,8 @@ class JarvisSystemKernel:
         # v250.0: Visual Pipeline state (Phase 6.8)
         self._ghost_hands_orchestrator = None
         self._n_optic_nerve = None
+        self._ghost_display_init_task: Optional[asyncio.Task] = None
+        self._ghost_display_health_task: Optional[asyncio.Task] = None
         self._visual_pipeline_health_task: Optional[asyncio.Task] = None
         self._visual_pipeline_initialized: bool = False
 
@@ -68859,69 +68861,104 @@ class JarvisSystemKernel:
                 return True
 
             phantom_mgr = get_phantom_manager()
+            init_task = self._ghost_display_init_task
+            if init_task is None or init_task.done():
+                init_task = create_safe_task(
+                    self._run_ghost_display_initialization(phantom_mgr),
+                    name="ghost-display-init",
+                )
+                self._ghost_display_init_task = init_task
+                self._background_tasks.append(init_task)
+                init_task.add_done_callback(self._on_ghost_display_init_done)
+            else:
+                self.logger.info("[GhostDisplay] Initialization already running — reusing active task")
 
-            # Ensure ghost display exists (with timeout)
             try:
-                success, error = await asyncio.wait_for(
-                    phantom_mgr.ensure_ghost_display_exists_async(),
-                    timeout=timeout,
+                # Shield timeout so GhostDisplay bring-up keeps running in background.
+                return bool(
+                    await shielded_wait_for(
+                        init_task,
+                        timeout=timeout,
+                        name="ghost_display_init",
+                    )
                 )
             except asyncio.TimeoutError:
-                self.logger.warning(
-                    f"[GhostDisplay] Timed out after {timeout}s — continuing without"
+                self.logger.info(
+                    f"[GhostDisplay] Initialization exceeded {timeout:.1f}s startup budget "
+                    "— continuing in background"
                 )
-                # v258.3: GhostDisplay is an optional component — timeout is
-                # "skipped" (informational), not "error" (which triggers
-                # health degradation and escalation).
-                self._update_component_status("ghost_display", "skipped", f"Timeout ({timeout}s)")
-                return False
-
-            if not success:
-                # v251.1: Distinguish "not installed" (skip) from "runtime failure" (error).
-                # BetterDisplay CLI not found or app not running are missing optional
-                # dependencies — status should be "skipped", not "error".  Only true
-                # runtime failures (display creation crash, API error) merit "error".
-                _not_installed_signals = (
-                    "BetterDisplay CLI not found",
-                    "not running and could not be launched",
-                    "not installed",
+                self._update_component_status(
+                    "ghost_display",
+                    "running",
+                    f"Initialization continuing in background ({timeout:.1f}s startup budget)",
                 )
-                is_missing_dependency = error and any(
-                    sig in error for sig in _not_installed_signals
-                )
-                if is_missing_dependency:
-                    self.logger.info(f"[GhostDisplay] Optional dependency not available: {error}")
-                    self._update_component_status("ghost_display", "skipped", error)
-                    return True  # Not a failure — just an unavailable optional feature
-                else:
-                    self.logger.warning(f"[GhostDisplay] Failed to ensure ghost display: {error}")
-                    self._update_component_status("ghost_display", "error", error or "Creation failed")
-                    return False
-
-            self.logger.info("[GhostDisplay] Virtual display ready")
-
-            # Crash recovery — audit & repatriate stranded windows
-            if _get_env_bool("JARVIS_GHOST_CRASH_RECOVERY", True):
-                await self._ghost_display_crash_recovery()
-
-            # Publish state file for cross-repo exchange
-            await self._publish_ghost_display_state(phantom_mgr)
-
-            # Start background health monitor
-            # v250.1: create_safe_task is always available (imported or fallback)
-            task = create_safe_task(
-                self._ghost_display_health_loop(phantom_mgr),
-                name="ghost-display-health",
-            )
-            self._background_tasks.append(task)
-
-            self._update_component_status("ghost_display", "complete", "Ghost Display ready")
-            return True
+                await self._publish_ghost_display_state(phantom_mgr)
+                return True
 
         except Exception as e:
             self.logger.warning(f"[GhostDisplay] Initialization failed: {e}")
             self._update_component_status("ghost_display", "error", f"Error: {e}")
             return False
+
+    async def _run_ghost_display_initialization(self, phantom_mgr) -> bool:
+        """Run the full Ghost Display bring-up sequence."""
+        try:
+            success, error = await phantom_mgr.ensure_ghost_display_exists_async()
+        except Exception as e:
+            self.logger.warning(f"[GhostDisplay] Failed while ensuring virtual display: {e}")
+            self._update_component_status("ghost_display", "error", f"Error: {e}")
+            return False
+
+        if not success:
+            # Optional dependency failures are "skipped", not hard errors.
+            _not_installed_signals = (
+                "BetterDisplay CLI not found",
+                "not running and could not be launched",
+                "not installed",
+            )
+            is_missing_dependency = error and any(
+                sig in error for sig in _not_installed_signals
+            )
+            if is_missing_dependency:
+                self.logger.info(f"[GhostDisplay] Optional dependency not available: {error}")
+                self._update_component_status("ghost_display", "skipped", error)
+                await self._publish_ghost_display_state(phantom_mgr)
+                return True
+
+            self.logger.warning(f"[GhostDisplay] Failed to ensure ghost display: {error}")
+            self._update_component_status("ghost_display", "error", error or "Creation failed")
+            await self._publish_ghost_display_state(phantom_mgr)
+            return False
+
+        self.logger.info("[GhostDisplay] Virtual display ready")
+
+        # Crash recovery — audit & repatriate stranded windows
+        if _get_env_bool("JARVIS_GHOST_CRASH_RECOVERY", True):
+            await self._ghost_display_crash_recovery()
+
+        # Publish state file for cross-repo exchange
+        await self._publish_ghost_display_state(phantom_mgr)
+
+        # Ensure exactly one health monitor is running.
+        self._start_ghost_display_health_monitor(phantom_mgr)
+
+        self._update_component_status("ghost_display", "complete", "Ghost Display ready")
+        return True
+
+    def _start_ghost_display_health_monitor(self, phantom_mgr) -> None:
+        """Start Ghost Display health monitor if one is not already active."""
+        if self._ghost_display_health_task and not self._ghost_display_health_task.done():
+            return
+        self._ghost_display_health_task = create_safe_task(
+            self._ghost_display_health_loop(phantom_mgr),
+            name="ghost-display-health",
+        )
+        self._background_tasks.append(self._ghost_display_health_task)
+
+    def _on_ghost_display_init_done(self, task: asyncio.Task) -> None:
+        """Finalize background Ghost Display initialization task lifecycle."""
+        if task is self._ghost_display_init_task:
+            self._ghost_display_init_task = None
 
     async def _ghost_display_crash_recovery(self) -> None:
         """

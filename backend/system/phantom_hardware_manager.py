@@ -94,7 +94,6 @@ class PhantomHardwareManager:
     """
 
     _instance: Optional['PhantomHardwareManager'] = None
-    _lock = asyncio.Lock()
 
     def __new__(cls) -> 'PhantomHardwareManager':
         if cls._instance is None:
@@ -130,6 +129,7 @@ class PhantomHardwareManager:
         self._ghost_display_info: Optional[VirtualDisplayInfo] = None
         self._last_status_check: Optional[datetime] = None
         self._status_cache_ttl = timedelta(seconds=30)
+        self._ensure_inflight: Optional[asyncio.Task] = None
 
         # Stats
         self._stats = {
@@ -167,6 +167,33 @@ class PhantomHardwareManager:
         Returns:
             Tuple of (success: bool, error_message: Optional[str])
         """
+        # Single-flight guard: avoid concurrent create/probe races from
+        # startup, health recovery, and command-triggered call sites.
+        inflight = self._ensure_inflight
+        if inflight and not inflight.done():
+            return await asyncio.shield(inflight)
+
+        loop = asyncio.get_running_loop()
+        task = loop.create_task(
+            self._ensure_ghost_display_exists_impl(
+                wait_for_registration=wait_for_registration,
+                max_wait_seconds=max_wait_seconds,
+            ),
+            name="phantom-ensure-ghost-display",
+        )
+        self._ensure_inflight = task
+        try:
+            return await asyncio.shield(task)
+        finally:
+            if self._ensure_inflight is task and task.done():
+                self._ensure_inflight = None
+
+    async def _ensure_ghost_display_exists_impl(
+        self,
+        wait_for_registration: bool = True,
+        max_wait_seconds: float = 15.0
+    ) -> Tuple[bool, Optional[str]]:
+        """Internal implementation for ensure_ghost_display_exists_async."""
         logger.info("[v68.0] 🔧 Ensuring Ghost Display exists...")
 
         # =================================================================
@@ -762,6 +789,10 @@ class PhantomHardwareManager:
         status.driverkit_approved = permissions.get("driverkit_approved", False)
 
         return status
+
+    async def get_display_status_async(self) -> PhantomHardwareStatus:
+        """Backward-compatible alias used by supervisor health/recovery paths."""
+        return await self.get_status_async()
 
     async def destroy_ghost_display_async(self) -> Tuple[bool, Optional[str]]:
         """
