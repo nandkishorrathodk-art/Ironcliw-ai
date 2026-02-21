@@ -1345,6 +1345,10 @@ class EventDrivenCleanupTrigger:
         if self._monitor_thread:
             self._monitor_thread.join(timeout=5.0)
             self._monitor_thread = None
+        cpu_offload_thread = getattr(self, "_cpu_offload_thread", None)
+        if cpu_offload_thread and cpu_offload_thread.is_alive():
+            cpu_offload_thread.join(timeout=2.0)
+            self._cpu_offload_thread = None
         logger.info("📡 Event-driven cleanup monitor stopped")
 
     def _monitor_loop(self) -> None:
@@ -2735,6 +2739,12 @@ class ProcessCleanupManager:
         self._supervisor_state = SupervisorCleanupState()
         self._agi_os_integration = AGIOSCleanupIntegration()
 
+        # CPU-pressure cloud shift coordination (thread-safe)
+        self._cpu_offload_lock = threading.Lock()
+        self._cpu_offload_inflight = False
+        self._cpu_offload_thread: Optional[threading.Thread] = None
+        self._last_cpu_offload_ts = 0.0
+
         # Register event handlers
         self._register_event_handlers()
 
@@ -3081,6 +3091,12 @@ class ProcessCleanupManager:
 
         # v258.0: CPU-targeted relief (always, not just compound)
         self._schedule_cpu_relief(cpu_percent)
+        self._schedule_cpu_cloud_shift(
+            cpu_percent=cpu_percent,
+            memory_percent=_memory_percent,
+            compound=_compound,
+            gcp_recommended=_gcp_recommended,
+        )
 
         # Write signal file for cross-repo coordination (R2-#3: atomic write)
         _signal_dir = os.path.expanduser(
@@ -3188,6 +3204,122 @@ class ProcessCleanupManager:
             "timestamp": time.time(),
             "cpu_percent": cpu_percent,
         })
+
+    def _schedule_cpu_cloud_shift(
+        self,
+        cpu_percent: float,
+        memory_percent: float,
+        compound: bool,
+        gcp_recommended: bool,
+    ) -> None:
+        """Schedule Cloud Run/Spot-VM offload for sustained CPU pressure.
+
+        Runs in the sync monitoring thread, so this method launches a dedicated
+        worker thread that owns its own async runtime for offload operations.
+        """
+        if not gcp_recommended:
+            return
+
+        cpu_threshold = float(os.getenv("JARVIS_CPU_CLOUD_SHIFT_THRESHOLD", "98.0"))
+        emergency_cpu_threshold = float(
+            os.getenv("JARVIS_CPU_CLOUD_SHIFT_EMERGENCY_THRESHOLD", "99.5")
+        )
+        compound_mem_threshold = float(
+            os.getenv("JARVIS_CPU_CLOUD_SHIFT_COMPOUND_MEMORY_MIN", "80.0")
+        )
+
+        should_shift = cpu_percent >= emergency_cpu_threshold or (
+            cpu_percent >= cpu_threshold and (compound or memory_percent >= compound_mem_threshold)
+        )
+        if not should_shift:
+            return
+
+        now = time.time()
+        cooldown = float(os.getenv("JARVIS_CPU_CLOUD_SHIFT_COOLDOWN", "180.0"))
+        last_offload = getattr(self, "_last_cpu_offload_ts", 0.0)
+        if now - last_offload < cooldown:
+            return
+
+        lock = getattr(self, "_cpu_offload_lock", None)
+        if lock is None:
+            lock = threading.Lock()
+            self._cpu_offload_lock = lock
+
+        with lock:
+            if getattr(self, "_cpu_offload_inflight", False):
+                return
+            self._cpu_offload_inflight = True
+            self._last_cpu_offload_ts = now
+
+        worker = threading.Thread(
+            target=self._run_cpu_cloud_shift_worker,
+            args=(cpu_percent, memory_percent, compound),
+            daemon=True,
+            name="cpu-pressure-cloud-shift",
+        )
+        self._cpu_offload_thread = worker
+        worker.start()
+
+    def _run_cpu_cloud_shift_worker(
+        self,
+        cpu_percent: float,
+        memory_percent: float,
+        compound: bool,
+    ) -> None:
+        """Worker thread entrypoint for CPU-pressure cloud shift."""
+
+        async def _worker() -> None:
+            logger.warning(
+                "CPU pressure cloud-shift triggered (cpu=%.1f%%, mem=%.1f%%, compound=%s)",
+                cpu_percent,
+                memory_percent,
+                compound,
+            )
+
+            # Prefer Cloud Run routing first because it is faster than VM provisioning.
+            offload_result = await self._trigger_cloud_offload()
+            if offload_result.get("success"):
+                logger.info(
+                    "☁️ CPU pressure cloud-shift: Cloud Run offload succeeded (freed %.0fMB)",
+                    offload_result.get("memory_freed_mb", 0.0),
+                )
+                return
+
+            vm_result = await self._trigger_gcp_spot_vm_with_context(
+                trigger_reason="cpu_pressure",
+                memory_percent=memory_percent,
+                cpu_percent=cpu_percent,
+                components=["ecapa_tdnn", "whisper", "speechbrain"],
+                estimated_duration_minutes=int(
+                    os.getenv("JARVIS_CPU_CLOUD_SHIFT_VM_DURATION_MINUTES", "30")
+                ),
+            )
+
+            if vm_result.get("success"):
+                logger.info(
+                    "🚀 CPU pressure cloud-shift: Spot VM created (%s)",
+                    vm_result.get("vm_id", "unknown"),
+                )
+            else:
+                logger.warning(
+                    "CPU pressure cloud-shift did not provision Spot VM: %s",
+                    vm_result.get("reason", "unknown"),
+                )
+
+        try:
+            asyncio.run(_worker())
+        except Exception as e:
+            logger.error(f"CPU pressure cloud-shift worker failed: {e}")
+        finally:
+            lock = getattr(self, "_cpu_offload_lock", None)
+            if lock is None:
+                self._cpu_offload_inflight = False
+                self._cpu_offload_thread = None
+                return
+
+            with lock:
+                self._cpu_offload_inflight = False
+                self._cpu_offload_thread = None
 
     def _schedule_memory_relief(self, memory_percent: float) -> None:
         """
@@ -3442,7 +3574,10 @@ class ProcessCleanupManager:
             # 1b. Try spinning up GCP Spot VM if Cloud Run offload failed
             vm_result = await self._trigger_gcp_spot_vm()
             if vm_result.get("success"):
-                logger.info(f"🚀 GCP Spot VM created for ML offload: {vm_result.get('ip')}")
+                logger.info(
+                    "🚀 GCP Spot VM created for ML offload: %s",
+                    vm_result.get("vm_id", "unknown"),
+                )
 
         # 2. Kill non-essential JARVIS processes
         try:
@@ -3469,100 +3604,106 @@ class ProcessCleanupManager:
             pass
 
     async def _trigger_gcp_spot_vm(self) -> Dict[str, Any]:
-        """
-        Trigger GCP Spot VM creation for ML offload using SupervisorAwareGCPController.
-        
-        This method uses the intelligent controller that:
-        - Checks budget before creating VMs
-        - Respects supervisor state (no VMs during updates)
-        - Uses memory controller insights for smarter decisions
-        - Tracks VM effectiveness to prevent waste
-        - Auto-terminates idle VMs
-        
-        Returns:
-            Dict with VM creation status and details
-        """
+        """Trigger GCP Spot VM creation for memory-pressure offload."""
+        return await self._trigger_gcp_spot_vm_with_context(
+            trigger_reason="memory_pressure",
+            components=["ecapa_tdnn", "whisper", "speechbrain"],
+            estimated_duration_minutes=30,
+        )
+
+    async def _trigger_gcp_spot_vm_with_context(
+        self,
+        trigger_reason: str,
+        components: Optional[List[str]] = None,
+        estimated_duration_minutes: int = 30,
+        memory_percent: Optional[float] = None,
+        cpu_percent: Optional[float] = None,
+    ) -> Dict[str, Any]:
+        """Trigger GCP Spot VM creation with dynamic trigger context."""
         result = {"success": False, "reason": "Not attempted"}
-        
+
         try:
-            # Use the new Supervisor-Aware GCP Controller
             from core.supervisor_gcp_controller import (
-                get_supervisor_gcp_controller,
+                VMCreationRequest,
                 VMDecision,
+                get_supervisor_gcp_controller,
             )
-            
+
             controller = get_supervisor_gcp_controller()
-            
-            # Get current memory pressure
-            import psutil
-            mem = psutil.virtual_memory()
-            memory_percent = mem.percent
-            
-            # Determine urgency based on memory level
-            if memory_percent >= 95:
-                urgency = "critical"
-            elif memory_percent >= 90:
-                urgency = "high"
+            if memory_percent is None:
+                memory_percent = psutil.virtual_memory().percent
+            cpu_percent = 0.0 if cpu_percent is None else float(cpu_percent)
+
+            if trigger_reason == "cpu_pressure":
+                cpu_critical = float(os.getenv("JARVIS_CPU_CLOUD_SHIFT_VM_CRITICAL", "99.0"))
+                cpu_high = float(os.getenv("JARVIS_CPU_CLOUD_SHIFT_VM_HIGH", "97.0"))
+                if cpu_percent >= cpu_critical:
+                    urgency = "critical"
+                elif cpu_percent >= cpu_high:
+                    urgency = "high"
+                else:
+                    urgency = "medium"
             else:
-                urgency = "medium"
-            
-            # Request VM through intelligent controller
+                if memory_percent >= 95:
+                    urgency = "critical"
+                elif memory_percent >= 90:
+                    urgency = "high"
+                else:
+                    urgency = "medium"
+
+            needed_components = components or ["ecapa_tdnn", "whisper", "speechbrain"]
             decision, reason = await controller.request_vm(
                 memory_percent=memory_percent,
-                trigger="memory_pressure",
+                trigger=trigger_reason,
                 urgency=urgency,
-                components=["ecapa_tdnn", "whisper", "speechbrain"],
-                estimated_duration_minutes=30,
+                components=needed_components,
+                estimated_duration_minutes=estimated_duration_minutes,
             )
-            
-            if decision == VMDecision.CREATE:
-                # Approved - create the VM
-                logger.info(f"🚀 Creating GCP Spot VM (approved): {reason}")
 
-                # Create the request object for the controller
-                from core.supervisor_gcp_controller import VMCreationRequest
-                from datetime import datetime
-                
-                request = VMCreationRequest(
-                    timestamp=datetime.now(),
-                    memory_percent=memory_percent,
-                    trigger_reason="memory_pressure",
-                    requested_by="process_cleanup_manager",
-                    urgency=urgency,
-                    components_needed=["ecapa_tdnn", "whisper", "speechbrain"],
-                    decision=decision,
-                    decision_reason=reason,
-                )
-                
-                vm = await controller.create_vm(request)
-                
-                if vm:
-                    result = {
-                        "success": True,
-                        "vm_id": vm.instance_id,
-                        "reason": reason,
-                        "budget_remaining": controller.get_remaining_budget(),
-                    }
-                    logger.info(f"✅ GCP Spot VM created: {result}")
-                else:
-                    result["reason"] = "VM creation returned None"
-            else:
-                # Not approved - return the reason
+            if decision != VMDecision.CREATE:
                 result["reason"] = f"{decision.value}: {reason}"
-                
-                # Log at appropriate level
                 if decision == VMDecision.DENY_BUDGET:
                     logger.warning(f"💰 GCP VM denied - budget: {reason}")
                 elif decision == VMDecision.DENY_MAINTENANCE:
                     logger.info(f"🔧 GCP VM denied - maintenance: {reason}")
                 else:
                     logger.debug(f"GCP VM not needed: {reason}")
-                
+                return result
+
+            logger.info(
+                "🚀 Creating GCP Spot VM (approved: %s, trigger=%s, cpu=%.1f%%, mem=%.1f%%)",
+                reason,
+                trigger_reason,
+                cpu_percent,
+                memory_percent,
+            )
+            request = VMCreationRequest(
+                timestamp=datetime.now(),
+                memory_percent=memory_percent,
+                trigger_reason=trigger_reason,
+                requested_by="process_cleanup_manager",
+                urgency=urgency,
+                components_needed=needed_components,
+                decision=decision,
+                decision_reason=reason,
+            )
+            vm = await controller.create_vm(request)
+            if not vm:
+                result["reason"] = "VM creation returned None"
+                return result
+
+            result = {
+                "success": True,
+                "vm_id": vm.instance_id,
+                "reason": reason,
+                "budget_remaining": controller.get_remaining_budget(),
+            }
+            logger.info(f"✅ GCP Spot VM created: {result}")
+            return result
         except Exception as e:
             logger.error(f"GCP Spot VM trigger failed: {e}")
             result["reason"] = str(e)
-        
-        return result
+            return result
 
     async def _high_memory_relief(self) -> None:
         """

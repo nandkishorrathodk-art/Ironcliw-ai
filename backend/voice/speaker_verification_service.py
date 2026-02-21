@@ -3224,11 +3224,13 @@ class SpeakerVerificationService:
 
         # Thread pool for CPU-intensive operations (non-blocking async)
         self._executor = get_verification_executor()
-        self._preload_thread = None
+        self._preload_task: Optional[asyncio.Task] = None
+        self._deferred_preload_task: Optional[asyncio.Task] = None
         self._encoder_preloading = False
         self._encoder_preloaded = False
         self._shutdown_event = threading.Event()  # For clean thread shutdown
-        self._preload_loop = None  # Track event loop for cleanup
+        self._preload_thread = None  # Legacy field retained for compatibility
+        self._preload_loop = None  # Legacy field retained for compatibility
 
         # Debug mode for detailed verification logging
         self.debug_mode = True  # Enable detailed verification debugging
@@ -3428,6 +3430,7 @@ class SpeakerVerificationService:
         """
         if self.initialized:
             return
+        self._shutdown_event.clear()
 
         logger.info("🔐 Initializing Speaker Verification Service (fast mode)...")
 
@@ -3559,62 +3562,95 @@ class SpeakerVerificationService:
         except Exception as e:
             logger.debug(f"Unified voice cache connection failed (non-critical): {e}")
 
+    def _is_system_under_preload_pressure(self) -> bool:
+        """Check if local background preload should be deferred under host pressure."""
+        try:
+            import psutil
+
+            cpu_now = psutil.cpu_percent(interval=None)
+            mem_now = psutil.virtual_memory().percent
+            cpu_threshold = float(os.getenv("JARVIS_ENCODER_PRELOAD_CPU_MAX", "92.0"))
+            mem_threshold = float(os.getenv("JARVIS_ENCODER_PRELOAD_MEM_MAX", "88.0"))
+            return cpu_now >= cpu_threshold or mem_now >= mem_threshold
+        except Exception as e:
+            logger.debug(f"Preload pressure check unavailable: {e}")
+            return False
+
+    async def _defer_and_retry_preload(self) -> None:
+        """Retry background preload after a configurable delay."""
+        try:
+            delay = float(os.getenv("JARVIS_ENCODER_PRELOAD_RETRY_SECONDS", "20.0"))
+            await asyncio.sleep(max(1.0, delay))
+            if self._shutdown_event.is_set() or self._encoder_preloaded or self._encoder_preloading:
+                return
+            self._start_background_preload()
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            logger.debug(f"Deferred preload retry failed: {e}")
+        finally:
+            self._deferred_preload_task = None
+
     def _start_background_preload(self):
-        """Start background thread to initialize SpeechBrain engine and pre-load speaker encoder"""
+        """Start non-blocking encoder preload using cooperative asyncio tasks."""
         if self._encoder_preloading or self._encoder_preloaded:
+            return
+        if self._shutdown_event.is_set():
+            logger.debug("Skipping preload: shutdown in progress")
+            return
+        if self.speechbrain_engine is None:
+            logger.debug("Skipping preload: SpeechBrain engine not initialized")
+            return
+
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            logger.warning("Cannot start background preload: no running event loop")
+            return
+
+        if self._is_system_under_preload_pressure():
+            if self._deferred_preload_task is None or self._deferred_preload_task.done():
+                logger.warning(
+                    "⏳ Deferring local encoder preload due to system pressure; will retry in background"
+                )
+                self._deferred_preload_task = loop.create_task(
+                    self._defer_and_retry_preload(),
+                    name="speaker_encoder_preload_retry",
+                )
             return
 
         self._encoder_preloading = True
 
-        def preload_worker():
-            """Worker function to initialize engine and pre-load encoder in background thread"""
+        async def preload_worker() -> None:
             try:
-                # Run async function in thread's event loop
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                self._preload_loop = loop  # Store for cleanup
+                logger.info("🔄 Background: Initializing SpeechBrain engine...")
+                await self.speechbrain_engine.initialize()
+                logger.info("✅ Background: SpeechBrain engine initialized")
 
-                try:
-                    # First initialize the SpeechBrain engine (loads models)
-                    logger.info("🔄 Background: Initializing SpeechBrain engine...")
-                    loop.run_until_complete(self.speechbrain_engine.initialize())
-                    logger.info("✅ Background: SpeechBrain engine initialized")
+                if self._shutdown_event.is_set():
+                    logger.info("⏹️ Background preload cancelled during shutdown")
+                    return
 
-                    # Then pre-load the speaker encoder
-                    logger.info("🔄 Background: Pre-loading speaker encoder...")
-                    loop.run_until_complete(self.speechbrain_engine._load_speaker_encoder())
+                logger.info("🔄 Background: Pre-loading speaker encoder...")
+                await self.speechbrain_engine.ensure_speaker_encoder_ready()
+                if self.speechbrain_engine.speaker_encoder_loaded:
                     self._encoder_preloaded = True
                     logger.info("✅ Speaker encoder ready - voice biometric unlock now instant!")
-                finally:
-                    # Clean shutdown of event loop
-                    try:
-                        # Cancel all pending tasks
-                        pending = asyncio.all_tasks(loop)
-                        for task in pending:
-                            task.cancel()
-
-                        # Wait for tasks to finish cancellation
-                        if pending:
-                            loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
-
-                        # Close the loop
-                        loop.close()
-                    except Exception as cleanup_error:
-                        logger.debug(f"Event loop cleanup: {cleanup_error}")
-                    finally:
-                        self._preload_loop = None
-
+                else:
+                    logger.warning("⚠️ Background preload completed but encoder is not ready")
+            except asyncio.CancelledError:
+                logger.info("⏹️ Background preload task cancelled")
+                raise
             except Exception as e:
                 logger.error(f"Background encoder pre-loading failed: {e}", exc_info=True)
             finally:
                 self._encoder_preloading = False
+                self._preload_task = None
 
-        self._preload_thread = threading.Thread(
-            target=preload_worker,
-            daemon=True,
-            name="SpeakerEncoderPreloader"  # Give it a descriptive name
+        self._preload_task = loop.create_task(
+            preload_worker(),
+            name="speaker_encoder_preload",
         )
-        self._preload_thread.start()
 
     async def _initialize_enhanced_components(self):
         """
@@ -3926,6 +3962,7 @@ class SpeakerVerificationService:
         """
         if self.initialized:
             return
+        self._shutdown_event.clear()
 
         logger.info("🔐 Initializing Speaker Verification Service...")
 
@@ -7955,29 +7992,34 @@ class SpeakerVerificationService:
             except Exception as e:
                 logger.warning(f"   ⚠ Profile reload monitor cleanup error: {e}")
 
-        # Wait for preload thread to complete (with timeout)
-        if self._preload_thread and self._preload_thread.is_alive():
-            logger.debug("   Waiting for background preload thread to finish...")
-            self._preload_thread.join(timeout=2.0)
-
-            if self._preload_thread.is_alive():
-                logger.warning("   Preload thread did not exit cleanly - marking as daemon")
-                # Ensure it's daemon so it doesn't block shutdown
-                self._preload_thread.daemon = True
-            else:
-                logger.debug("   ✅ Preload thread terminated cleanly")
-
-            self._preload_thread = None
-
-        # Clean up event loop if still running
-        if self._preload_loop and not self._preload_loop.is_closed():
+        # Cancel deferred preload retry task
+        if self._deferred_preload_task and not self._deferred_preload_task.done():
+            logger.debug("   Cancelling deferred preload retry task...")
+            self._deferred_preload_task.cancel()
             try:
-                logger.debug("   Closing background event loop...")
-                self._preload_loop.stop()
-                self._preload_loop.close()
-                self._preload_loop = None
+                await asyncio.wait_for(self._deferred_preload_task, timeout=2.0)
+            except (asyncio.CancelledError, asyncio.TimeoutError):
+                logger.debug("   ✅ Deferred preload retry task terminated")
             except Exception as e:
-                logger.debug(f"   Event loop cleanup error: {e}")
+                logger.warning(f"   ⚠ Deferred preload retry cleanup error: {e}")
+        self._deferred_preload_task = None
+
+        # Cancel active preload task
+        if self._preload_task and not self._preload_task.done():
+            logger.debug("   Cancelling encoder preload task...")
+            self._preload_task.cancel()
+            try:
+                await asyncio.wait_for(self._preload_task, timeout=3.0)
+                logger.debug("   ✅ Encoder preload task cancelled")
+            except (asyncio.CancelledError, asyncio.TimeoutError):
+                logger.debug("   ✅ Encoder preload task terminated")
+            except Exception as e:
+                logger.warning(f"   ⚠ Preload task cleanup error: {e}")
+        self._preload_task = None
+
+        # Legacy fields kept for compatibility with older diagnostics
+        self._preload_thread = None
+        self._preload_loop = None
 
         # Clean up learning database only if this service owns it.
         # Shared singleton lifecycle is managed by close_learning_database().
@@ -8008,6 +8050,8 @@ class SpeakerVerificationService:
         self.initialized = False
         self._encoder_preloaded = False
         self._encoder_preloading = False
+        self._deferred_preload_task = None
+        self._preload_task = None
         self._preload_thread = None
         self.learning_db = None
         self._owns_learning_db = False

@@ -3,6 +3,7 @@
 import sys
 import time
 import types
+from enum import Enum
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -58,6 +59,7 @@ def test_cpu_compound_relief_deferred_during_startup_grace(monkeypatch, tmp_path
         metrics=SimpleNamespace(current_cpu_usage_percent=0.0)
     )
     manager._schedule_cpu_relief = Mock()
+    manager._schedule_cpu_cloud_shift = Mock()
     manager._schedule_memory_relief = Mock()
     manager._last_cpu_pressure_warn = 0.0
     manager._startup_compound_pressure_first_ts = 0.0
@@ -81,6 +83,7 @@ def test_cpu_compound_relief_deferred_during_startup_grace(monkeypatch, tmp_path
     manager._handle_cpu_pressure(event)
 
     manager._schedule_cpu_relief.assert_called_once()
+    manager._schedule_cpu_cloud_shift.assert_called_once()
     manager._schedule_memory_relief.assert_not_called()
 
 
@@ -90,6 +93,7 @@ def test_cpu_compound_relief_runs_after_startup_grace(monkeypatch, tmp_path):
         metrics=SimpleNamespace(current_cpu_usage_percent=0.0)
     )
     manager._schedule_cpu_relief = Mock()
+    manager._schedule_cpu_cloud_shift = Mock()
     manager._schedule_memory_relief = Mock()
     manager._last_cpu_pressure_warn = 0.0
     manager._startup_compound_pressure_first_ts = time.time() - 180.0
@@ -113,4 +117,53 @@ def test_cpu_compound_relief_runs_after_startup_grace(monkeypatch, tmp_path):
     manager._handle_cpu_pressure(event)
 
     manager._schedule_cpu_relief.assert_called_once()
+    manager._schedule_cpu_cloud_shift.assert_called_once()
     manager._schedule_memory_relief.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_trigger_gcp_spot_vm_with_cpu_context_escalates_urgency(monkeypatch):
+    manager = ProcessCleanupManager.__new__(ProcessCleanupManager)
+    captured = {}
+
+    class FakeVMDecision(Enum):
+        CREATE = "create"
+        DENY_BUDGET = "deny_budget"
+        DENY_MAINTENANCE = "deny_maintenance"
+
+    class FakeVMCreationRequest:
+        def __init__(self, **kwargs):
+            self.__dict__.update(kwargs)
+
+    class FakeController:
+        async def request_vm(self, **kwargs):
+            captured["request_vm"] = kwargs
+            return FakeVMDecision.CREATE, "approved"
+
+        async def create_vm(self, request):
+            captured["create_vm"] = request
+            return SimpleNamespace(instance_id="vm-cpu-spot")
+
+        def get_remaining_budget(self):
+            return 0.42
+
+    controller = FakeController()
+    fake_module = types.SimpleNamespace(
+        VMCreationRequest=FakeVMCreationRequest,
+        VMDecision=FakeVMDecision,
+        get_supervisor_gcp_controller=lambda: controller,
+    )
+    monkeypatch.setitem(sys.modules, "core.supervisor_gcp_controller", fake_module)
+
+    result = await manager._trigger_gcp_spot_vm_with_context(
+        trigger_reason="cpu_pressure",
+        memory_percent=60.0,
+        cpu_percent=99.2,
+        components=["ecapa_tdnn"],
+        estimated_duration_minutes=15,
+    )
+
+    assert result["success"] is True
+    assert captured["request_vm"]["trigger"] == "cpu_pressure"
+    assert captured["request_vm"]["urgency"] == "critical"
+    assert captured["request_vm"]["memory_percent"] == 60.0

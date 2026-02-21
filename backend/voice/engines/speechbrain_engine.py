@@ -1249,7 +1249,6 @@ class SpeechBrainEngine(BaseSTTEngine):
             from speechbrain.inference.speaker import EncoderClassifier
             import platform
             import sys
-            from concurrent.futures import ThreadPoolExecutor
             import threading
 
             logger.info("🔄 Loading speaker encoder (ECAPA-TDNN)...")
@@ -1257,60 +1256,48 @@ class SpeechBrainEngine(BaseSTTEngine):
             # Detect system information for diagnostics
             is_apple_silicon = platform.machine() == 'arm64' and sys.platform == 'darwin'
             pytorch_version = torch.__version__
-
             logger.info(f"   System: {platform.machine()}, PyTorch: {pytorch_version}")
 
             # IMPORTANT: Force CPU for speaker encoder
             # MPS (Apple Silicon) doesn't support FFT operations needed for ECAPA-TDNN
-            encoder_device = "cpu"
-            logger.info(f"   Using device: {encoder_device} (FFT operations required)")
+            logger.info("   Using device: cpu (FFT operations required)")
 
-            # Use the current event loop instead of a separate thread executor
-            # This avoids segfaults caused by thread-local storage issues in PyTorch/SpeechBrain
-            loop = asyncio.get_running_loop()
-            
             # SAFETY: Capture references BEFORE defining sync function to prevent segfaults
             cache_dir_ref = self.cache_dir
             load_ecapa_fallback_ref = self._load_ecapa_fallback
-            loading_lock_ref = self._model_loading_lock  # CRITICAL: Thread-safe loading lock
-            
+            loading_lock_ref = self._model_loading_lock  # Thread-safe loading lock
+
             def _load_model_sync():
                 """Synchronous model loading function.
-                
-                CRITICAL: Run on main thread to prevent segfaults on macOS/Apple Silicon.
+
+                CRITICAL: Run on serialized PyTorch thread path to avoid segfaults
+                on macOS/Apple Silicon.
                 """
-                # CRITICAL: Acquire loading lock to prevent concurrent loads
-                # This lock protects against segfaults from concurrent model loading
                 with loading_lock_ref:
-                    # Set thread-local PyTorch settings to avoid conflicts
                     torch.set_num_threads(1)  # Prevent thread pool exhaustion
-                    
+
                     import os
                     old_mps_fallback = None
-                    
+
                     try:
-                        # Apply PyTorch workarounds if needed
                         if is_apple_silicon and pytorch_version.startswith(('2.9', '2.10', '2.11')):
                             logger.info("   🔧 Applying PyTorch 2.9.0+ Apple Silicon workaround...")
                             old_mps_fallback = os.environ.get('PYTORCH_MPS_HIGH_WATERMARK_RATIO')
                             os.environ['PYTORCH_MPS_HIGH_WATERMARK_RATIO'] = '0.0'
-                            
+
                             if hasattr(torch.backends, 'mps'):
                                 torch.backends.mps.is_built = lambda: False
-                            
-                        # Load model with appropriate run_opts
+
                         run_opts = {"device": "cpu"}
                         if is_apple_silicon and pytorch_version.startswith(('2.9', '2.10', '2.11')):
                             run_opts.update({
                                 "data_parallel_backend": False,
                                 "distributed_launch": False,
                             })
-                            
+
                         logger.info(f"   Loading from thread: {threading.current_thread().name}")
-                        
-                        # Try standard from_hparams first
+
                         try:
-                            # Use captured cache_dir_ref instead of self.cache_dir
                             model = EncoderClassifier.from_hparams(
                                 source="speechbrain/spkrec-ecapa-voxceleb",
                                 savedir=str(cache_dir_ref / "speaker_encoder"),
@@ -1320,34 +1307,21 @@ class SpeechBrainEngine(BaseSTTEngine):
                             return model
                         except Exception as e:
                             if "custom.py" in str(e) or "Entry Not Found" in str(e):
-                                logger.warning(f"   ⚠️ Standard loading failed (missing custom.py), using fallback loader...")
-                                # Use captured fallback function instead of self._load_ecapa_fallback
+                                logger.warning(
+                                    "   ⚠️ Standard loading failed (missing custom.py), using fallback loader..."
+                                )
                                 return load_ecapa_fallback_ref(run_opts)
-                            else:
-                                raise
-                                
+                            raise
                     finally:
-                        # Restore environment
                         if old_mps_fallback is not None:
                             os.environ['PYTORCH_MPS_HIGH_WATERMARK_RATIO'] = old_mps_fallback
                         elif 'PYTORCH_MPS_HIGH_WATERMARK_RATIO' in os.environ:
                             os.environ.pop('PYTORCH_MPS_HIGH_WATERMARK_RATIO', None)
 
-            # Use dedicated single-threaded PyTorch executor
-            # This keeps the event loop responsive while ensuring all PyTorch
-            # operations are serialized to a single thread (prevents segfaults)
-            # v117.0: Use op_type=MODEL_LOAD for proper timeout (10 min instead of 2 min)
-            # and model_name for cross-repo coordination
             logger.info("   Loading model in dedicated PyTorch thread (async but serialized)...")
             logger.info("   ⚡ Using v117.0 intelligent timeout and retry system...")
 
             if _HAS_PYTORCH_EXECUTOR:
-                # v117.0: Use the singleton executor with MODEL_LOAD op_type
-                # This enables:
-                # - 5x timeout multiplier (10 minutes instead of 2 minutes)
-                # - Cross-repo model load lock coordination
-                # - Automatic retry with exponential backoff
-                # - Adaptive timeout based on system resources
                 self.speaker_encoder = await run_in_pytorch_thread(
                     _load_model_sync,
                     op_type=OpType.MODEL_LOAD,
@@ -1355,19 +1329,12 @@ class SpeechBrainEngine(BaseSTTEngine):
                     retry_enabled=True,
                 )
             else:
-                # Fallback to synchronous (blocks event loop but safe)
                 logger.warning("   ⚠️ PyTorch executor not available, loading synchronously...")
                 self.speaker_encoder = _load_model_sync()
 
-            logger.info("   ✅ Model loaded successfully")
+            if self.speaker_encoder is None:
+                raise RuntimeError("Speaker encoder returned None")
 
-        except Exception as e:
-            logger.error(
-                "❌ Speaker encoder loading failed!\n"
-                f"   Error: {e}"
-            )
-            raise
-            
             self.speaker_encoder_loaded = True
             logger.info("✅ Speaker encoder loaded successfully")
 
@@ -1388,12 +1355,13 @@ class SpeechBrainEngine(BaseSTTEngine):
                 "   Check that all dependencies are installed: pip install speechbrain soundfile"
             )
 
-            # Provide helpful diagnostics for common issues
-            # Ensure safe access to variables that might not be defined if crash happens early
             try:
-                is_apple_silicon = platform.machine() == 'arm64' and sys.platform == 'darwin'
-                pytorch_version = torch.__version__
-                if is_apple_silicon and pytorch_version.startswith(('2.9', '2.10', '2.11')):
+                import platform as _platform
+                import sys as _sys
+
+                _is_apple_silicon = _platform.machine() == 'arm64' and _sys.platform == 'darwin'
+                _pytorch_version = torch.__version__
+                if _is_apple_silicon and _pytorch_version.startswith(('2.9', '2.10', '2.11')):
                     logger.error(
                         "\n   🔍 APPLE SILICON + PYTORCH 2.9.0+ DETECTED:\n"
                         "   This combination has known segfault issues during model loading.\n"
@@ -1406,6 +1374,28 @@ class SpeechBrainEngine(BaseSTTEngine):
             except Exception:
                 pass
             raise
+
+    async def cleanup(self) -> None:
+        """Release encoder resources and cancel pending preload safely."""
+        task = self._encoder_load_task
+        self._encoder_load_task = None
+
+        if task and not task.done():
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+            except Exception as e:
+                logger.debug(f"Encoder preload task cleanup warning: {e}")
+
+        self.speaker_encoder = None
+        self.speaker_encoder_loaded = False
+        self.embedding_cache.clear()
+        self.speaker_embeddings.clear()
+        self.streaming_buffer.clear()
+
+        await super().cleanup()
 
     def _load_ecapa_fallback(self, run_opts: dict):
         """Fallback loader for ECAPA-TDNN when custom.py is missing.
