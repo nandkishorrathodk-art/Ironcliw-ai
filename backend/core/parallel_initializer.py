@@ -2224,6 +2224,7 @@ class ParallelInitializer:
             from intelligence.learning_database import JARVISLearningDatabase
 
             learning_db = JARVISLearningDatabase()
+            _learning_db_stored = False  # v3.2: Track if DB was stored in app.state
 
             # v86.0: Check ProxyReadinessGate state for smarter initialization
             try:
@@ -2240,6 +2241,7 @@ class ParallelInitializer:
                     logger.info("   ProxyReadinessGate indicates credentials invalid - using SQLite only")
                     await asyncio.wait_for(learning_db.initialize(), timeout=20.0)
                     self.app.state.learning_db = learning_db
+                    _learning_db_stored = True
                     logger.info("   ✅ Learning database ready (SQLite fallback mode)")
                     return
 
@@ -2247,6 +2249,7 @@ class ParallelInitializer:
                     logger.info("   ProxyReadinessGate indicates proxy unavailable - using SQLite only")
                     await asyncio.wait_for(learning_db.initialize(), timeout=20.0)
                     self.app.state.learning_db = learning_db
+                    _learning_db_stored = True
                     logger.info("   ✅ Learning database ready (SQLite fallback, proxy may recover)")
                     return
 
@@ -2255,6 +2258,7 @@ class ParallelInitializer:
                     logger.info("   ProxyReadinessGate confirmed DB-level ready - initializing with CloudSQL")
                     await asyncio.wait_for(learning_db.initialize(), timeout=20.0)
                     self.app.state.learning_db = learning_db
+                    _learning_db_stored = True
                     logger.info("   ✅ Learning database ready (hybrid CloudSQL + SQLite)")
                     return
 
@@ -2279,6 +2283,7 @@ class ParallelInitializer:
                             )
                             await asyncio.wait_for(learning_db.initialize(), timeout=20.0)
                             self.app.state.learning_db = learning_db
+                            _learning_db_stored = True
                             logger.info("   ✅ Learning database ready (SQLite fallback, gate-directed)")
                             return
                         else:
@@ -2315,6 +2320,7 @@ class ParallelInitializer:
                                 )
                                 await asyncio.wait_for(learning_db.initialize(), timeout=20.0)
                                 self.app.state.learning_db = learning_db
+                                _learning_db_stored = True
                                 logger.info("   ✅ Learning database ready (SQLite fallback, mid-retry gate check)")
                                 return
                         except (ImportError, Exception):
@@ -2334,6 +2340,7 @@ class ParallelInitializer:
                     # Initialize with timeout per attempt
                     await asyncio.wait_for(learning_db.initialize(), timeout=20.0)
                     self.app.state.learning_db = learning_db
+                    _learning_db_stored = True
                     logger.info("   ✅ Learning database ready (hybrid CloudSQL + SQLite)")
                     return
 
@@ -2366,16 +2373,33 @@ class ParallelInitializer:
                             logger.warning(f"   ⚠️ CloudSQL unavailable after {max_retries} attempts - using SQLite only")
                             # Still store the DB instance - it will fall back to SQLite
                             self.app.state.learning_db = learning_db
+                            _learning_db_stored = True
                             return
                     else:
                         # Non-connection error - raise immediately
                         raise
 
+        except asyncio.CancelledError:
+            # v3.2: Clean up partially-initialized DB before propagating cancellation.
+            # Without this, CancelledError skips the Exception handler below and
+            # leaks SQLite/asyncpg connections held by learning_db.
+            if not locals().get('_learning_db_stored', True):
+                try:
+                    await asyncio.wait_for(learning_db.close(), timeout=3.0)
+                except BaseException:
+                    pass
+            raise
+
         except Exception as e:
             logger.warning(f"⚠️ Learning database initialization failed: {e}")
             logger.info("   System will operate without persistent learning (memory only)")
+            # v3.2: Close partially-initialized DB if it wasn't stored in app.state.
+            if not locals().get('_learning_db_stored', True):
+                try:
+                    await asyncio.wait_for(learning_db.close(), timeout=3.0)
+                except BaseException:
+                    pass
             # Don't raise - system can operate without learning DB
-            pass
 
     async def _init_gcp_vm_manager(self):
         """
