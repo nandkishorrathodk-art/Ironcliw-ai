@@ -132,6 +132,15 @@ class MLConfig:
     CLOUD_COOLDOWN_LOG_INTERVAL = float(
         os.getenv("JARVIS_CLOUD_COOLDOWN_LOG_INTERVAL", "30.0")
     )
+    CLOUD_ENDPOINT_FAILOVER_ENABLED = os.getenv(
+        "JARVIS_CLOUD_ENDPOINT_FAILOVER_ENABLED", "true"
+    ).lower() == "true"
+    CLOUD_ENDPOINT_FAILURE_BACKOFF_BASE = float(
+        os.getenv("JARVIS_CLOUD_ENDPOINT_FAILURE_BACKOFF_BASE", "30.0")
+    )
+    CLOUD_ENDPOINT_FAILURE_BACKOFF_MAX = float(
+        os.getenv("JARVIS_CLOUD_ENDPOINT_FAILURE_BACKOFF_MAX", "900.0")
+    )
 
     # RAM thresholds for automatic cloud routing (in GB)
     RAM_THRESHOLD_LOCAL = float(os.getenv("JARVIS_RAM_THRESHOLD_LOCAL", "6.0"))
@@ -159,6 +168,9 @@ class MLConfig:
             "cloud_api_failure_backoff_base": cls.CLOUD_API_FAILURE_BACKOFF_BASE,
             "cloud_api_failure_backoff_max": cls.CLOUD_API_FAILURE_BACKOFF_MAX,
             "cloud_api_failure_streak_reset": cls.CLOUD_API_FAILURE_STREAK_RESET,
+            "cloud_endpoint_failover_enabled": cls.CLOUD_ENDPOINT_FAILOVER_ENABLED,
+            "cloud_endpoint_failure_backoff_base": cls.CLOUD_ENDPOINT_FAILURE_BACKOFF_BASE,
+            "cloud_endpoint_failure_backoff_max": cls.CLOUD_ENDPOINT_FAILURE_BACKOFF_MAX,
             "ram_threshold_local": cls.RAM_THRESHOLD_LOCAL,
             "memory_pressure_threshold": cls.MEMORY_PRESSURE_THRESHOLD,
         }
@@ -1205,6 +1217,11 @@ class MLEngineRegistry:
         self._cloud_contract_endpoint: Optional[str] = None
         self._cloud_contract_last_checked: float = 0.0
         self._cloud_contract_last_error: str = ""
+        self._cloud_endpoint_failure_streak: Dict[str, int] = {}
+        self._cloud_endpoint_last_failure_at: Dict[str, float] = {}
+        self._cloud_endpoint_degraded_until: Dict[str, float] = {}
+        self._cloud_endpoint_last_error: Dict[str, str] = {}
+        self._cloud_failover_lock = LazyAsyncLock()
 
         # v21.1.0: Cloud embedding circuit breaker
         self._cloud_embedding_cb = CloudEmbeddingCircuitBreaker()
@@ -1929,6 +1946,237 @@ class MLEngineRegistry:
             self._cloud_contract_endpoint = None
             self._cloud_contract_last_checked = 0.0
             self._cloud_contract_last_error = ""
+            # Endpoint-level breakers are independent; do not carry global
+            # request breaker state from a failed endpoint to a new endpoint.
+            if new_endpoint and old_endpoint and new_endpoint != old_endpoint:
+                self._reset_cloud_request_failures()
+                self._cloud_embedding_cb = CloudEmbeddingCircuitBreaker()
+
+    def _reset_cloud_request_failures(self) -> None:
+        """Clear global cloud API degraded state without marking endpoint healthy."""
+        self._cloud_api_failure_streak = 0
+        self._cloud_api_last_failure_at = 0.0
+        self._cloud_api_degraded_until = 0.0
+        self._cloud_api_last_error = ""
+        self._cloud_api_last_cooldown_log_at = 0.0
+
+    async def _discover_cloud_endpoint_candidates(self) -> List[Tuple[str, str]]:
+        """
+        Discover candidate cloud endpoints in priority order.
+
+        Sources are dynamic (memory-aware startup state, env overrides, optional
+        local endpoints) and deduplicated to avoid redundant probes.
+        """
+        candidates: List[Tuple[str, str]] = []
+
+        # 1) MemoryAwareStartup candidate (if available).
+        try:
+            from core.memory_aware_startup import get_startup_manager
+
+            startup_manager = await get_startup_manager()
+
+            if startup_manager.is_cloud_ml_active:
+                endpoint = await startup_manager.get_ml_endpoint("speaker_verify")
+                if endpoint:
+                    candidates.append((endpoint, "memory_aware_active"))
+            elif self._startup_decision:
+                result = await startup_manager.activate_cloud_ml_backend()
+                if result.get("success") and result.get("ip"):
+                    _ecapa_port = int(os.getenv("JARVIS_ECAPA_PORT", "8015"))
+                    candidates.append(
+                        (
+                            f"http://{result.get('ip')}:{_ecapa_port}",
+                            "memory_aware_activated",
+                        )
+                    )
+        except ImportError:
+            logger.debug("MemoryAwareStartup not available")
+        except Exception as e:
+            logger.debug(f"MemoryAwareStartup endpoint discovery failed: {e}")
+
+        # 2) Endpoint list env overrides (highest explicit operator control).
+        for env_key in ("JARVIS_CLOUD_ECAPA_ENDPOINTS", "JARVIS_ML_CLOUD_ENDPOINTS"):
+            raw = os.getenv(env_key, "")
+            if not raw:
+                continue
+            for endpoint in raw.split(","):
+                normalized = endpoint.strip()
+                if normalized:
+                    candidates.append((normalized, f"{env_key.lower()}"))
+
+        # 3) Single endpoint env vars (Cloud Run preferred).
+        cloud_run_url = os.getenv(
+            "ECAPA_CLOUD_RUN_URL",
+            os.getenv(
+                "JARVIS_CLOUD_ML_ENDPOINT",
+                "https://jarvis-ml-888774109345.us-central1.run.app",
+            ),
+        )
+        if cloud_run_url:
+            candidates.append((cloud_run_url, "cloud_run_env"))
+
+        explicit_cloud_endpoint = os.getenv(
+            "JARVIS_CLOUD_ECAPA_ENDPOINT",
+            os.getenv("JARVIS_ML_CLOUD_ENDPOINT", ""),
+        )
+        if explicit_cloud_endpoint:
+            candidates.append((explicit_cloud_endpoint, "explicit_env"))
+
+        # 4) Optional localhost fallbacks, but only if explicitly allowed.
+        allow_local_fallback = os.getenv(
+            "JARVIS_CLOUD_ALLOW_LOCAL_ENDPOINTS", "false"
+        ).lower() in ("1", "true", "yes")
+        if allow_local_fallback:
+            try:
+                import socket
+
+                for host_port, source in (
+                    (("127.0.0.1", 8090), "local_reactor_core"),
+                    (("127.0.0.1", 8000), "local_jarvis_prime"),
+                ):
+                    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    sock.settimeout(0.3)
+                    result = sock.connect_ex(host_port)
+                    sock.close()
+                    if result == 0:
+                        candidates.append((f"http://{host_port[0]}:{host_port[1]}", source))
+            except Exception as e:
+                logger.debug(f"Local endpoint discovery failed: {e}")
+
+        # Include currently configured endpoint first to avoid unnecessary churn.
+        if self._cloud_endpoint:
+            candidates.insert(0, (self._cloud_endpoint, self._cloud_endpoint_source))
+
+        # Deduplicate while preserving priority order.
+        seen: Set[str] = set()
+        deduped_candidates: List[Tuple[str, str]] = []
+        for endpoint, source in candidates:
+            normalized = endpoint.strip().rstrip("/")
+            if not normalized or normalized in seen or "None" in normalized:
+                continue
+            seen.add(normalized)
+            deduped_candidates.append((normalized, source))
+        return deduped_candidates
+
+    def _record_cloud_endpoint_failure(
+        self,
+        endpoint: Optional[str],
+        reason: str,
+        status_code: Optional[int] = None,
+        retry_after_seconds: float = 0.0,
+    ) -> None:
+        """Track endpoint-specific failures and backoff windows."""
+        if not endpoint:
+            return
+        normalized = endpoint.strip().rstrip("/")
+        if not normalized:
+            return
+
+        now = time.time()
+        prev_ts = self._cloud_endpoint_last_failure_at.get(normalized, 0.0)
+        reset_window = max(
+            MLConfig.CLOUD_API_FAILURE_STREAK_RESET,
+            float(os.getenv("JARVIS_CLOUD_ENDPOINT_FAILURE_RESET_SECONDS", "300.0")),
+        )
+        if prev_ts and (now - prev_ts) > reset_window:
+            self._cloud_endpoint_failure_streak[normalized] = 0
+
+        failure_streak = self._cloud_endpoint_failure_streak.get(normalized, 0) + 1
+        self._cloud_endpoint_failure_streak[normalized] = failure_streak
+        self._cloud_endpoint_last_failure_at[normalized] = now
+
+        backoff = min(
+            MLConfig.CLOUD_ENDPOINT_FAILURE_BACKOFF_BASE
+            * (2 ** max(0, failure_streak - 1)),
+            MLConfig.CLOUD_ENDPOINT_FAILURE_BACKOFF_MAX,
+        )
+        if retry_after_seconds > 0:
+            backoff = max(backoff, retry_after_seconds)
+
+        self._cloud_endpoint_degraded_until[normalized] = max(
+            self._cloud_endpoint_degraded_until.get(normalized, 0.0),
+            now + backoff,
+        )
+        if status_code is None:
+            self._cloud_endpoint_last_error[normalized] = reason[:240]
+        else:
+            self._cloud_endpoint_last_error[normalized] = f"HTTP {status_code}: {reason[:200]}"
+
+    def _cloud_endpoint_probe_allowed(self, endpoint: Optional[str]) -> bool:
+        """Whether endpoint is currently eligible for probing/selection."""
+        if not endpoint:
+            return False
+        normalized = endpoint.strip().rstrip("/")
+        if not normalized:
+            return False
+        return self._cloud_endpoint_degraded_until.get(normalized, 0.0) <= time.time()
+
+    async def _attempt_cloud_endpoint_failover(
+        self,
+        trigger: str,
+        failed_endpoint: Optional[str] = None,
+    ) -> bool:
+        """
+        Attempt endpoint rotation after hard cloud failures.
+
+        Returns True only when a different endpoint is selected and contract-verified.
+        """
+        if not MLConfig.CLOUD_ENDPOINT_FAILOVER_ENABLED:
+            return False
+
+        failed = (failed_endpoint or self._cloud_endpoint or "").strip().rstrip("/")
+        if not failed:
+            return False
+
+        async with self._cloud_failover_lock:
+            current = (self._cloud_endpoint or "").strip().rstrip("/")
+            if current and current != failed:
+                # Another coroutine already switched endpoint.
+                return True
+
+            candidates = await self._discover_cloud_endpoint_candidates()
+            probe_timeout = max(
+                1.0, float(os.getenv("JARVIS_CLOUD_FAILOVER_CONTRACT_TIMEOUT", "3.0"))
+            )
+            for endpoint, source in candidates:
+                normalized = endpoint.strip().rstrip("/")
+                if not normalized or normalized == failed:
+                    continue
+                if not self._cloud_endpoint_probe_allowed(normalized):
+                    continue
+
+                contract_ok, contract_reason = await self._verify_cloud_endpoint_contract(
+                    endpoint=normalized,
+                    timeout=probe_timeout,
+                    force=True,
+                )
+                if contract_ok:
+                    old_endpoint = self._cloud_endpoint
+                    old_source = self._cloud_endpoint_source
+                    self._set_cloud_endpoint(normalized, f"{source}|failover")
+                    self._use_cloud = True
+                    logger.warning(
+                        "Cloud endpoint failover: %s (%s) -> %s (%s) [trigger=%s]",
+                        old_endpoint,
+                        old_source,
+                        self._cloud_endpoint,
+                        self._cloud_endpoint_source,
+                        trigger,
+                    )
+                    return True
+
+                self._record_cloud_endpoint_failure(
+                    normalized,
+                    reason=f"Failover contract validation failed: {contract_reason}",
+                )
+                logger.debug(
+                    "Rejected failover endpoint %s (source=%s): %s",
+                    normalized,
+                    source,
+                    contract_reason,
+                )
+
+        return False
 
     async def _verify_cloud_endpoint_contract(
         self,
@@ -2037,91 +2285,37 @@ class MLEngineRegistry:
             True if cloud routing was successfully activated
         """
         try:
-            candidates: List[Tuple[str, str]] = []
-
-            # 1) MemoryAwareStartup candidate (if available).
-            try:
-                from core.memory_aware_startup import get_startup_manager
-                startup_manager = await get_startup_manager()
-
-                if startup_manager.is_cloud_ml_active:
-                    endpoint = await startup_manager.get_ml_endpoint("speaker_verify")
-                    if endpoint:
-                        candidates.append((endpoint, "memory_aware_active"))
-                elif self._startup_decision:
-                    result = await startup_manager.activate_cloud_ml_backend()
-                    if result.get("success") and result.get("ip"):
-                        _ecapa_port = int(os.getenv("JARVIS_ECAPA_PORT", "8015"))
-                        candidates.append(
-                            (f"http://{result.get('ip')}:{_ecapa_port}", "memory_aware_activated")
-                        )
-            except ImportError:
-                logger.debug("MemoryAwareStartup not available")
-            except Exception as e:
-                logger.debug(f"MemoryAwareStartup endpoint discovery failed: {e}")
-
-            # 2) Explicit cloud endpoint env vars (Cloud Run preferred).
-            cloud_run_url = os.getenv(
-                "ECAPA_CLOUD_RUN_URL",
-                os.getenv(
-                    "JARVIS_CLOUD_ML_ENDPOINT",
-                    "https://jarvis-ml-888774109345.us-central1.run.app",
-                ),
+            candidates = await self._discover_cloud_endpoint_candidates()
+            contract_timeout = max(
+                1.0, float(os.getenv("JARVIS_CLOUD_CONTRACT_TIMEOUT", "4.0"))
             )
-            if cloud_run_url:
-                candidates.append((cloud_run_url, "cloud_run_env"))
-
-            explicit_cloud_endpoint = os.getenv(
-                "JARVIS_CLOUD_ECAPA_ENDPOINT",
-                os.getenv("JARVIS_ML_CLOUD_ENDPOINT", ""),
-            )
-            if explicit_cloud_endpoint:
-                candidates.append((explicit_cloud_endpoint, "explicit_env"))
-
-            # 3) Optional localhost fallbacks, but only if explicitly allowed.
-            allow_local_fallback = os.getenv(
-                "JARVIS_CLOUD_ALLOW_LOCAL_ENDPOINTS", "false"
-            ).lower() in ("1", "true", "yes")
-            if allow_local_fallback:
-                try:
-                    import socket
-
-                    for host_port, source in (
-                        (("127.0.0.1", 8090), "local_reactor_core"),
-                        (("127.0.0.1", 8000), "local_jarvis_prime"),
-                    ):
-                        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                        sock.settimeout(0.3)
-                        result = sock.connect_ex(host_port)
-                        sock.close()
-                        if result == 0:
-                            candidates.append((f"http://{host_port[0]}:{host_port[1]}", source))
-                except Exception as e:
-                    logger.debug(f"Local endpoint discovery failed: {e}")
-
-            # Deduplicate while preserving priority order.
-            seen: Set[str] = set()
-            deduped_candidates: List[Tuple[str, str]] = []
             for endpoint, source in candidates:
-                normalized = endpoint.strip().rstrip("/")
-                if not normalized or normalized in seen or "None" in normalized:
+                if not self._cloud_endpoint_probe_allowed(endpoint):
+                    logger.debug(
+                        "Skipping cloud endpoint %s (source=%s): endpoint backoff active",
+                        endpoint,
+                        source,
+                    )
                     continue
-                seen.add(normalized)
-                deduped_candidates.append((normalized, source))
 
-            # Accept first endpoint that passes ECAPA contract checks.
-            for endpoint, source in deduped_candidates:
-                self._set_cloud_endpoint(endpoint, source)
                 contract_ok, contract_reason = await self._verify_cloud_endpoint_contract(
-                    force=True
+                    endpoint=endpoint,
+                    timeout=contract_timeout,
+                    force=True,
                 )
                 if contract_ok:
+                    self._set_cloud_endpoint(endpoint, source)
                     self._use_cloud = True
                     logger.info(
                         f"☁️  Cloud routing activated for ML operations → {self._cloud_endpoint} "
                         f"(source={self._cloud_endpoint_source})"
                     )
                     return True
+
+                self._record_cloud_endpoint_failure(
+                    endpoint,
+                    reason=f"Contract validation failed: {contract_reason}",
+                )
                 logger.warning(
                     f"⚠️ Rejected cloud endpoint {endpoint} (source={source}): {contract_reason}"
                 )
@@ -2809,6 +3003,17 @@ class MLEngineRegistry:
         status["diagnostics"]["cloud_contract_endpoint"] = self._cloud_contract_endpoint
         status["diagnostics"]["cloud_contract_last_checked"] = self._cloud_contract_last_checked
         status["diagnostics"]["cloud_contract_last_error"] = self._cloud_contract_last_error
+        status["diagnostics"]["cloud_endpoint_failover_enabled"] = (
+            MLConfig.CLOUD_ENDPOINT_FAILOVER_ENABLED
+        )
+        status["diagnostics"]["cloud_endpoint_failure_streak"] = dict(
+            self._cloud_endpoint_failure_streak
+        )
+        status["diagnostics"]["cloud_endpoint_cooldown_remaining"] = {
+            endpoint: max(0.0, until - time.time())
+            for endpoint, until in self._cloud_endpoint_degraded_until.items()
+            if until > time.time()
+        }
 
         # Final determination
         if not status["available"]:
@@ -3026,7 +3231,8 @@ class MLEngineRegistry:
     async def extract_speaker_embedding_cloud(
         self,
         audio_data: bytes,
-        timeout: float = 30.0
+        timeout: float = 30.0,
+        _allow_failover_retry: bool = True,
     ) -> Optional[Any]:
         """
         Extract speaker embedding using cloud backend.
@@ -3067,7 +3273,8 @@ class MLEngineRegistry:
             # Encode audio as base64
             audio_b64 = base64.b64encode(audio_data).decode('utf-8')
 
-            endpoint = f"{self._cloud_endpoint.rstrip('/')}/api/ml/speaker_embedding"
+            active_endpoint = (self._cloud_endpoint or "").rstrip("/")
+            endpoint = f"{active_endpoint}/api/ml/speaker_embedding"
             payload = {
                 "audio_data": audio_b64,
                 "sample_rate": 16000,
@@ -3112,6 +3319,10 @@ class MLEngineRegistry:
                             logger.error(f"Cloud embedding failed: {error_msg}")
                             self._cloud_embedding_cb.record_failure(f"API error: {error_msg}")
                             self._mark_cloud_api_failure(f"API error: {error_msg}")
+                            self._record_cloud_endpoint_failure(
+                                active_endpoint,
+                                reason=f"API error: {error_msg}",
+                            )
                             return None
 
                     elif response.status == 503:
@@ -3147,6 +3358,23 @@ class MLEngineRegistry:
                                 status_code=503,
                                 retry_after_seconds=retry_after_seconds,
                             )
+                            self._record_cloud_endpoint_failure(
+                                active_endpoint,
+                                reason=detail,
+                                status_code=503,
+                                retry_after_seconds=retry_after_seconds,
+                            )
+                            if _allow_failover_retry:
+                                switched = await self._attempt_cloud_endpoint_failover(
+                                    trigger="embedding_503_startup_failed",
+                                    failed_endpoint=active_endpoint,
+                                )
+                                if switched:
+                                    return await self.extract_speaker_embedding_cloud(
+                                        audio_data,
+                                        timeout=timeout,
+                                        _allow_failover_retry=False,
+                                    )
 
                         return None
 
@@ -3184,7 +3412,23 @@ class MLEngineRegistry:
                                 reason=error_text[:160],
                                 status_code=response.status,
                             )
+                            self._record_cloud_endpoint_failure(
+                                active_endpoint,
+                                reason=error_text[:160],
+                                status_code=response.status,
+                            )
                             self._log_cloud_cooldown("Cloud embedding API hard failure")
+                            if _allow_failover_retry:
+                                switched = await self._attempt_cloud_endpoint_failover(
+                                    trigger=f"embedding_http_{response.status}",
+                                    failed_endpoint=active_endpoint,
+                                )
+                                if switched:
+                                    return await self.extract_speaker_embedding_cloud(
+                                        audio_data,
+                                        timeout=timeout,
+                                        _allow_failover_retry=False,
+                                    )
                         else:
                             self._cloud_verified = False
                         return None
@@ -3193,27 +3437,60 @@ class MLEngineRegistry:
             logger.error("aiohttp not available for cloud requests")
             return None
         except asyncio.TimeoutError:
+            failed_endpoint = (self._cloud_endpoint or "").rstrip("/")
             logger.error(
                 f"Cloud embedding request timed out ({timeout}s) at "
                 f"{self._cloud_endpoint} (source={self._cloud_endpoint_source})"
             )
             self._cloud_embedding_cb.record_failure(f"Timeout after {timeout}s")
             self._mark_cloud_api_failure(f"Timeout after {timeout}s")
+            self._record_cloud_endpoint_failure(
+                failed_endpoint,
+                reason=f"Timeout after {timeout}s",
+            )
+            if _allow_failover_retry:
+                switched = await self._attempt_cloud_endpoint_failover(
+                    trigger="embedding_timeout",
+                    failed_endpoint=failed_endpoint,
+                )
+                if switched:
+                    return await self.extract_speaker_embedding_cloud(
+                        audio_data,
+                        timeout=timeout,
+                        _allow_failover_retry=False,
+                    )
             return None
         except Exception as e:
+            failed_endpoint = (self._cloud_endpoint or "").rstrip("/")
             logger.error(
                 f"Cloud embedding request failed at {self._cloud_endpoint} "
                 f"(source={self._cloud_endpoint_source}): {e}"
             )
             self._cloud_embedding_cb.record_failure(str(e)[:100])
             self._mark_cloud_api_failure(str(e)[:100])
+            self._record_cloud_endpoint_failure(
+                failed_endpoint,
+                reason=str(e),
+            )
+            if _allow_failover_retry:
+                switched = await self._attempt_cloud_endpoint_failover(
+                    trigger="embedding_exception",
+                    failed_endpoint=failed_endpoint,
+                )
+                if switched:
+                    return await self.extract_speaker_embedding_cloud(
+                        audio_data,
+                        timeout=timeout,
+                        _allow_failover_retry=False,
+                    )
             return None
 
     async def verify_speaker_cloud(
         self,
         audio_data: bytes,
         reference_embedding: Any,
-        timeout: float = 30.0
+        timeout: float = 30.0,
+        _allow_failover_retry: bool = True,
     ) -> Optional[Dict[str, Any]]:
         """
         Verify speaker using cloud backend.
@@ -3263,7 +3540,8 @@ class MLEngineRegistry:
             else:
                 ref_list = list(reference_embedding)
 
-            endpoint = f"{self._cloud_endpoint.rstrip('/')}/api/ml/speaker_verify"
+            active_endpoint = (self._cloud_endpoint or "").rstrip("/")
+            endpoint = f"{active_endpoint}/api/ml/speaker_verify"
             payload = {
                 "audio_data": audio_b64,
                 "reference_embedding": ref_list,
@@ -3315,6 +3593,24 @@ class MLEngineRegistry:
                                 status_code=503,
                                 retry_after_seconds=retry_after_seconds,
                             )
+                            self._record_cloud_endpoint_failure(
+                                active_endpoint,
+                                reason=detail,
+                                status_code=503,
+                                retry_after_seconds=retry_after_seconds,
+                            )
+                            if _allow_failover_retry:
+                                switched = await self._attempt_cloud_endpoint_failover(
+                                    trigger="verify_503_startup_failed",
+                                    failed_endpoint=active_endpoint,
+                                )
+                                if switched:
+                                    return await self.verify_speaker_cloud(
+                                        audio_data,
+                                        reference_embedding,
+                                        timeout=timeout,
+                                        _allow_failover_retry=False,
+                                    )
                         return None
 
                     else:
@@ -3348,7 +3644,24 @@ class MLEngineRegistry:
                                 reason=error_text[:160],
                                 status_code=response.status,
                             )
+                            self._record_cloud_endpoint_failure(
+                                active_endpoint,
+                                reason=error_text[:160],
+                                status_code=response.status,
+                            )
                             self._log_cloud_cooldown("Cloud verification API hard failure")
+                            if _allow_failover_retry:
+                                switched = await self._attempt_cloud_endpoint_failover(
+                                    trigger=f"verify_http_{response.status}",
+                                    failed_endpoint=active_endpoint,
+                                )
+                                if switched:
+                                    return await self.verify_speaker_cloud(
+                                        audio_data,
+                                        reference_embedding,
+                                        timeout=timeout,
+                                        _allow_failover_retry=False,
+                                    )
                         else:
                             self._cloud_verified = False
                         return None
@@ -3357,20 +3670,54 @@ class MLEngineRegistry:
             logger.error("aiohttp not available for cloud requests")
             return None
         except asyncio.TimeoutError:
+            failed_endpoint = (self._cloud_endpoint or "").rstrip("/")
             logger.error(
                 f"Cloud verification request timed out ({timeout}s) at "
                 f"{self._cloud_endpoint} (source={self._cloud_endpoint_source})"
             )
             self._cloud_embedding_cb.record_failure(f"Timeout after {timeout}s")
             self._mark_cloud_api_failure(f"Timeout after {timeout}s")
+            self._record_cloud_endpoint_failure(
+                failed_endpoint,
+                reason=f"Timeout after {timeout}s",
+            )
+            if _allow_failover_retry:
+                switched = await self._attempt_cloud_endpoint_failover(
+                    trigger="verify_timeout",
+                    failed_endpoint=failed_endpoint,
+                )
+                if switched:
+                    return await self.verify_speaker_cloud(
+                        audio_data,
+                        reference_embedding,
+                        timeout=timeout,
+                        _allow_failover_retry=False,
+                    )
             return None
         except Exception as e:
+            failed_endpoint = (self._cloud_endpoint or "").rstrip("/")
             logger.error(
                 f"Cloud verification request failed at {self._cloud_endpoint} "
                 f"(source={self._cloud_endpoint_source}): {e}"
             )
             self._cloud_embedding_cb.record_failure(str(e)[:100])
             self._mark_cloud_api_failure(str(e)[:100])
+            self._record_cloud_endpoint_failure(
+                failed_endpoint,
+                reason=str(e),
+            )
+            if _allow_failover_retry:
+                switched = await self._attempt_cloud_endpoint_failover(
+                    trigger="verify_exception",
+                    failed_endpoint=failed_endpoint,
+                )
+                if switched:
+                    return await self.verify_speaker_cloud(
+                        audio_data,
+                        reference_embedding,
+                        timeout=timeout,
+                        _allow_failover_retry=False,
+                    )
             return None
 
     def set_cloud_endpoint(self, endpoint: str) -> None:
