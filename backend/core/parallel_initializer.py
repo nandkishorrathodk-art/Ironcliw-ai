@@ -2023,7 +2023,11 @@ class ParallelInitializer:
             # Store in app state
             self.app.state.cloud_sql_proxy_manager = proxy_manager
 
-            ensure_timeout = float(os.getenv("CLOUDSQL_PARALLEL_INIT_ENSURE_TIMEOUT", "45.0"))
+            # v3.1: Internal timeout should be slightly less than the component's
+            # stale_threshold (45s default) so ensure_proxy_ready resolves cleanly
+            # before the outer _init_component timeout fires. This avoids a
+            # double-timeout race where both fire at ~45s and confuse error handling.
+            ensure_timeout = float(os.getenv("CLOUDSQL_PARALLEL_INIT_ENSURE_TIMEOUT", "40.0"))
             max_start_attempts = int(os.getenv("CLOUDSQL_PARALLEL_INIT_MAX_START_ATTEMPTS", "3"))
 
             # v86.0: Use ProxyReadinessGate for DB-level verification
@@ -2069,88 +2073,68 @@ class ParallelInitializer:
                         conn_mgr.set_proxy_ready(False)
 
                     elif result.state == ReadinessState.UNAVAILABLE:
-                        # Proxy/network issue - may recover later
-                        logger.warning(f"   ⚠️ Cloud SQL proxy/network unavailable - using SQLite fallback")
-                        logger.warning(f"      Reason: {result.failure_reason or result.message}")
+                        # v3.1: Proxy/network genuinely unavailable. Re-raise as
+                        # RuntimeError so _init_component marks this component
+                        # FAILED and dep-failure events cascade to dependents.
                         conn_mgr.set_proxy_ready(False)
+                        raise RuntimeError(
+                            f"Cloud SQL UNAVAILABLE: "
+                            f"{result.failure_reason or result.message}"
+                        )
 
                     else:
-                        # Unknown state
+                        # Unknown state — proceed in degraded mode
                         logger.warning(f"   ⚠️ Cloud SQL readiness unknown ({result.state}) - using SQLite fallback")
                         conn_mgr.set_proxy_ready(False)
 
                 except asyncio.TimeoutError:
-                    logger.warning("   ⚠️ Cloud SQL DB-level verification timeout (30s) - using SQLite fallback")
+                    logger.warning("   ⚠️ Cloud SQL DB-level verification timeout - using SQLite fallback")
                     conn_mgr.set_proxy_ready(False)
+                    # Don't re-raise — timeout is not a hard failure, dependents
+                    # can check gate state themselves
+
+                except RuntimeError:
+                    # v3.1: Re-raise RuntimeError (UNAVAILABLE) to trigger cascade
+                    raise
 
                 except Exception as e:
                     logger.warning(f"   ⚠️ Cloud SQL readiness check failed: {e}")
                     conn_mgr.set_proxy_ready(False)
 
-            # v3.0: Run DB-level readiness verification with bounded inline wait.
+            # v3.1: Run DB-level readiness verification INLINE (not background).
             #
-            # ARCHITECTURAL FIX: Previously this ran purely in background, causing
-            # a semantic gap — cloud_sql_proxy was marked COMPLETE while the gate
-            # was still CHECKING. learning_database saw dependency "ready" but the
-            # database wasn't actually reachable. This caused blind 3×20s retries.
+            # ROOT CAUSE FIX: v3.0 spawned verify_db_level_readiness() as a
+            # background task, then called wait_for_ready() inline. This created
+            # a race condition: the inline wait_for_ready() started _run_check()
+            # (5 DB checks via SELECT 1) BEFORE the background task had started
+            # the proxy process. All 5 checks hit "connection refused" against a
+            # proxy that hadn't launched yet → UNAVAILABLE.
             #
-            # New approach: spawn background task, then wait for gate to reach a
-            # final state (up to 30s). If it resolves to UNAVAILABLE, we signal
-            # dependency-failure immediately — learning_database cancels instantly
-            # via dep-failure event instead of discovering it via network timeout.
-            if TASK_MANAGER_AVAILABLE:
-                task_mgr = get_task_manager()
-                await task_mgr.spawn(
-                    "cloud_sql_db_level_ready_signal",
-                    verify_db_level_readiness(),
-                    priority=TaskPriority.HIGH
-                )
-            else:
-                ready_task = asyncio.create_task(
-                    verify_db_level_readiness(),
-                    name="cloud_sql_db_level_ready_signal"
-                )
-                self._tasks.append(ready_task)
-
-            # v3.0: Bounded inline wait for gate to reach a final state.
-            # This closes the semantic gap: we don't return COMPLETE while the
-            # gate is still CHECKING. If gate reaches UNAVAILABLE, dependents
-            # get instant cascade cancellation via dep-failure events.
-            _gate_inline_timeout = float(
-                os.environ.get("JARVIS_GATE_INLINE_WAIT", "30.0")
-            )
+            # The fix: call verify_db_level_readiness() INLINE. This ensures the
+            # proxy is started FIRST (via ensure_proxy_ready → _attempt_proxy_start)
+            # and THEN DB checks run against a live proxy. No race, no wasted
+            # attempts, correct ordering.
+            #
+            # Timeout is bounded — if it doesn't resolve within the gate timeout,
+            # _init_component's unified timeout will handle it.
             try:
-                _gate_result = await readiness_gate.wait_for_ready(
-                    timeout=_gate_inline_timeout
-                )
-                if _gate_result.state == ReadinessState.UNAVAILABLE:
-                    logger.warning(
-                        f"   Cloud SQL gate: UNAVAILABLE — "
-                        f"dependents will be cascade-cancelled"
-                    )
-                    # Don't raise — let _init_component mark COMPLETE, but the
-                    # dep-failure event will be triggered by the gate state check
-                    # in learning_database's init. Actually, better: raise so
-                    # _init_component marks this as FAILED, triggering dep cascade.
+                await verify_db_level_readiness()
+            except asyncio.CancelledError:
+                raise
+            except Exception as gate_err:
+                # verify_db_level_readiness handles its own error logging.
+                # If we get here, Cloud SQL is genuinely unavailable.
+                # Check gate state to decide whether to raise (trigger cascade)
+                # or proceed (degraded mode).
+                _gate_state = readiness_gate.state
+                if _gate_state == ReadinessState.UNAVAILABLE:
                     raise RuntimeError(
-                        f"Cloud SQL UNAVAILABLE: {_gate_result.failure_reason or 'DB check failed'}"
+                        f"Cloud SQL UNAVAILABLE: {gate_err}"
                     )
-                elif _gate_result.state == ReadinessState.DEGRADED_SQLITE:
-                    logger.info("   Cloud SQL gate: DEGRADED_SQLITE (SQLite fallback)")
-                    # Component is "complete" but in degraded mode
-                elif _gate_result.state == ReadinessState.READY:
-                    logger.info("   Cloud SQL gate: READY (DB-level verified)")
-                else:
-                    logger.info(
-                        f"   Cloud SQL gate: {_gate_result.state.value} "
-                        f"(proceeding, dependents will check)"
-                    )
-            except asyncio.TimeoutError:
-                # Gate didn't reach final state in time — proceed, let dependents
-                # handle via their own gate checks
+                # DEGRADED_SQLITE or other — proceed, dependents check gate
                 logger.info(
-                    f"   Cloud SQL gate: still CHECKING after "
-                    f"{_gate_inline_timeout:.0f}s — proceeding"
+                    f"   Cloud SQL gate: {_gate_state.value} after error "
+                    f"({gate_err}) — proceeding in degraded mode"
                 )
 
             configured_port = proxy_manager.config.get('cloud_sql', {}).get('port', 5432)
@@ -2179,12 +2163,15 @@ class ParallelInitializer:
             except Exception as inner_e:
                 logger.warning(f"⚠️ Legacy fallback also failed: {inner_e}")
 
+        except RuntimeError:
+            # v3.1: UNAVAILABLE RuntimeError must propagate to _init_component
+            # so it marks cloud_sql_proxy as FAILED and triggers dep cascade
+            raise
+
         except Exception as e:
             logger.warning(f"⚠️ Cloud SQL proxy initialization failed: {e}")
             logger.info("   System will use SQLite fallback for local storage")
-            # Don't raise - proxy is non-critical, we have SQLite fallback
-            # Mark as skipped rather than failed
-            pass
+            # Don't raise - proxy is non-critical for non-UNAVAILABLE errors
 
     async def _init_learning_database(self):
         """
