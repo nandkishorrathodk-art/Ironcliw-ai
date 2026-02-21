@@ -2220,20 +2220,40 @@ class ParallelInitializer:
             conn_mgr.set_proxy_ready(False)
 
             proxy_manager = get_proxy_manager()
+            legacy_monitor_enabled = os.getenv(
+                "CLOUDSQL_LEGACY_MONITOR_ENABLED", "false"
+            ).lower() in ("1", "true", "yes")
+            legacy_monitor_started = False
 
-            # Start health monitor in background (non-blocking, tracked)
-            if TASK_MANAGER_AVAILABLE:
-                task_mgr = get_task_manager()
-                await task_mgr.spawn_monitor(
-                    "cloud_sql_proxy_monitor",
-                    proxy_manager.monitor(check_interval=60)
+            async def _start_legacy_monitor_once(reason: str) -> None:
+                """Start legacy proxy monitor once (fallback path only)."""
+                nonlocal legacy_monitor_started
+                if legacy_monitor_started:
+                    return
+                if TASK_MANAGER_AVAILABLE:
+                    task_mgr = get_task_manager()
+                    await task_mgr.spawn_monitor(
+                        "cloud_sql_proxy_monitor",
+                        proxy_manager.monitor(check_interval=60)
+                    )
+                else:
+                    monitor_task = asyncio.create_task(
+                        proxy_manager.monitor(check_interval=60),
+                        name="cloud_sql_proxy_monitor"
+                    )
+                    self._tasks.append(monitor_task)
+                legacy_monitor_started = True
+                logger.info(
+                    f"   Legacy Cloud SQL monitor started (reason: {reason})"
                 )
+
+            if legacy_monitor_enabled:
+                await _start_legacy_monitor_once("configured")
             else:
-                monitor_task = asyncio.create_task(
-                    proxy_manager.monitor(check_interval=60),
-                    name="cloud_sql_proxy_monitor"
+                logger.info(
+                    "   Legacy Cloud SQL monitor disabled; ProxyWatchdog is "
+                    "authoritative runtime monitor"
                 )
-                self._tasks.append(monitor_task)
 
             # Store in app state
             self.app.state.cloud_sql_proxy_manager = proxy_manager
@@ -2277,9 +2297,11 @@ class ParallelInitializer:
                             await start_proxy_watchdog()
                             logger.info("   🐕 ProxyWatchdog started (10s interval, aggressive auto-recovery)")
                         except ImportError:
-                            logger.debug("   ProxyWatchdog not available (using legacy 60s monitor)")
+                            logger.debug("   ProxyWatchdog not available (falling back to legacy 60s monitor)")
+                            await _start_legacy_monitor_once("watchdog-unavailable")
                         except Exception as wd_err:
                             logger.warning(f"   ProxyWatchdog start failed: {wd_err}")
+                            await _start_legacy_monitor_once("watchdog-start-failed")
 
                     elif result.state == ReadinessState.DEGRADED_SQLITE:
                         # Credentials issue - fall back to SQLite
