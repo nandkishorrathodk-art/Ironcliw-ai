@@ -23,8 +23,9 @@ Apple Compliance:
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
-import subprocess
+import os
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -37,6 +38,14 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 # Monitor Configuration
 # =============================================================================
+
+def _env_float(key: str, default: float) -> float:
+    """Read float from env with safe fallback."""
+    try:
+        return float(os.getenv(key, str(default)))
+    except (TypeError, ValueError):
+        return default
+
 
 @dataclass
 class MonitorConfig:
@@ -64,6 +73,26 @@ class MonitorConfig:
     # Batching
     enable_event_batching: bool = True
     batch_window_ms: int = 50  # Batch events within 50ms
+
+    # Startup and subprocess hardening
+    startup_step_timeout_seconds: float = field(
+        default_factory=lambda: max(
+            0.25,
+            _env_float("JARVIS_SYSTEM_EVENT_STARTUP_STEP_TIMEOUT", 4.0),
+        )
+    )
+    startup_warmup_timeout_seconds: float = field(
+        default_factory=lambda: max(
+            1.0,
+            _env_float("JARVIS_SYSTEM_EVENT_STARTUP_WARMUP_TIMEOUT", 12.0),
+        )
+    )
+    subprocess_timeout_seconds: float = field(
+        default_factory=lambda: max(
+            0.25,
+            _env_float("JARVIS_SYSTEM_EVENT_SUBPROCESS_TIMEOUT", 3.0),
+        )
+    )
 
 
 # =============================================================================
@@ -93,6 +122,12 @@ class SystemEventMonitor:
         # State tracking
         self._running = False
         self._tasks: List[asyncio.Task] = []
+        self._start_lock = asyncio.Lock()
+        self._startup_state: str = "idle"
+        self._startup_error: Optional[str] = None
+        self._startup_started_at: Optional[datetime] = None
+        self._startup_completed_at: Optional[datetime] = None
+        self._startup_task: Optional[asyncio.Task] = None
 
         # App state
         self._running_apps: Dict[str, Dict[str, Any]] = {}  # bundle_id -> app info
@@ -125,116 +160,256 @@ class SystemEventMonitor:
 
         logger.info("SystemEventMonitor initialized")
 
+    async def _run_subprocess(
+        self,
+        *command: str,
+        timeout_seconds: Optional[float] = None,
+    ) -> tuple[int, bytes, bytes]:
+        """
+        Run a subprocess with deterministic timeout and cancellation cleanup.
+        """
+        timeout = max(
+            0.1,
+            float(
+                self.config.subprocess_timeout_seconds
+                if timeout_seconds is None
+                else timeout_seconds
+            ),
+        )
+        process = await asyncio.create_subprocess_exec(
+            *command,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+
+        async def _terminate_process() -> None:
+            if process.returncode is not None:
+                return
+            try:
+                process.terminate()
+            except ProcessLookupError:
+                return
+            except Exception:
+                pass
+            try:
+                await asyncio.wait_for(process.communicate(), timeout=0.5)
+            except Exception:
+                try:
+                    process.kill()
+                except ProcessLookupError:
+                    return
+                except Exception:
+                    pass
+                with contextlib.suppress(Exception):
+                    await asyncio.wait_for(process.communicate(), timeout=0.5)
+
+        try:
+            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=timeout)
+            return int(process.returncode or 0), stdout, stderr
+        except asyncio.TimeoutError:
+            await _terminate_process()
+            raise
+        except asyncio.CancelledError:
+            await _terminate_process()
+            raise
+        except Exception:
+            await _terminate_process()
+            raise
+
+    def _register_task(self, task: asyncio.Task) -> None:
+        """Track task lifecycle so stop() can cancel deterministically."""
+        self._tasks.append(task)
+
+        def _cleanup(done_task: asyncio.Task) -> None:
+            try:
+                self._tasks.remove(done_task)
+            except ValueError:
+                pass
+
+        task.add_done_callback(_cleanup)
+
+    def _create_monitored_task(self, coro: Coroutine[Any, Any, Any], name: str) -> asyncio.Task:
+        """Create a tracked task with a stable name."""
+        task = asyncio.create_task(coro, name=name)
+        self._register_task(task)
+        return task
+
+    async def _cancel_tasks_by_name(self, task_name: str) -> None:
+        """Cancel tracked tasks by name."""
+        targets = [
+            task for task in list(self._tasks)
+            if not task.done() and task.get_name() == task_name
+        ]
+        for task in targets:
+            task.cancel()
+        if targets:
+            with contextlib.suppress(Exception):
+                await asyncio.wait(
+                    targets,
+                    timeout=max(0.25, self.config.startup_step_timeout_seconds),
+                )
+
     # =========================================================================
     # Lifecycle
     # =========================================================================
 
     async def start(self) -> None:
-        """Start all monitoring tasks."""
+        """Start monitoring with fast bootstrap + background warmup."""
         if self._running:
             logger.warning("SystemEventMonitor already running")
             return
 
-        self._running = True
+        async with self._start_lock:
+            if self._running:
+                logger.warning("SystemEventMonitor already running")
+                return
 
-        # Initialize event bus
-        try:
-            from .event_bus import get_macos_event_bus
-            self._event_bus = await get_macos_event_bus()
-        except Exception as e:
-            logger.error(f"Failed to initialize event bus: {e}")
-            return
+            self._startup_state = "starting"
+            self._startup_error = None
+            self._startup_started_at = datetime.now()
+            self._startup_completed_at = None
 
-        # Check Yabai availability
-        await self._check_yabai()
+            # Critical dependency: event bus must be available.
+            try:
+                from .event_bus import get_macos_event_bus
+                self._event_bus = await asyncio.wait_for(
+                    get_macos_event_bus(),
+                    timeout=self.config.startup_step_timeout_seconds,
+                )
+            except Exception as e:
+                self._startup_state = "failed"
+                self._startup_error = f"event bus init failed: {e}"
+                logger.error("Failed to initialize event bus: %s", e)
+                return
 
-        # Initialize existing spatial intelligence if available
-        if self.config.use_yabai_if_available and self._yabai_available:
-            await self._init_yabai_integration()
+            self._running = True
 
-        # Start monitoring tasks
-        await self._start_monitoring_tasks()
+            # Start monitor loops first; expensive environment probing runs
+            # in a background warmup task so startup stays deterministic.
+            await self._start_monitoring_tasks()
 
-        # Initial state capture
-        await self._capture_initial_state()
-
-        logger.info("SystemEventMonitor started")
+            self._startup_task = self._create_monitored_task(
+                self._complete_startup_warmup(),
+                name="system_event_monitor_warmup",
+            )
+            self._startup_state = "running"
+            self._startup_completed_at = datetime.now()
+            logger.info("SystemEventMonitor started (warmup in background)")
 
     async def stop(self) -> None:
         """Stop all monitoring tasks."""
-        if not self._running:
-            return
+        async with self._start_lock:
+            if not self._running and not self._tasks:
+                return
 
-        self._running = False
+            self._running = False
+            self._startup_state = "stopping"
 
-        # Cancel all tasks
-        for task in self._tasks:
-            task.cancel()
-            try:
-                await task
-            except asyncio.CancelledError:
-                pass
+            active_tasks = [task for task in list(self._tasks) if not task.done()]
+            for task in active_tasks:
+                task.cancel()
 
-        self._tasks.clear()
+            if active_tasks:
+                done, pending = await asyncio.wait(
+                    active_tasks,
+                    timeout=max(0.5, self.config.startup_step_timeout_seconds),
+                )
+                for pending_task in pending:
+                    logger.warning(
+                        "SystemEventMonitor task did not stop cleanly: %s",
+                        pending_task.get_name(),
+                    )
 
-        # Stop Yabai integration
-        if self._yabai_si:
-            try:
-                await self._yabai_si.stop_monitoring()
-            except Exception as e:
-                logger.warning(f"Error stopping Yabai SI: {e}")
+            self._tasks.clear()
+            self._startup_task = None
 
-        logger.info("SystemEventMonitor stopped")
+            # Stop Yabai integration
+            if self._yabai_si:
+                try:
+                    await asyncio.wait_for(
+                        self._yabai_si.stop_monitoring(),
+                        timeout=self.config.startup_step_timeout_seconds,
+                    )
+                except Exception as e:
+                    logger.warning(f"Error stopping Yabai SI: {e}")
+                finally:
+                    self._yabai_si = None
+
+            self._startup_state = "stopped"
+            logger.info("SystemEventMonitor stopped")
 
     async def _start_monitoring_tasks(self) -> None:
         """Start individual monitoring tasks."""
         if self.config.enable_app_monitoring:
-            self._tasks.append(
-                asyncio.create_task(
-                    self._app_monitoring_loop(),
-                    name="app_monitor"
-                )
-            )
+            self._create_monitored_task(self._app_monitoring_loop(), name="app_monitor")
 
         if self.config.enable_window_monitoring:
-            self._tasks.append(
-                asyncio.create_task(
-                    self._window_monitoring_loop(),
-                    name="window_monitor"
-                )
-            )
+            self._create_monitored_task(self._window_monitoring_loop(), name="window_monitor")
 
         if self.config.enable_space_monitoring and not self._yabai_si:
             # Only run our own space monitoring if not using Yabai SI
-            self._tasks.append(
-                asyncio.create_task(
-                    self._space_monitoring_loop(),
-                    name="space_monitor"
-                )
-            )
+            self._create_monitored_task(self._space_monitoring_loop(), name="space_monitor")
 
         if self.config.enable_system_state_monitoring:
-            self._tasks.append(
-                asyncio.create_task(
-                    self._system_state_monitoring_loop(),
-                    name="system_state_monitor"
-                )
+            self._create_monitored_task(
+                self._system_state_monitoring_loop(),
+                name="system_state_monitor",
             )
 
         if self.config.enable_idle_monitoring:
-            self._tasks.append(
-                asyncio.create_task(
-                    self._idle_monitoring_loop(),
-                    name="idle_monitor"
-                )
-            )
+            self._create_monitored_task(self._idle_monitoring_loop(), name="idle_monitor")
 
         if self.config.enable_event_batching:
-            self._tasks.append(
-                asyncio.create_task(
-                    self._event_batch_processor(),
-                    name="event_batch_processor"
+            self._create_monitored_task(
+                self._event_batch_processor(),
+                name="event_batch_processor",
+            )
+
+    async def _complete_startup_warmup(self) -> None:
+        """
+        Run expensive non-critical startup work with bounded time.
+        """
+        warmup_timeout = max(1.0, self.config.startup_warmup_timeout_seconds)
+        started = time.monotonic()
+        try:
+            await asyncio.wait_for(
+                self._check_yabai(),
+                timeout=self.config.startup_step_timeout_seconds,
+            )
+
+            if self.config.use_yabai_if_available and self._yabai_available:
+                await asyncio.wait_for(
+                    self._init_yabai_integration(),
+                    timeout=self.config.startup_step_timeout_seconds,
                 )
+                # Yabai integration supersedes direct polling.
+                await self._cancel_tasks_by_name("space_monitor")
+
+            remaining = max(0.5, warmup_timeout - (time.monotonic() - started))
+            await asyncio.wait_for(
+                self._capture_initial_state(),
+                timeout=remaining,
+            )
+            self._startup_state = "ready"
+            self._startup_error = None
+            logger.debug("SystemEventMonitor warmup complete in %.2fs", time.monotonic() - started)
+        except asyncio.TimeoutError:
+            if self._running:
+                self._startup_state = "degraded"
+            self._startup_error = "startup warmup timed out"
+            logger.warning(
+                "SystemEventMonitor warmup timed out after %.1fs; continuing with live monitoring",
+                warmup_timeout,
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            if self._running:
+                self._startup_state = "degraded"
+            self._startup_error = f"startup warmup failed: {e}"
+            logger.warning(
+                "SystemEventMonitor warmup failed: %s (live monitoring remains active)",
+                e,
             )
 
     async def _capture_initial_state(self) -> None:
@@ -264,20 +439,21 @@ class SystemEventMonitor:
     async def _check_yabai(self) -> None:
         """Check if Yabai is available."""
         try:
-            result = await asyncio.create_subprocess_exec(
-                self.config.yabai_path, "-v",
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
+            return_code, stdout, _ = await self._run_subprocess(
+                self.config.yabai_path,
+                "-v",
+                timeout_seconds=self.config.startup_step_timeout_seconds,
             )
-            stdout, _ = await result.communicate()
-
-            if result.returncode == 0:
+            if return_code == 0:
                 self._yabai_available = True
                 logger.info(f"Yabai available: {stdout.decode().strip()}")
             else:
                 self._yabai_available = False
                 logger.info("Yabai not available")
 
+        except asyncio.TimeoutError:
+            self._yabai_available = False
+            logger.info("Yabai availability probe timed out")
         except FileNotFoundError:
             self._yabai_available = False
             logger.info("Yabai not installed")
@@ -382,14 +558,12 @@ class SystemEventMonitor:
                 return appList
             end tell
             """
-            result = await asyncio.create_subprocess_exec(
-                "osascript", "-e", script,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
+            return_code, stdout, _ = await self._run_subprocess(
+                "osascript",
+                "-e",
+                script,
             )
-            stdout, _ = await result.communicate()
-
-            if result.returncode != 0:
+            if return_code != 0:
                 return
 
             # Parse output
@@ -494,14 +668,12 @@ class SystemEventMonitor:
                 end try
             end tell
             """
-            result = await asyncio.create_subprocess_exec(
-                "osascript", "-e", script,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
+            return_code, stdout, _ = await self._run_subprocess(
+                "osascript",
+                "-e",
+                script,
             )
-            stdout, _ = await result.communicate()
-
-            if result.returncode != 0:
+            if return_code != 0:
                 return
 
             output = stdout.decode().strip()
@@ -559,14 +731,14 @@ class SystemEventMonitor:
         try:
             if self._yabai_available:
                 # Use Yabai for space info
-                result = await asyncio.create_subprocess_exec(
-                    self.config.yabai_path, "-m", "query", "--spaces", "--space",
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
+                return_code, stdout, _ = await self._run_subprocess(
+                    self.config.yabai_path,
+                    "-m",
+                    "query",
+                    "--spaces",
+                    "--space",
                 )
-                stdout, _ = await result.communicate()
-
-                if result.returncode == 0:
+                if return_code == 0:
                     import json
                     space_info = json.loads(stdout.decode())
                     new_space = space_info.get("index", 1)
@@ -620,12 +792,11 @@ class SystemEventMonitor:
                     get running of screen saver preferences
                 end tell
                 """
-                result = await asyncio.create_subprocess_exec(
-                    "osascript", "-e", script,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
+                _, stdout, _ = await self._run_subprocess(
+                    "osascript",
+                    "-e",
+                    script,
                 )
-                stdout, _ = await result.communicate()
                 is_locked = b"true" in stdout.lower()
 
             # Detect change
@@ -665,14 +836,14 @@ class SystemEventMonitor:
         """Update user idle state."""
         try:
             # Get idle time via ioreg
-            result = await asyncio.create_subprocess_exec(
-                "ioreg", "-c", "IOHIDSystem", "-d", "4",
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
+            return_code, stdout, _ = await self._run_subprocess(
+                "ioreg",
+                "-c",
+                "IOHIDSystem",
+                "-d",
+                "4",
             )
-            stdout, _ = await result.communicate()
-
-            if result.returncode != 0:
+            if return_code != 0:
                 return
 
             # Parse HIDIdleTime
@@ -760,6 +931,16 @@ class SystemEventMonitor:
         """Get current monitor status."""
         return {
             "running": self._running,
+            "startup_state": self._startup_state,
+            "startup_error": self._startup_error,
+            "startup_started_at": (
+                self._startup_started_at.isoformat()
+                if self._startup_started_at else None
+            ),
+            "startup_completed_at": (
+                self._startup_completed_at.isoformat()
+                if self._startup_completed_at else None
+            ),
             "yabai_available": self._yabai_available,
             "yabai_si_active": self._yabai_si is not None,
             "running_apps": len(self._running_apps),
@@ -808,6 +989,11 @@ async def get_system_event_monitor(
 
     if auto_start and not _system_event_monitor._running:
         await _system_event_monitor.start()
+        if not _system_event_monitor._running:
+            status = _system_event_monitor.get_status()
+            raise RuntimeError(
+                f"SystemEventMonitor failed to start: {status.get('startup_error') or 'unknown error'}"
+            )
 
     return _system_event_monitor
 
