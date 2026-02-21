@@ -3063,7 +3063,7 @@ class ClaudeVisionAnalyzer:
                         region_info = ""
                     enhanced_prompt = prompt + region_info
 
-                # v236.0: Provider dispatch — J-Prime LLaVA for background, Claude for user queries
+                # v259.1: Provider dispatch — J-Prime LLaVA as DEFAULT, Claude for escalation
                 # F9: Check dual-fail cooldown
                 if time.time() < self._vision_both_failed_until:
                     raise RuntimeError(
@@ -3071,17 +3071,54 @@ class ClaudeVisionAnalyzer:
                         f"retry in {self._vision_both_failed_until - time.time():.0f}s)"
                     )
 
-                # F5: Read coroutine-safe continuous flag (no race condition)
-                _is_continuous = _is_continuous_ctx.get(False)
-                _use_jprime = (
+                # v259.1: Routing decision — J-Prime is the default for ALL vision
+                # requests in AUTO mode. Claude is reserved for:
+                #   1. priority="high" (explicit escalation for complex queries)
+                #   2. CLAUDE_API provider override
+                #   3. J-Prime unhealthy (pre-flight check avoids 120s timeout)
+                #   4. J-Prime returns low-quality response (quality gate escalation)
+                _force_claude = (
+                    self._vision_provider == VisionProvider.CLAUDE_API
+                    or priority == "high"
+                )
+                _force_jprime = self._vision_provider == VisionProvider.JPRIME_LLAVA
+                _use_jprime = _force_jprime or (
                     self._vision_provider == VisionProvider.AUTO
-                    and priority != "high"
-                    and _is_continuous
-                ) or self._vision_provider == VisionProvider.JPRIME_LLAVA
+                    and not _force_claude
+                )
+
+                # v259.1: Pre-flight health check — if J-Prime is known-unhealthy
+                # (cached 30s), skip directly to Claude instead of waiting 120s timeout
+                if _use_jprime and not _force_jprime:
+                    _jprime_healthy = await self._is_jprime_healthy()
+                    if not _jprime_healthy:
+                        logger.info(
+                            "[VisionProvider] J-Prime unhealthy (pre-flight), "
+                            "routing to Claude"
+                        )
+                        _use_jprime = False
 
                 if _use_jprime:
                     try:
                         result = await self._call_jprime_vision(image_base64, enhanced_prompt)
+                        # v259.1: Quality gate — if J-Prime returns a very short
+                        # or empty response, escalate to Claude for a better answer
+                        _min_len = int(os.getenv(
+                            "VISION_JPRIME_MIN_RESPONSE_LENGTH", "20"
+                        ))
+                        if (
+                            not _force_jprime
+                            and self.config.jprime_fallback_to_claude
+                            and len(result.strip()) < _min_len
+                        ):
+                            logger.info(
+                                "[VisionProvider] J-Prime response too short "
+                                "(%d chars < %d), escalating to Claude",
+                                len(result.strip()), _min_len,
+                            )
+                            result = await self._call_claude_api(
+                                image_base64, enhanced_prompt
+                            )
                     except Exception as e:
                         logger.warning(f"[VisionProvider] LLaVA failed ({e}), falling back to Claude")
                         if self.config.jprime_fallback_to_claude:
@@ -3100,14 +3137,7 @@ class ClaudeVisionAnalyzer:
                         else:
                             raise
                 else:
-                    if priority == "high":
-                        result = await self._call_claude_api(image_base64, enhanced_prompt)
-                    else:
-                        if self._get_system_load() > (
-                            self.config.cpu_threshold_percent / 100
-                        ):
-                            await asyncio.sleep(0.5)
-                        result = await self._call_claude_api(image_base64, enhanced_prompt)
+                    result = await self._call_claude_api(image_base64, enhanced_prompt)
             metrics.api_call_time = time.time() - api_start
 
             # Parse response
@@ -4689,6 +4719,21 @@ class ClaudeVisionAnalyzer:
         except Exception as e:
             logger.debug(f"[VisionProvider] PrimeClient unavailable: {e}")
         return None
+
+    async def _is_jprime_healthy(self) -> bool:
+        """v259.1: Pre-flight J-Prime health check via PrimeClient.
+
+        Uses cached health status (30s TTL) to avoid blocking on
+        an unhealthy server. Returns False if PrimeClient itself
+        is unavailable (no GCP VM running).
+        """
+        try:
+            client = await self._get_prime_vision_client()
+            if client is None:
+                return False
+            return await client._check_vision_health()
+        except Exception:
+            return False
 
     async def _call_jprime_vision(self, image_base64: str, prompt: str) -> str:
         """Call J-Prime LLaVA vision server (port 8001). CPU inference ~30-60s.
