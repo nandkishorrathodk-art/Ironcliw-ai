@@ -304,15 +304,18 @@ class VisionCommandHandler:
             return self._intelligent_handler
 
         except asyncio.TimeoutError:
-            logger.error(
-                f"[VISION] ⚠️ IntelligentCommandHandler init timed out after {handler_init_timeout}s. "
-                f"God Mode surveillance unavailable."
+            # v258.3: INFO not error — handler is optional (God Mode)
+            # and 5s timeout is routinely hit under CPU pressure.
+            # Leave _initialized=False so next call retries when CPU
+            # calms down, rather than permanently disabling the handler.
+            logger.info(
+                f"[VISION] IntelligentCommandHandler init timed out after {handler_init_timeout}s "
+                f"(God Mode deferred — will retry on next use)"
             )
-            self._intelligent_handler_initialized = True  # Don't retry
             return None
         except Exception as e:
-            logger.error(f"[VISION] Failed to initialize IntelligentCommandHandler: {e}")
-            self._intelligent_handler_initialized = True  # Don't retry
+            logger.warning(f"[VISION] Failed to initialize IntelligentCommandHandler: {e}")
+            self._intelligent_handler_initialized = True  # Don't retry on real errors
             return None
 
     async def initialize_intelligence(self, api_key: str = None):
