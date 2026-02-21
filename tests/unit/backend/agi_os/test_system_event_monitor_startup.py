@@ -55,6 +55,8 @@ async def test_start_is_non_blocking_while_warmup_runs(monkeypatch):
     status = monitor.get_status()
     assert status["running"] is True
     assert status["startup_state"] == "running"
+    assert status["startup_phase"] in {"warmup", "yabai_probe", "initial_state_capture", "yabai_integration", "ready"}
+    assert status["startup_forecast_ready_at"] is not None
 
     if monitor._startup_task is not None:
         await monitor._startup_task
@@ -62,6 +64,8 @@ async def test_start_is_non_blocking_while_warmup_runs(monkeypatch):
     status = monitor.get_status()
     assert status["startup_state"] == "ready"
     assert status["startup_error"] is None
+    assert status["startup_progress"] == 1.0
+    assert status["startup_eta_seconds"] == pytest.approx(0.0, abs=0.5)
 
     await monitor.stop()
 
@@ -87,7 +91,7 @@ async def test_start_failure_does_not_mark_running(monkeypatch):
     assert "event bus init failed" in (status["startup_error"] or "")
 
 
-async def test_warmup_timeout_keeps_monitor_running(monkeypatch):
+async def test_optional_warmup_phase_failure_does_not_fail_startup(monkeypatch):
     from backend.macos_helper.system_event_monitor import SystemEventMonitor
 
     async def _fake_get_event_bus():
@@ -101,10 +105,10 @@ async def test_warmup_timeout_keeps_monitor_running(monkeypatch):
 
     monitor = SystemEventMonitor(config=_minimal_config())
 
-    async def _slow_check():
-        await asyncio.sleep(0.5)
+    async def _failing_check():
+        raise RuntimeError("yabai probe unavailable")
 
-    monitor._check_yabai = _slow_check  # type: ignore[method-assign]
+    monitor._check_yabai = _failing_check  # type: ignore[method-assign]
     monitor._capture_initial_state = lambda: asyncio.sleep(0)  # type: ignore[method-assign]
 
     await monitor.start()
@@ -115,8 +119,42 @@ async def test_warmup_timeout_keeps_monitor_running(monkeypatch):
 
     status = monitor.get_status()
     assert status["running"] is True
+    assert status["startup_state"] == "ready"
+    assert status["startup_error"] is None
+    assert "failed" in (status["startup_phase_results"].get("yabai_probe") or "")
+
+    await monitor.stop()
+
+
+async def test_critical_warmup_failure_sets_degraded(monkeypatch):
+    from backend.macos_helper.system_event_monitor import SystemEventMonitor
+
+    async def _fake_get_event_bus():
+        return _FakeEventBus()
+
+    monkeypatch.setattr(
+        "backend.macos_helper.event_bus.get_macos_event_bus",
+        _fake_get_event_bus,
+        raising=False,
+    )
+
+    monitor = SystemEventMonitor(config=_minimal_config())
+
+    async def _failing_capture():
+        raise RuntimeError("snapshot failed")
+
+    monitor._capture_initial_state = _failing_capture  # type: ignore[method-assign]
+
+    await monitor.start()
+    assert monitor.get_status()["running"] is True
+
+    if monitor._startup_task is not None:
+        await monitor._startup_task
+
+    status = monitor.get_status()
+    assert status["running"] is True
     assert status["startup_state"] == "degraded"
-    assert "warmup timed out" in (status["startup_error"] or "")
+    assert "critical startup warmup failures" in (status["startup_error"] or "")
 
     await monitor.stop()
 

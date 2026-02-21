@@ -47,6 +47,11 @@ def _env_float(key: str, default: float) -> float:
         return default
 
 
+def _clamp(value: float, minimum: float, maximum: float) -> float:
+    """Clamp float to an inclusive range."""
+    return max(minimum, min(maximum, value))
+
+
 @dataclass
 class MonitorConfig:
     """Configuration for the system event monitor."""
@@ -81,10 +86,19 @@ class MonitorConfig:
             _env_float("JARVIS_SYSTEM_EVENT_STARTUP_STEP_TIMEOUT", 4.0),
         )
     )
+    # Compatibility note: this now represents warmup target duration (SLO),
+    # not a hard timeout that can fail startup.
     startup_warmup_timeout_seconds: float = field(
         default_factory=lambda: max(
             1.0,
             _env_float("JARVIS_SYSTEM_EVENT_STARTUP_WARMUP_TIMEOUT", 12.0),
+        )
+    )
+    startup_forecast_alpha: float = field(
+        default_factory=lambda: _clamp(
+            _env_float("JARVIS_SYSTEM_EVENT_STARTUP_FORECAST_ALPHA", 0.35),
+            0.05,
+            0.95,
         )
     )
     subprocess_timeout_seconds: float = field(
@@ -125,8 +139,13 @@ class SystemEventMonitor:
         self._start_lock = asyncio.Lock()
         self._startup_state: str = "idle"
         self._startup_error: Optional[str] = None
+        self._startup_phase: str = "idle"
+        self._startup_progress: float = 0.0
         self._startup_started_at: Optional[datetime] = None
         self._startup_completed_at: Optional[datetime] = None
+        self._startup_forecast_ready_at: Optional[datetime] = None
+        self._startup_phase_estimates_seconds: Dict[str, float] = {}
+        self._startup_phase_results: Dict[str, str] = {}
         self._startup_task: Optional[asyncio.Task] = None
 
         # App state
@@ -249,6 +268,64 @@ class SystemEventMonitor:
                     timeout=max(0.25, self.config.startup_step_timeout_seconds),
                 )
 
+    def _estimate_startup_phase_seconds(self, phase_name: str) -> float:
+        """Estimate expected duration for a startup warmup phase."""
+        estimate = self._startup_phase_estimates_seconds.get(phase_name)
+        if estimate is not None:
+            return max(0.05, estimate)
+
+        base = max(0.25, self.config.startup_step_timeout_seconds)
+        phase_multipliers = {
+            "yabai_probe": 0.75,
+            "yabai_integration": 1.0,
+            "initial_state_capture": 1.5,
+        }
+        return base * phase_multipliers.get(phase_name, 1.0)
+
+    def _estimate_startup_remaining_seconds(self, phase_names: List[str]) -> float:
+        """Estimate remaining warmup time for the specified phases."""
+        return max(
+            0.0,
+            sum(self._estimate_startup_phase_seconds(name) for name in phase_names),
+        )
+
+    def _record_startup_phase_duration(self, phase_name: str, duration_seconds: float) -> None:
+        """Update phase duration estimate using EWMA forecasting."""
+        duration = max(0.01, duration_seconds)
+        previous = self._startup_phase_estimates_seconds.get(phase_name)
+        if previous is None:
+            self._startup_phase_estimates_seconds[phase_name] = duration
+            return
+        alpha = self.config.startup_forecast_alpha
+        self._startup_phase_estimates_seconds[phase_name] = (
+            (alpha * duration) + ((1.0 - alpha) * previous)
+        )
+
+    async def _warmup_yabai_integration(self) -> None:
+        """
+        Initialize Yabai integration during warmup when available.
+        """
+        if not self.config.use_yabai_if_available:
+            return
+        if not self._yabai_available:
+            return
+        await asyncio.wait_for(
+            self._init_yabai_integration(),
+            timeout=max(0.25, self.config.startup_step_timeout_seconds),
+        )
+        if self._yabai_si:
+            # Yabai integration supersedes direct polling.
+            await self._cancel_tasks_by_name("space_monitor")
+
+    def _startup_eta_seconds(self) -> Optional[float]:
+        """Current startup ETA from forecast, if available."""
+        if self._startup_forecast_ready_at is None:
+            return None
+        return max(
+            0.0,
+            (self._startup_forecast_ready_at - datetime.now()).total_seconds(),
+        )
+
     # =========================================================================
     # Lifecycle
     # =========================================================================
@@ -266,8 +343,12 @@ class SystemEventMonitor:
 
             self._startup_state = "starting"
             self._startup_error = None
+            self._startup_phase = "bootstrap"
+            self._startup_progress = 0.0
             self._startup_started_at = datetime.now()
             self._startup_completed_at = None
+            self._startup_forecast_ready_at = None
+            self._startup_phase_results.clear()
 
             # Critical dependency: event bus must be available.
             try:
@@ -292,6 +373,16 @@ class SystemEventMonitor:
                 self._complete_startup_warmup(),
                 name="system_event_monitor_warmup",
             )
+            planned_phases = [
+                "yabai_probe",
+                "initial_state_capture",
+            ]
+            if self.config.use_yabai_if_available:
+                planned_phases.append("yabai_integration")
+            self._startup_forecast_ready_at = datetime.now() + timedelta(
+                seconds=self._estimate_startup_remaining_seconds(planned_phases)
+            )
+            self._startup_phase = "warmup"
             self._startup_state = "running"
             self._startup_completed_at = datetime.now()
             logger.info("SystemEventMonitor started (warmup in background)")
@@ -322,6 +413,9 @@ class SystemEventMonitor:
 
             self._tasks.clear()
             self._startup_task = None
+            self._startup_phase = "stopped"
+            self._startup_progress = 0.0
+            self._startup_forecast_ready_at = None
 
             # Stop Yabai integration
             if self._yabai_si:
@@ -367,70 +461,166 @@ class SystemEventMonitor:
 
     async def _complete_startup_warmup(self) -> None:
         """
-        Run expensive non-critical startup work with bounded time.
+        Run startup warmup phases with ETA forecasting.
+
+        This intentionally avoids hard global timeout semantics. Startup
+        readiness is driven by phase completion, while per-operation bounds
+        remain enforced inside each phase (e.g. subprocess timeouts).
         """
-        warmup_timeout = max(1.0, self.config.startup_warmup_timeout_seconds)
+        target_seconds = max(1.0, self.config.startup_warmup_timeout_seconds)
+        phases: List[tuple[str, bool, Callable[[], Coroutine[Any, Any, None]]]] = [
+            ("yabai_probe", False, self._check_yabai),
+            ("initial_state_capture", True, self._capture_initial_state),
+        ]
+        if self.config.use_yabai_if_available:
+            phases.append(("yabai_integration", False, self._warmup_yabai_integration))
+
+        total_phases = max(1, len(phases))
+        critical_failures: List[str] = []
+        optional_failures: List[str] = []
         started = time.monotonic()
+
+        self._startup_phase = "warmup"
+        self._startup_progress = 0.0
+        self._startup_forecast_ready_at = datetime.now() + timedelta(
+            seconds=self._estimate_startup_remaining_seconds(
+                [phase_name for phase_name, _, _ in phases]
+            )
+        )
+
         try:
-            await asyncio.wait_for(
-                self._check_yabai(),
-                timeout=self.config.startup_step_timeout_seconds,
-            )
-
-            if self.config.use_yabai_if_available and self._yabai_available:
-                await asyncio.wait_for(
-                    self._init_yabai_integration(),
-                    timeout=self.config.startup_step_timeout_seconds,
+            for index, (phase_name, is_critical, phase_action) in enumerate(phases):
+                self._startup_phase = phase_name
+                pending = [name for name, _, _ in phases[index:]]
+                self._startup_forecast_ready_at = datetime.now() + timedelta(
+                    seconds=self._estimate_startup_remaining_seconds(pending)
                 )
-                # Yabai integration supersedes direct polling.
-                await self._cancel_tasks_by_name("space_monitor")
 
-            remaining = max(0.5, warmup_timeout - (time.monotonic() - started))
-            await asyncio.wait_for(
-                self._capture_initial_state(),
-                timeout=remaining,
-            )
+                phase_started = time.monotonic()
+                try:
+                    await phase_action()
+                    self._startup_phase_results[phase_name] = "ready"
+                except asyncio.CancelledError:
+                    raise
+                except Exception as e:
+                    message = f"{phase_name}: {e}"
+                    self._startup_phase_results[phase_name] = f"failed: {e}"
+                    if is_critical:
+                        critical_failures.append(message)
+                    else:
+                        optional_failures.append(message)
+                finally:
+                    self._record_startup_phase_duration(
+                        phase_name,
+                        time.monotonic() - phase_started,
+                    )
+                    self._startup_progress = min(
+                        1.0,
+                        float(index + 1) / float(total_phases),
+                    )
+
+            elapsed = time.monotonic() - started
+            self._startup_phase = "ready"
+            self._startup_forecast_ready_at = datetime.now()
+
+            if critical_failures:
+                if self._running:
+                    self._startup_state = "degraded"
+                details = "; ".join(critical_failures)
+                self._startup_error = f"critical startup warmup failures: {details}"
+                logger.warning(
+                    "SystemEventMonitor warmup completed with critical failures after %.2fs: %s",
+                    elapsed,
+                    details,
+                )
+                return
+
             self._startup_state = "ready"
             self._startup_error = None
-            logger.debug("SystemEventMonitor warmup complete in %.2fs", time.monotonic() - started)
-        except asyncio.TimeoutError:
-            if self._running:
-                self._startup_state = "degraded"
-            self._startup_error = "startup warmup timed out"
-            logger.warning(
-                "SystemEventMonitor warmup timed out after %.1fs; continuing with live monitoring",
-                warmup_timeout,
-            )
+            if optional_failures:
+                logger.info(
+                    "SystemEventMonitor warmup ready in %.2fs with optional phase issues: %s",
+                    elapsed,
+                    "; ".join(optional_failures),
+                )
+            else:
+                logger.info(
+                    "SystemEventMonitor warmup ready in %.2fs (target %.2fs)",
+                    elapsed,
+                    target_seconds,
+                )
+
+            if elapsed > target_seconds:
+                logger.info(
+                    "SystemEventMonitor warmup exceeded target by %.2fs (forecast mode, no timeout)",
+                    elapsed - target_seconds,
+                )
         except asyncio.CancelledError:
+            self._startup_phase = "cancelled"
+            self._startup_forecast_ready_at = None
             raise
-        except Exception as e:
+        except Exception as e:  # pragma: no cover - defensive guardrail
             if self._running:
                 self._startup_state = "degraded"
-            self._startup_error = f"startup warmup failed: {e}"
+            self._startup_phase = "failed"
+            self._startup_error = f"startup warmup orchestrator failed: {e}"
+            self._startup_forecast_ready_at = None
             logger.warning(
-                "SystemEventMonitor warmup failed: %s (live monitoring remains active)",
+                "SystemEventMonitor warmup orchestration failed: %s (live monitoring remains active)",
                 e,
             )
 
     async def _capture_initial_state(self) -> None:
         """Capture initial system state on startup."""
-        try:
-            # Get running apps
-            await self._update_running_apps()
+        checks: List[tuple[str, Callable[[], Coroutine[Any, Any, Any]]]] = []
+        if self.config.enable_app_monitoring:
+            checks.append(("running_apps", self._update_running_apps))
+        if self.config.enable_space_monitoring:
+            checks.append(("current_space", self._update_current_space))
+        if self.config.enable_system_state_monitoring:
+            checks.append(("screen_lock", self._update_screen_lock_status))
 
-            # Get current space
-            await self._update_current_space()
+        if not checks:
+            return
 
-            # Check screen lock status
-            await self._update_screen_lock_status()
+        step_timeout = max(0.25, self.config.startup_step_timeout_seconds)
 
-            logger.debug(
-                f"Initial state: apps={len(self._running_apps)}, "
-                f"space={self._current_space}, locked={self._is_screen_locked}"
+        async def _run_check(
+            check_name: str,
+            check_action: Callable[[], Coroutine[Any, Any, Any]],
+        ) -> tuple[str, Optional[str]]:
+            try:
+                result = await asyncio.wait_for(check_action(), timeout=step_timeout)
+                if result is False:
+                    return (check_name, "returned unsuccessful result")
+                return (check_name, None)
+            except asyncio.TimeoutError:
+                return (check_name, f"timed out after {step_timeout:.2f}s")
+            except Exception as e:
+                return (check_name, str(e))
+
+        results = await asyncio.gather(
+            *[_run_check(name, action) for name, action in checks],
+            return_exceptions=False,
+        )
+        failures = [f"{name}: {error}" for name, error in results if error]
+
+        if failures:
+            if len(failures) == len(results):
+                raise RuntimeError("; ".join(failures))
+            logger.info(
+                "Initial state capture partial success (%d/%d checks passed): %s",
+                len(results) - len(failures),
+                len(results),
+                "; ".join(failures),
             )
 
-        except Exception as e:
-            logger.error(f"Failed to capture initial state: {e}")
+        logger.debug(
+            "Initial state: apps=%d, space=%s, locked=%s",
+            len(self._running_apps),
+            self._current_space,
+            self._is_screen_locked,
+        )
 
     # =========================================================================
     # Yabai Integration
@@ -545,7 +735,7 @@ class SystemEventMonitor:
                 logger.error(f"App monitoring error: {e}")
                 await asyncio.sleep(1)
 
-    async def _update_running_apps(self) -> None:
+    async def _update_running_apps(self) -> bool:
         """Update running apps and emit events for changes."""
         try:
             # Get running apps via AppleScript
@@ -564,7 +754,7 @@ class SystemEventMonitor:
                 script,
             )
             if return_code != 0:
-                return
+                return False
 
             # Parse output
             current_apps: Dict[str, Dict[str, Any]] = {}
@@ -621,9 +811,11 @@ class SystemEventMonitor:
                     await self._emit_event(event)
 
             self._running_apps = current_apps
+            return True
 
         except Exception as e:
             logger.debug(f"Error updating running apps: {e}")
+            return False
 
     async def _emit_app_activated(self, app_info: Dict[str, Any]) -> None:
         """Emit app activated event."""
@@ -726,7 +918,7 @@ class SystemEventMonitor:
                 logger.debug(f"Space monitoring error: {e}")
                 await asyncio.sleep(1)
 
-    async def _update_current_space(self) -> None:
+    async def _update_current_space(self) -> bool:
         """Update current space information."""
         try:
             if self._yabai_available:
@@ -754,12 +946,16 @@ class SystemEventMonitor:
                             previous_space_id=old_space,
                         )
                         await self._emit_event(event)
+                else:
+                    return False
             else:
                 # Fallback: Can't reliably detect space changes without Yabai
                 pass
+            return True
 
         except Exception as e:
             logger.debug(f"Error updating space: {e}")
+            return False
 
     # =========================================================================
     # System State Monitoring
@@ -778,7 +974,7 @@ class SystemEventMonitor:
                 logger.debug(f"System state monitoring error: {e}")
                 await asyncio.sleep(2)
 
-    async def _update_screen_lock_status(self) -> None:
+    async def _update_screen_lock_status(self) -> bool:
         """Update screen lock status."""
         try:
             # Try using the existing screen lock detector
@@ -811,9 +1007,11 @@ class SystemEventMonitor:
                     event = MacOSEventFactory.create_screen_unlocked()
 
                 await self._emit_event(event)
+            return True
 
         except Exception as e:
             logger.debug(f"Error checking screen lock: {e}")
+            return False
 
     # =========================================================================
     # Idle Monitoring
@@ -933,6 +1131,8 @@ class SystemEventMonitor:
             "running": self._running,
             "startup_state": self._startup_state,
             "startup_error": self._startup_error,
+            "startup_phase": self._startup_phase,
+            "startup_progress": round(self._startup_progress, 4),
             "startup_started_at": (
                 self._startup_started_at.isoformat()
                 if self._startup_started_at else None
@@ -941,6 +1141,12 @@ class SystemEventMonitor:
                 self._startup_completed_at.isoformat()
                 if self._startup_completed_at else None
             ),
+            "startup_forecast_ready_at": (
+                self._startup_forecast_ready_at.isoformat()
+                if self._startup_forecast_ready_at else None
+            ),
+            "startup_eta_seconds": self._startup_eta_seconds(),
+            "startup_phase_results": self._startup_phase_results.copy(),
             "yabai_available": self._yabai_available,
             "yabai_si_active": self._yabai_si is not None,
             "running_apps": len(self._running_apps),
