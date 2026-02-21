@@ -2,7 +2,7 @@
 
 **The Body of the AGI OS — macOS integration, computer use, action execution, and unified orchestration**
 
-JARVIS is the **control plane and execution layer** of the JARVIS AGI ecosystem. It provides macOS integration, computer use (keyboard, mouse, display), voice unlock, vision, safety management, and the **unified supervisor** that starts and coordinates JARVIS-Prime (Mind) and Reactor-Core (Nerves) with a single command.
+JARVIS is the **control plane and execution layer** of the JARVIS AGI ecosystem. It provides macOS integration, computer use (keyboard, mouse, display), voice unlock, vision, safety management, and the **unified supervisor** that starts and coordinates JARVIS-Prime (Mind) and Reactor-Core (Nerves) with a single command. As of **v259.1**, JARVIS features a never-skip vision architecture with self-hosted LLaVA, parallel initialization with cooperative cancellation (v3.0–v3.2), CPU-pressure-aware cloud shifting (v258.x), enterprise hardening, and a fully activated training pipeline with deployment gates, model lineage tracking, and post-deployment probation monitoring across all three repos.
 
 ---
 
@@ -112,9 +112,9 @@ body:HEAL | prime:STAR | reactorc:STAR | gcpvm:STAR | trinity:STAR
 
 ---
 
-## GCP Golden Image — Cloud Inference Architecture (v224.0+, v235.4, v236.0, v238.0, v241.1)
+## GCP Golden Image — Cloud Inference Architecture (v224.0+, v235.4, v236.0, v238.0, v241.1, v259.1)
 
-JARVIS uses a **pre-baked GCP VM image** (golden image) to deliver cloud-based LLM inference with ~30-60 second cold starts instead of 10-15 minutes. As of v233.2, this is the **only** inference pathway — local LLM loading on 16GB Mac is off-limits due to memory pressure and swap thrashing. The fallback chain is: GCP Golden Image → GCP Standard VM → Claude API (emergency). As of v235.4, the frontend→backend→GCP command routing is fully resilient with automatic WebSocket→REST→queue failover. As of v236.0, the system prompt, max_tokens, and temperature are dynamically adapted per query complexity — simple queries get terse, deterministic responses while complex queries get thorough analysis. As of v238.0, degenerate model responses (e.g., "...") are detected and retried at three layers (classification, backend, frontend) with defense-in-depth, and the WebSocket response pipeline correctly echoes `requestId` for frontend deduplication. As of v241.0/v241.1, the golden image contains **11 specialist models** (~40.4 GB) with intelligent task-type routing — math queries go to a math specialist, code queries go to a code specialist, and simple queries go to a fast lightweight model. See [§ v241.0/v241.1](#v2410v2411--multi-model-gcp-golden-image--task-type-routing-11-models-8-routable) below for the full model inventory and routing architecture.
+JARVIS uses a **pre-baked GCP VM image** (golden image) to deliver cloud-based LLM inference with ~30-60 second cold starts instead of 10-15 minutes. As of v233.2, this is the **only** inference pathway — local LLM loading on 16GB Mac is off-limits due to memory pressure and swap thrashing. The fallback chain is: GCP Golden Image → GCP Standard VM → Claude API (emergency). As of v235.4, the frontend→backend→GCP command routing is fully resilient with automatic WebSocket→REST→queue failover. As of v236.0, the system prompt, max_tokens, and temperature are dynamically adapted per query complexity — simple queries get terse, deterministic responses while complex queries get thorough analysis. As of v238.0, degenerate model responses (e.g., "...") are detected and retried at three layers (classification, backend, frontend) with defense-in-depth, and the WebSocket response pipeline correctly echoes `requestId` for frontend deduplication. As of v241.0/v241.1, the golden image contains **11 specialist models** (~40.4 GB) with intelligent task-type routing — math queries go to a math specialist, code queries go to a code specialist, and simple queries go to a fast lightweight model. As of v259.1, vision requests default to J-Prime LLaVA (self-hosted) with Claude Vision as escalation-only fallback — see [§ v259.0/v259.1](#v2590v2591--vision-never-skip-architecture--ghost-display-management-february-2026). See [§ v241.0/v241.1](#v2410v2411--multi-model-gcp-golden-image--task-type-routing-11-models-8-routable) below for the full model inventory and routing architecture.
 
 ### Three-Tier Inference Architecture (v234.0)
 
@@ -1433,6 +1433,408 @@ _infer_task_type()                             ChatRequest.metadata
 
 ---
 
+### v259.0/v259.1 — Vision Never-Skip Architecture + Ghost Display Management (February 2026)
+
+**The Problem (v259.0):** Eight compounding bugs caused JARVIS's screen capture to skip entirely on a 16GB Mac under normal load. The vision monitoring loop used an all-or-nothing memory gate — cheap operations (~7MB for screenshot + fingerprinting) were blocked behind an expensive analysis budget (1500MB) that always exceeded thresholds on a loaded system. On-demand vision ("can you see my screen?") had 4-6 second latency, and GCP LLaVA offload was broken (wrong port, wrong format, per-call TLS session creation).
+
+**The v259.0 Architecture Fix — Split Monitoring into Two Phases:**
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│           VISION MONITORING LOOP (v259.0 Never-Skip)                 │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                      │
+│  Phase 1 — ALWAYS RUNS (~7MB, never memory-gated):                  │
+│    Screenshot capture → fingerprinting → app detection → frame-diff │
+│    Cost: ~7MB — cheap enough to never skip                          │
+│                                                                      │
+│  Phase 2 — CONDITIONAL (memory-gated for analysis only):            │
+│    Claude Vision / J-Prime LLaVA analysis                           │
+│    OOM bridge told actual analysis cost (~50MB), not pipeline cost   │
+│    (was 1500MB — always exceeded on loaded system)                  │
+│    Sync fallback uses available RAM check with hysteresis            │
+│                                                                      │
+│  GCP Offload Rewrite (_capture_via_cloud → _analyze_via_cloud):     │
+│    Fixed: wrong port (8010 → 8001 via PrimeClient)                  │
+│    Fixed: wrong format (raw PNG → base64 JPEG OpenAI multimodal)    │
+│    Fixed: per-call ClientSession → persistent PrimeClient session   │
+│                                                                      │
+│  Latency: VisionCommandHandler checks continuous analyzer cache     │
+│    first (<2s freshness) — saves 200-500ms for on-demand requests   │
+│                                                                      │
+│  Edge cases: memory threshold hysteresis prevents oscillation,      │
+│    cooldown-aware sleep for vision-unavailable RuntimeError          │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+**v259.1 — Three Additional Fixes:**
+
+| # | Bug | Root Cause | Fix |
+|---|-----|-----------|-----|
+| 1 | **Implicit Resolver always None** | `initialize_implicit_resolver()` doesn't exist — ImportError silently caught | Use correct API `get_implicit_resolver()` (lazy singleton) |
+| 2 | **OCR Manager not initialized** | No late-binding mechanism — Tier 4 handlers call `get_ocr_strategy_manager()` before Tier 1 asyncio.to_thread completes | Late-bind at warmup completion for `ocr_manager` and `capture_manager` |
+| 3 | **Duplicate processor instances** | `main.py` created 5x new `UnifiedCommandProcessor()` bypassing singleton warmup + late-bound deps → 30s re-init per command | Use `get_unified_processor()` singleton everywhere |
+
+**v259.1 — Default Vision to J-Prime LLaVA, Claude as Escalation:**
+
+Removed the `_is_continuous` gate so J-Prime LLaVA handles **all** vision requests in AUTO mode (not just continuous monitoring). Claude Vision is reserved for: `priority="high"` explicit escalation, `CLAUDE_API` override, or J-Prime unavailable. Added pre-flight health check (cached 30s) to avoid 120s timeout on unhealthy J-Prime. Quality gate escalates to Claude when J-Prime response is too short (<20 chars, configurable via `VISION_JPRIME_MIN_RESPONSE_LENGTH`).
+
+**v259.1 — Ghost Display Concurrency Control:**
+
+Introduced `_ghost_display_init_task` and `_ghost_display_health_task` for concurrent lifecycle management. `PhantomHardwareManager` uses a single-flight mechanism to prevent concurrent calls to `ensure_ghost_display_exists_async` — only one initialization task runs at a time. Robust error handling for optional dependency failures.
+
+**Files Modified (v259.0/v259.1):**
+
+| Area | Files | Changes |
+|------|-------|---------|
+| Vision core | `continuous_screen_analyzer.py`, `vision_command_handler.py` | Two-phase monitoring, never-skip, cache-first on-demand |
+| GCP offload | `continuous_screen_analyzer.py` | `_analyze_via_cloud()` rewrite — PrimeClient, base64 JPEG, persistent session |
+| LLaVA routing | `vision_provider_manager.py` | Default to J-Prime, Claude escalation, pre-flight health, quality gate |
+| Ghost Display | `phantom_hardware_manager.py` | Single-flight init, health task, concurrency control |
+| Initialization | `main.py`, `unified_command_processor.py` | Singleton processor, late-bind OCR/capture, correct Implicit Resolver API |
+
+---
+
+### v258.0–v258.4 — CPU Pressure Cloud Shift + Cloud Endpoint Resilience (February 2026)
+
+JARVIS now detects sustained CPU pressure and automatically shifts workloads to the cloud, while cloud endpoints themselves gained failover and backoff mechanisms for handling transient failures.
+
+#### CPU Pressure Cloud Shift
+
+When the system detects sustained CPU pressure (high load average exceeding configurable thresholds), the `ProcessCleanupManager` schedules a cloud shift — offloading inference workloads to GCP rather than competing for local CPU time. A dedicated worker thread handles the shift asynchronously, with cooldown logic to prevent flapping.
+
+```
+CPU load sustained above threshold
+  → _schedule_cpu_cloud_shift() fires
+    → Dedicated worker thread (thread-safe, single-flight)
+      → Triggers cloud inference endpoint activation
+        → Local model inference deferred until pressure subsides
+```
+
+**Speaker Verification under pressure:** `SpeakerVerificationService` now defers encoder preloading when startup pressure is detected, preventing the ECAPA-TDNN model load from competing with critical initialization tasks.
+
+**ECAPA verification deadlines:** The verification pipeline accepts a deadline parameter with per-step budget checks. Each verification step respects time limits, with timeout logging at INFO level (timeouts are expected under pressure, not errors).
+
+#### Cloud Endpoint Failover + Failure Backoff
+
+The `MLEngineRegistry` gained cloud endpoint failover with failure backoff:
+
+| Capability | Behavior |
+|-----------|----------|
+| **Endpoint discovery** | Dynamically discovers healthy cloud endpoint candidates |
+| **Failure backoff** | Exponential backoff based on failure streaks per endpoint |
+| **Failover** | Automatic switch to next healthy endpoint on failure |
+| **Recovery** | Gradual reintroduction of recovered endpoints after cooldown |
+
+**Cloud Run metadata propagation:** `_build_request_metadata()` moved from `PrimeAPIClient` to `ModelClient` base class so `PrimeCloudRunClient` inherits it. Task-type and conversation context now reach J-Prime regardless of inference pathway (API vs Cloud Run).
+
+#### Startup Pressure Handling
+
+`PersistentConversationMemoryAgent` and `ProcessCleanupManager` gained startup-aware behavior:
+
+- Dynamic limits/timeouts for stage-1 interactions based on CPU and memory pressure
+- Database context loading deferred under startup pressure
+- Memory relief actions deferred during grace periods to prevent premature resource clearing
+- Conversation pipeline enhanced with intent classification and command routing
+
+**Files Modified (v258.x):**
+
+| File | Changes |
+|------|---------|
+| `backend/intelligence/process_cleanup_manager.py` | CPU cloud shift scheduling, worker thread, cooldown logic, startup grace periods |
+| `backend/voice_unlock/speaker_verification_service.py` | Pressure-aware preload deferral |
+| `backend/intelligence/ecapa_verification_pipeline.py` | Deadline management, per-step budget checks |
+| `backend/core/ml_engine_registry.py` | Cloud endpoint failover, failure backoff, discovery |
+| `backend/core/prime_client.py` | `_build_request_metadata()` in base class, Cloud Run metadata |
+| `backend/intelligence/persistent_conversation_memory_agent.py` | Startup pressure limits, deferred DB loading |
+| `backend/audio/conversation_pipeline.py` | Intent classification, command processing, biometric routing |
+
+---
+
+### v3.0/v3.1/v3.2 — Parallel Initializer + Enterprise Hardening + Cloud SQL Reliability (February 2026)
+
+A major stability arc spanning three sub-versions that transformed JARVIS's startup from brittle sequential initialization into a resilient, parallel, enterprise-grade system with proper Cloud SQL reliability.
+
+#### v3.0 — Parallel Initializer with Cooperative Cancellation
+
+The new parallel initializer replaces sequential component startup with concurrent initialization that respects dependency ordering:
+
+```
+┌────────────────────────────────────────────────────────────────┐
+│              PARALLEL INITIALIZER v3.0                           │
+├────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  Cooperative cancellation:                                       │
+│    Components check cancellation tokens between phases           │
+│    Clean rollback on timeout — no orphaned tasks                │
+│                                                                  │
+│  Adaptive thresholds:                                            │
+│    EMA-based timing predictions adjust deadlines dynamically    │
+│    First boot uses generous defaults, subsequent boots learn    │
+│                                                                  │
+│  Dependency propagation:                                         │
+│    Components declare dependencies (e.g., Cloud SQL → ECAPA)    │
+│    Failed dependency auto-cancels dependents with reason         │
+│    No wasted time waiting for components that can't start        │
+│                                                                  │
+└────────────────────────────────────────────────────────────────┘
+```
+
+#### v3.1 — Phase Lock + EMA Variance + Atomic Saves
+
+Hardening the parallel initializer with correctness guarantees:
+
+| Fix | Problem | Solution |
+|-----|---------|----------|
+| **Phase lock** | Race condition when multiple components advance phases simultaneously | Mutex-protected phase transitions |
+| **EMA variance** | Adaptive thresholds too sensitive to single outlier boots | Track variance alongside EMA, use stddev-aware deadlines |
+| **Atomic saves** | Partial writes to timing data on crash → corrupted predictions | Temp-file-then-rename atomic writes |
+| **Cancellation cleanup** | Cancelled components left temporary state files | Cleanup hooks run on cancellation, not just success |
+
+#### v3.2 — DMS Coordination + Cloud SQL Fixes + Voice Fixes
+
+The largest sub-version, fixing 12+ issues across the startup and runtime stack:
+
+**Cloud SQL reliability (3 critical fixes):**
+
+| # | Bug | Root Cause | Fix |
+|---|-----|-----------|-----|
+| 1 | Cloud SQL `UNAVAILABLE` on startup | Race condition in proxy startup — TCP port open before proxy fully ready | Settling delay + log-based readiness detection |
+| 2 | Cloud SQL TCP-vs-ready race | Proxy watchdog declared ready on TCP connect, but proxy wasn't accepting SQL queries | Log-based readiness (`Ready for new connections`) as source of truth |
+| 3 | Learning database connection leak | Cancellation during DB operations left connections unreturned to pool | Cancellation-safe cleanup with `try/finally` on every connection |
+
+**Startup coordination:**
+
+| Fix | Description |
+|-----|-------------|
+| DMS + parallel initializer coordination | DMS permissions phase integrated into parallel initializer dependency graph |
+| Zone6 health + tier timeout math | Health check math corrected for multi-tier timeout cascading |
+| Trinity bridge missing `await` | Async call in Trinity bridge was missing `await` — fire-and-forget instead of reliable |
+| MemoryAgent log truncation | Oversized log entries causing I/O pressure — truncation applied |
+
+**Voice + TLS fixes:**
+
+| Fix | Description |
+|-----|-------------|
+| Voice communicator string→enum | `speak()` crashed with `AttributeError` when callers passed string mode/priority instead of `VoiceMode`/`VoicePriority` enums — added Union type hints and normalization |
+| TLS semaphore | TLS semaphore state mutation contract enforced in ProxyWatchdog |
+| IntelligentCommandHandler timeout | Handler init timeout (5s, routinely hit under pressure) changed from error→INFO, removed permanent disable so handler retries when CPU calms |
+
+#### Enterprise Hardening Stack
+
+Parallel to the v3.x fixes, an enterprise hardening stack was wired into the unified supervisor:
+
+| Phase | Component | Purpose |
+|-------|-----------|---------|
+| Phase 1 | Enterprise hooks (`enterprise_hooks.py`) | 5 API mismatches corrected, wired into startup lifecycle |
+| Phase 2 | Enterprise process manager | Correct import path, integrated into supervisor |
+| Integration | Capability registration | Enterprise default components registered in capability system |
+| DB | DB-level readiness verification | Supervisor verifies actual SQL query success, not just TCP connect |
+| Timeout | Adaptive two-tier initialization | Configurable timeouts for fast-path vs slow-path component init |
+
+**Files Modified (v3.0/v3.1/v3.2):**
+
+| Category | Files |
+|----------|-------|
+| Parallel initializer | `unified_supervisor.py` (parallel init, dependency graph, EMA, atomic saves) |
+| Cloud SQL | `cloud_sql_proxy_manager.py`, `learning_database.py`, `unified_supervisor.py` |
+| Enterprise | `enterprise_hooks.py`, `unified_supervisor.py` |
+| Voice/TLS | `realtime_voice_communicator.py`, `cloud_sql_proxy_manager.py` |
+| Health | `jarvis_system_kernel.py`, `loading_server.py` |
+| Monitoring | `system_event_monitor.py`, `macos_space_detector.py` |
+
+---
+
+### v237.0 — TTS Audio Pipeline Fix: Cure Audio Static/Hallucinations (February 2026)
+
+**The Bug:** JARVIS's TTS playback produced audible static, clicks, and "hallucinated" audio artifacts — garbled sounds interspersed with legitimate speech output. The problem was perceptible on every voice response.
+
+**Root Cause:** The TTS playback pipeline had buffer management issues causing partially-filled audio buffers to be sent to the audio device. When frames weren't complete, the remaining bytes contained uninitialized memory or stale data from previous buffers, producing static. Additionally, the audio format negotiation between the TTS engine and the playback device wasn't accounting for sample rate mismatches, causing artifacts when 22050Hz TTS output was played at 48000Hz without proper resampling.
+
+**The Fix:** Corrected buffer management to ensure complete frames, added proper sample rate conversion in the playback path, and eliminated stale buffer reuse. The audio pipeline now produces clean, artifact-free speech output.
+
+---
+
+### Port Alignment — Fix 22+ Hardcoded Port Mismatches (February 2026)
+
+A systematic audit discovered **22+ hardcoded port mismatches** across the unified supervisor and bridge components, where the default port for JARVIS-Prime was inconsistently set to 8000 or 8001 across different files.
+
+| Pass | Files Fixed | Issue |
+|------|------------|-------|
+| Pass 1 | `unified_supervisor.py` (14 locations) | Hardcoded `8000` → aligned to `TRINITY_JPRIME_PORT` or `8001` |
+| Pass 2 | `unified_supervisor.py` (8 locations) | Remaining Prime port defaults aligned to `8001` |
+| Pass 3 | Bridge health monitoring, Reactor integration | Port configurations aligned, bridge health monitoring enhanced |
+
+The fix ensures that all components consistently use the configured port value rather than scattered hardcoded defaults, preventing silent connection failures when Prime runs on a non-default port.
+
+---
+
+### Cross-Repo: JARVIS-Prime (Mind) — 50 Commits (February 2026)
+
+The last 50 commits to [JARVIS-Prime](https://github.com/drussell23/jarvis-prime) represent a major evolution of the Mind layer — from a passive inference server into an active, learning-capable, multi-modal reasoning engine.
+
+#### v238.0 — Continuous Learning + Reasoning Engine Activation
+
+Two capabilities that existed as dead code were wired into the live inference loop:
+
+1. **Post-inference continuous learning:** Fire-and-forget async task calls `ContinualLearningEngine.learn_from_interaction()` after each completion, recording the interaction for experience replay and EWC (Elastic Weight Consolidation). Controlled by `JARVIS_CONTINUOUS_LEARNING` env var.
+
+2. **Reasoning engine routing:** When `HybridRouter` classifies a request above `JARVIS_REASONING_COMPLEXITY_THRESHOLD` (default 0.7), the `ReasoningEngine` is lazy-initialized and invoked to generate chain-of-thought scaffolding (CoT/ToT/self-reflection) that augments the prompt before model execution.
+
+3. **Prime Bridge activation:** `jarvis_prime_bridge` initialized in `run_server.py` (previously only via `run_supervisor.py --unified`), providing local-first inference with Claude API fallback. Orchestration guard prevents duplicate supervisor startup.
+
+#### LLaVA Vision Server (v236.0)
+
+New `vision_server.py` serves LLaVA multimodal inference on port 8001 alongside the existing text server on port 8000. Non-blocking startup, semaphore serialization, queue depth cap, OpenAI-compatible API. Fixed HF repo name (`cjpais/llava-v1.6` → `cjpais/llava-1.6`) and added mmproj metadata for CLIP projection model download.
+
+#### Hollow Client Mode — Memory Optimization for Constrained Hardware
+
+A major architectural addition for 16GB Macs where local model loading is prohibited:
+
+| Feature | Description |
+|---------|-------------|
+| **Hollow Client mode** | Strict lazy imports — no ML dependencies loaded at startup |
+| **Hardware-aware config** | `StagedInitConfig` dynamically adjusts memory thresholds based on `JARVIS_HARDWARE_PROFILE` |
+| **Hollow Client Guard** | Integrated into `run_server.py` — intercepts model loading attempts in constrained mode |
+| **Apple Silicon optimizer** | Always initializes, falls back to CPU-only if Metal GPU unavailable |
+| **OOM prevention** | v150.0 — skip local model loading entirely in Hollow Client mode |
+
+#### Telemetry + Training Data Pipeline
+
+| Feature | Description |
+|---------|-------------|
+| **Training data capture** | Telemetry emitter captures interaction metadata (model_id, task_type, latency) as JSONL |
+| **Telemetry upload** | Batch upload to Reactor-Core for experience accumulation |
+| **Disconnect capture** | Partial responses from disconnected clients preserved for training quality |
+| **Experience schema** | Canonical `ExperienceEvent` schema with enhanced import handling and fallback |
+| **Deployment feedback** | After deploying a GGUF model, Prime writes `deployment_status.json` to `~/.jarvis/cross_repo/` — closes the feedback loop to Reactor-Core |
+| **Post-deployment probation** | Configurable probation window (default 30 min) probes model health every 60s; commits (health_score >= 0.8) or rolls back (< 0.5); emergency rollback on 5x error rate spike |
+| **Pipeline event logger** | Structured JSONL events for `model.deployed`, `probation.started`, `probation.committed`, `probation.rollback` with correlation IDs |
+
+#### Server Hardening + Infrastructure
+
+| Feature | Description |
+|---------|-------------|
+| **Neural Switchboard v98.1** | Stable public API facade over routing/orchestration; WebSocket integration contracts for cross-repo discovery |
+| **Unified entrypoint** | `jarvis_prime/server.py` delegates to `run_server.py` (authoritative); fast-fail if unavailable with legacy fallback option |
+| **Tier-2 learning capabilities** | Continual learning and self-modification engines initialized in background; API endpoint for status retrieval |
+| **Intelligent port fallback** | Detects port conflicts and auto-selects alternatives |
+| **APARS file integration** | Golden-image startup progress written to APARS file for supervisor polling |
+| **SmartWatchdog integration** | Granular startup stage tracking for phase-based progress reporting |
+| **Resilient dependency loading** | Auto-installation of missing ML dependencies at startup |
+| **Ghost Display state queries** | Cross-repo Ghost Display state accessible from Prime |
+
+#### Multi-Model Routing Enhancements
+
+| Feature | Description |
+|---------|-------------|
+| **Advanced specialist models** | Additional reasoning and specialist models configured for GCP routing |
+| **GCP Model Swap Coordinator** | Intelligent model swapping based on task-type metadata |
+| **Adaptive Prompt System** | System prompt, max_tokens, temperature adapted per query complexity |
+| **Stop sequence handling** | Proper stop sequence processing in model serving |
+| **Default path retrieval** | Enhanced GGUF model selection with improved default path resolution |
+
+---
+
+### Cross-Repo: Reactor-Core (Nerves) — 50 Commits (February 2026)
+
+The last 50 commits to [Reactor-Core](https://github.com/drussell23/JARVIS-Reactor) transform it from a skeleton training server into a production-ready training pipeline with deployment gates, model lineage tracking, multi-tier orchestration, and a native C++ build system.
+
+#### v238.0 — Active Learning + Gatekeeper + Online Learning Pipeline Activation
+
+Three sleeping capabilities wired into the NightShift training pipeline:
+
+1. **Active learning data selection:** Pre-training quality-based sampling using length-diversity stratified selection (60% longest + 40% random for diversity). Controlled by `REACTOR_ACTIVE_LEARNING` and `REACTOR_AL_MAX_SAMPLES`.
+
+2. **Gatekeeper evaluation:** Multi-criteria approval scoring with regression detection using `EvaluationResult` objects. Complements the `DeploymentGate`. Non-blocking by default; `REACTOR_GATEKEEPER_STRICT=true` enforces rejection.
+
+3. **Online learning engine:** Exported as first-class module member from `training/__init__.py` with guarded imports.
+
+Orchestration guard prevents duplicate supervisor startup when `unified_supervisor` manages the ecosystem.
+
+#### Deployment Gate + Model Lineage + Probation
+
+A complete model deployment safety chain:
+
+```
+Training completes → GGUF export
+  → DeploymentGate validates model integrity
+    ├── PASS → Deploy to ~/.jarvis/reactor/models/
+    │          → Write lineage to lineage.jsonl (hash, parent, method, eval scores)
+    │            → Start ProbationMonitor (30 min, probe every 60s)
+    │              ├── health_score >= 0.8 → COMMITTED
+    │              ├── health_score < 0.5  → ROLLED_BACK (restore from previous/)
+    │              └── error_rate > 5x     → EMERGENCY ROLLBACK
+    │
+    └── FAIL → Move to failed/ with logged rejection reasons
+```
+
+| Component | Description |
+|-----------|-------------|
+| **DeploymentGate** | Validates GGUF model integrity before deployment; rejects corrupt/degenerate models |
+| **Model lineage** | Full provenance in JSONL: model hash, parent, training method, eval scores, gate decision |
+| **Atomic experience snapshots** | `drain_experience_buffer()` atomically captures buffer under lock; writes JSONL with `DataHash` for dataset versioning |
+| **Pipeline event logger** | Structured JSONL events (`training.started`, `training.completed`, `training.failed`) with correlation/causation IDs |
+
+#### Tier-2/Tier-3 Runtime Orchestration
+
+Advanced training capabilities beyond the base NightShift pipeline:
+
+| Tier | Capabilities |
+|------|-------------|
+| **Tier-2** (`Tier2RuntimeOrchestrator`) | Curriculum learning, meta learning, causal discovery (with correlation-based fallback), integrated into training job execution |
+| **Tier-3** | Runtime status management, optional advanced capabilities with cached status, API endpoint for operator verification |
+| **Training modes** | `unified` and `nightshift` modes with validation/normalization, configurable via `DEFAULT_TRAINING_MODE` |
+| **Job persistence** | `TrainingJobManager` persists jobs to disk for crash recovery |
+
+#### PrimeConnector — Robust Cross-Repo Communication
+
+| Feature | Description |
+|---------|-------------|
+| **WebSocket path rotation** | Multiple WS paths; rotates to next on connection error |
+| **Health polling fallback** | Falls back to HTTP health polling when WebSocket disabled |
+| **Contract path discovery** | Discovers and normalizes J-Prime API contract paths |
+| **Scout topic enqueue** | `/api/v1/scout/topics` endpoint with priority/category normalization |
+
+#### Cross-Repo Integration
+
+| Feature | Description |
+|---------|-------------|
+| **Ghost Display state reader** | Reads Ghost Display state from cross-repo shared files |
+| **Cloud mode detection** | Detects cloud vs local mode with cross-repo awareness |
+| **Trinity Unified Loop Manager** | Integrated for cross-repo support in AGI Supervisor |
+| **Cloud offload state** | Training orchestration integrates with cloud offload status; staleness detection and endpoint management |
+| **Cross-repo readiness** | State tracking and event handling for JARVIS-AI-Agent readiness signals |
+| **Docker state integration** | Docker state for training jobs with health monitoring |
+| **CPU pressure signals (v258.4)** | CPU pressure signal integration across cloud mode detector, error handling, checkpointer, service manager |
+
+#### Native Build System (CMake + pybind11)
+
+Reactor-Core now has a proper C++ native build system for performance-critical training components:
+
+| Component | Description |
+|-----------|-------------|
+| **CMake build system** | Full CMake configuration with installation scripts |
+| **pybind11 bindings** | Python bindings for native C++ training kernels |
+| **Python 3.9 compatibility** | Updated version requirements and path resolution |
+| **Static library build** | Configured for Python bindings in CMake |
+
+#### Service Reliability
+
+| Feature | Description |
+|---------|-------------|
+| **Atomic heartbeat updates** | Prevents stale entries in service registry |
+| **Atomic shared registry** | Cross-process coordination with file locking |
+| **Process fingerprinting** | Machine ID retrieval for enhanced service registration |
+| **Startup-aware health monitoring** | Health aggregator tracks startup phases |
+| **TrinityClient hardening** | Robust connection handling and heartbeat management |
+| **Comprehensive training health** | Health monitoring integrated with shutdown sequence |
+| **Port binding** | TIME_WAIT handling and cross-repo port registry |
+| **Startup phase tracking** | DMS monitoring with health endpoint updates |
+| **Batch experience ingestion** | `/api/v1/experience/batch` endpoint with pipeline locking |
+
+---
+
 ### v238.0 — Real-Time Voice Conversation Infrastructure (February 2026)
 
 JARVIS now supports **real-time voice conversation** — continuous, bidirectional, streaming voice dialogue instead of the traditional record → transcribe → respond → play cycle. This transforms JARVIS from a command-response assistant into an AI companion you can talk to naturally, with interruptions, follow-ups, and flowing multi-turn dialogue.
@@ -1649,43 +2051,50 @@ Add two 14B-class models for significantly stronger reasoning and code generatio
 - [ ] Update `gcp_vm_manager.py` builder script with 3 new model entries
 - [ ] Disk impact: +24.3 GB → total ~64.7 GB on 80 GB SSD (~15.3 GB headroom)
 
-#### v239.0 — Architectural Hardening + Pipeline Activation (In Progress)
+#### v239.0 — Architectural Hardening + Pipeline Activation (COMPLETED ✅)
 
-Five verified architectural issues are being fixed with ~210 lines of surgical changes across 4 files, zero new Python files. Simultaneously, the Reactor Core training pipeline is being activated.
+Five verified architectural issues fixed with ~210 lines of surgical changes across 4 files. The Reactor Core training pipeline is now **fully activated** with DeploymentGate, model lineage tracking, post-deployment probation, and cross-repo event tracing.
 
 **Verified Fixes (from three-way cross-repo audit, Feb 2026):**
 
-| # | Fix | File | Lines | Risk |
-|---|-----|------|-------|------|
-| 1 | **RAM Race** — Unload local model when GCP becomes available. `_unload_local_model()` exists but is never called from `notify_gcp_endpoint_ready()`. | `unified_model_serving.py` | ~20 | LOW |
-| 2 | **Mid-Stream Failover** — When a streaming provider fails mid-response, buffer the prompt and retry on the next tier with a `[Stream interrupted — retrying...]` marker. | `unified_model_serving.py` | ~40 | MEDIUM |
-| 3 | **Supervisor Self-Watchdog** — macOS `launchd` plist that auto-restarts `unified_supervisor.py` on crash. Nothing currently watches the supervisor itself. | `com.jarvis.supervisor.plist` (new) | ~30 | LOW |
-| 4 | **Cost-Aware Routing** — Add cost efficiency factor (15% weight) to adaptive provider scoring. Prevents Claude API ($3/M tokens) from serving trivial greetings. | `unified_model_serving.py` | ~20 | LOW |
-| 5 | **Reactor Core Pipeline Activation** — Call `initialize_reactor_core()` and `start_reactor_core_watcher()` during Phase 5 startup. Add smoke test gate and deployment feedback loop. | `unified_supervisor.py` + `reactor_core_watcher.py` | ~100 | LOW |
+| # | Fix | File | Lines | Status |
+|---|-----|------|-------|--------|
+| 1 | **RAM Race** — Unload local model when GCP becomes available | `unified_model_serving.py` | ~20 | ✅ DONE |
+| 2 | **Mid-Stream Failover** — Buffer prompt and retry on next tier | `unified_model_serving.py` | ~40 | ✅ DONE |
+| 3 | **Supervisor Self-Watchdog** — macOS `launchd` plist auto-restart | `com.jarvis.supervisor.plist` | ~30 | ✅ DONE |
+| 4 | **Cost-Aware Routing** — 15% cost factor in adaptive provider scoring | `unified_model_serving.py` | ~20 | ✅ DONE |
+| 5 | **Reactor Core Pipeline Activation** — Wire `initialize_reactor_core()` + `start_reactor_core_watcher()` into Phase 5 | `unified_supervisor.py` + `reactor_core_watcher.py` | ~100 | ✅ DONE |
 
-**Pipeline Activation (corrected status from Feb 2026 audit):**
+**Pipeline Activation — Now Live:**
 
-The training pipeline is **~95% built, never activated** — not "broken" as previously reported:
 - [x] `TelemetryEmitter` writes JSONL — telemetry files confirmed present in `~/.jarvis/telemetry/`
-- [x] `TelemetryIngestor` schemas **verified byte-identical** to emitter output (v1.0 canonical)
-- [x] `ReactorCoreBridge.upload_training_data()` **fully implemented** (992 LOC, v242.0) — ~~previously reported as "not implemented"~~
-- [x] `ExperienceEvent` is the **single canonical schema** with 5 legacy adapters — ~~previously reported as "three different schemas"~~
-- [x] `RequestDeduplicator` exists and is **wired into the request path** — ~~previously reported as "missing"~~
-- [ ] `initialize_reactor_core()` exists but **never called** from supervisor startup → v239.0 wires it
-- [ ] `start_reactor_core_watcher()` exists but **never called** from supervisor startup → v239.0 wires it
-- [ ] **Zero training jobs** have ever run (`jobs.json` is empty) → v239.0 triggers the first run
+- [x] `TelemetryIngestor` schemas verified byte-identical to emitter output (v1.0 canonical)
+- [x] `ReactorCoreBridge.upload_training_data()` fully implemented (992 LOC)
+- [x] `ExperienceEvent` is the single canonical schema with 5 legacy adapters
+- [x] `RequestDeduplicator` wired into the request path
+- [x] `initialize_reactor_core()` called from supervisor startup
+- [x] `start_reactor_core_watcher()` called from supervisor startup
+- [x] **DeploymentGate** validates GGUF integrity before deployment (rejects corrupt/degenerate models)
+- [x] **Model lineage** tracks full provenance (hash, parent, training method, eval scores, gate decision)
+- [x] **Post-deployment probation** (30 min, probe every 60s, commit/rollback on health_score)
+- [x] **Atomic experience snapshots** with `DataHash` for dataset versioning
+- [x] **Pipeline event logger** with correlation IDs for cross-repo observability
 
-**Pipeline when active:**
+**Pipeline (now active):**
 ```
 User talks to JARVIS
   → TelemetryEmitter captures interaction + model_id + task_type
     → JSONL to ~/.jarvis/telemetry/
       → Reactor Core TelemetryIngestor reads files
         → Experience accumulation → auto-trigger at threshold
-          → LoRA SFT fine-tuning (DPO in v242.0)
-            → GGUF export → Smoke test gate (subprocess)
-              → Deploy to J-Prime → Feedback file
-                → Models improve at being JARVIS, automatically
+          → Active learning selection (60% longest + 40% random)
+            → Gatekeeper evaluation (multi-criteria scoring)
+              → LoRA SFT fine-tuning (DPO in v242.0)
+                → GGUF export → DeploymentGate validation
+                  → Deploy → Lineage recorded
+                    → ProbationMonitor (30 min)
+                      → COMMITTED or ROLLED_BACK
+                        → Feedback to ~/.jarvis/cross_repo/
 ```
 
 #### v242.0 — DPO Training from Multi-Model Telemetry (Planned)
@@ -1707,15 +2116,16 @@ JARVIS becomes capable of reading, understanding, and improving its own codebase
 - [ ] **Two-model pipeline** — Architect → model swap → Implementer → model swap → Verifier (~2-3 min per cycle)
 - [ ] Safety guardrails: changes require human approval before commit, automated test suite must pass, rollback on failure
 
-#### v244.0 — LLaVA Vision Integration (Planned)
+#### v244.0 — LLaVA Vision Integration (PARTIALLY COMPLETED ✅)
 
-Activate the pre-staged LLaVA-v1.6-Mistral-7B for self-hosted vision:
+LLaVA-v1.6-Mistral-7B activated for self-hosted vision as of v236.0 (Prime) and v259.1 (Body):
 
-- [ ] Build CLIP vision encoder pipeline in J-Prime
-- [ ] Multimodal inference path (image + text → response)
-- [ ] Mark LLaVA as `routable: true` in manifest
-- [ ] Route vision commands to LLaVA instead of Claude Vision API
-- [ ] Eliminate last external API dependency for core JARVIS features
+- [x] Build CLIP vision encoder pipeline in J-Prime (v236.0 — `vision_server.py` on port 8001)
+- [x] Multimodal inference path (image + text → response) via OpenAI-compatible API
+- [x] Route vision commands to LLaVA by default (v259.1 — all AUTO mode vision goes to J-Prime)
+- [x] Claude Vision reserved as escalation fallback only (priority="high", J-Prime unavailable, quality gate)
+- [ ] Mark LLaVA as `routable: true` in GCP manifest (currently uses direct vision server)
+- [ ] Eliminate last external API dependency — Claude still used for high-priority escalation
 
 #### v246.0 — LangGraph Activation (Planned)
 
@@ -1829,7 +2239,7 @@ See [README_v2.md](./README_v2.md) for full configuration and troubleshooting.
 
 ## Documentation and Changelog
 
-The sections below contain the **documentation index**, **unified kernel details**, and **version-specific changelog** (v107.0 startup, v108.0 lifecycle, v116.0 Cloud SQL/ECAPA, v117.5 Trinity, v131/v132 supervisor/voice, v221.0 model loading handoff, etc.). For API references, deployment, and troubleshooting, use **[README_v2.md](./README_v2.md)**.
+The sections below contain the **documentation index**, **unified kernel details**, and **version-specific changelog** (v259.1 vision/Ghost Display, v258.x CPU pressure/cloud shift, v3.0–v3.2 parallel initializer/enterprise hardening, v245.0 Google Workspace, v241.1 multi-model, v238.0 voice conversation/degenerate fix, v237.0 TTS audio fix, plus cross-repo changelogs for JARVIS-Prime and Reactor-Core, and older versions: v107.0 startup, v108.0 lifecycle, v116.0 Cloud SQL/ECAPA, v117.5 Trinity, v131/v132 supervisor/voice, v221.0 model loading handoff, etc.). For API references, deployment, and troubleshooting, use **[README_v2.md](./README_v2.md)**.
 
 ---
 
@@ -1851,6 +2261,11 @@ The sections below contain the **documentation index**, **unified kernel details
 - **Troubleshooting issues?** → See [README_v2.md § Troubleshooting](./README_v2.md#troubleshooting)
 - **Understanding how repos work together?** → Continue reading below
 - **🆕 Startup architecture & v107.0 improvements?** → See [STARTUP_ARCHITECTURE_V2.md](./docs/STARTUP_ARCHITECTURE_V2.md)
+- **🆕 Vision never-skip, LLaVA default, Ghost Display?** → See [§ v259.0/v259.1](#v2590v2591--vision-never-skip-architecture--ghost-display-management-february-2026)
+- **🆕 CPU pressure cloud shift, cloud endpoint failover?** → See [§ v258.0–v258.4](#v2580v2584--cpu-pressure-cloud-shift--cloud-endpoint-resilience-february-2026)
+- **🆕 Parallel initializer, enterprise hardening, Cloud SQL reliability?** → See [§ v3.0/v3.1/v3.2](#v30v31v32--parallel-initializer--enterprise-hardening--cloud-sql-reliability-february-2026)
+- **🆕 JARVIS-Prime cross-repo changelog (LLaVA, Hollow Client, telemetry)?** → See [§ Cross-Repo: Prime](#cross-repo-jarvis-prime-mind--50-commits-february-2026)
+- **🆕 Reactor-Core cross-repo changelog (deployment gate, Tier-2/3, CMake)?** → See [§ Cross-Repo: Reactor](#cross-repo-reactor-core-nerves--50-commits-february-2026)
 - **🆕 GCP Golden Image, 3-tier inference, or APARS protocol?** → See [§ GCP Golden Image](#gcp-golden-image--cloud-inference-architecture-v2240) above
 - **🆕 One-command supervisor, Cloud SQL, asyncpg TLS, Trinity, OOM prevention, or Cloud ECAPA?** → See [§ v131.0 & v131.1](#v1310--v1311-one-command-supervisor-shutdown--start-january-2026), [§ v116.0 Cloud SQL](#v1160-cloud-sql-credential--retry-fixes-january-2026), [§ TLS-Safe Connections](#asyncpg-tls-invalidstateerror-fix-tls-safe-connection-factories-january-2026), [§ Cloud SQL Retry Storm](#cloud-sql-connection-retry-storm-fixes-january-2026), [§ GCP OOM Prevention](#gcp-oom-prevention-bridge-january-2026), [§ v117.5 Trinity](#v1175-trinity-startup-orchestration-persistent-state--distributed-lock-january-2026), [§ v132.0/v132.1](#v1320-parallel-trinity-initialization-january-2026), [§ v116.0 Cloud ECAPA](#v1160-cloud-ecapa-endpoint-priority-fix-january-2026) below
 - **🆕 Unified Supervisor Kernel (50k lines)?** → See [§ Unified Supervisor Kernel](#-unified-supervisor-kernel-50746-lines---monolithic-system-brain-january-2026) below
