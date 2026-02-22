@@ -333,6 +333,91 @@ class UnifiedCommandProcessor:
             logger.debug(f"[v242.2] Neural Mesh coordinator not available: {e}")
             return None
 
+    async def _gather_sensory_context(self, command_text: str) -> Dict[str, Any]:
+        """Gather context from sensory subsystems for J-Prime classification.
+
+        v243.0: Queries SAI (screen state) and ProactiveIntelligence (predicted
+        intent) in parallel with a strict timeout. Each source is independently
+        optional — failures are silently skipped.
+
+        Note: _query_sai and _query_proactive are read-only, cancellation-safe
+        coroutines. Bare cancel() without await is intentional.
+
+        Returns:
+            Dict of sensory context to merge into _jprime_ctx.
+        """
+        sensory: Dict[str, Any] = {}
+        _timeout = float(os.environ.get("JARVIS_SENSORY_TIMEOUT_MS", "100")) / 1000.0
+
+        async def _query_sai() -> Optional[Dict[str, Any]]:
+            """Get screen state from Situational Awareness Intelligence."""
+            try:
+                # IMPORTANT: Do NOT call get_sai_engine() — it's a factory that
+                # creates an engine if none exists. Read the module-level variable
+                # directly to check if SAI was already started by the supervisor.
+                import vision.situational_awareness.core_engine as _sai_mod
+                sai = getattr(_sai_mod, '_sai_engine', None)
+                if sai is None or not getattr(sai, 'is_monitoring', False):
+                    return None
+                ctx = await sai.get_current_context()
+                # Extract lightweight summary (not the full topology)
+                result = {}
+                if ctx.get("screen_state"):
+                    result["screen_state"] = {
+                        k: v for k, v in ctx["screen_state"].items()
+                        if k in ("focused_app", "focused_window", "display_count",
+                                 "active_space", "locked", "resolution")
+                    }
+                if ctx.get("environment_hash"):
+                    result["environment_hash"] = ctx["environment_hash"]
+                return result
+            except Exception:
+                return None
+
+        async def _query_proactive() -> Optional[Dict[str, Any]]:
+            """Get predicted intent from ProactiveIntelligence."""
+            try:
+                from intelligence.proactive_intelligence_engine import get_proactive_intelligence
+                pie = get_proactive_intelligence()
+                if pie is None:
+                    return None
+                ctx = getattr(pie, 'current_context', None)
+                if ctx is None:
+                    return None
+                result = {}
+                if hasattr(ctx, 'current_app') and ctx.current_app:
+                    result["proactive_app"] = ctx.current_app
+                if hasattr(ctx, 'current_space') and ctx.current_space:
+                    result["proactive_space"] = ctx.current_space
+                if hasattr(ctx, 'user_focus_level'):
+                    result["user_focus"] = ctx.user_focus_level.value if hasattr(ctx.user_focus_level, 'value') else str(ctx.user_focus_level)
+                return result
+            except Exception:
+                return None
+
+        # Run queries in parallel with timeout
+        tasks = [
+            asyncio.create_task(_query_sai(), name="sensory_sai"),
+            asyncio.create_task(_query_proactive(), name="sensory_pie"),
+        ]
+        done, pending = await asyncio.wait(tasks, timeout=_timeout)
+
+        # Cancel stragglers (read-only coroutines, safe to cancel without await)
+        for t in pending:
+            t.cancel()
+
+        # Collect results
+        for t in done:
+            if t.exception() is None:
+                _result = t.result()
+                if _result is not None:
+                    sensory.update(_result)
+
+        if sensory:
+            logger.debug(f"[v243] Sensory context gathered: {list(sensory.keys())}")
+
+        return sensory
+
     async def _initialize_resolvers(self):
         """
         Initialize resolver systems using robust parallel tiered initialization.
@@ -1403,6 +1488,13 @@ class UnifiedCommandProcessor:
                     {"role": h.get("role", "user"), "content": str(h.get("content", ""))[:200]}
                     for h in (history[-5:] if isinstance(history, list) else [])
                 ]
+        # v243.0: Gather sensory context from SAI + ProactiveIntelligence
+        try:
+            _sensory = await self._gather_sensory_context(command_text)
+            if _sensory:
+                _jprime_ctx.update(_sensory)
+        except Exception:
+            pass  # Sensory failure never blocks command processing
         response = await self._call_jprime(
             command_text, deadline=deadline, source_context=_jprime_ctx or None,
         )

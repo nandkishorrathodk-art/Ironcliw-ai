@@ -1345,6 +1345,10 @@ class JarvisPrimeClient:
                     _screen_parts.append(f"focused: {_screen['focused_app']}")
                 if _screen.get("focused_window"):
                     _screen_parts.append(f"window: {_screen['focused_window']}")
+                if _screen.get("active_space"):
+                    _screen_parts.append(f"space: {_screen['active_space']}")
+                if _screen.get("locked") is True:
+                    _screen_parts.append("locked")
                 if _screen_parts:
                     _ctx_parts.append(f"Screen: {', '.join(_screen_parts)}")
             if context_metadata.get("user_focus"):
