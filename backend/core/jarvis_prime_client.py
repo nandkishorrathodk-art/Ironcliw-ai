@@ -1337,6 +1337,20 @@ class JarvisPrimeClient:
                     for h in context_metadata["recent_history"][-3:]
                 )
                 _ctx_parts.append(f"Recent conversation: {_history_summary}")
+            # v243.0: Sensory context from SAI + ProactiveIntelligence
+            if context_metadata.get("screen_state"):
+                _screen = context_metadata["screen_state"]
+                _screen_parts = []
+                if _screen.get("focused_app"):
+                    _screen_parts.append(f"focused: {_screen['focused_app']}")
+                if _screen.get("focused_window"):
+                    _screen_parts.append(f"window: {_screen['focused_window']}")
+                if _screen_parts:
+                    _ctx_parts.append(f"Screen: {', '.join(_screen_parts)}")
+            if context_metadata.get("user_focus"):
+                _ctx_parts.append(f"User focus: {context_metadata['user_focus']}")
+            if context_metadata.get("proactive_space"):
+                _ctx_parts.append(f"Workspace: {context_metadata['proactive_space']}")
             if _ctx_parts:
                 _enriched_query = f"[Context: {', '.join(_ctx_parts)}]\n{query}"
 
