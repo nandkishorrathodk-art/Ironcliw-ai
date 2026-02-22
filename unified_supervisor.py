@@ -91,20 +91,34 @@ _is_cli_mode = any(flag in _early_sys.argv for flag in _cli_flags)
 
 if _is_cli_mode:
     # FIRST: Ignore ALL signals to protect this process
-    for _sig in (
+    # Platform-aware signal handling (Windows doesn't have all Unix signals)
+    import platform as _plat
+    _is_windows = _plat.system().lower() == 'windows'
+    
+    # Cross-platform signals (available on both Unix and Windows)
+    _signals_to_ignore = [
         _early_signal.SIGINT,   # 2 - Ctrl+C
         _early_signal.SIGTERM,  # 15 - Termination
-        _early_signal.SIGHUP,   # 1 - Hangup
-        _early_signal.SIGURG,   # 16 - Urgent data (exit 144!)
-        _early_signal.SIGPIPE,  # 13 - Broken pipe
-        _early_signal.SIGALRM,  # 14 - Alarm
-        _early_signal.SIGUSR1,  # 30 - User signal 1
-        _early_signal.SIGUSR2,  # 31 - User signal 2
-    ):
+    ]
+    
+    # Unix-only signals (not available on Windows)
+    if not _is_windows:
+        _signals_to_ignore.extend([
+            _early_signal.SIGHUP,   # 1 - Hangup
+            _early_signal.SIGURG,   # 16 - Urgent data (exit 144!)
+            _early_signal.SIGPIPE,  # 13 - Broken pipe
+            _early_signal.SIGALRM,  # 14 - Alarm
+            _early_signal.SIGUSR1,  # 30 - User signal 1
+            _early_signal.SIGUSR2,  # 31 - User signal 2
+        ])
+    
+    for _sig in _signals_to_ignore:
         try:
             _early_signal.signal(_sig, _early_signal.SIG_IGN)
-        except (OSError, ValueError):
-            pass  # Some signals can't be ignored
+        except (OSError, ValueError, AttributeError):
+            pass  # Some signals can't be ignored or don't exist
+    
+    del _plat, _is_windows, _signals_to_ignore
 
     # For --restart and --shutdown, launch detached child and EXIT IMMEDIATELY.
     # The detached child does the actual work in complete isolation.
@@ -220,13 +234,20 @@ def _ensure_venv_python() -> None:
         return
 
     script_dir = _Path(__file__).parent.resolve() # This is the script directory.
-
+    
+    # Detect platform for venv path
+    import platform as _plat
+    _is_windows = _plat.system().lower() == 'windows'
+    _venv_bin_dir = "Scripts" if _is_windows else "bin"  # Windows uses Scripts, Unix uses bin
+    _py_exe = "python.exe" if _is_windows else "python3"
+    _py_exe_alt = "python.exe" if _is_windows else "python"
+    
     # Find venv Python (try multiple locations)
     venv_candidates = [ # This is a list of potential venv Python executables.
-        script_dir / "venv" / "bin" / "python3", # This is the venv Python executable.
-        script_dir / "venv" / "bin" / "python", # This is the venv Python executable.
-        script_dir / ".venv" / "bin" / "python3", # This is the venv Python executable.
-        script_dir / ".venv" / "bin" / "python", # This is the venv Python executable.
+        script_dir / "venv" / _venv_bin_dir / _py_exe, # This is the venv Python executable.
+        script_dir / "venv" / _venv_bin_dir / _py_exe_alt, # This is the venv Python executable.
+        script_dir / ".venv" / _venv_bin_dir / _py_exe, # This is the venv Python executable.
+        script_dir / ".venv" / _venv_bin_dir / _py_exe_alt, # This is the venv Python executable.
     ]
 
     venv_python = None # This is the venv Python executable.
@@ -245,9 +266,10 @@ def _ensure_venv_python() -> None:
     if venv_in_path: # This is a check to see if the venv site-packages is in sys.path.
         return  # Already running with venv Python. This is a return statement to exit the function.
 
-    # Check if running from venv bin directory
+    # Check if running from venv bin/Scripts directory
     current_exe = _Path(_sys.executable) # This is the current executable.
-    if str(script_dir / "venv" / "bin") in str(current_exe): # This is a check to see if the current executable is in the venv bin directory.
+    if str(script_dir / "venv" / _venv_bin_dir) in str(current_exe): # This is a check to see if the current executable is in the venv bin directory.
+        del _plat, _is_windows, _venv_bin_dir, _py_exe, _py_exe_alt  # Clean up
         return  # This is a return statement to exit the function.
 
     # NOT running with venv - need to re-exec
@@ -622,6 +644,73 @@ from typing import (
 # Type variables
 T = TypeVar('T')
 ConfigT = TypeVar('ConfigT', bound='SystemKernelConfig')
+
+# =============================================================================
+# PLATFORM DETECTION AND ABSTRACTION
+# =============================================================================
+# Detect platform early so we can load platform-specific code
+# This must happen before any macOS/Windows-specific imports
+
+# Import platform detection system
+try:
+    from backend.platform import (
+        get_platform,
+        get_platform_info,
+        is_macos,
+        is_windows,
+        is_linux,
+        PlatformFactory,
+    )
+    PLATFORM_ABSTRACTION_AVAILABLE = True
+except ImportError:
+    # Fallback: Use basic platform detection
+    PLATFORM_ABSTRACTION_AVAILABLE = False
+    
+    def get_platform() -> str:
+        """Fallback platform detection"""
+        system = platform.system().lower()
+        if system == 'darwin':
+            return 'macos'
+        elif system == 'windows':
+            return 'windows'
+        elif system == 'linux':
+            return 'linux'
+        else:
+            raise RuntimeError(f"Unsupported platform: {system}")
+    
+    def is_macos() -> bool:
+        return get_platform() == 'macos'
+    
+    def is_windows() -> bool:
+        return get_platform() == 'windows'
+    
+    def is_linux() -> bool:
+        return get_platform() == 'linux'
+    
+    def get_platform_info():
+        return None
+    
+    PlatformFactory = None
+
+# Detect current platform
+JARVIS_PLATFORM = get_platform()  # 'macos', 'windows', or 'linux'
+JARVIS_IS_MACOS = is_macos()
+JARVIS_IS_WINDOWS = is_windows()
+JARVIS_IS_LINUX = is_linux()
+
+# Get comprehensive platform info (if available)
+if PLATFORM_ABSTRACTION_AVAILABLE:
+    JARVIS_PLATFORM_INFO = get_platform_info()
+else:
+    JARVIS_PLATFORM_INFO = None
+
+# Early logging of platform detection
+if os.environ.get('JARVIS_VERBOSE_PLATFORM', '').lower() in ('1', 'true', 'yes'):
+    print(f"[JARVIS Platform] Detected: {JARVIS_PLATFORM}")
+    if JARVIS_PLATFORM_INFO:
+        print(f"[JARVIS Platform] OS: {JARVIS_PLATFORM_INFO.os_release}")
+        print(f"[JARVIS Platform] Architecture: {JARVIS_PLATFORM_INFO.architecture}")
+        print(f"[JARVIS Platform] Hardware: GPU={JARVIS_PLATFORM_INFO.has_gpu}, NPU={JARVIS_PLATFORM_INFO.has_npu}")
 
 # =============================================================================
 # THIRD-PARTY IMPORTS (with graceful fallbacks)

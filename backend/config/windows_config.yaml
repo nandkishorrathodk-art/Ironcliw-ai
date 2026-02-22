@@ -1,0 +1,290 @@
+# JARVIS Windows Configuration
+# ═══════════════════════════════════════════════════════════════════════════════
+# Platform-specific configuration for Windows 10/11
+# 
+# This file is loaded when running on Windows and overrides default settings
+# See backend/config/supervisor_config.yaml for base configuration
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Platform identification
+platform:
+  os: windows
+  version: auto  # Auto-detect Windows version
+  architecture: auto  # Auto-detect (x86_64, ARM64)
+  
+# Authentication (MVP: Bypass mode)
+authentication:
+  mode: BYPASS  # Options: BYPASS, PASSWORD, WINDOWS_HELLO, HYBRID
+  require_auth_for_unlock: false  # Dev mode - no authentication required
+  windows_hello_enabled: false  # Windows Hello integration (Phase 3)
+  voice_biometric_enabled: false  # Voice unlock (Phase 3)
+  password_fallback: true  # Allow password as fallback
+  
+  # Password authentication (Phase 2)
+  credential_store: windows_credential_manager  # Store passwords in Windows Credential Manager
+  encryption: AES256  # Password encryption
+  
+  # Windows Hello (Phase 3)
+  hello:
+    biometric_type: any  # face, fingerprint, iris, any
+    require_presence: true  # Require user presence
+    timeout_seconds: 30
+
+# Audio configuration
+audio:
+  engine: wasapi  # Windows Audio Session API
+  input_device: default  # Auto-select default microphone
+  output_device: default  # Auto-select default speakers
+  sample_rate: 16000
+  channels: 1
+  buffer_size: 1024
+  
+  # Voice processing
+  voice:
+    wake_word: "hey jarvis"
+    confidence_threshold: 0.7
+    timeout_seconds: 10
+    vad_mode: 3  # Voice Activity Detection (0-3, 3 = most aggressive)
+  
+  # Audio backends fallback chain
+  backends:
+    - wasapi  # Primary: Windows Audio Session API
+    - directsound  # Fallback: DirectSound
+    - mme  # Last resort: Windows Multimedia Extensions
+
+# Vision/Screen Capture configuration  
+vision:
+  backend: windows_graphics_capture  # Windows.Graphics.Capture API
+  fps: 15  # Target frames per second
+  quality: high  # low, medium, high, ultra
+  format: png  # png, jpeg, raw
+  
+  # Multi-monitor support
+  multi_monitor:
+    enabled: true
+    capture_all: false  # false = primary only, true = all monitors
+    layout_detection: true
+  
+  # Screen capture permissions
+  permissions:
+    auto_request: true  # Auto-request screen recording permission
+    
+  # YOLO integration
+  yolo:
+    enabled: true
+    model_size: small  # nano, small, medium, large, xlarge
+    confidence_threshold: 0.5
+    device: cpu  # cpu, directml, cuda (if available)
+
+# System control
+system:
+  window_manager: dwm  # Desktop Window Manager
+  automation_framework: uiautomation  # Windows UI Automation
+  accessibility_enabled: true
+  
+  # Process management
+  process:
+    manager: task_scheduler  # Windows Task Scheduler
+    startup_enabled: false  # Auto-start JARVIS on boot (user choice)
+    run_as_service: false  # Run as Windows Service (requires admin)
+  
+  # File watching
+  file_watcher:
+    backend: readdirectorychangesw  # Win32 API
+    recursive: true
+    debounce_ms: 100  # Debounce rapid changes
+    
+  # Notifications
+  notifications:
+    backend: windows_toast  # Windows Toast Notifications
+    app_id: "JARVIS.AI.Assistant"  # App ID for notification center
+    sound_enabled: true
+    show_in_action_center: true
+
+# ML/AI Configuration
+ml:
+  # Inference backend priority
+  inference_backends:
+    - directml  # Primary: DirectML (NPU/GPU)
+    - onnx_cpu  # Fallback: ONNX Runtime (CPU)
+    - cloud  # Last resort: Cloud inference (GCP/Claude)
+  
+  # Hardware acceleration
+  acceleration:
+    directml_enabled: true  # Use DirectML for GPU/NPU
+    npu_enabled: true  # Use NPU if available (Intel Core Ultra, AMD Ryzen AI)
+    cuda_enabled: false  # NVIDIA CUDA (if available)
+  
+  # Model paths
+  models:
+    directory: "%LOCALAPPDATA%\\JARVIS\\models"  # Windows path
+    cache_directory: "%TEMP%\\JARVIS\\model_cache"
+    
+  # ONNX Runtime settings
+  onnx:
+    providers:
+      - DmlExecutionProvider  # DirectML (GPU/NPU)
+      - CPUExecutionProvider  # CPU fallback
+    inter_op_threads: 4
+    intra_op_threads: 4
+
+# GCP Cloud Integration (same as macOS)
+gcp:
+  enabled: true  # Use GCP for heavy inference
+  golden_image_enabled: true
+  fallback_to_local: false  # Don't load models locally on 16GB RAM
+  
+  # Memory thresholds for cloud offload
+  memory:
+    offload_threshold_gb: 12  # Offload to cloud if RAM > 12GB used
+    warning_threshold_gb: 14  # Warn if RAM > 14GB used
+
+# Paths (Windows-specific)
+paths:
+  home: "%USERPROFILE%"
+  config: "%APPDATA%\\JARVIS"
+  data: "%LOCALAPPDATA%\\JARVIS"
+  cache: "%TEMP%\\JARVIS"
+  logs: "%LOCALAPPDATA%\\JARVIS\\logs"
+  models: "%LOCALAPPDATA%\\JARVIS\\models"
+  
+  # State directories
+  state:
+    trinity: "%LOCALAPPDATA%\\JARVIS\\state\\trinity"
+    cross_repo: "%LOCALAPPDATA%\\JARVIS\\state\\cross_repo"
+    signals: "%LOCALAPPDATA%\\JARVIS\\state\\signals"
+
+# Permissions
+permissions:
+  required:
+    - microphone
+    - screen_recording  # Windows doesn't have this, but we track it
+    - automation  # UI Automation
+  
+  auto_request: true  # Auto-request missing permissions
+  
+  # UAC (User Account Control)
+  uac:
+    elevation_required: false  # Don't require admin by default
+    auto_elevate: false  # Don't auto-request elevation
+
+# Development
+dev_mode:
+  enabled: true  # Enable dev mode features
+  hot_reload: true  # Enable hot reload
+  verbose_logging: true
+  skip_auth: true  # Skip authentication in dev mode
+  
+# Performance
+performance:
+  # Memory management
+  memory:
+    max_usage_gb: 14  # Max RAM usage before cloud offload
+    gc_threshold_gb: 12  # Run garbage collection above this
+  
+  # CPU management  
+  cpu:
+    max_usage_percent: 80  # Max CPU usage
+    affinity_mask: auto  # CPU affinity (auto-detect)
+  
+  # Startup optimization
+  startup:
+    parallel_initialization: true
+    lazy_loading: true  # Lazy-load heavy components
+    skip_optional_components: false
+
+# Networking
+network:
+  ports:
+    backend: 8010
+    prime: 8000
+    prime_ws: 8002
+    reactor: 8090
+    frontend: 3000
+    loading_server: 8001
+  
+  # WebSocket
+  websocket:
+    enabled: true
+    ping_interval: 30
+    ping_timeout: 10
+  
+  # CORS
+  cors:
+    enabled: true
+    origins:
+      - "http://localhost:3000"
+      - "http://127.0.0.1:3000"
+
+# Logging
+logging:
+  level: INFO  # DEBUG, INFO, WARNING, ERROR
+  file_enabled: true
+  console_enabled: true
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  
+  # Log rotation
+  rotation:
+    enabled: true
+    max_size_mb: 100
+    backup_count: 5
+
+# Security
+security:
+  # Firewall
+  firewall:
+    enabled: false  # Don't auto-configure Windows Firewall
+    allow_ports: [8010, 8000, 8002, 8090, 3000]
+  
+  # Encryption
+  encryption:
+    at_rest: true  # Encrypt sensitive data at rest
+    in_transit: true  # Use TLS for network communication
+  
+  # Secrets management
+  secrets:
+    backend: windows_credential_manager
+    encryption: DPAPI  # Windows Data Protection API
+
+# Windows-specific features
+windows:
+  # PowerShell integration
+  powershell:
+    enabled: true
+    execution_policy: RemoteSigned  # Required for scripts
+  
+  # Registry integration
+  registry:
+    enabled: false  # Don't modify registry by default
+  
+  # Windows features
+  features:
+    windows_hello: auto  # Auto-detect Windows Hello
+    cortana_integration: false  # Don't integrate with Cortana
+    windows_search: false  # Don't integrate with Windows Search
+    
+  # C# Native layer
+  native:
+    enabled: true
+    dll_path: "backend\\windows_native\\bin\\Release"
+    assemblies:
+      - JarvisWindowsNative.dll
+      - SystemControl.dll
+      - ScreenCapture.dll
+      - AudioEngine.dll
+
+# Feature flags
+features:
+  voice_unlock: false  # Disabled for MVP
+  vision_enabled: true
+  ghost_hands: true  # Window automation
+  neural_mesh: true  # Multi-agent system
+  agi_os: true  # AGI orchestration
+  zero_touch: true  # Auto-updates
+  hot_reload: true  # Dev mode hot reload
+
+# Experimental
+experimental:
+  wsl_integration: false  # Windows Subsystem for Linux integration
+  windows_terminal_integration: false  # Windows Terminal integration
+  edge_tts: false  # Edge TTS for voice synthesis
