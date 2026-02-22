@@ -77,6 +77,16 @@ import sys as _early_sys
 import signal as _early_signal
 import os as _early_os
 
+# v5.1: Windows UTF-8 console fix (MUST be before ANY other imports that log emojis)
+# This prevents UnicodeEncodeError when backend modules log emoji characters during import
+if _early_os.name == 'nt':  # Windows
+    try:
+        import codecs
+        _early_sys.stdout = codecs.getwriter('utf-8')(_early_sys.stdout.buffer, 'backslashreplace')
+        _early_sys.stderr = codecs.getwriter('utf-8')(_early_sys.stderr.buffer, 'backslashreplace')
+    except Exception:
+        pass
+
 # Suppress multiprocessing resource_tracker semaphore warnings
 # This MUST be set BEFORE any multiprocessing imports to affect child processes
 _existing_warnings = _early_os.environ.get('PYTHONWARNINGS', '')
@@ -129,28 +139,47 @@ if _is_cli_mode:
     if _needs_detached:
         import subprocess as _sp
         import tempfile as _tmp
+        import platform as _plat2
 
         _is_shutdown = '--shutdown' in _early_sys.argv
         _cmd_name = 'shutdown' if _is_shutdown else 'restart'
         _reexec_marker = '_JARVIS_SHUTDOWN_REEXEC' if _is_shutdown else '_JARVIS_RESTART_REEXEC'
-        _result_path = f"/tmp/jarvis_{_cmd_name}_{_early_os.getpid()}.result"
+        
+        # Cross-platform temp directory
+        _temp_dir = _early_os.getenv('TEMP') if _plat2.system().lower() == 'windows' else '/tmp'
+        _result_path = _early_os.path.join(_temp_dir, f"jarvis_{_cmd_name}_{_early_os.getpid()}.result")
 
-        # Write standalone command script with full signal immunity
-        _script_content = f'''#!/usr/bin/env python3
-import os, sys, signal, subprocess, time
-
-# Full signal immunity
-for s in range(1, 32):
+        # Write standalone command script with full signal immunity (cross-platform)
+        _is_windows_detached = _plat2.system().lower() == 'windows'
+        _signal_immunity_code = '''
+# Full signal immunity (cross-platform)
+import platform as _p
+if _p.system().lower() != 'windows':
+    # Unix: Ignore all signals except SIGKILL
+    for s in range(1, 32):
+        try:
+            if s not in (9, 17):
+                signal.signal(s, signal.SIG_IGN)
+        except Exception:
+            pass
+else:
+    # Windows: Ignore SIGINT and SIGTERM
     try:
-        if s not in (9, 17):
-            signal.signal(s, signal.SIG_IGN)
+        signal.signal(signal.SIGINT, signal.SIG_IGN)
+        signal.signal(signal.SIGTERM, signal.SIG_IGN)
     except Exception:
         pass
 
-# New session
-try: os.setsid()
-except Exception:
-    pass
+# New session (Unix only)
+if _p.system().lower() != 'windows':
+    try: os.setsid()
+    except Exception:
+        pass
+'''
+        
+        _script_content = f'''#!/usr/bin/env python3
+import os, sys, signal, subprocess, time
+{_signal_immunity_code}
 
 # Run the actual command
 env = dict(os.environ)
@@ -171,7 +200,10 @@ with open({_result_path!r}, "w") as f:
         _fd, _script_path = _tmp.mkstemp(suffix='.py', prefix=f'jarvis_{_cmd_name}_')
         _early_os.write(_fd, _script_content.encode())
         _early_os.close(_fd)
-        _early_os.chmod(_script_path, 0o700)
+        
+        # Set permissions (Unix only - Windows permissions handled by temp file)
+        if not _is_windows_detached:
+            _early_os.chmod(_script_path, 0o700)
 
         # Launch completely detached (double-fork daemon pattern)
         _proc = _sp.Popen(
@@ -193,11 +225,13 @@ with open({_result_path!r}, "w") as f:
         _early_sys.stdout.flush()
         _early_os._exit(0)
 
-    # Try to create own process group for additional isolation
-    try:
-        _early_os.setpgrp()
-    except (OSError, PermissionError):
-        pass
+    # Try to create own process group for additional isolation (Unix only)
+    # Windows: Popen with start_new_session=True already creates new console session
+    if _plat.system().lower() != 'windows':
+        try:
+            _early_os.setpgrp()
+        except (OSError, PermissionError):
+            pass
 
     _early_os.environ['_JARVIS_CLI_PROTECTED'] = '1'
 
@@ -83941,7 +83975,7 @@ async def async_main(args: argparse.Namespace) -> int:
 
 
 def _generate_launchd_plist() -> str:
-    """v239.0: Generate launchd plist with dynamically resolved paths."""
+    """v239.0: Generate launchd plist with dynamically resolved paths (macOS only)."""
     project_root = Path(__file__).parent.resolve()
     python_path = sys.executable
     log_dir = Path.home() / ".jarvis" / "logs"
@@ -83981,6 +84015,74 @@ def _generate_launchd_plist() -> str:
 </plist>"""
 
 
+def _generate_windows_task_xml() -> str:
+    """v5.1 (Windows Port): Generate Windows Task Scheduler XML."""
+    project_root = Path(__file__).parent.resolve()
+    python_path = sys.executable
+    log_dir = Path.home() / ".jarvis" / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Get current username for task principal
+    import getpass
+    username = getpass.getuser()
+
+    return f"""<?xml version="1.0" encoding="UTF-16"?>
+<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <RegistrationInfo>
+    <Description>JARVIS Supervisor Auto-Restart Watchdog</Description>
+    <Author>{username}</Author>
+  </RegistrationInfo>
+  <Triggers>
+    <BootTrigger>
+      <Enabled>true</Enabled>
+      <Delay>PT30S</Delay>
+    </BootTrigger>
+    <EventTrigger>
+      <Enabled>true</Enabled>
+      <Subscription>&lt;QueryList&gt;&lt;Query Id="0" Path="Application"&gt;&lt;Select Path="Application"&gt;*[System[Provider[@Name='JARVIS'] and EventID=100]]&lt;/Select&gt;&lt;/Query&gt;&lt;/QueryList&gt;</Subscription>
+      <Delay>PT30S</Delay>
+    </EventTrigger>
+  </Triggers>
+  <Principals>
+    <Principal id="Author">
+      <UserId>{username}</UserId>
+      <LogonType>InteractiveToken</LogonType>
+      <RunLevel>LeastPrivilege</RunLevel>
+    </Principal>
+  </Principals>
+  <Settings>
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+    <AllowHardTerminate>true</AllowHardTerminate>
+    <StartWhenAvailable>true</StartWhenAvailable>
+    <RunOnlyIfNetworkAvailable>false</RunOnlyIfNetworkAvailable>
+    <IdleSettings>
+      <StopOnIdleEnd>false</StopOnIdleEnd>
+      <RestartOnIdle>false</RestartOnIdle>
+    </IdleSettings>
+    <AllowStartOnDemand>true</AllowStartOnDemand>
+    <Enabled>true</Enabled>
+    <Hidden>false</Hidden>
+    <RunOnlyIfIdle>false</RunOnlyIfIdle>
+    <WakeToRun>false</WakeToRun>
+    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
+    <Priority>7</Priority>
+    <RestartOnFailure>
+      <Interval>PT1M</Interval>
+      <Count>3</Count>
+    </RestartOnFailure>
+  </Settings>
+  <Actions Context="Author">
+    <Exec>
+      <Command>{python_path}</Command>
+      <Arguments>"{project_root / 'unified_supervisor.py'}"</Arguments>
+      <WorkingDirectory>{project_root}</WorkingDirectory>
+    </Exec>
+  </Actions>
+</Task>"""
+
+
 def main() -> int:
     """
     Main entry point for JARVIS Unified System Kernel.
@@ -83989,29 +84091,89 @@ def main() -> int:
 
     v119.0: Enterprise-grade exit handling with guaranteed process termination.
     """
-    # v239.0: Watchdog install/uninstall (runs before full init)
+    # v239.0/v5.1: Cross-platform watchdog install/uninstall (runs before full init)
     if "--install-watchdog" in sys.argv:
         import subprocess as _sp
-        plist_content = _generate_launchd_plist()
-        plist_path = Path.home() / "Library" / "LaunchAgents" / "com.jarvis.supervisor.plist"
-        plist_path.parent.mkdir(parents=True, exist_ok=True)
-        plist_path.write_text(plist_content)
-        result = _sp.run(["launchctl", "load", str(plist_path)], capture_output=True, text=True)
-        if result.returncode != 0:
-            print(f"Warning: launchctl load failed: {result.stderr.strip()}")
+        import platform as _plat3
+        
+        current_platform = _plat3.system().lower()
+        
+        if current_platform == 'darwin':  # macOS
+            plist_content = _generate_launchd_plist()
+            plist_path = Path.home() / "Library" / "LaunchAgents" / "com.jarvis.supervisor.plist"
+            plist_path.parent.mkdir(parents=True, exist_ok=True)
+            plist_path.write_text(plist_content)
+            result = _sp.run(["launchctl", "load", str(plist_path)], capture_output=True, text=True)
+            if result.returncode != 0:
+                print(f"Warning: launchctl load failed: {result.stderr.strip()}")
+            else:
+                print(f"Watchdog installed: {plist_path}")
+        
+        elif current_platform == 'windows':  # Windows
+            task_xml = _generate_windows_task_xml()
+            task_xml_path = Path.home() / ".jarvis" / "jarvis_supervisor_task.xml"
+            task_xml_path.parent.mkdir(parents=True, exist_ok=True)
+            task_xml_path.write_text(task_xml, encoding='utf-16')
+            
+            # Register task with Task Scheduler
+            result = _sp.run(
+                ["schtasks", "/Create", "/TN", "JARVIS\\Supervisor", "/XML", str(task_xml_path), "/F"],
+                capture_output=True,
+                text=True
+            )
+            if result.returncode != 0:
+                print(f"Warning: Task Scheduler registration failed: {result.stderr.strip()}")
+            else:
+                print(f"Watchdog installed: JARVIS\\Supervisor task in Task Scheduler")
+                print("Note: Task will start on system boot or manually via Task Scheduler")
+        
+        elif current_platform == 'linux':  # Linux - use systemd
+            print("Linux watchdog installation not yet implemented (requires systemd service)")
+            print("For now, use crontab: @reboot cd /path/to/JARVIS && python3 unified_supervisor.py")
+        
         else:
-            print(f"Watchdog installed: {plist_path}")
+            print(f"Unsupported platform: {current_platform}")
+        
         sys.exit(0)
 
     if "--uninstall-watchdog" in sys.argv:
         import subprocess as _sp
-        plist_path = Path.home() / "Library" / "LaunchAgents" / "com.jarvis.supervisor.plist"
-        if plist_path.exists():
-            _sp.run(["launchctl", "unload", str(plist_path)], capture_output=True, text=True)
-            plist_path.unlink()
-            print("Watchdog uninstalled")
+        import platform as _plat3
+        
+        current_platform = _plat3.system().lower()
+        
+        if current_platform == 'darwin':  # macOS
+            plist_path = Path.home() / "Library" / "LaunchAgents" / "com.jarvis.supervisor.plist"
+            if plist_path.exists():
+                _sp.run(["launchctl", "unload", str(plist_path)], capture_output=True, text=True)
+                plist_path.unlink()
+                print("Watchdog uninstalled")
+            else:
+                print("No watchdog installed")
+        
+        elif current_platform == 'windows':  # Windows
+            result = _sp.run(
+                ["schtasks", "/Delete", "/TN", "JARVIS\\Supervisor", "/F"],
+                capture_output=True,
+                text=True
+            )
+            if result.returncode != 0 and "cannot find" not in result.stderr.lower():
+                print(f"Warning: Task deletion failed: {result.stderr.strip()}")
+            else:
+                print("Watchdog uninstalled (Task Scheduler task removed)")
+            
+            # Clean up XML file if it exists
+            task_xml_path = Path.home() / ".jarvis" / "jarvis_supervisor_task.xml"
+            if task_xml_path.exists():
+                task_xml_path.unlink()
+        
+        elif current_platform == 'linux':  # Linux
+            print("Linux watchdog uninstallation not yet implemented")
+            print("Remove manually from crontab if you added it")
+        
         else:
-            print("No watchdog installed")
+            print(f"Unsupported platform: {current_platform}")
+        
         sys.exit(0)
 
     # v253.8: Enable faulthandler for deadlock diagnosis.

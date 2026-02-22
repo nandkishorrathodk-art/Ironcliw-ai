@@ -19,7 +19,7 @@ half = "2.3"
 ndarray = "0.15"
 numpy = "0.20"
 rayon = "1.8"
-mimalloc = { version = "0.1", default-features = false }
+mimalloc = { version = "0.1", default-features = false, optional = true }
 
 # Platform-specific dependencies
 [target.'cfg(unix)'.dependencies]
