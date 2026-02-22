@@ -1211,19 +1211,29 @@ class HybridDatabaseSync:
           Phase B (background, optional): CloudSQL, Prometheus, Redis, FAISS, background
                   services — all fire-and-forget. Failures are non-fatal.
 
-        Root cause fix: Previously ALL steps ran sequentially in the caller's await,
-        blocking for up to 30s (SQLite 10s + CloudSQL 10s + Redis 5s + FAISS 5s).
-        When this ran in parallel with ChromaDB via asyncio.gather, I/O contention
-        caused SQLite init to exceed its 10s timeout. The fix: SQLite init is the
-        ONLY blocking operation. Everything else runs in the background.
+        v265.3: Phase A no longer raises RuntimeError on timeout. Under heavy
+        event loop contention (parallel Phase 4/6 imports), SQLite init — which
+        IS fast — can miss the 10s window. Instead of cascading a fatal error
+        into learning_database → circuit breaker → cross-repo hang → 57% stall,
+        we schedule a background retry. Phase B defers until SQLite is ready.
         """
         # Phase A: SQLite init — critical, fast, local-only
         sqlite_timeout = float(os.getenv("HYBRID_SQLITE_TIMEOUT", "10.0"))
         try:
             await asyncio.wait_for(self._init_sqlite(), timeout=sqlite_timeout)
         except asyncio.TimeoutError:
-            logger.error(f"SQLite init timed out after {sqlite_timeout}s - this should not happen")
-            raise RuntimeError("SQLite initialization timeout - critical failure")
+            logger.warning(
+                f"SQLite init did not complete within {sqlite_timeout}s "
+                "(event loop contention). Retrying in background — "
+                "callers proceed in degraded mode until ready."
+            )
+            # Schedule background retry instead of raising fatal RuntimeError.
+            # Phase B deferred — _retry_sqlite_init will start it when ready.
+            self._sqlite_retry_task = asyncio.create_task(
+                self._retry_sqlite_init(),
+                name="hybrid-sync-sqlite-retry",
+            )
+            return
 
         # Phase B: Cloud services init — background, non-blocking
         # CloudSQL, Prometheus, Redis, FAISS are all optional. Launch them
@@ -1237,6 +1247,41 @@ class HybridDatabaseSync:
 
         logger.info("SQLite ready — cloud services initializing in background")
 
+    async def _retry_sqlite_init(self) -> None:
+        """Retry SQLite init with exponential backoff after initial timeout.
+
+        SQLite init IS fast (<200ms normally). The timeout only fires when the
+        event loop is saturated by concurrent heavyweight imports (ChromaDB,
+        InfraOrch, etc.). By the time we retry, contention has subsided.
+        """
+        backoff = 2.0
+        max_retries = 5
+        for attempt in range(1, max_retries + 1):
+            await asyncio.sleep(backoff)
+            try:
+                # Generous timeout — event loop should be calmer now
+                await asyncio.wait_for(self._init_sqlite(), timeout=30.0)
+                logger.info(f"✅ SQLite initialized on background retry {attempt}")
+                # Now start Phase B cloud services
+                self._cloud_services_task = asyncio.create_task(
+                    self._init_cloud_services_bg(),
+                    name="hybrid-sync-cloud-services",
+                )
+                return
+            except asyncio.TimeoutError:
+                logger.warning(f"SQLite retry {attempt}/{max_retries} timed out")
+                backoff = min(backoff * 2, 30.0)
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                logger.error(f"SQLite retry {attempt}/{max_retries} failed: {e}")
+                backoff = min(backoff * 2, 30.0)
+
+        logger.error(
+            "SQLite init failed after all retries — operating without hybrid sync. "
+            "Voice biometric cache unavailable."
+        )
+
     async def _init_cloud_services_bg(self) -> None:
         """
         v241.1: Background initialization of optional cloud services.
@@ -1245,6 +1290,11 @@ class HybridDatabaseSync:
         graceful fallback. Failures here are non-fatal — SQLite-only
         mode is always available.
         """
+        # Guard: Phase B requires SQLite (e.g., FAISS bootstrap reads speaker_profiles)
+        if self.sqlite_conn is None:
+            logger.warning("Cloud services init skipped — SQLite not ready")
+            return
+
         cloudsql_timeout = float(os.getenv("HYBRID_CLOUDSQL_TIMEOUT", "10.0"))
         redis_timeout = float(os.getenv("HYBRID_REDIS_TIMEOUT", "5.0"))
         faiss_timeout = float(os.getenv("HYBRID_FAISS_TIMEOUT", "5.0"))

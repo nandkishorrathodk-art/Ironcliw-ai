@@ -3628,7 +3628,13 @@ class JARVISLearningDatabase:
                     self.hybrid_sync.initialize(),
                     timeout=init_timeout
                 )
-                logger.info("Hybrid sync V2.0 enabled — SQLite ready, cloud services initializing")
+                if self.hybrid_sync.sqlite_conn is not None:
+                    logger.info("Hybrid sync V2.0 enabled — SQLite ready, cloud services initializing")
+                else:
+                    logger.info(
+                        "Hybrid sync V2.0 enabled — SQLite initializing in background, "
+                        "cloud services deferred"
+                    )
             except asyncio.TimeoutError:
                 logger.warning(f"Hybrid sync init timed out after {init_timeout}s")
                 logger.info("   SQLite operational - Cloud SQL/Redis will retry in background")
