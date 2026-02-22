@@ -1754,10 +1754,21 @@ class UnifiedCommandProcessor:
                     **result,
                 }
 
-            # Fallback: use _execute_command_internal via _execute_command
-            return await self._execute_command(
-                CommandType.VISION, command_text, websocket,
-            )
+            # Fallback: vision router unavailable, ask J-Prime for a text answer
+            logger.warning("[v242] Vision router unavailable, falling back to text response")
+            sub_response = await self._call_jprime(command_text)
+            if sub_response:
+                return {
+                    "success": True,
+                    "response": sub_response.content or "I need vision capabilities to answer that, but they're currently unavailable.",
+                    "command_type": "VISION",
+                    "source": sub_response.source,
+                }
+            return {
+                "success": False,
+                "response": "Vision capabilities are currently unavailable.",
+                "command_type": "VISION",
+            }
         except Exception as e:
             logger.error(f"[v242] Vision action failed: {e}", exc_info=True)
             return {
@@ -4180,12 +4191,12 @@ class UnifiedCommandProcessor:
                 if not part:
                     continue
 
-                # Process each part as an independent command
+                # Process each part as an independent command via J-Prime
                 async def process_part(p):
-                    command_type, _ = await self._classify_command(p)
-                    if command_type == CommandType.COMPOUND:
-                        command_type = CommandType.SYSTEM
-                    return await self._execute_command(command_type, p)
+                    sub_response = await self._call_jprime(p)
+                    if sub_response:
+                        return await self._execute_action(sub_response, p)
+                    return {"success": False, "response": f"Failed to process: {p}"}
 
                 tasks.append(process_part(part))
 
@@ -4216,13 +4227,12 @@ class UnifiedCommandProcessor:
                     f"[COMPOUND] Enhanced command: '{part}' -> '{enhanced_command}' (active_app: {active_app})"
                 )
 
-                # Process individual part (not as compound to avoid recursion)
-                command_type, _ = await self._classify_command(enhanced_command)
-                # Force non-compound to avoid recursion
-                if command_type == CommandType.COMPOUND:
-                    command_type = CommandType.SYSTEM
-
-                result = await self._execute_command(command_type, enhanced_command)
+                # Process individual part via J-Prime (v242: no local classification)
+                sub_response = await self._call_jprime(enhanced_command)
+                if sub_response:
+                    result = await self._execute_action(sub_response, enhanced_command)
+                else:
+                    result = {"success": False, "response": f"Failed to process: {enhanced_command}"}
                 results.append(result)
 
                 # Update context for next command
