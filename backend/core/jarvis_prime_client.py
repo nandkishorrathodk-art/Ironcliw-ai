@@ -4,7 +4,7 @@ JARVIS-Prime Intelligent Client - Memory-Aware Hybrid Routing
 
 A sophisticated client for JARVIS-Prime (Tier-0 Brain) with:
 - Memory-aware routing (local vs Cloud Run)
-- Multi-tier fallback chain (Local → Cloud Run → Gemini API)
+- Multi-tier fallback chain (Local → Cloud Run → Claude API → Gemini API)
 - Circuit breaker pattern for resilience
 - Connection pooling and async operations
 - Dynamic threshold adjustment based on system state
@@ -18,10 +18,10 @@ Architecture:
     │  │  RAM > 8GB → LOCAL    RAM < 8GB → CLOUD    < 4GB → API │  │
     │  └─────────────────────────┬──────────────────────────────┘  │
     │                            │                                  │
-    │  ┌─────────────┐   ┌──────┴─────┐   ┌──────────────────┐    │
-    │  │   Local     │   │  Cloud Run │   │   Gemini API     │    │
-    │  │ (Port 8000) │→→→│  (GCR URL) │→→→│  (Fallback)      │    │
-    │  └─────────────┘   └────────────┘   └──────────────────┘    │
+    │  ┌─────────────┐  ┌────────────┐  ┌────────────┐  ┌─────────┐│
+    │  │   Local     │  │ Cloud Run  │  │ Claude API │  │ Gemini  ││
+    │  │ (Port 8000) │→→│  (GCR URL) │→→│ (Fallback) │→→│ (Last)  ││
+    │  └─────────────┘  └────────────┘  └────────────┘  └─────────┘│
     │         ↓                ↓                   ↓               │
     │  ┌──────────────────────────────────────────────────────────┐│
     │  │              CircuitBreaker + Retry Logic                ││
@@ -454,6 +454,20 @@ class JarvisPrimeConfig:
         default_factory=lambda: os.getenv("JARVIS_PRIME_GEMINI_FALLBACK", "true").lower() == "true"
     )
 
+    # Claude API fallback (preferred over Gemini)
+    claude_api_key: str = field(
+        default_factory=lambda: os.getenv("ANTHROPIC_API_KEY", "")
+    )
+    claude_model: str = field(
+        default_factory=lambda: os.getenv("CLAUDE_MODEL", "claude-sonnet-4-20250514")
+    )
+    use_claude_fallback: bool = field(
+        default_factory=lambda: os.getenv("JARVIS_PRIME_CLAUDE_FALLBACK", "true").lower() == "true"
+    )
+    claude_timeout_ms: float = field(
+        default_factory=lambda: float(os.getenv("JARVIS_PRIME_CLAUDE_TIMEOUT_MS", "30000"))
+    )
+
     # Timeouts
     local_timeout_ms: float = field(
         default_factory=lambda: float(os.getenv("JARVIS_PRIME_LOCAL_TIMEOUT_MS", "5000"))
@@ -506,6 +520,7 @@ class RoutingMode(str, Enum):
     LOCAL = "local"           # Local subprocess (free, fast)
     CLOUD_RUN = "cloud_run"   # Cloud Run (pay-per-use)
     GEMINI_API = "gemini_api" # Gemini API fallback (cheapest)
+    CLAUDE_API = "claude_api" # Claude API fallback + escalation (preferred over Gemini)
     DISABLED = "disabled"     # All backends unavailable
 
 
@@ -779,6 +794,11 @@ class JarvisPrimeClient:
                 failure_threshold=self.config.circuit_breaker_threshold,
                 timeout_seconds=self.config.circuit_breaker_timeout_s * 2,  # Longer for API
             ),
+            RoutingMode.CLAUDE_API: CircuitBreaker(
+                "claude_api",
+                failure_threshold=self.config.circuit_breaker_threshold,
+                timeout_seconds=self.config.circuit_breaker_timeout_s * 2,
+            ),
         }
 
         # Health status cache
@@ -787,6 +807,9 @@ class JarvisPrimeClient:
 
         # HTTP client (lazy loaded)
         self._http_client = None
+
+        # Claude API client (lazy loaded)
+        self._claude_client = None
 
         # Stats
         self._request_count = 0
@@ -1230,23 +1253,36 @@ class JarvisPrimeClient:
         )
 
     def _get_fallback_order(self, initial_mode: RoutingMode) -> List[RoutingMode]:
-        """Get fallback order based on initial mode."""
+        """Get fallback order based on initial mode.
+
+        v242.2: Claude API inserted before Gemini in all fallback chains.
+        Three-tier chain: J-Prime -> Claude API -> Gemini (last resort).
+        """
         order = []
 
         if initial_mode == RoutingMode.LOCAL:
             order = [RoutingMode.LOCAL]
             if self.config.use_cloud_run:
                 order.append(RoutingMode.CLOUD_RUN)
+            if self.config.use_claude_fallback:
+                order.append(RoutingMode.CLAUDE_API)
             if self.config.use_gemini_fallback:
                 order.append(RoutingMode.GEMINI_API)
 
         elif initial_mode == RoutingMode.CLOUD_RUN:
             order = [RoutingMode.CLOUD_RUN]
+            if self.config.use_claude_fallback:
+                order.append(RoutingMode.CLAUDE_API)
             if self.config.use_gemini_fallback:
                 order.append(RoutingMode.GEMINI_API)
 
         elif initial_mode == RoutingMode.GEMINI_API:
             order = [RoutingMode.GEMINI_API]
+
+        elif initial_mode == RoutingMode.CLAUDE_API:
+            order = [RoutingMode.CLAUDE_API]
+            if self.config.use_gemini_fallback:
+                order.append(RoutingMode.GEMINI_API)
 
         return order
 
@@ -1405,12 +1441,22 @@ class JarvisPrimeClient:
                 messages.append(ChatMessage(role="system", content=system_prompt))
             messages.append(ChatMessage(role="user", content=query))
 
+            # v242.2: Try Claude API first (preferred escalation backend)
             response = await self._execute_completion(
-                mode=RoutingMode.GEMINI_API,
+                mode=RoutingMode.CLAUDE_API,
                 messages=messages,
                 max_tokens=max_tokens,
                 temperature=0.7,
             )
+            if not response.success:
+                # Claude failed -- fall back to Gemini as last resort
+                logger.warning(f"[v242.2] Claude escalation failed ({response.error}), trying Gemini")
+                response = await self._execute_completion(
+                    mode=RoutingMode.GEMINI_API,
+                    messages=messages,
+                    max_tokens=max_tokens,
+                    temperature=0.7,
+                )
 
             if response.success:
                 return StructuredResponse(
@@ -1466,12 +1512,22 @@ class JarvisPrimeClient:
             messages.append(ChatMessage(role="system", content=effective_system))
             messages.append(ChatMessage(role="user", content=query))
 
+            # v242.2: Try Claude API first (preferred fallback)
             response = await self._execute_completion(
-                mode=RoutingMode.GEMINI_API,
+                mode=RoutingMode.CLAUDE_API,
                 messages=messages,
                 max_tokens=max_tokens,
                 temperature=0.7,
             )
+            if not response.success:
+                # Claude failed -- fall back to Gemini as last resort
+                logger.warning(f"[v242.2] Claude brain vacuum failed ({response.error}), trying Gemini")
+                response = await self._execute_completion(
+                    mode=RoutingMode.GEMINI_API,
+                    messages=messages,
+                    max_tokens=max_tokens,
+                    temperature=0.7,
+                )
 
             if response.success:
                 return StructuredResponse(
@@ -1507,6 +1563,8 @@ class JarvisPrimeClient:
             return await self._complete_local(messages, max_tokens, temperature)
         elif mode == RoutingMode.CLOUD_RUN:
             return await self._complete_cloud_run(messages, max_tokens, temperature)
+        elif mode == RoutingMode.CLAUDE_API:
+            return await self._complete_claude(messages, max_tokens, temperature)
         elif mode == RoutingMode.GEMINI_API:
             return await self._complete_gemini(messages, max_tokens, temperature)
         else:
@@ -1711,6 +1769,68 @@ class JarvisPrimeClient:
             )
         except Exception as e:
             return CompletionResponse(success=False, error=str(e), backend="gemini")
+
+    async def _complete_claude(
+        self,
+        messages: List[ChatMessage],
+        max_tokens: int,
+        temperature: float,
+    ) -> CompletionResponse:
+        """Complete via Claude API (preferred fallback over Gemini)."""
+        if not self.config.claude_api_key:
+            return CompletionResponse(
+                success=False, error="Claude API key not configured", backend="claude_api"
+            )
+        try:
+            from anthropic import AsyncAnthropic
+        except ImportError:
+            return CompletionResponse(
+                success=False, error="anthropic package not installed", backend="claude_api"
+            )
+
+        # Lazy client init (initialized to None in __init__)
+        if self._claude_client is None:
+            self._claude_client = AsyncAnthropic(api_key=self.config.claude_api_key)
+
+        # Separate system message from conversation messages
+        system_prompt = "You are JARVIS, a helpful AI assistant."
+        api_messages = []
+        for m in messages:
+            if m.role == "system":
+                system_prompt = m.content
+            else:
+                api_messages.append({"role": m.role, "content": m.content})
+
+        timeout = self.config.claude_timeout_ms / 1000.0
+        start = time.time()
+        try:
+            response = await asyncio.wait_for(
+                self._claude_client.messages.create(
+                    model=self.config.claude_model,
+                    max_tokens=max_tokens,
+                    system=system_prompt,
+                    messages=api_messages,
+                ),
+                timeout=timeout,
+            )
+            latency = (time.time() - start) * 1000
+            content = response.content[0].text if response.content else ""
+
+            # Cost estimate (~$3/1M input, $15/1M output for Sonnet 4)
+            input_tokens = response.usage.input_tokens if response.usage else 0
+            output_tokens = response.usage.output_tokens if response.usage else 0
+            cost = (input_tokens * 3.0 + output_tokens * 15.0) / 1_000_000
+
+            return CompletionResponse(
+                success=True,
+                content=content,
+                latency_ms=latency,
+                backend="claude_api",
+                tokens_used=input_tokens + output_tokens,
+                cost_estimate=cost,
+            )
+        except Exception as e:
+            return CompletionResponse(success=False, error=str(e), backend="claude_api")
 
     # =========================================================================
     # Repo Map Access
