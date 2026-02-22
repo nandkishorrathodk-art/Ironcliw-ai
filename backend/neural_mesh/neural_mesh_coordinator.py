@@ -678,6 +678,11 @@ class NeuralMeshCoordinator:
         has handled. Uses event.payload (TrinityEventBus convention).
         """
         try:
+            # Only process outcome events, not received/classified
+            topic = getattr(event, 'topic', '')
+            if topic not in ('command.completed', 'command.failed'):
+                return
+
             # TrinityEventBus events store data in .payload
             payload = event.payload if hasattr(event, 'payload') else {}
             if not payload.get("command"):

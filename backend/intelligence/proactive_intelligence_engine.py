@@ -192,6 +192,9 @@ class ProactiveIntelligenceEngine:
             'notifications_sent': 0
         }
 
+        # v243.0: Command outcome history for behavioral learning
+        self._command_domain_history: list = []
+
         logger.info("[PIE] Proactive Intelligence Engine initialized")
         logger.info(f"[PIE] Voice enabled: {voice_callback is not None}")
         logger.info(f"[PIE] Notifications enabled: {notification_callback is not None}")
@@ -212,8 +215,22 @@ class ProactiveIntelligenceEngine:
         # Start monitoring task
         self.monitoring_task = asyncio.create_task(self._proactive_monitoring_loop())
 
-        logger.info("[PIE] ✅ Proactive intelligence active")
-        logger.info("[PIE] 📢 Ready to communicate naturally based on learned patterns")
+        # v243.0: Subscribe to command outcomes for behavioral learning
+        try:
+            from agi_os.proactive_event_stream import get_event_stream, EventType as AGIEventType
+            stream = await get_event_stream()
+            if stream is not None:
+                # IMPORTANT: subscribe() is synchronous. event_types is first arg, handler is second.
+                stream.subscribe(
+                    [AGIEventType.ACTION_COMPLETED, AGIEventType.ACTION_FAILED],
+                    self._on_command_outcome,
+                )
+                logger.info("[v243] ProactiveIntelligence subscribed to command outcomes")
+        except Exception as e:
+            logger.debug(f"[v243] PIE event subscription failed: {e}")
+
+        logger.info("[PIE] Proactive intelligence active")
+        logger.info("[PIE] Ready to communicate naturally based on learned patterns")
 
     async def stop(self):
         """Stop proactive intelligence"""
@@ -233,6 +250,29 @@ class ProactiveIntelligenceEngine:
         logger.info("[PIE] ✅ Proactive intelligence stopped")
         logger.info(f"[PIE] Total suggestions generated: {self.stats['suggestions_generated']}")
         logger.info(f"[PIE] Acceptance rate: {self._calculate_acceptance_rate():.1%}")
+
+    async def _on_command_outcome(self, event) -> None:
+        """Learn from command outcomes to improve predictions.
+
+        v243.0: Updates behavioral model with real interaction data.
+        ProactiveEventStream events use .data (not .payload).
+        """
+        try:
+            # ProactiveEventStream uses .data field
+            data = event.data if hasattr(event, 'data') else {}
+            # Only learn from UCP command pipeline events
+            if not data.get("command"):
+                return
+            self._command_domain_history.append({
+                "domain": data.get("domain", "unknown"),
+                "success": data.get("success", False),
+                "timestamp": data.get("timestamp", time.time()),
+            })
+            # Keep last 100 commands
+            if len(self._command_domain_history) > 100:
+                self._command_domain_history = self._command_domain_history[-100:]
+        except Exception as e:
+            logger.debug(f"[v243] PIE learning from outcome failed: {e}")
 
     # ========================================================================
     # Proactive Monitoring Loop
