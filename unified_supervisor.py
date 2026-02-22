@@ -66871,18 +66871,24 @@ class JarvisSystemKernel:
 
             # v223.0: ECAPA backend selection (concurrent probing)
             # Runs after Docker/GCP are initialized so we can probe Docker ECAPA
-            # v261.0: Reduced timeout from 90s→15s. Cloud Run probe is now single-shot
-            # (no retry loop). Background warmup handles cold starts asynchronously.
+            # v261.0: Outer timeout = per-probe deadline (4s default) + 2s buffer.
+            # Each probe has a hard 4s deadline enforced inside _select_ecapa_backend.
+            # All probes run concurrently so gather completes in ~4s. The extra 2s
+            # covers Python overhead, aiohttp session setup, and env var reads.
+            _ecapa_outer_timeout = float(os.environ.get("ECAPA_PROBE_DEADLINE", "4")) + 2.0
             try:
                 ecapa_result = await asyncio.wait_for(
-                    self._select_ecapa_backend(), timeout=15.0
+                    self._select_ecapa_backend(), timeout=_ecapa_outer_timeout
                 )
                 if ecapa_result.get("selected_backend"):
                     self.logger.info(
                         f"[Kernel] ECAPA backend: {ecapa_result['selected_backend']}"
                     )
             except asyncio.TimeoutError:
-                self.logger.warning("[Kernel] ECAPA backend selection timed out (15s)")
+                self.logger.warning(
+                    f"[Kernel] ECAPA backend selection timed out ({_ecapa_outer_timeout:.0f}s) "
+                    f"— continuing without voice biometrics on startup"
+                )
             except Exception as ecapa_err:
                 self.logger.debug(f"[Kernel] ECAPA backend selection skipped: {ecapa_err}")
 
@@ -77050,6 +77056,19 @@ class JarvisSystemKernel:
         # =====================================================================
         # Phase 1: Concurrent Backend Probing
         # =====================================================================
+        # v261.0 ROOT CAUSE FIX: Each probe has a HARD per-probe deadline
+        # enforced via asyncio.wait_for() at the gather level. Previously,
+        # probes had per-REQUEST timeouts (5s each) but no overall deadline,
+        # so sequential requests (prewarm 3s + 3 health paths × 5s = 18s for
+        # Cloud Run, daemon init + docker ps 5s + http 5s = 10s+ for Docker)
+        # exceeded the outer timeout. The fundamental flaw was timeouts-per-
+        # request that accumulate, not a single hard deadline per probe.
+        #
+        # Now: 4s hard deadline per probe. If a probe can't answer in 4s,
+        # it's treated as unavailable. Background warmup handles slow starts.
+        # =====================================================================
+        _probe_deadline = float(os.environ.get("ECAPA_PROBE_DEADLINE", "4"))
+
         async def probe_docker() -> Dict[str, Any]:
             """Probe Docker ECAPA backend (non-blocking, never auto-starts)."""
             probe = {"available": False, "healthy": False, "endpoint": None, "latency_ms": 0}
@@ -77062,7 +77081,6 @@ class JarvisSystemKernel:
                 health = await dm.check_daemon_health()
                 if health.get("healthy"):
                     probe["available"] = True
-                    # Check if ECAPA container is running
                     container_name = os.environ.get(
                         "JARVIS_ECAPA_CONTAINER", "jarvis-ecapa-cloud"
                     )
@@ -77072,17 +77090,15 @@ class JarvisSystemKernel:
                         stdout=asyncio.subprocess.PIPE,
                         stderr=asyncio.subprocess.PIPE,
                     )
-                    stdout, _ = await asyncio.wait_for(check.communicate(), timeout=5.0)
+                    stdout, _ = await asyncio.wait_for(check.communicate(), timeout=3.0)
                     if container_name in stdout.decode():
-                        # Container running — health check endpoint
                         import aiohttp
-                        # v233.1: ECAPA moved to port 8015 to avoid conflict with JARVIS backend (8010)
                         ecapa_port = int(os.environ.get("JARVIS_ECAPA_PORT", "8015"))
                         t0 = asyncio.get_running_loop().time()
                         async with aiohttp.ClientSession() as sess:
                             async with sess.get(
                                 f"http://localhost:{ecapa_port}/health",
-                                timeout=aiohttp.ClientTimeout(total=5.0),
+                                timeout=aiohttp.ClientTimeout(total=2.0),
                             ) as resp:
                                 if resp.status == 200:
                                     probe["healthy"] = True
@@ -77098,57 +77114,100 @@ class JarvisSystemKernel:
             """
             Probe Cloud Run ECAPA backend — single-shot, non-blocking.
 
-            v261.0 ROOT CAUSE FIX: Previously used exponential backoff retry loop
-            (3→6→12→24s delays, up to 60s max_wait) which blocked the entire
-            Resources phase for ~40 seconds during Cloud Run cold starts.
+            v261.0 ROOT CAUSE FIX: Three cascading issues fixed:
+            1. Old code: exponential backoff retry loop (3→6→12→24s) blocked 40s+
+            2. First fix: removed retries but iterated 3 health paths sequentially
+               (5s timeout each = up to 18s total with prewarm)
+            3. This fix: concurrent health path race. First path to respond wins.
+               Single aiohttp session, all paths launched simultaneously.
+               Hard per-probe deadline enforced by caller's wait_for().
 
-            Now: single health check with short timeout. If Cloud Run isn't
-            immediately ready, we select a fallback and warm it in the background
-            via _background_cloud_run_ecapa_warmup() (hot-swap when ready).
+            If Cloud Run is cold-starting, background warmup handles it.
             """
             probe = {"available": False, "healthy": False, "endpoint": None, "latency_ms": 0}
             cloud_endpoint = os.environ.get("JARVIS_CLOUD_ML_ENDPOINT", "")
             if not cloud_endpoint:
                 return probe
             probe["available"] = True
-            # v261.0: Short timeout for initial probe — no retries on critical path
-            quick_timeout = float(os.environ.get("CLOUD_RUN_PROBE_QUICK_TIMEOUT", "5"))
             try:
                 import aiohttp
-                health_paths = ["/health", "/api/ml/health", "/status"]
                 async with aiohttp.ClientSession() as sess:
-                    # Fire-and-forget prewarm to kick off cold start
+                    # Fire-and-forget prewarm (triggers cold start, don't block on response)
+                    _prewarm_task = None
                     prewarm = os.environ.get("CLOUD_RUN_ENABLE_PREWARM", "true").lower() == "true"
                     if prewarm:
-                        try:
-                            async with sess.post(
-                                f"{cloud_endpoint}/api/ml/prewarm",
-                                json={"warmup": True},
-                                timeout=aiohttp.ClientTimeout(total=3.0),
-                            ) as _:
+                        async def _do_prewarm():
+                            try:
+                                async with sess.post(
+                                    f"{cloud_endpoint}/api/ml/prewarm",
+                                    json={"warmup": True},
+                                    timeout=aiohttp.ClientTimeout(total=3.0),
+                                ) as _:
+                                    pass
+                            except Exception:
                                 pass
-                        except Exception:
-                            pass
+                        _prewarm_task = asyncio.create_task(_do_prewarm())
 
-                    # Single-pass health check — no retry loop
-                    for path in health_paths:
+                    # Race all health paths concurrently — first healthy response wins
+                    health_paths = ["/health", "/api/ml/health", "/status"]
+                    t0 = asyncio.get_running_loop().time()
+
+                    async def _check_path(path: str) -> Optional[Dict[str, Any]]:
                         try:
-                            t0 = asyncio.get_running_loop().time()
                             async with sess.get(
                                 f"{cloud_endpoint}{path}",
-                                timeout=aiohttp.ClientTimeout(total=quick_timeout),
+                                timeout=aiohttp.ClientTimeout(total=3.0),
                             ) as resp:
                                 if resp.status == 200:
                                     data = await resp.json()
                                     if data.get("ecapa_ready", False):
-                                        probe["healthy"] = True
-                                        probe["endpoint"] = cloud_endpoint
-                                        probe["latency_ms"] = (
-                                            asyncio.get_running_loop().time() - t0
-                                        ) * 1000
-                                        return probe
+                                        return {
+                                            "healthy": True,
+                                            "endpoint": cloud_endpoint,
+                                            "latency_ms": (
+                                                asyncio.get_running_loop().time() - t0
+                                            ) * 1000,
+                                        }
                         except Exception:
-                            continue
+                            pass
+                        return None
+
+                    # Launch all path checks concurrently
+                    path_tasks = [
+                        asyncio.create_task(_check_path(p)) for p in health_paths
+                    ]
+                    try:
+                        # Wait for first successful result or all to fail
+                        done, pending = await asyncio.wait(
+                            path_tasks, return_when=asyncio.FIRST_COMPLETED
+                        )
+                        # Check completed tasks for a healthy result
+                        for task in done:
+                            result_data = task.result()
+                            if result_data and result_data.get("healthy"):
+                                probe.update(result_data)
+                                # Cancel remaining path checks
+                                for p in pending:
+                                    p.cancel()
+                                return probe
+                        # First completion wasn't healthy — wait for rest
+                        if pending:
+                            done2, pending2 = await asyncio.wait(pending)
+                            for task in done2:
+                                result_data = task.result()
+                                if result_data and result_data.get("healthy"):
+                                    probe.update(result_data)
+                                    for p in pending2:
+                                        p.cancel()
+                                    return probe
+                    finally:
+                        # Cleanup any remaining tasks
+                        for t in path_tasks:
+                            if not t.done():
+                                t.cancel()
+                        # Cleanup prewarm task
+                        if prewarm and _prewarm_task and not _prewarm_task.done():
+                            _prewarm_task.cancel()
             except Exception as e:
                 self.logger.debug(f"[ECAPA] Cloud Run probe: {e}")
             return probe
@@ -77173,7 +77232,6 @@ class JarvisSystemKernel:
                 if available_gb >= required_gb:
                     probe["memory_ok"] = True
                 elif available_gb >= required_gb * 0.75:
-                    # Close to threshold — try memory relief
                     import gc
                     gc.collect()
                     mem2 = psutil.virtual_memory()
@@ -77192,18 +77250,25 @@ class JarvisSystemKernel:
                 probe["error"] = str(e)
             return probe
 
-        # Run all probes concurrently
+        # v261.0: Hard per-probe deadline wrapper. Each probe gets exactly
+        # _probe_deadline seconds. If it can't answer, it's unavailable.
+        # This prevents sequential per-request timeouts from accumulating.
+        async def _timed_probe(probe_coro, name: str, fallback: Dict) -> Dict:
+            try:
+                return await asyncio.wait_for(probe_coro, timeout=_probe_deadline)
+            except asyncio.TimeoutError:
+                self.logger.debug(f"[ECAPA] {name} probe exceeded {_probe_deadline}s deadline")
+                return fallback
+            except Exception as e:
+                self.logger.debug(f"[ECAPA] {name} probe error: {e}")
+                return fallback
+
+        # Run all probes concurrently with hard per-probe deadlines
         docker_probe, cloud_probe, local_probe = await asyncio.gather(
-            probe_docker(), probe_cloud_run(), probe_local(),
-            return_exceptions=True,
+            _timed_probe(probe_docker(), "Docker", {"available": False, "healthy": False}),
+            _timed_probe(probe_cloud_run(), "Cloud Run", {"available": False, "healthy": False}),
+            _timed_probe(probe_local(), "Local", {"available": False, "memory_ok": False}),
         )
-        # Handle exceptions from gather
-        if isinstance(docker_probe, Exception):
-            docker_probe = {"available": False, "healthy": False}
-        if isinstance(cloud_probe, Exception):
-            cloud_probe = {"available": False, "healthy": False}
-        if isinstance(local_probe, Exception):
-            local_probe = {"available": False, "memory_ok": False}
 
         result["probes"] = {
             "docker": docker_probe,
@@ -77299,14 +77364,18 @@ class JarvisSystemKernel:
         # v261.0: BACKGROUND CLOUD RUN WARMUP + HOT-SWAP
         # =====================================================================
         # If Cloud Run endpoint is configured but wasn't healthy during the
-        # quick probe (cold start), warm it in the background and hot-swap
-        # to it when it becomes ready. This replaces the old blocking retry
-        # loop that stalled startup for ~40 seconds.
+        # quick probe (cold start or probe deadline exceeded), warm it in the
+        # background and hot-swap when ready. This replaces the old blocking
+        # retry loop that stalled startup for ~40 seconds.
+        #
+        # We check the env var directly (not cloud_probe["available"]) because
+        # when the per-probe deadline fires, _timed_probe returns the fallback
+        # dict with available=False — but the endpoint IS still configured
+        # and worth warming up in the background.
         # =====================================================================
         cloud_endpoint = os.environ.get("JARVIS_CLOUD_ML_ENDPOINT", "")
         if (
             cloud_endpoint
-            and cloud_probe.get("available")
             and not cloud_probe.get("healthy")
             and backend != "cloud_run"
         ):
