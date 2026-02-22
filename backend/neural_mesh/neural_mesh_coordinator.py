@@ -44,6 +44,7 @@ from typing import (
 from .data_models import (
     AgentInfo,
     HealthStatus,
+    KnowledgeType,
     MessageType,
 )
 from .communication.agent_communication_bus import AgentCommunicationBus
@@ -318,6 +319,15 @@ class NeuralMeshCoordinator:
         self._running = True
         self._started_at = datetime.now()
         self._system_health = HealthStatus.HEALTHY
+
+        # v243.0: Subscribe to command lifecycle events for knowledge building
+        await self._subscribe_to_command_events()
+        # Delayed retry in case TrinityEventBus starts after Neural Mesh
+        loop = asyncio.get_event_loop()
+        loop.call_later(
+            10.0,
+            lambda: asyncio.ensure_future(self._subscribe_to_command_events()),
+        )
 
         logger.info("Neural Mesh system started")
 
@@ -634,6 +644,67 @@ class NeuralMeshCoordinator:
             }
 
         return health
+
+    # ========================================================================
+    # COMMAND EVENT SUBSCRIPTION (v243.0)
+    # ========================================================================
+
+    async def _subscribe_to_command_events(self) -> None:
+        """Subscribe to command.* events on TrinityEventBus.
+
+        v243.0: Called at start() and again after 10s delay to handle
+        late bus initialization (boot order resilience).
+        """
+        if getattr(self, '_command_events_subscribed', False):
+            return
+        try:
+            from core.trinity_event_bus import get_event_bus_if_exists
+            bus = get_event_bus_if_exists()
+            if bus is not None:
+                await bus.subscribe(
+                    "command.*",
+                    self._on_command_event,
+                )
+                self._command_events_subscribed = True
+                logger.info("[v243] NeuralMesh subscribed to command.* events")
+        except Exception as e:
+            logger.debug("[v243] Failed to subscribe to command events: %s", e)
+
+    async def _on_command_event(self, event) -> None:
+        """Handle command lifecycle events for knowledge graph updates.
+
+        v243.0: Stores command outcomes as knowledge entries so the
+        Knowledge Graph builds semantic memory of what commands JARVIS
+        has handled. Uses event.payload (TrinityEventBus convention).
+        """
+        try:
+            # TrinityEventBus events store data in .payload
+            payload = event.payload if hasattr(event, 'payload') else {}
+            if not payload.get("command"):
+                return
+
+            # Guard: knowledge graph may not be initialized yet
+            if not self._knowledge:
+                return
+
+            # IMPORTANT: Use self.knowledge (the @property), NOT self.knowledge_graph
+            await self.knowledge.add_knowledge(
+                knowledge_type=KnowledgeType.PATTERN,
+                agent_name="system",
+                data={
+                    "command": payload.get("command", ""),
+                    "intent": payload.get("intent", ""),
+                    "domain": payload.get("domain", ""),
+                    "success": payload.get("success", False),
+                    "confidence": payload.get("confidence", 0.0),
+                    "timestamp": payload.get("timestamp", 0),
+                },
+                tags={"command_outcome", payload.get("domain", "unknown")},
+                confidence=payload.get("confidence", 0.5),
+                source="command_pipeline",
+            )
+        except Exception as e:
+            logger.debug("[v243] Knowledge graph update failed: %s", e)
 
     async def _health_monitor_loop(self) -> None:
         """Monitor system health periodically."""
