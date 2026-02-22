@@ -51,9 +51,20 @@ _AUTHENTICATE_PATTERN = re.compile(
 )
 _EXECUTE_IMPERATIVE_PATTERN = re.compile(
     r"^\s*(?:please\s+)?(?:"
+    # Original verbs (v242.1)
     r"open|close|launch|run|execute|send|set|switch|turn|enable|disable|"
     r"connect|disconnect|start|stop|restart|shutdown|lock|unlock|schedule|"
-    r"create|delete|kill"
+    r"create|delete|kill|"
+    # v242.2: Media, workspace, and navigation verbs
+    r"play|pause|resume|show|hide|find|search|check|mute|unmute|"
+    r"move|resize|minimize|maximize|take|navigate|"
+    r"scan|refresh|update|install|uninstall|download|upload|sync|"
+    r"compose|forward|reply|share|print|save|"
+    # v242.2: Ambiguous verbs with negative lookaheads to prevent false positives
+    r"(?:read\s+(?!me\b))|"              # "read my email" yes, "read me a story" no
+    r"(?:go\s+(?!ahead\b|on\b|figure))|"  # "go to settings" yes, "go ahead and explain" no
+    r"(?:look\s+(?!at\s+(?:this|that)\b))|"  # "look up directions" yes, "look at this" no
+    r"(?:copy\s+(?!that\b))"              # "copy file.txt" yes, "copy that" no
     r")\b",
     re.IGNORECASE,
 )
