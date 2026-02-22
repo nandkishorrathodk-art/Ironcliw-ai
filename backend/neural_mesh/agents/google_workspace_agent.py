@@ -3779,7 +3779,7 @@ EMAIL BODY:"""
 
 
 # ---------------------------------------------------------------------------
-# v237.0: Singleton getter (required by tiered_command_router.py:1072)
+# v237.0: Singleton getter for GoogleWorkspaceAgent
 # ---------------------------------------------------------------------------
 _workspace_agent_instance: Optional["GoogleWorkspaceAgent"] = None
 
