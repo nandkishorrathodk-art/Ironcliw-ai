@@ -14,6 +14,7 @@ import json
 import logging
 import os
 import re
+import time
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime
@@ -417,6 +418,67 @@ class UnifiedCommandProcessor:
             logger.debug(f"[v243] Sensory context gathered: {list(sensory.keys())}")
 
         return sensory
+
+    async def _broadcast_command_event(
+        self,
+        command_text: str,
+        response: Any,
+        result: Dict[str, Any],
+        latency_ms: float,
+    ) -> None:
+        """Broadcast command completion to all subsystems via event buses.
+
+        v243.0: Fire-and-forget notification on TrinityEventBus (uses .payload)
+        and ProactiveEventStream (uses .data). Enables Knowledge Graph updates,
+        pattern learning, next-action prediction, and awareness state sync.
+        """
+        event_payload = {
+            "command": command_text[:500],  # Truncate for safety
+            "intent": getattr(response, 'intent', 'unknown'),
+            "domain": getattr(response, 'domain', 'unknown'),
+            "success": result.get("success", False),
+            "source": result.get("source", getattr(response, 'source', 'unknown')),
+            "confidence": getattr(response, 'confidence', 0.0),
+            "latency_ms": latency_ms,
+            "command_type": result.get("command_type", "UNKNOWN"),
+            "timestamp": time.time(),
+        }
+
+        # 1. TrinityEventBus (cross-repo: Knowledge Graph, Reactor-Core, J-Prime)
+        # Subscribers read event.payload (not event.data)
+        try:
+            from core.trinity_event_bus import get_event_bus_if_exists, EventPriority as TBPriority
+            bus = get_event_bus_if_exists()
+            if bus is not None:
+                topic = "command.completed" if result.get("success") else "command.failed"
+                await bus.publish_raw(
+                    topic=topic,
+                    data=event_payload,
+                    priority=TBPriority.NORMAL,
+                )
+        except Exception as e:
+            logger.debug(f"[v243] TrinityEventBus broadcast failed: {e}")
+
+        # 2. ProactiveEventStream (AGI OS: action tracking, pattern learning)
+        # Subscribers read event.data (not event.payload)
+        try:
+            from agi_os.proactive_event_stream import (
+                get_event_stream,
+                EventType as AGIEventType,
+                AGIEvent,
+                EventPriority as AGIPriority,
+            )
+            stream = await get_event_stream()
+            if stream is not None:
+                agi_event = AGIEvent(
+                    event_type=AGIEventType.ACTION_COMPLETED if result.get("success") else AGIEventType.ACTION_FAILED,
+                    source="unified_command_processor",
+                    data=event_payload,
+                    priority=AGIPriority.NORMAL,
+                )
+                await stream.emit(agi_event)
+        except Exception as e:
+            logger.debug(f"[v243] ProactiveEventStream broadcast failed: {e}")
 
     async def _initialize_resolvers(self):
         """
@@ -1382,6 +1444,7 @@ class UnifiedCommandProcessor:
         source_context: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """Process any command through unified pipeline with FULL context awareness including voice authentication"""
+        _start_time = time.time()
         logger.info(f"[UNIFIED] Processing with context awareness: '{command_text}'")
 
         source_context = source_context or {}
@@ -1548,6 +1611,17 @@ class UnifiedCommandProcessor:
                 pass  # Telemetry not available
             except Exception as e:
                 logger.debug(f"[UNIFIED] Telemetry emission setup failed: {e}")
+
+            # v243.0: Broadcast to all subsystems (fire-and-forget)
+            _cmd_latency = (time.time() - _start_time) * 1000
+            _broadcast_task = asyncio.create_task(
+                self._broadcast_command_event(command_text, response, result, _cmd_latency),
+                name="v243_command_broadcast",
+            )
+            _broadcast_task.add_done_callback(
+                lambda t: logger.debug(f"[v243] Broadcast error: {t.exception()}")
+                if not t.cancelled() and t.exception() else None
+            )
 
             return result
 
