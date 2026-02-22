@@ -67394,6 +67394,80 @@ class JarvisSystemKernel:
                 "No event buses available (non-critical)"
             )
 
+        # Register health checks with HealthAggregator (idempotency-guarded for phase retry)
+        try:
+            _ha = self._service_registry.get("health_aggregator") if self._service_registry else None
+            if _ha and hasattr(_ha, 'register_subsystem'):
+                if self._event_bus_initialized and not getattr(self, '_event_bus_health_registered', False):
+                    _ha.register_subsystem(
+                        subsystem_id="trinity_event_bus",
+                        name="TrinityEventBus",
+                        health_check_fn=self._check_event_bus_health,
+                    )
+                    self._event_bus_health_registered = True
+                if self._event_stream_initialized and not getattr(self, '_event_stream_health_registered', False):
+                    _ha.register_subsystem(
+                        subsystem_id="proactive_event_stream",
+                        name="ProactiveEventStream",
+                        health_check_fn=self._check_event_stream_health,
+                    )
+                    self._event_stream_health_registered = True
+                self.logger.debug("[Kernel] v243.1: Event bus health checks registered")
+        except Exception as e:
+            self.logger.debug(f"[Kernel] v243.1: Health registration error: {e}")
+
+    async def _check_event_bus_health(self) -> Tuple[bool, str, Dict[str, Any]]:
+        """Health check for TrinityEventBus.
+
+        v243.1: Reports bus metrics to HealthAggregator.
+        """
+        try:
+            from backend.core.trinity_event_bus import get_event_bus_if_exists
+            bus = get_event_bus_if_exists()
+            if bus is None:
+                return (False, "TrinityEventBus not initialized", {})
+            metrics = bus.get_metrics()
+            details = {
+                "published": getattr(metrics, 'events_published', 0),
+                "delivered": getattr(metrics, 'events_delivered', 0),
+                "failed": getattr(metrics, 'events_failed', 0),
+                "expired": getattr(metrics, 'events_expired', 0),
+                "subscriptions": getattr(metrics, 'active_subscriptions', 0),
+            }
+            _failed = details["failed"]
+            _published = details["published"]
+            if _published > 0 and _failed / _published > 0.1:
+                return (False, f"High failure rate: {_failed}/{_published}", details)
+            return (True, f"Healthy: {_published} published, {details['subscriptions']} subs", details)
+        except Exception as e:
+            return (False, f"Health check error: {e}", {})
+
+    async def _check_event_stream_health(self) -> Tuple[bool, str, Dict[str, Any]]:
+        """Health check for ProactiveEventStream.
+
+        v243.1: Verifies stream is alive and responsive.
+        IMPORTANT: Reads module-level _event_stream singleton directly
+        (line 782) instead of calling get_event_stream() — which is a
+        factory that would recreate the stream if it was shut down.
+        Health checks must be side-effect-free.
+        """
+        try:
+            if not self._event_stream_initialized:
+                return (False, "ProactiveEventStream not initialized", {})
+            import backend.agi_os.proactive_event_stream as _pes_mod
+            stream = getattr(_pes_mod, '_event_stream', None)
+            if stream is None:
+                return (False, "ProactiveEventStream singleton is None", {})
+            # ProactiveEventStream tracks basic state
+            _running = getattr(stream, '_running', False)
+            _sub_count = len(getattr(stream, '_subscribers', {}))
+            details = {"running": _running, "subscribers": _sub_count}
+            if not _running:
+                return (False, "ProactiveEventStream not running", details)
+            return (True, f"Healthy: {_sub_count} subscribers", details)
+        except Exception as e:
+            return (False, f"Health check error: {e}", {})
+
     async def _phase_intelligence(self) -> bool:
         """
         Phase 4: Initialize intelligence layer.
