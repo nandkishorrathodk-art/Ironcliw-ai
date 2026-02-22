@@ -7,14 +7,23 @@
 //! - Hardware acceleration detection
 //! - Frame caching and deduplication
 //! - Real-time performance monitoring
+//!
+//! Platform support:
+//! - macOS: Uses Metal/CoreGraphics via Objective-C bridge
+//! - Windows: Uses GDI+/Windows.Graphics.Capture via C# interop (delegates to Python layer)
+//! - Linux: Uses X11/Wayland (future implementation)
 
 use crate::{Result, JarvisError};
-use crate::bridge::{ObjCBridge, ObjCCommand, ObjCResponse, CaptureQuality as BridgeCaptureQuality};
 pub use crate::bridge::CaptureRegion;
 use crate::memory::MemoryManager;
-use crate::bridge::supervisor::{Supervisor, RestartStrategy, RestartConfig};
 // Import or define ImageData and ImageFormat
 use crate::vision::{ImageData, ImageFormat};
+
+// Platform-specific imports
+#[cfg(target_os = "macos")]
+use crate::bridge::{ObjCBridge, ObjCCommand, ObjCResponse, CaptureQuality as BridgeCaptureQuality};
+#[cfg(target_os = "macos")]
+use crate::bridge::supervisor::{Supervisor, RestartStrategy, RestartConfig};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, AtomicBool, Ordering};
 use std::time::{Duration, Instant, SystemTime};

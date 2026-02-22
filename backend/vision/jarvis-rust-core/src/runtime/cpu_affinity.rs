@@ -102,8 +102,13 @@ impl CpuAffinityManager {
             use windows::Win32::System::Threading::{SetThreadAffinityMask, GetCurrentThread};
             
             unsafe {
-                let mask = 1u64 << core_id;
-                SetThreadAffinityMask(GetCurrentThread(), mask);
+                let mask = 1usize << core_id;
+                let result = SetThreadAffinityMask(GetCurrentThread(), mask);
+                if result == 0 {
+                    tracing::warn!("Failed to set thread affinity to core {}", core_id);
+                } else {
+                    tracing::debug!("Thread affinity set to core {} (Windows)", core_id);
+                }
             }
         }
         

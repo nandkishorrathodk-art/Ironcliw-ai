@@ -79,7 +79,6 @@ brotli = "3.4"
 metrics = "0.21"
 metrics-exporter-prometheus = "0.12"
 sysinfo = "0.30"
-nix = { version = "0.27", features = ["fs", "mman"] }  # For Unix shared memory
 ordered-float = "4.2"  # For ordered floating point numbers
 fnv = "1.0"  # FNV hasher
 uuid = { version = "1.6", features = ["v4"] }  # UUID generation
@@ -102,11 +101,24 @@ cocoa-foundation = "0.1"
 dispatch = "0.2"  # Grand Central Dispatch
 libc = "0.2"
 
+[target.'cfg(unix)'.dependencies]
+nix = { version = "0.27", features = ["fs", "mman"] }  # For Unix shared memory
+
 [target.'cfg(target_os = "linux")'.dependencies]
 vulkano = { version = "0.34", optional = true }  # Vulkan compute
 
 [target.'cfg(target_os = "windows")'.dependencies]
-windows = { version = "0.52", features = ["Win32_System_Memory", "Win32_System_Threading"] }
+windows = { version = "0.52", features = [
+    "Win32_System_Memory",
+    "Win32_System_Threading",
+    "Win32_System_SystemInformation",
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_Graphics_Direct3D11",
+    "Win32_Graphics_Dxgi",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_System_Performance"
+] }
 
 [dev-dependencies]
 criterion = "0.5"
