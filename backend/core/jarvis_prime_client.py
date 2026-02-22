@@ -811,6 +811,9 @@ class JarvisPrimeClient:
         # Claude API client (lazy loaded)
         self._claude_client = None
 
+        # v242.2: Body capability registration flag (lazy — fires on first success)
+        self._capabilities_registered = False
+
         # Stats
         self._request_count = 0
         self._local_count = 0
@@ -1389,6 +1392,13 @@ class JarvisPrimeClient:
                     routing=routing,
                 )
 
+            # v242.2: Lazy capability registration on first success
+            if not self._capabilities_registered:
+                try:
+                    await self.register_capabilities()
+                except Exception:
+                    pass  # Non-blocking — will retry on next call
+
             return StructuredResponse(
                 content=response.content or "",
                 intent=routing.get("intent", "answer"),
@@ -1416,6 +1426,46 @@ class JarvisPrimeClient:
                 system_prompt=system_prompt,
                 max_tokens=max_tokens,
             )
+
+    async def register_capabilities(self) -> bool:
+        """Send Body's action registry to J-Prime for classifier enrichment.
+
+        v242.2: Called lazily on first successful classify_and_complete().
+        J-Prime's /v1/capabilities/register endpoint updates the Phi
+        classifier system prompt with available actions.
+        """
+        if self._capabilities_registered:
+            return True
+        try:
+            from macos_helper.autonomy.action_registry import get_action_registry
+            registry = get_action_registry()
+            actions = registry.list_all_actions()
+
+            # Build lightweight capability map: action_name -> metadata
+            capabilities = {}
+            for action in actions:
+                meta = action.metadata  # RegisteredAction.metadata: ActionMetadata
+                capabilities[meta.name] = {
+                    "description": meta.description,
+                    "risk_level": meta.risk_level.value if hasattr(meta.risk_level, 'value') else str(meta.risk_level),
+                }
+
+            client = await self._get_http_client()
+            if client is None:
+                return False
+
+            url = f"http://{self.config.local_host}:{self.config.local_port}/v1/capabilities/register"
+            resp = await client.post(url, json=capabilities, timeout=5.0)
+            if resp.status_code == 200:
+                self._capabilities_registered = True
+                logger.info(f"[v242.2] Registered {len(capabilities)} capabilities with J-Prime")
+                return True
+            else:
+                logger.warning(f"[v242.2] Capability registration failed: HTTP {resp.status_code}")
+                return False
+        except Exception as e:
+            logger.debug(f"[v242.2] Capability registration deferred: {e}")
+            return False
 
     async def _escalate_to_claude(
         self,
