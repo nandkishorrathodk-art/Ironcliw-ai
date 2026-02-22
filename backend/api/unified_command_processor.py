@@ -1880,21 +1880,37 @@ class UnifiedCommandProcessor:
     async def _handle_vision_action(
         self, command_text: str, websocket=None,
     ) -> Dict[str, Any]:
-        """Execute vision queries using existing vision infrastructure."""
+        """Two-phase vision: Phase 1 (J-Prime classification) already done, now Phase 2 (capture + analyze).
+
+        v242.1: The two-phase vision architecture:
+          Phase 1: J-Prime classifies text-only -> intent=vision_needed (already completed by caller)
+          Phase 2: This method captures screenshot -> sends to vision router for analysis
+
+        This ensures no unnecessary screenshots are taken for non-vision intents.
+        """
         try:
-            # Use Intelligent Vision Router if available
+            # Phase 2: Capture screenshot and analyze
             if self.vision_router and self._vision_router_initialized:
                 import pyautogui
                 loop = asyncio.get_running_loop()
                 screenshot = await loop.run_in_executor(None, pyautogui.screenshot)
 
+                # Build context from conversation history for continuity
+                _vision_context: Dict[str, Any] = {
+                    "original_query": command_text,
+                }
+                if hasattr(self, "context") and hasattr(self.context, "conversation_history"):
+                    _vision_context["conversation_history"] = (
+                        self.context.conversation_history[-5:]
+                        if isinstance(self.context.conversation_history, list)
+                        else []
+                    )
+
+                # Use vision router for analysis (existing, proven path)
                 result = await self.vision_router.execute_query(
                     query=command_text,
                     screenshot=screenshot,
-                    context={
-                        "conversation_history": self.context.conversation_history[-5:],
-                        "original_query": command_text,
-                    },
+                    context=_vision_context,
                 )
                 return {
                     "success": result.get("success", result.get("handled", False)),
@@ -1903,15 +1919,15 @@ class UnifiedCommandProcessor:
                     **result,
                 }
 
-            # Fallback: vision router unavailable, ask J-Prime for a text answer
-            logger.warning("[v242] Vision router unavailable, falling back to text response")
-            sub_response = await self._call_jprime(command_text)
-            if sub_response:
+            # Fallback: no vision router, ask J-Prime for text-only answer
+            logger.warning("[v242] Vision router unavailable, text-only fallback")
+            sub = await self._call_jprime(command_text)
+            if sub:
                 return {
                     "success": True,
-                    "response": sub_response.content or "I need vision capabilities to answer that, but they're currently unavailable.",
+                    "response": sub.content,
                     "command_type": "VISION",
-                    "source": sub_response.source,
+                    "source": sub.source,
                 }
             return {
                 "success": False,
@@ -1922,7 +1938,7 @@ class UnifiedCommandProcessor:
             logger.error(f"[v242] Vision action failed: {e}", exc_info=True)
             return {
                 "success": False,
-                "response": f"I encountered an error analyzing your screen: {str(e)}",
+                "response": f"Error analyzing screen: {e}",
                 "command_type": "VISION",
                 "error": str(e),
             }
