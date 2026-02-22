@@ -60552,14 +60552,14 @@ class JarvisSystemKernel:
         # =====================================================================
         # v200.0: Two-Tier Security (VBIA/PAVA) Components
         # =====================================================================
-        # These components implement the Three-Tier Command Router with:
+        # v244.0: Integration components
         # - Agentic Watchdog (safety kill-switch for Computer Use)
-        # - Tiered VBIA Adapter (voice biometric with anti-spoofing)
         # - Cross-Repo State (JARVIS ↔ Prime ↔ Reactor coordination)
-        # - Tiered Command Router (wake word → intent → authentication)
+        # - AgenticTaskRunner (agentic execution engine)
+        # NOTE: TieredVBIAAdapter and TieredCommandRouter were replaced by
+        # J-Prime's Phi classifier (commit 167fcecb). Voice auth uses
+        # SpeakerVerificationService directly.
         self._agentic_watchdog: Optional[Any] = None  # AgenticWatchdog
-        self._vbia_adapter: Optional[Any] = None  # TieredVBIAAdapter
-        self._tiered_router: Optional[Any] = None  # TieredCommandRouter
         self._agentic_runner: Optional[Any] = None  # AgenticTaskRunner
         self._cross_repo_initialized: bool = False
 
@@ -60576,9 +60576,7 @@ class JarvisSystemKernel:
         # v200.0: Two-Tier + AGI OS status tracking
         self._two_tier_status: Dict[str, Any] = {
             "watchdog": {"status": "pending", "mode": None},
-            "vbia_adapter": {"status": "pending", "initialized": False},
             "cross_repo": {"status": "pending", "initialized": False},
-            "router": {"status": "pending", "initialized": False},
             "runner_wired": False,
         }
         self._agi_os_status: Dict[str, Any] = {
