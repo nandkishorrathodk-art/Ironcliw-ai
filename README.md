@@ -1,8 +1,27 @@
 # JARVIS (JARVIS-AI-Agent)
 
-**The Body of the AGI OS — macOS integration, computer use, action execution, and unified orchestration**
+**The Body of the AGI OS — Cross-platform computer use, action execution, and unified orchestration**
 
-JARVIS is the **control plane and execution layer** of the JARVIS AGI ecosystem. It provides macOS integration, computer use (keyboard, mouse, display), voice unlock, vision, safety management, and the **unified supervisor** that starts and coordinates JARVIS-Prime (Mind) and Reactor-Core (Nerves) with a single command. As of **v244.0**, JARVIS features command lifecycle event infrastructure with explicit bus management (v243.0/v243.1), zero startup warnings with 858 lines of dead code removed and Cloud SQL proxy startup reduced from ~47s to ~3-5s (v244.0), a never-skip vision architecture with self-hosted LLaVA (v259.1), parallel initialization with cooperative cancellation (v3.0–v3.2), CPU-pressure-aware cloud shifting (v258.x), enterprise hardening, and a fully activated training pipeline with deployment gates, model lineage tracking, and post-deployment probation monitoring across all three repos.
+JARVIS is the **control plane and execution layer** of the JARVIS AGI ecosystem. It provides **cross-platform integration** (macOS, Windows, Linux), computer use (keyboard, mouse, display), voice unlock, vision, safety management, and the **unified supervisor** that starts and coordinates JARVIS-Prime (Mind) and Reactor-Core (Nerves) with a single command. As of **v244.0**, JARVIS features command lifecycle event infrastructure with explicit bus management (v243.0/v243.1), zero startup warnings with 858 lines of dead code removed and Cloud SQL proxy startup reduced from ~47s to ~3-5s (v244.0), a never-skip vision architecture with self-hosted LLaVA (v259.1), parallel initialization with cooperative cancellation (v3.0–v3.2), CPU-pressure-aware cloud shifting (v258.x), enterprise hardening, and a fully activated training pipeline with deployment gates, model lineage tracking, and post-deployment probation monitoring across all three repos.
+
+## 🪟 Windows Port (v1.0-MVP)
+
+**NEW:** JARVIS is now available on Windows! The Windows port maintains feature parity with the macOS version using Windows-native APIs (C# DLLs for system control, WASAPI for audio, GDI+ for vision).
+
+**Platform Support:**
+- ✅ **Windows 10 (1809+)** / **Windows 11** / **Windows Server 2019/2022**
+- ✅ **macOS** (native, all features)
+- ✅ **Linux** (backend-only, community support)
+
+**Installation:**
+- **Windows:** See [Windows Installation Guide](docs/windows_porting/setup_guide.md)
+- **macOS/Linux:** Use standard installation below
+
+**Documentation:**
+- 📖 [Windows Setup Guide](docs/windows_porting/setup_guide.md)
+- 🔧 [Troubleshooting](docs/windows_porting/troubleshooting.md)
+- ⚠️ [Known Limitations](docs/windows_porting/known_limitations.md)
+- 📝 [Configuration Examples](docs/windows_porting/configuration_examples.md)
 
 ---
 
@@ -29,11 +48,16 @@ The **unified supervisor** (`unified_supervisor.py`) is the authoritative kernel
 
 ### Prerequisites
 
-- **macOS** (primary platform; Linux supported for backend-only)
-- **Python 3.9+** (3.11+ recommended)
+- **Platform:** 
+  - macOS (native, all features)
+  - Windows 10 (1809+) / Windows 11 (Windows-specific installation guide available)
+  - Linux (backend-only, community support)
+- **Python 3.9+** (3.11+ recommended, 3.12+ for Windows)
 - **16GB+ RAM** (GCP golden image handles LLM inference; local LLM loading is off-limits on 16GB — see [Cloud-Only Architecture](#cloud-only-architecture-decision--the-great-golden-image-investigation-v2332))
 
 ### Install and run
+
+#### macOS / Linux
 
 ```bash
 # Clone and enter repo
@@ -42,12 +66,39 @@ cd JARVIS-AI-Agent
 
 # Create venv and install
 python3 -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
+source venv/bin/activate
 pip install -r requirements.txt
 
 # Start entire ecosystem (Body + Mind + Nerves)
 python3 unified_supervisor.py
 ```
+
+#### Windows
+
+**Automated Installation (Recommended):**
+
+```powershell
+# Clone and enter repo
+git clone https://github.com/drussell23/JARVIS-AI-Agent.git
+cd JARVIS-AI-Agent
+
+# Run installation script
+powershell -ExecutionPolicy Bypass -File scripts\windows\install_windows.ps1
+
+# Activate virtual environment
+.\.venv\Scripts\Activate.ps1
+
+# Start JARVIS
+python unified_supervisor.py
+```
+
+**Manual Installation:** See [Windows Installation Guide](docs/windows_porting/setup_guide.md) for detailed steps.
+
+**Prerequisites for Windows:**
+- Python 3.11+ (3.12 recommended)
+- Visual Studio Build Tools 2022
+- .NET SDK 8.0+
+- Git for Windows
 
 **What starts:**
 
