@@ -67502,6 +67502,14 @@ class JarvisSystemKernel:
                 except Exception as _evb_err:
                     self.logger.warning(f"[Kernel] v243.1: Event infrastructure init error: {_evb_err}")
 
+                # v243.1: DMS progress tracking for event infrastructure
+                # Note: progress point 52 is a sequence number, NOT a percentage.
+                # (The v260.1 comment at line 67385 mentions "52%" — that's the
+                # display percentage, which is unrelated to point numbering.)
+                await self._broadcast_progress(
+                    52, "event_infrastructure", "Event buses initialized"
+                )
+
                 # Create managers
                 router = HybridWorkloadRouter(self.config)
                 goal_engine = GoalInferenceEngine(self.config)
