@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
 """
-Reliable Screenshot Capture System
+Reliable Screenshot Capture System - Cross-Platform
+
+v2.0.0 (Windows Port - Phase 7):
+    - Platform-agnostic screenshot capture for Windows, macOS, and Linux
+    - Intelligent fallback mechanisms adapted per platform
+    - Uses platform_capture router as primary method
+    - Legacy macOS methods preserved for compatibility
 
 This module implements a multi-method screenshot capture system with intelligent
-fallback mechanisms for macOS. It provides robust screenshot capture across
-different desktop spaces using various capture methods including Quartz, AppKit,
-and command-line tools.
-
-The system automatically falls back through different capture methods if one fails,
-ensuring reliable screenshot capture even in challenging scenarios like permission
-issues, off-screen windows, or system resource constraints.
+fallback mechanisms. It provides robust screenshot capture across different
+desktop spaces/monitors using various capture methods.
 
 Example:
     >>> capture = ReliableScreenshotCapture()
@@ -22,6 +23,7 @@ import logging
 import os
 import subprocess
 import time
+import sys
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
@@ -29,15 +31,27 @@ from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 from PIL import Image
 
+# Platform detection
+CURRENT_PLATFORM = sys.platform
+IS_WINDOWS = CURRENT_PLATFORM == 'win32'
+IS_MACOS = CURRENT_PLATFORM == 'darwin'
+IS_LINUX = CURRENT_PLATFORM.startswith('linux')
+
+# v2.0.0: Import platform_capture router
+try:
+    from .platform_capture import get_vision_capture, CaptureFrame
+    PLATFORM_CAPTURE_AVAILABLE = True
+except ImportError:
+    PLATFORM_CAPTURE_AVAILABLE = False
+
 # v262.0: Gate PyObjC imports behind headless detection (prevents SIGABRT).
 def _is_gui_session() -> bool:
     """Check for macOS GUI session without loading PyObjC."""
     _cached = os.environ.get("_JARVIS_GUI_SESSION")
     if _cached is not None:
         return _cached == "1"
-    import sys as _sys
     result = False
-    if _sys.platform == "darwin":
+    if sys.platform == "darwin":
         if os.environ.get("JARVIS_HEADLESS", "").lower() in ("1", "true", "yes"):
             pass
         elif os.environ.get("SSH_CONNECTION") or os.environ.get("SSH_TTY"):
@@ -55,6 +69,7 @@ def _is_gui_session() -> bool:
     os.environ["_JARVIS_GUI_SESSION"] = "1" if result else "0"
     return result
 
+# Legacy macOS support (optional)
 Quartz = None  # type: ignore[assignment]
 NSScreen = None  # type: ignore[assignment]
 CGRectMake = None
@@ -173,27 +188,45 @@ class ReliableScreenshotCapture:
     """
 
     def __init__(self):
-        """Initialize the screenshot capture system.
-
-        Sets up available capture methods in priority order and initializes
-        the error handling matrix if available. The window capture manager
-        is prioritized if available for better edge case handling.
         """
-        # Build methods list with window_capture_manager as first choice (if available)
-        self.methods = []
+        Initialize the screenshot capture system.
 
+        v2.0.0: Platform-aware initialization with appropriate methods per platform
+        Sets up available capture methods in priority order and initializes
+        the error handling matrix if available.
+        """
+        # Build platform-specific methods list
+        self.methods = []
+        
+        # v2.0.0: Add platform_capture as highest priority (cross-platform)
+        if PLATFORM_CAPTURE_AVAILABLE:
+            self.methods.append(("platform_capture", self._capture_with_platform_router))
+        
         if WINDOW_CAPTURE_AVAILABLE:
             self.methods.append(("window_capture_manager", self._capture_with_window_manager))
-
-        self.methods.extend(
-            [
+        
+        # Platform-specific methods
+        if IS_MACOS and MACOS_NATIVE_AVAILABLE:
+            # macOS-specific methods
+            self.methods.extend([
                 ("quartz_composite", self._capture_quartz_composite),
                 ("quartz_windows", self._capture_quartz_windows),
                 ("appkit_screen", self._capture_appkit_screen),
                 ("screencapture_cli", self._capture_screencapture_cli),
                 ("window_server", self._capture_window_server),
-            ]
-        )
+            ])
+        elif IS_WINDOWS:
+            # Windows-specific methods
+            self.methods.extend([
+                ("windows_native", self._capture_windows_native),
+                ("pil_imagegrab", self._capture_pil_imagegrab),
+            ])
+        elif IS_LINUX:
+            # Linux-specific methods
+            self.methods.extend([
+                ("pil_imagegrab", self._capture_pil_imagegrab),
+                ("scrot_cli", self._capture_scrot_cli),
+            ])
 
         # Initialize Error Handling Matrix for graceful degradation
         self.error_matrix = None
@@ -502,6 +535,171 @@ class ReliableScreenshotCapture:
 
         except Exception as e:
             raise Exception(f"Window manager capture failed: {e}")
+    
+    def _capture_with_platform_router(self, space_id: int) -> ScreenshotResult:
+        """
+        Use platform_capture router for cross-platform capture
+        
+        v2.0.0: Primary capture method that works on Windows, macOS, and Linux
+        
+        Args:
+            space_id: The ID of the desktop space/monitor to capture
+        
+        Returns:
+            ScreenshotResult with captured image
+        """
+        try:
+            capturer = get_vision_capture()
+            frame = capturer.capture_screen(monitor_id=space_id)
+            
+            if frame is None:
+                raise Exception("Platform capture returned None")
+            
+            image = frame.to_pil()
+            
+            return ScreenshotResult(
+                success=True,
+                image=image,
+                method="platform_capture",
+                space_id=space_id,
+                error=None,
+                timestamp=datetime.now(),
+                metadata={
+                    'platform': CURRENT_PLATFORM,
+                    'width': frame.width,
+                    'height': frame.height,
+                    'format': frame.format
+                }
+            )
+        except Exception as e:
+            raise Exception(f"Platform capture failed: {e}")
+    
+    def _capture_windows_native(self, space_id: int) -> ScreenshotResult:
+        """
+        Use Windows native capture (C# DLL via pythonnet)
+        
+        Windows-specific capture using ScreenCapture.dll
+        
+        Args:
+            space_id: Monitor ID to capture
+        
+        Returns:
+            ScreenshotResult with captured image
+        """
+        try:
+            from .windows_vision_capture import WindowsVisionCapture
+            
+            capturer = WindowsVisionCapture()
+            frame = capturer.capture_screen(monitor_id=space_id)
+            
+            if frame is None:
+                raise Exception("Windows native capture returned None")
+            
+            # Convert numpy array to PIL Image
+            image = Image.fromarray(frame.image_data)
+            
+            return ScreenshotResult(
+                success=True,
+                image=image,
+                method="windows_native",
+                space_id=space_id,
+                error=None,
+                timestamp=datetime.now(),
+                metadata={
+                    'width': frame.width,
+                    'height': frame.height,
+                    'capture_method': 'windows_graphics_capture'
+                }
+            )
+        except Exception as e:
+            raise Exception(f"Windows native capture failed: {e}")
+    
+    def _capture_pil_imagegrab(self, space_id: int) -> ScreenshotResult:
+        """
+        Use PIL ImageGrab for cross-platform capture
+        
+        Works on Windows and macOS (fallback method)
+        
+        Args:
+            space_id: Monitor ID (0 = all monitors)
+        
+        Returns:
+            ScreenshotResult with captured image
+        """
+        try:
+            from PIL import ImageGrab
+            
+            # PIL ImageGrab captures all monitors by default
+            # For specific monitor, we would need to calculate bbox
+            if space_id > 0 and IS_WINDOWS:
+                # Try to get monitor bounds
+                try:
+                    from .windows_multi_monitor import get_windows_displays
+                    displays = get_windows_displays()
+                    if space_id in displays:
+                        display = displays[space_id]
+                        x, y, w, h = display.bounds
+                        image = ImageGrab.grab(bbox=(x, y, x + w, y + h))
+                    else:
+                        image = ImageGrab.grab()
+                except:
+                    image = ImageGrab.grab()
+            else:
+                image = ImageGrab.grab()
+            
+            return ScreenshotResult(
+                success=True,
+                image=image,
+                method="pil_imagegrab",
+                space_id=space_id,
+                error=None,
+                timestamp=datetime.now(),
+                metadata={'width': image.width, 'height': image.height}
+            )
+        except Exception as e:
+            raise Exception(f"PIL ImageGrab failed: {e}")
+    
+    def _capture_scrot_cli(self, space_id: int) -> ScreenshotResult:
+        """
+        Use scrot command-line tool (Linux)
+        
+        Linux-specific capture using scrot utility
+        
+        Args:
+            space_id: Space/monitor ID
+        
+        Returns:
+            ScreenshotResult with captured image
+        """
+        try:
+            import tempfile
+            
+            with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp:
+                tmp_path = tmp.name
+            
+            # Run scrot command
+            subprocess.run(['scrot', tmp_path], check=True, timeout=5)
+            
+            # Load image
+            image = Image.open(tmp_path)
+            
+            # Clean up temp file
+            try:
+                os.remove(tmp_path)
+            except:
+                pass
+            
+            return ScreenshotResult(
+                success=True,
+                image=image,
+                method="scrot_cli",
+                space_id=space_id,
+                error=None,
+                timestamp=datetime.now(),
+                metadata={'width': image.width, 'height': image.height}
+            )
+        except Exception as e:
+            raise Exception(f"Scrot CLI capture failed: {e}")
 
     def _capture_quartz_composite(self, space_id: int) -> ScreenshotResult:
         """Use Quartz to capture composite window image.
