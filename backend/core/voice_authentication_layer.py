@@ -252,31 +252,10 @@ class VoiceAuthenticationLayer:
 
         while retry_count <= max_retries:
             try:
-                # =====================================================================
-                # PHASE 1: VBIA Adapter Connection (with proper async/await)
-                # =====================================================================
-                if not self._vbia_adapter:
-                    try:
-                        from core.tiered_vbia_adapter import get_tiered_vbia_adapter
-
-                        # ROOT FIX: Await the async function properly!
-                        self._vbia_adapter = await get_tiered_vbia_adapter()
-                        self.logger.info("[VoiceAuthLayer] ✓ VBIA adapter connected")
-
-                        await self._broadcast_progress(
-                            event="voice_bio_ecapa_loaded",
-                            message="ECAPA-TDNN model loaded",
-                            backend="onnxruntime",
-                            dimensions=192,
-                            loading_server_url=loading_server_url,
-                        )
-
-                    except ImportError as e:
-                        self.logger.warning(f"[VoiceAuthLayer] VBIA adapter import failed: {e}")
-                        # Not fatal - can operate in fallback mode
-                    except Exception as e:
-                        self.logger.error(f"[VoiceAuthLayer] VBIA adapter connection error: {e}")
-                        raise  # Re-raise to trigger retry
+                # v244.0: TieredVBIAAdapter removed (commit 167fcecb).
+                # Voice biometric auth now uses SpeakerVerificationService directly.
+                # verify_for_tier2() and verify_for_tier1() retained for API
+                # compatibility but have zero external callers.
 
                 # =====================================================================
                 # PHASE 2: Initialize VBIA Adapter (if available)
