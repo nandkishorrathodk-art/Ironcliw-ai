@@ -282,6 +282,16 @@ class UnifiedCommandProcessor:
         self.message_generator = None
         self._speaker_verification_initialized = False
 
+        # v242.1: Reflex manifest cache with content-hash invalidation
+        self._reflex_manifest_cache: Optional[dict] = None
+        self._reflex_manifest_hash: str = ""
+        self._reflex_inhibition_cache: Optional[dict] = None
+        self._reflex_inhibition_hash: str = ""
+        self._reflex_cache_checked_at: float = 0.0
+        self._REFLEX_CACHE_CHECK_INTERVAL: float = float(
+            os.getenv("JARVIS_REFLEX_CACHE_INTERVAL", "5.0")
+        )
+
     async def _initialize_resolvers(self):
         """
         Initialize resolver systems using robust parallel tiered initialization.
@@ -1411,18 +1421,51 @@ class UnifiedCommandProcessor:
     async def _check_reflex_manifest(self, command_text: str) -> Optional[Dict[str, Any]]:
         """Check if command matches a reflex in the J-Prime-published manifest.
 
+        v242.1: Cached with content-hash invalidation. Disk reads rate-limited
+        to every JARVIS_REFLEX_CACHE_INTERVAL seconds (default 5s).
         Returns reflex dict if matched, None otherwise.
         Checks inhibition signals before executing.
         """
+        import hashlib
+        import time as _time
+
         manifest_path = Path.home() / ".jarvis" / "trinity" / "reflex_manifest.json"
         inhibition_path = Path.home() / ".jarvis" / "trinity" / "reflex_inhibition.json"
 
-        if not manifest_path.exists():
-            return None
+        # Rate-limit disk stat/read to every N seconds
+        now = _time.monotonic()
+        if now - self._reflex_cache_checked_at > self._REFLEX_CACHE_CHECK_INTERVAL:
+            self._reflex_cache_checked_at = now
+            # Refresh manifest cache if content changed
+            try:
+                if manifest_path.exists():
+                    raw = manifest_path.read_bytes()
+                    h = hashlib.md5(raw).hexdigest()
+                    if h != self._reflex_manifest_hash:
+                        self._reflex_manifest_cache = json.loads(raw)
+                        self._reflex_manifest_hash = h
+                else:
+                    self._reflex_manifest_cache = None
+                    self._reflex_manifest_hash = ""
+            except (OSError, json.JSONDecodeError):
+                pass  # Keep stale cache on read error
 
-        try:
-            manifest = json.loads(manifest_path.read_text())
-        except (json.JSONDecodeError, OSError):
+            # Refresh inhibition cache if content changed
+            try:
+                if inhibition_path.exists():
+                    raw = inhibition_path.read_bytes()
+                    h = hashlib.md5(raw).hexdigest()
+                    if h != self._reflex_inhibition_hash:
+                        self._reflex_inhibition_cache = json.loads(raw)
+                        self._reflex_inhibition_hash = h
+                else:
+                    self._reflex_inhibition_cache = None
+                    self._reflex_inhibition_hash = ""
+            except (OSError, json.JSONDecodeError):
+                pass  # Keep stale cache on read error
+
+        manifest = self._reflex_manifest_cache
+        if not manifest:
             return None
 
         # Check each reflex for pattern match
@@ -1431,13 +1474,13 @@ class UnifiedCommandProcessor:
             patterns = reflex.get("patterns", [])
             if any(normalized == p.lower() for p in patterns):
                 # Check inhibition before executing
-                if inhibition_path.exists():
-                    try:
-                        inhibition = json.loads(inhibition_path.read_text())
-                        inhibited = inhibition.get("inhibit_reflexes", [])
+                inhibition = self._reflex_inhibition_cache
+                if inhibition:
+                    inhibited = inhibition.get("inhibit_reflexes", [])
+                    if reflex_id in inhibited:
                         published = inhibition.get("published_at", "")
                         ttl = inhibition.get("ttl_seconds", 0)
-                        if reflex_id in inhibited:
+                        try:
                             from datetime import timezone
                             pub_time = datetime.fromisoformat(published)
                             if (datetime.now(timezone.utc) - pub_time).total_seconds() < ttl:
@@ -1446,8 +1489,8 @@ class UnifiedCommandProcessor:
                                     f"{inhibition.get('reason')}"
                                 )
                                 return None  # Inhibited -- send to J-Prime instead
-                    except (json.JSONDecodeError, OSError, ValueError):
-                        pass  # Inhibition check failed -- execute reflex anyway
+                        except (ValueError, TypeError):
+                            pass  # Inhibition check failed -- execute reflex anyway
 
                 return {"reflex_id": reflex_id, **reflex}
 
