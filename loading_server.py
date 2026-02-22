@@ -1821,7 +1821,10 @@ class FallbackStaticPageGenerator:
             if base_path:
                 filepath = str(base_path / "fallback.html")
             else:
-                filepath = "/tmp/jarvis_fallback.html"
+                # Cross-platform temp directory
+                import tempfile
+                temp_dir = tempfile.gettempdir()
+                filepath = os.path.join(temp_dir, "jarvis_fallback.html")
 
         html_content = self.generate()
 

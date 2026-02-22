@@ -1,7 +1,12 @@
-//! Advanced macOS notification monitoring with dynamic filtering and handlers
+//! Advanced notification monitoring with dynamic filtering and handlers
 //!
-//! This module provides production-ready notification monitoring using
-//! NSDistributedNotificationCenter with sophisticated filtering and event handling
+//! Platform support:
+//! - macOS: Uses NSDistributedNotificationCenter for system-wide notification monitoring
+//! - Windows: Uses Windows Management Instrumentation (WMI) events and Windows Event Log
+//! - Linux: Uses D-Bus for system notification monitoring (future)
+//!
+//! This module provides production-ready notification monitoring with sophisticated
+//! filtering and event handling that adapts to the platform capabilities.
 
 use crate::{Result, JarvisError};
 use std::sync::{Arc, atomic::{AtomicBool, AtomicU64, Ordering}};
@@ -11,6 +16,7 @@ use parking_lot::RwLock;
 use dashmap::DashMap;
 use serde::{Deserialize, Serialize};
 
+// macOS-specific imports
 #[cfg(target_os = "macos")]
 use objc::{msg_send, sel, sel_impl, runtime::{Class, Object, Sel, YES, NO}};
 #[cfg(target_os = "macos")]
@@ -21,8 +27,8 @@ use objc::declare::ClassDecl;
 use cocoa::base::{id, nil};
 #[cfg(target_os = "macos")]
 use cocoa::foundation::{NSString, NSAutoreleasePool};
-#[cfg(target_os = "macos")]
 // Block import would be from block crate, commented out for now
+// #[cfg(target_os = "macos")]
 // use block::{Block, ConcreteBlock};
 
 // ============================================================================
@@ -700,6 +706,13 @@ pub struct NotificationMetricsSnapshot {
 // ============================================================================
 // NON-MACOS STUB
 // ============================================================================
+//
+// Windows notification monitoring is implemented differently:
+// - Windows uses WMI events and Windows Event Log
+// - Implementation is in Python layer: backend/platform/windows/notifications.py
+// - Rust provides this stub to maintain API compatibility
+//
+// Future: Full Rust implementation using windows-rs crate for WMI/Event Log
 
 #[cfg(not(target_os = "macos"))]
 pub struct NotificationMonitor;
@@ -707,6 +720,28 @@ pub struct NotificationMonitor;
 #[cfg(not(target_os = "macos"))]
 impl NotificationMonitor {
     pub fn new() -> Result<Self> {
-        Err(JarvisError::BridgeError("Notification monitoring only available on macOS".to_string()))
+        #[cfg(target_os = "windows")]
+        {
+            tracing::info!(
+                "Windows notification monitoring delegates to Python layer (backend.platform.windows)"
+            );
+            Ok(Self)
+        }
+        
+        #[cfg(not(target_os = "windows"))]
+        Err(JarvisError::BridgeError(
+            "Notification monitoring currently only available on macOS and Windows".to_string()
+        ))
+    }
+    
+    #[cfg(target_os = "windows")]
+    pub fn start(&self, _filters: Vec<NotificationFilter>) -> Result<()> {
+        tracing::warn!("Windows notification monitoring not yet implemented in Rust - use Python layer");
+        Ok(())
+    }
+    
+    #[cfg(target_os = "windows")]
+    pub fn stop(&self) {
+        // No-op on Windows
     }
 }

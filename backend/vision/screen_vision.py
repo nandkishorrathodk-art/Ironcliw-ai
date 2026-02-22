@@ -1,5 +1,11 @@
 """
-JARVIS Screen Vision System - Computer Vision for macOS Screen Understanding
+JARVIS Screen Vision System - Cross-Platform Computer Vision for Screen Understanding
+
+v2.0.0 (Windows Port - Phase 7):
+    - Platform-agnostic screen capture using platform_capture router
+    - Supports Windows, macOS, and Linux
+    - Unified API across all platforms
+    - Legacy macOS-specific code preserved for compatibility
 """
 
 import asyncio
@@ -9,23 +15,22 @@ import os
 import re
 import logging
 import time
+import sys
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple, Any
-# v262.0: PyObjC imports moved from bare module-level to guarded lazy-load.
-# On macOS, `import AppKit` triggers Window Server registration via
-# _RegisterApplication. In headless environments (SSH, Cursor sandbox,
-# launchd daemon), registration fails → macOS calls abort() — an unrecoverable
-# C-level process kill that bypasses Python exception handling entirely.
-# Only `Quartz` is used in this file (Vision and AppKit were dead imports).
 
+# Platform detection
+CURRENT_PLATFORM = sys.platform
+
+# v262.0: PyObjC imports moved to lazy-load for macOS compatibility
+# v2.0.0: Made optional - use platform_capture router as primary method
 def _is_gui_session() -> bool:
     """Check for macOS GUI session without loading PyObjC (prevents SIGABRT)."""
     _cached = os.environ.get("_JARVIS_GUI_SESSION")
     if _cached is not None:
         return _cached == "1"
-    import sys as _sys
     result = False
-    if _sys.platform == "darwin":
+    if sys.platform == "darwin":
         if os.environ.get("JARVIS_HEADLESS", "").lower() in ("1", "true", "yes"):
             pass
         elif os.environ.get("SSH_CONNECTION") or os.environ.get("SSH_TTY"):
@@ -43,6 +48,7 @@ def _is_gui_session() -> bool:
     os.environ["_JARVIS_GUI_SESSION"] = "1" if result else "0"
     return result
 
+# Legacy macOS support (optional)
 Quartz = None  # type: ignore[assignment]
 MACOS_NATIVE_AVAILABLE = False
 
@@ -53,6 +59,17 @@ if _is_gui_session():
         MACOS_NATIVE_AVAILABLE = True
     except (ImportError, RuntimeError):
         pass
+
+# v2.0.0: Import platform-agnostic capture system
+try:
+    from .platform_capture import get_vision_capture, CaptureFrame
+    PLATFORM_CAPTURE_AVAILABLE = True
+    logger = logging.getLogger(__name__)
+    logger.info(f"✅ Platform capture available for {CURRENT_PLATFORM}")
+except ImportError as e:
+    PLATFORM_CAPTURE_AVAILABLE = False
+    logger = logging.getLogger(__name__)
+    logger.warning(f"Platform capture not available: {e}")
 
 from PIL import Image
 import pytesseract
@@ -213,98 +230,103 @@ class ScreenVisionSystem:
     async def capture_screen(
         self, region: Optional[Tuple[int, int, int, int]] = None
     ) -> Optional[Image.Image]:
-        """Capture the screen or a specific region and return as PIL Image"""
-        # Use Quartz to capture screen
-        if region:
-            x, y, width, height = region
-            screenshot = Quartz.CGWindowListCreateImage(
-                Quartz.CGRectMake(x, y, width, height),
-                Quartz.kCGWindowListOptionOnScreenOnly,
-                Quartz.kCGNullWindowID,
-                Quartz.kCGWindowImageDefault,
-            )
-        else:
-            # Capture entire screen
-            screenshot = Quartz.CGDisplayCreateImage(Quartz.CGMainDisplayID())
-
-        # Check if screenshot was captured successfully
-        if screenshot is None:
-            # Try fallback method using screencapture command
+        """
+        Capture the screen or a specific region and return as PIL Image
+        
+        v2.0.0: Platform-agnostic implementation using platform_capture router
+        Falls back to legacy macOS Quartz if needed for compatibility
+        """
+        # Try platform-agnostic capture first (v2.0.0)
+        if PLATFORM_CAPTURE_AVAILABLE:
             try:
-                from .screen_capture_fallback import capture_screen_fallback
-
-                print("Quartz capture failed, trying screencapture fallback...")
-                fallback_image = capture_screen_fallback()
-                if fallback_image is not None:
-                    print("✓ Fallback capture successful!")
-                    return fallback_image
+                capturer = get_vision_capture()
+                
+                if region:
+                    x, y, width, height = region
+                    frame = capturer.capture_region(x, y, width, height)
+                else:
+                    frame = capturer.capture_screen(monitor_id=0)
+                
+                if frame:
+                    return frame.to_pil()
+                    
+                logger.warning("Platform capture returned None - trying fallback")
             except Exception as e:
-                print(f"Fallback also failed: {e}")
+                logger.error(f"Platform capture failed: {e} - trying fallback")
+        
+        # Legacy macOS Quartz fallback (for compatibility)
+        if MACOS_NATIVE_AVAILABLE and Quartz:
+            try:
+                if region:
+                    x, y, width, height = region
+                    screenshot = Quartz.CGWindowListCreateImage(
+                        Quartz.CGRectMake(x, y, width, height),
+                        Quartz.kCGWindowListOptionOnScreenOnly,
+                        Quartz.kCGNullWindowID,
+                        Quartz.kCGWindowImageDefault,
+                    )
+                else:
+                    screenshot = Quartz.CGDisplayCreateImage(Quartz.CGMainDisplayID())
 
-            # Return None if capture failed
-            print(
-                "Warning: Screen capture failed - please grant screen recording permission"
-            )
-            print(
-                "Go to: System Preferences → Security & Privacy → Privacy → Screen Recording"
-            )
-            print("Then check the box next to Terminal (or your Python/IDE)")
-            return None
+                if screenshot is None:
+                    logger.warning("Quartz capture returned None")
+                else:
+                    # Convert Quartz screenshot to PIL Image
+                    width = Quartz.CGImageGetWidth(screenshot)
+                    height = Quartz.CGImageGetHeight(screenshot)
+                    bytes_per_row = Quartz.CGImageGetBytesPerRow(screenshot)
+                    pixel_data = Quartz.CGDataProviderCopyData(
+                        Quartz.CGImageGetDataProvider(screenshot)
+                    )
 
-        # Convert to numpy array
-        width = Quartz.CGImageGetWidth(screenshot)
-        height = Quartz.CGImageGetHeight(screenshot)
-        bytes_per_row = Quartz.CGImageGetBytesPerRow(screenshot)
-
-        pixel_data = Quartz.CGDataProviderCopyData(
-            Quartz.CGImageGetDataProvider(screenshot)
-        )
-
-        # Check if pixel data was retrieved successfully
-        if pixel_data is None:
-            print("Warning: Could not get pixel data from screenshot")
-            return None
-
+                    if pixel_data:
+                        image_data = np.frombuffer(pixel_data, dtype=np.uint8)
+                        expected_size = height * bytes_per_row
+                        
+                        if len(image_data) >= expected_size:
+                            image_data = image_data[:expected_size]
+                            image = image_data.reshape((height, bytes_per_row))
+                            pixels_per_row = bytes_per_row // 4
+                            image = image.reshape((height, pixels_per_row, 4))
+                            image = image[:, :width, :]
+                            image = image[:, :, [2, 1, 0]]  # BGR to RGB
+                            return Image.fromarray(image)
+            except Exception as e:
+                logger.error(f"Legacy Quartz capture failed: {e}")
+        
+        # Final fallback: screencapture command or PIL ImageGrab
         try:
-            # Convert pixel data to numpy array
-            image_data = np.frombuffer(pixel_data, dtype=np.uint8)
-
-            # Calculate the expected data size
-            expected_size = height * bytes_per_row
-            actual_size = len(image_data)
-
-            # Trim any extra data (sometimes there's padding at the end)
-            if actual_size > expected_size:
-                image_data = image_data[:expected_size]
-            elif actual_size < expected_size:
-                # If we have less data than expected, something's wrong
-                print(
-                    f"Warning: Insufficient pixel data. Expected {expected_size}, got {actual_size}"
-                )
+            if CURRENT_PLATFORM == 'darwin':
+                from .screen_capture_fallback import capture_screen_fallback
+                logger.info("Using screencapture command fallback...")
+                return capture_screen_fallback()
+            elif CURRENT_PLATFORM == 'win32':
+                # Windows PIL ImageGrab fallback
+                from PIL import ImageGrab
+                if region:
+                    x, y, width, height = region
+                    return ImageGrab.grab(bbox=(x, y, x + width, y + height))
+                else:
+                    return ImageGrab.grab()
+            else:
+                logger.error("No capture method available for this platform")
                 return None
-
-            # First reshape to get rows
-            image = image_data.reshape((height, bytes_per_row))
-
-            # Now reshape to get pixels (BGRA format, 4 bytes per pixel)
-            pixels_per_row = bytes_per_row // 4
-            image = image.reshape((height, pixels_per_row, 4))
-
-            # Crop to actual width (in case bytes_per_row includes padding)
-            image = image[:, :width, :]
-
-            # Convert BGRA to RGB (skip alpha channel)
-            image = image[:, :, [2, 1, 0]]  # BGR to RGB
-
-            # Convert numpy array to PIL Image
-            pil_image = Image.fromarray(image)
-            return pil_image
         except Exception as e:
-            print(f"Error converting screenshot to PIL Image: {e}")
-            print(
-                f"Debug info: height={height}, width={width}, bytes_per_row={bytes_per_row}"
-            )
-            print(f"Data size: {len(pixel_data) if pixel_data else 'None'}")
+            logger.error(f"Final fallback capture failed: {e}")
+            
+            # Show platform-specific help
+            if CURRENT_PLATFORM == 'darwin':
+                logger.error(
+                    "Screen capture failed. Grant screen recording permission:\n"
+                    "System Preferences → Security & Privacy → Privacy → Screen Recording"
+                )
+            elif CURRENT_PLATFORM == 'win32':
+                logger.error(
+                    "Screen capture failed. Check permissions and ensure C# DLLs are built:\n"
+                    "  cd backend\\windows_native\n"
+                    "  .\\build.ps1"
+                )
+            
             return None
 
     async def extract_text_from_image(self, image_path: str) -> Tuple[str, float]:

@@ -244,8 +244,11 @@ if _new_filter not in _existing_pythonwarnings:
         os.environ['PYTHONWARNINGS'] = _new_filter
 
 # Set spawn mode IMMEDIATELY - before anything else can start threads/processes
+# On macOS, fork() causes crashes due to Objective-C runtime locks
+# On Windows, spawn is default (no fork available)
+# On Linux, spawn is safer for multi-threaded processes
 if sys.platform == "darwin":
-    # Must be called before any other multiprocessing usage
+    # macOS: Must be called before any other multiprocessing usage
     try:
         multiprocessing.set_start_method("spawn", force=True)
     except RuntimeError:
@@ -253,7 +256,7 @@ if sys.platform == "darwin":
 
     # Additional fork-safety environment variables for macOS
     os.environ["OBJC_DISABLE_INITIALIZE_FORK_SAFETY"] = "YES"
-
+    
     # v128.0: Also apply warnings filter in current process
     # On macOS with 'spawn' mode, internal Python semaphores may appear
     # "leaked" at exit even when properly cleaned up. This is a known issue
@@ -288,6 +291,14 @@ if sys.platform == "darwin":
     os.environ["MKL_NUM_THREADS"] = "1"  # Intel MKL
     os.environ["OPENBLAS_NUM_THREADS"] = "1"  # OpenBLAS
     os.environ["VECLIB_MAXIMUM_THREADS"] = "1"  # macOS Accelerate
+
+elif sys.platform == "linux":
+    # Linux: Use spawn for safety (fork() can be problematic with threads)
+    try:
+        multiprocessing.set_start_method("spawn", force=True)
+    except RuntimeError:
+        pass  # Already set
+# Windows uses 'spawn' by default, no configuration needed
 
 import subprocess
 
@@ -502,6 +513,38 @@ import time
 from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import Optional
+
+# =============================================================================
+# PLATFORM DETECTION AND ABSTRACTION (Windows Port)
+# =============================================================================
+# Import platform detection to enable Windows/Linux support alongside macOS.
+# This determines which platform-specific implementations to load.
+# =============================================================================
+try:
+    from backend.platform import (
+        get_platform,
+        is_windows,
+        is_macos,
+        is_linux,
+        get_platform_info,
+    )
+    JARVIS_PLATFORM = get_platform()
+    JARVIS_IS_WINDOWS = is_windows()
+    JARVIS_IS_MACOS = is_macos()
+    JARVIS_IS_LINUX = is_linux()
+    JARVIS_PLATFORM_INFO = get_platform_info()
+    print(f"[STARTUP] ✅ Platform detected: {JARVIS_PLATFORM} ({JARVIS_PLATFORM_INFO.os_release})")
+except ImportError as e:
+    print(f"[STARTUP] ⚠️ Platform detection unavailable: {e}")
+    # Fallback to sys.platform
+    import platform as _fallback_platform
+    _sys_platform = sys.platform.lower()
+    JARVIS_PLATFORM = 'macos' if _sys_platform == 'darwin' else ('windows' if _sys_platform == 'win32' else 'linux')
+    JARVIS_IS_WINDOWS = JARVIS_PLATFORM == 'windows'
+    JARVIS_IS_MACOS = JARVIS_PLATFORM == 'macos'
+    JARVIS_IS_LINUX = JARVIS_PLATFORM == 'linux'
+    JARVIS_PLATFORM_INFO = None
+    print(f"[STARTUP] ⚠️ Using fallback platform detection: {JARVIS_PLATFORM}")
 
 # v242.2: Centralized log sanitization for CWE-117 (log injection) prevention
 try:
@@ -917,24 +960,57 @@ def import_chatbots():
 
 
 def import_vision_system():
-    """Import vision components"""
+    """Import vision components (platform-aware)"""
     vision = {}
 
     try:
         from vision.claude_vision_analyzer_main import ClaudeVisionAnalyzer
-        from vision.video_stream_capture import MACOS_CAPTURE_AVAILABLE, VideoStreamCapture
-
         vision["analyzer"] = ClaudeVisionAnalyzer
-        vision["video_capture"] = VideoStreamCapture
-        vision["macos_available"] = MACOS_CAPTURE_AVAILABLE
-        vision["available"] = True
-    except ImportError:
+        
+        # Platform-specific screen capture
+        if JARVIS_IS_WINDOWS:
+            # Windows: Use Windows platform capture
+            try:
+                from backend.platform.windows.vision import WindowsVisionCapture
+                vision["video_capture"] = WindowsVisionCapture
+                vision["platform_available"] = True
+                vision["macos_available"] = False
+                logger.info("  ✅ Windows vision capture available")
+            except ImportError as e:
+                logger.warning(f"  ⚠️ Windows vision capture unavailable: {e}")
+                vision["platform_available"] = False
+                vision["macos_available"] = False
+        elif JARVIS_IS_MACOS:
+            # macOS: Use Swift-based capture
+            try:
+                from vision.video_stream_capture import MACOS_CAPTURE_AVAILABLE, VideoStreamCapture
+                vision["video_capture"] = VideoStreamCapture
+                vision["macos_available"] = MACOS_CAPTURE_AVAILABLE
+                vision["platform_available"] = MACOS_CAPTURE_AVAILABLE
+            except ImportError as e:
+                logger.warning(f"  ⚠️ macOS vision capture unavailable: {e}")
+                vision["macos_available"] = False
+                vision["platform_available"] = False
+        elif JARVIS_IS_LINUX:
+            # Linux: Use X11/Wayland capture (future)
+            logger.warning("  ⚠️ Linux vision capture not yet implemented")
+            vision["platform_available"] = False
+            vision["macos_available"] = False
+        else:
+            vision["platform_available"] = False
+            vision["macos_available"] = False
+        
+        vision["available"] = vision.get("platform_available", False) or vision.get("analyzer") is not None
+    except ImportError as e:
+        logger.warning(f"  ⚠️ Vision system unavailable: {e}")
         vision["available"] = False
+        vision["platform_available"] = False
+        vision["macos_available"] = False
 
-    # Check purple indicator separately
+    # Check purple indicator separately (macOS-only feature)
     try:
-        pass
-
+        if JARVIS_IS_MACOS:
+            pass
         vision["purple_indicator"] = True
     except ImportError:
         vision["purple_indicator"] = False
@@ -984,7 +1060,7 @@ def import_memory_system():
 
 
 def import_voice_system():
-    """Import voice components"""
+    """Import voice components (platform-aware)"""
     voice = {}
 
     try:
@@ -1016,6 +1092,25 @@ def import_voice_system():
     except Exception as e:
         logger.exception(f"Unexpected error importing JARVIS Voice API: {e}")
         voice["jarvis_available"] = False
+    
+    # Platform-specific audio engine availability
+    if JARVIS_IS_WINDOWS:
+        try:
+            from backend.platform.windows.audio import WindowsAudioEngine
+            voice["platform_audio"] = WindowsAudioEngine
+            voice["platform_audio_available"] = True
+            logger.info("  ✅ Windows audio engine available (WASAPI)")
+        except ImportError as e:
+            logger.warning(f"  ⚠️ Windows audio engine unavailable: {e}")
+            voice["platform_audio_available"] = False
+    elif JARVIS_IS_MACOS:
+        # macOS uses pyaudio with CoreAudio backend (built into voice modules)
+        voice["platform_audio_available"] = True
+        logger.info("  ✅ macOS audio engine available (CoreAudio)")
+    elif JARVIS_IS_LINUX:
+        # Linux uses pyaudio with ALSA/PulseAudio
+        voice["platform_audio_available"] = True
+        logger.info("  ✅ Linux audio engine available (ALSA/PulseAudio)")
 
     return voice
 
@@ -1059,13 +1154,44 @@ def import_monitoring():
 
 
 def import_voice_unlock():
-    """Import voice unlock components including enhanced VBI (v4.0)"""
+    """Import voice unlock components including enhanced VBI (v4.0) - Platform-aware"""
     import logging
 
     logger = logging.getLogger(__name__)
 
     voice_unlock = {}
 
+    # Platform-specific authentication handling
+    if JARVIS_IS_WINDOWS:
+        # Windows MVP: Use bypass mode authentication
+        logger.info("  🪟 Windows platform detected - using bypass authentication mode")
+        try:
+            from backend.platform.windows.auth import WindowsAuthentication
+            voice_unlock["auth_class"] = WindowsAuthentication
+            voice_unlock["bypass_mode"] = True
+            voice_unlock["available"] = True
+            voice_unlock["initialized"] = True
+            voice_unlock["vbi_available"] = False
+            voice_unlock["startup_integration"] = False
+            logger.info("  ✅ Windows bypass authentication available")
+        except ImportError as e:
+            logger.warning(f"  ⚠️  Windows authentication unavailable: {e}")
+            voice_unlock["available"] = False
+            voice_unlock["initialized"] = False
+        return voice_unlock
+    
+    elif JARVIS_IS_LINUX:
+        # Linux: Bypass mode for now (future: implement Linux biometrics)
+        logger.info("  🐧 Linux platform detected - using bypass authentication mode")
+        voice_unlock["bypass_mode"] = True
+        voice_unlock["available"] = True
+        voice_unlock["initialized"] = True
+        voice_unlock["vbi_available"] = False
+        voice_unlock["startup_integration"] = False
+        logger.info("  ✅ Linux bypass authentication enabled")
+        return voice_unlock
+
+    # macOS: Full voice biometric authentication
     try:
         from api.voice_unlock_api import initialize_voice_unlock
         from api.voice_unlock_api import router as voice_unlock_router
@@ -1073,11 +1199,12 @@ def import_voice_unlock():
         voice_unlock["router"] = voice_unlock_router
         voice_unlock["initialize"] = initialize_voice_unlock
         voice_unlock["available"] = True
+        voice_unlock["bypass_mode"] = False
 
         # Try to initialize immediately
         if initialize_voice_unlock():
             voice_unlock["initialized"] = True
-            logger.info("  ✅ Voice Unlock API initialized")
+            logger.info("  ✅ Voice Unlock API initialized (macOS)")
         else:
             voice_unlock["initialized"] = False
             logger.warning("  ⚠️  Voice Unlock API initialization failed")
@@ -4584,7 +4711,7 @@ app = FastAPI(
 @app.get("/lock-now")
 async def ultra_fast_lock():
     """
-    Ultra-minimal lock endpoint that bypasses all infrastructure.
+    Ultra-minimal lock endpoint that bypasses all infrastructure (platform-aware).
     Registered at module level for immediate availability.
     Tries multiple lock methods in order of reliability.
     """
@@ -4603,35 +4730,63 @@ async def ultra_fast_lock():
         except Exception:
             return False
 
-    # Method 1: AppleScript Cmd+Ctrl+Q (works on all macOS versions)
-    if shutil.which("osascript"):
-        script = 'tell application "System Events" to keystroke "q" using {command down, control down}'
-        if await run_cmd(["osascript", "-e", script]):
-            return {"success": True, "method": "applescript"}
+    # Platform-specific locking
+    if JARVIS_IS_WINDOWS:
+        # Windows: Use rundll32 to lock workstation
+        if await run_cmd(["rundll32.exe", "user32.dll,LockWorkStation"]):
+            return {"success": True, "method": "windows_lockworkstation", "platform": "windows"}
+        return {"success": False, "error": "windows_lock_failed", "platform": "windows"}
+    
+    elif JARVIS_IS_LINUX:
+        # Linux: Try multiple desktop environments
+        # Method 1: GNOME
+        if shutil.which("gnome-screensaver-command"):
+            if await run_cmd(["gnome-screensaver-command", "-l"]):
+                return {"success": True, "method": "gnome_screensaver", "platform": "linux"}
+        # Method 2: KDE
+        if shutil.which("qdbus"):
+            if await run_cmd(["qdbus", "org.freedesktop.ScreenSaver", "/ScreenSaver", "Lock"]):
+                return {"success": True, "method": "kde_lock", "platform": "linux"}
+        # Method 3: XDG screensaver
+        if shutil.which("xdg-screensaver"):
+            if await run_cmd(["xdg-screensaver", "lock"]):
+                return {"success": True, "method": "xdg_screensaver", "platform": "linux"}
+        return {"success": False, "error": "linux_lock_failed", "platform": "linux"}
+    
+    elif JARVIS_IS_MACOS:
+        # macOS: Multiple methods
+        # Method 1: AppleScript Cmd+Ctrl+Q (works on all macOS versions)
+        if shutil.which("osascript"):
+            script = 'tell application "System Events" to keystroke "q" using {command down, control down}'
+            if await run_cmd(["osascript", "-e", script]):
+                return {"success": True, "method": "applescript", "platform": "macos"}
 
-    # Method 2: CGSession (older macOS location)
-    cgsession_old = "/System/Library/CoreServices/Menu Extras/User.menu/Contents/Resources/CGSession"
-    if os.path.exists(cgsession_old):
-        if await run_cmd([cgsession_old, "-suspend"]):
-            return {"success": True, "method": "cgsession"}
+        # Method 2: CGSession (older macOS location)
+        cgsession_old = "/System/Library/CoreServices/Menu Extras/User.menu/Contents/Resources/CGSession"
+        if os.path.exists(cgsession_old):
+            if await run_cmd([cgsession_old, "-suspend"]):
+                return {"success": True, "method": "cgsession", "platform": "macos"}
 
-    # Method 3: LockScreen binary (newer macOS)
-    lockscreen = "/System/Library/CoreServices/RemoteManagement/AppleVNCServer.bundle/Contents/Support/LockScreen.app/Contents/MacOS/LockScreen"
-    if os.path.exists(lockscreen):
-        if await run_cmd([lockscreen]):
-            return {"success": True, "method": "lockscreen"}
+        # Method 3: LockScreen binary (newer macOS)
+        lockscreen = "/System/Library/CoreServices/RemoteManagement/AppleVNCServer.bundle/Contents/Support/LockScreen.app/Contents/MacOS/LockScreen"
+        if os.path.exists(lockscreen):
+            if await run_cmd([lockscreen]):
+                return {"success": True, "method": "lockscreen", "platform": "macos"}
 
-    # Method 4: pmset display sleep
-    if shutil.which("pmset"):
-        if await run_cmd(["pmset", "displaysleepnow"]):
-            return {"success": True, "method": "pmset"}
+        # Method 4: pmset display sleep
+        if shutil.which("pmset"):
+            if await run_cmd(["pmset", "displaysleepnow"]):
+                return {"success": True, "method": "pmset", "platform": "macos"}
 
-    # Method 5: ScreenSaver
-    if os.path.exists("/System/Library/CoreServices/ScreenSaverEngine.app"):
-        if await run_cmd(["open", "-a", "ScreenSaverEngine"]):
-            return {"success": True, "method": "screensaver"}
+        # Method 5: ScreenSaver
+        if os.path.exists("/System/Library/CoreServices/ScreenSaverEngine.app"):
+            if await run_cmd(["open", "-a", "ScreenSaverEngine"]):
+                return {"success": True, "method": "screensaver", "platform": "macos"}
 
-    return {"success": False, "error": "all_methods_failed"}
+        return {"success": False, "error": "macos_lock_failed", "platform": "macos"}
+    
+    else:
+        return {"success": False, "error": "unsupported_platform", "platform": JARVIS_PLATFORM}
 
 logger.info("✅ Ultra-fast /lock-now endpoint registered (module-level)")
 
@@ -6313,11 +6468,30 @@ async def health_check():
     except Exception as e:
         coding_council_details = {"enabled": False, "error": str(e)}
 
+    # Platform information
+    platform_info = {
+        "platform": JARVIS_PLATFORM,
+        "is_windows": JARVIS_IS_WINDOWS,
+        "is_macos": JARVIS_IS_MACOS,
+        "is_linux": JARVIS_IS_LINUX,
+    }
+    if JARVIS_PLATFORM_INFO:
+        platform_info.update({
+            "os_release": JARVIS_PLATFORM_INFO.os_release,
+            "architecture": JARVIS_PLATFORM_INFO.architecture,
+            "python_version": JARVIS_PLATFORM_INFO.python_version,
+            "has_gpu": JARVIS_PLATFORM_INFO.has_gpu,
+            "has_directml": JARVIS_PLATFORM_INFO.has_directml if JARVIS_IS_WINDOWS else False,
+            "has_metal": JARVIS_PLATFORM_INFO.has_metal if JARVIS_IS_MACOS else False,
+            "has_cuda": JARVIS_PLATFORM_INFO.has_cuda,
+        })
+    
     return {
         "status": "degraded" if bridge_health["overall"] == "degraded" else "healthy",
         "mode": "optimized" if OPTIMIZE_STARTUP else "legacy",
         "parallel_imports": PARALLEL_IMPORTS,
         "lazy_models": LAZY_LOAD_MODELS,
+        "platform": platform_info,
         "components": {name: bool(comp) for name, comp in components.items() if comp is not None},
         "vision_status": vision_status,
         "vision_enhanced": vision_details,
