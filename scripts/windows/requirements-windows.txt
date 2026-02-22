@@ -1,0 +1,177 @@
+# JARVIS Windows-Specific Python Dependencies
+# ═══════════════════════════════════════════════════════════════════════════════
+# Install these before general requirements.txt
+# These packages replace macOS-specific dependencies
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ───────────────────────────────────────────────────────────────────────────────
+# Windows System Integration
+# ───────────────────────────────────────────────────────────────────────────────
+
+# Windows API access
+pywin32>=306  # Windows API (Win32, COM, shell, registry, events)
+pywin32-ctypes>=0.2.2  # Lightweight Windows API via ctypes
+pywinrt>=2.0.0  # Windows Runtime (WinRT) access for modern APIs
+
+# .NET integration (for C# native layer)
+pythonnet>=3.0.3  # Python.NET - call C# code from Python
+clr-loader>=0.2.6  # .NET runtime loader
+
+# Windows-specific audio (WASAPI)
+pyaudiowpatch>=0.2.12.6  # PyAudio fork with WASAPI loopback support
+sounddevice>=0.4.6  # Modern audio I/O (works better on Windows than PyAudio)
+soundfile>=0.12.1  # Audio file reading/writing
+
+# Windows process and system management
+psutil>=5.9.8  # Cross-platform process utilities (enhanced Windows support)
+wmi>=1.5.1  # Windows Management Instrumentation
+pythoncom>=0.0.2  # Python COM extensions
+
+# ───────────────────────────────────────────────────────────────────────────────
+# ML/AI - Windows Hardware Acceleration
+# ───────────────────────────────────────────────────────────────────────────────
+
+# ONNX Runtime with DirectML (GPU/NPU acceleration)
+onnxruntime-directml>=1.17.1  # DirectML execution provider for Windows GPU/NPU
+
+# Alternative: ONNX Runtime with CPU only (fallback)
+# onnxruntime>=1.17.1
+
+# ONNX tools
+onnx>=1.15.0  # ONNX model format
+onnxconverter-common>=1.14.0  # ONNX conversion utilities
+
+# CoreML to ONNX converter (for porting macOS models)
+coremltools>=7.1  # CoreML toolkit (for model conversion, not inference)
+
+# ───────────────────────────────────────────────────────────────────────────────
+# Computer Vision - Windows Screen Capture
+# ───────────────────────────────────────────────────────────────────────────────
+
+# Screen capture (Windows-compatible)
+mss>=9.0.1  # Fast multi-monitor screenshot library (Windows.Graphics.Capture backend)
+Pillow>=10.2.0  # Image processing (PIL fork)
+opencv-python>=4.9.0.80  # OpenCV for image processing
+
+# Windows Graphics Capture API wrapper (if available)
+# Note: May require additional setup
+# python-windows-graphics-capture>=0.1.0  # Experimental
+
+# ───────────────────────────────────────────────────────────────────────────────
+# Automation - Windows UI Automation
+# ───────────────────────────────────────────────────────────────────────────────
+
+# UI Automation (replacement for macOS Accessibility API)
+pywinauto>=0.6.8  # Windows UI automation framework
+uiautomation>=2.0.18  # UI Automation library for Windows
+
+# Mouse and keyboard control
+pynput>=1.7.6  # Monitor and control mouse/keyboard
+pyautogui>=0.9.54  # GUI automation (cross-platform)
+mouse>=0.7.1  # Simple mouse control
+keyboard>=0.13.5  # Keyboard hooks and simulation
+
+# ───────────────────────────────────────────────────────────────────────────────
+# Notifications
+# ───────────────────────────────────────────────────────────────────────────────
+
+# Windows 10/11 toast notifications
+win10toast>=0.9  # Windows 10 toast notifications (basic)
+win11toast>=0.34  # Windows 11 toast notifications (modern)
+winotify>=1.1.0  # Alternative Windows notification library
+
+# ───────────────────────────────────────────────────────────────────────────────
+# File Watching
+# ───────────────────────────────────────────────────────────────────────────────
+
+# Cross-platform file watching (uses ReadDirectoryChangesW on Windows)
+watchdog>=4.0.0  # File system event monitoring
+
+# ───────────────────────────────────────────────────────────────────────────────
+# Development Tools
+# ───────────────────────────────────────────────────────────────────────────────
+
+# Debugging and profiling (Windows-optimized)
+pyinstrument>=4.6.2  # Statistical profiler
+memory-profiler>=0.61.0  # Memory profiler
+py-spy>=0.3.14  # Sampling profiler (Rust-based, fast)
+
+# ───────────────────────────────────────────────────────────────────────────────
+# Optional: Advanced Features (Phase 3+)
+# ───────────────────────────────────────────────────────────────────────────────
+
+# Windows Hello integration (Phase 3)
+# Note: May require additional Windows SDK components
+# windows-hello>=0.1.0  # Experimental
+
+# Windows Credential Manager
+keyring>=24.3.0  # Cross-platform credential storage (uses Windows Credential Manager)
+keyrings.alt>=5.0.0  # Alternative keyring backends
+
+# Windows Speech (TTS/STT)
+pyttsx3>=2.90  # Text-to-speech (uses Windows SAPI)
+# Note: speech_recognition is in main requirements.txt
+
+# Edge TTS (experimental - uses Microsoft Edge's TTS engine)
+# edge-tts>=6.1.9  # Microsoft Edge TTS (cloud-based)
+
+# ───────────────────────────────────────────────────────────────────────────────
+# Windows Terminal Integration (experimental)
+# ───────────────────────────────────────────────────────────────────────────────
+
+# Colorama for colored terminal output (Windows console compatibility)
+colorama>=0.4.6  # ANSI color codes for Windows console
+
+# Rich (enhanced terminal UI - cross-platform)
+# Note: Already in main requirements.txt
+# rich>=13.7.0
+
+# ───────────────────────────────────────────────────────────────────────────────
+# Windows-Specific Utilities
+# ───────────────────────────────────────────────────────────────────────────────
+
+# Windows registry access (alternative to pywin32.winreg)
+# Note: pywin32 provides registry access, this is optional
+# winreg-unicode>=1.0.0  # Unicode registry support
+
+# Windows path utilities
+pathlib2>=2.3.7; python_version<'3.11'  # Backport of pathlib (for older Python)
+
+# Windows service management
+# pywin32-services>=0.0.1  # Windows service utilities (part of pywin32)
+
+# Windows firewall management
+# python-windows-firewall>=0.1.0  # Experimental
+
+# ───────────────────────────────────────────────────────────────────────────────
+# NOTES
+# ═══════════════════════════════════════════════════════════════════════════════
+# 
+# Installation order:
+#   1. pip install -r scripts/windows/requirements-windows.txt
+#   2. pip install -r requirements.txt
+#
+# Hardware acceleration:
+#   - DirectML (GPU/NPU): Included via onnxruntime-directml
+#   - CUDA (NVIDIA): Install onnxruntime-gpu instead if you have NVIDIA GPU
+#   - CPU-only: Use onnxruntime instead of onnxruntime-directml
+#
+# macOS → Windows package mapping:
+#   - PyAudio → pyaudiowpatch (WASAPI support)
+#   - py-applescript → pywin32 (PowerShell/COM)
+#   - pyobjc-* → pythonnet (Objective-C → C#/.NET)
+#   - CoreML → ONNX Runtime DirectML
+#   - Quartz → pywin32 (Win32 API)
+#   - AppKit → pywinauto (UI automation)
+#
+# Known issues:
+#   - pywin32 requires "python Scripts/pywin32_postinstall.py -install" after pip install
+#     (The install_windows.ps1 script handles this automatically)
+#   - onnxruntime-directml requires Windows 10 version 1809 or later
+#   - Some packages may require Visual Studio Build Tools for native compilation
+#
+# Visual Studio Build Tools:
+#   Download: https://visualstudio.microsoft.com/downloads/
+#   Required components: "Desktop development with C++"
+#
+# ═══════════════════════════════════════════════════════════════════════════════
