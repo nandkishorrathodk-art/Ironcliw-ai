@@ -1484,6 +1484,21 @@ class UnifiedCommandProcessor:
         except Exception as e:
             logger.debug(f"[UNIFIED] Self-voice check skipped: {e}")
 
+        # v243.0: Notify subsystems that a command was received
+        try:
+            from core.trinity_event_bus import get_event_bus_if_exists
+            _bus = get_event_bus_if_exists()
+            if _bus is not None:
+                asyncio.create_task(
+                    _bus.publish_raw(
+                        topic="command.received",
+                        data={"command": command_text[:500], "timestamp": _start_time},
+                    ),
+                    name="v243_cmd_received",
+                )
+        except Exception:
+            pass
+
         # Store audio data and speaker for voice authentication (used by context-aware handlers)
         self.current_audio_data = audio_data
         self.current_speaker_name = speaker_name
@@ -1572,6 +1587,28 @@ class UnifiedCommandProcessor:
             self._v242_metrics["classifications"][_cls_domain] = (
                 self._v242_metrics["classifications"].get(_cls_domain, 0) + 1
             )
+            # v243.0: Notify subsystems of classification result
+            try:
+                from core.trinity_event_bus import get_event_bus_if_exists
+                _bus = get_event_bus_if_exists()
+                if _bus is not None:
+                    asyncio.create_task(
+                        _bus.publish_raw(
+                            topic="command.classified",
+                            data={
+                                "command": command_text[:500],
+                                "intent": response.intent,
+                                "domain": response.domain,
+                                "confidence": response.confidence,
+                                "requires_action": getattr(response, 'requires_action', False),
+                                "requires_vision": getattr(response, 'requires_vision', False),
+                                "timestamp": time.time(),
+                            },
+                        ),
+                        name="v243_cmd_classified",
+                    )
+            except Exception:
+                pass
             result = await self._execute_action(
                 response, command_text, websocket, audio_data, speaker_name,
                 deadline=deadline,
