@@ -251,6 +251,12 @@ class EventType(Enum):
     WARNING = "system.warning"
     METRICS = "system.metrics"
 
+    # Command lifecycle events (v243.0)
+    COMMAND_RECEIVED = "command.received"
+    COMMAND_CLASSIFIED = "command.classified"
+    COMMAND_COMPLETED = "command.completed"
+    COMMAND_FAILED = "command.failed"
+
 
 @dataclass
 class TrinityEvent:
