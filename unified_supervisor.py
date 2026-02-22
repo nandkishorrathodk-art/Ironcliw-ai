@@ -77917,22 +77917,9 @@ class JarvisSystemKernel:
                                 f"(configured: {result.get('configured_port')})"
                             )
 
-                        # v223.0: Verify connectivity after start (ported from start_system.py)
-                        try:
-                            health = await proxy_manager.check_connection_health()
-                            result["health"] = health
-                            if health.get("healthy", False):
-                                self.logger.info(
-                                    f"[CloudSQL] Connection verified: "
-                                    f"latency={health.get('latency_ms', '?')}ms"
-                                )
-                            else:
-                                self.logger.warning(
-                                    f"[CloudSQL] Proxy running but health check failed: "
-                                    f"{health.get('error', 'unknown')}"
-                                )
-                        except Exception as health_err:
-                            self.logger.debug(f"[CloudSQL] Health check skipped: {health_err}")
+                        # v244.0: Removed redundant check_connection_health() here.
+                        # ensure_proxy_ready() (called next) is the single source of
+                        # truth for proxy readiness — it does TCP + DB verification.
 
                         # Store reference for shutdown cleanup
                         self._cloud_sql_proxy_manager = proxy_manager
