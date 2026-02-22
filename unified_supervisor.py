@@ -22477,9 +22477,16 @@ class PersistentConversationMemoryAgent:
             from intelligence.learning_database import get_learning_database
         # v263.2: fast_mode=True skips CloudSQL/Redis/ChromaDB sync at boot,
         # reducing init from 30s+ to ~5s. Full sync happens in background.
-        return await get_learning_database(
-            config={"enable_ml_features": False},
-            fast_mode=True,
+        # v265.0: Add timeout — get_learning_database() can hang if Cloud SQL
+        # or FAISS index loading is slow. Without this, the outer stage-1 timeout
+        # fires on asyncio.shield() which doesn't actually cancel the inner task.
+        _db_init_timeout = float(os.environ.get("JARVIS_LEARNING_DB_INIT_TIMEOUT", "10.0"))
+        return await asyncio.wait_for(
+            get_learning_database(
+                config={"enable_ml_features": False},
+                fast_mode=True,
+            ),
+            timeout=_db_init_timeout,
         )
 
     def _needs_full_boot_hydration(self) -> bool:
@@ -62714,8 +62721,14 @@ class JarvisSystemKernel:
         dashboard.start()
 
         # v249.0: Initialize event bus and CLI renderer
+        # v265.0: Add timeout — bare await could hang if event bus has I/O issues
         _event_bus = get_event_bus()
-        await _event_bus.start()
+        try:
+            await asyncio.wait_for(_event_bus.start(), timeout=10.0)
+        except asyncio.TimeoutError:
+            self.logger.warning("[Kernel] Event bus start timed out (10s) — continuing")
+        except Exception as _eb_err:
+            self.logger.warning(f"[Kernel] Event bus start failed: {_eb_err}")
         _renderer = _create_cli_renderer(
             self.config.ui_mode,
             self.config.ui_verbosity,
@@ -64271,7 +64284,10 @@ class JarvisSystemKernel:
             if VOICE_ORCHESTRATOR_AVAILABLE:
                 try:
                     self._voice_orchestrator = VoiceOrchestrator()
-                    await self._voice_orchestrator.start()
+                    # v265.0: Add timeout — IPC server start could hang
+                    await asyncio.wait_for(
+                        self._voice_orchestrator.start(), timeout=15.0
+                    )
 
                     # Connect TTS callback if narrator exists
                     if self._narrator:
@@ -64494,7 +64510,22 @@ class JarvisSystemKernel:
             # Start the persistent outer-loop agent runtime after Intelligence
             # is ready. Non-fatal — degraded mode without autonomous goal pursuit.
             # =====================================================================
-            await self._start_agent_runtime()
+            # v265.0: Add timeout — previously bare await could hang indefinitely
+            _agent_runtime_timeout = _get_env_float("JARVIS_AGENT_RUNTIME_TIMEOUT", 30.0)
+            try:
+                await asyncio.wait_for(
+                    self._start_agent_runtime(),
+                    timeout=_agent_runtime_timeout,
+                )
+            except asyncio.TimeoutError:
+                self.logger.warning(
+                    f"[Kernel] v265.0: Agent runtime init timed out "
+                    f"({_agent_runtime_timeout:.0f}s) — continuing without"
+                )
+            except asyncio.CancelledError:
+                raise
+            except Exception as _art_err:
+                self.logger.warning(f"[Kernel] Agent runtime init error: {_art_err}")
 
             # =====================================================================
             # v238.1: CONVERSATION PIPELINE WIRING (via Bootstrap)
@@ -64511,19 +64542,25 @@ class JarvisSystemKernel:
                     )
 
                     # Get speech state for mode transitions
+                    # v265.0: Add timeouts to pipeline wiring
                     _speech_state = None
                     try:
                         from backend.core.unified_speech_state import (
                             get_speech_state_manager,
                         )
-                        _speech_state = await get_speech_state_manager()
-                    except Exception:
+                        _speech_state = await asyncio.wait_for(
+                            get_speech_state_manager(), timeout=10.0
+                        )
+                    except (asyncio.TimeoutError, Exception):
                         pass
 
-                    self._audio_pipeline_handle = await wire_conversation_pipeline(
-                        audio_bus=self._audio_bus,
-                        llm_client=self._model_serving,
-                        speech_state=_speech_state,
+                    self._audio_pipeline_handle = await asyncio.wait_for(
+                        wire_conversation_pipeline(
+                            audio_bus=self._audio_bus,
+                            llm_client=self._model_serving,
+                            speech_state=_speech_state,
+                        ),
+                        timeout=30.0,
                     )
 
                     # Store references for shutdown and status
@@ -64689,21 +64726,33 @@ class JarvisSystemKernel:
             # we ensure the server is ready when Trinity components connect.
             # =====================================================================
             if os.getenv("JARVIS_WEBSOCKET_ENABLED", "true").lower() == "true":
+                # v265.0: Add timeouts — previously bare awaits could hang
+                _ws_init_timeout = _get_env_float("JARVIS_WEBSOCKET_INIT_TIMEOUT", 15.0)
                 try:
                     self.logger.info("[Kernel] Pre-Trinity WebSocket hub initialization...")
-                    ws_result = await self._initialize_websocket_hub()
+                    ws_result = await asyncio.wait_for(
+                        self._initialize_websocket_hub(),
+                        timeout=_ws_init_timeout,
+                    )
                     if ws_result.get("running"):
                         self.logger.success(f"[Kernel] WebSocket hub ready on port {ws_result.get('port', 8765)}")
                     else:
                         self.logger.info("[Kernel] WebSocket hub not available (Trinity will use FileTransport)")
+                except asyncio.TimeoutError:
+                    self.logger.warning(f"[Kernel] WebSocket hub init timed out ({_ws_init_timeout:.0f}s)")
                 except Exception as ws_err:
                     self.logger.warning(f"[Kernel] WebSocket pre-init failed (non-fatal): {ws_err}")
 
                 # v223.0: Start Node.js WebSocket Router if configured
                 try:
-                    ws_router = await self._start_websocket_router()
+                    ws_router = await asyncio.wait_for(
+                        self._start_websocket_router(),
+                        timeout=_ws_init_timeout,
+                    )
                     if ws_router:
                         self.logger.info("[Kernel] Node.js WebSocket Router started alongside hub")
+                except asyncio.TimeoutError:
+                    self.logger.warning(f"[Kernel] WebSocket Router timed out ({_ws_init_timeout:.0f}s)")
                 except Exception as wsr_err:
                     self.logger.debug(f"[Kernel] WebSocket Router not started: {wsr_err}")
 
@@ -64876,7 +64925,37 @@ class JarvisSystemKernel:
                     except Exception:
                         pass
                 if _ssm: await _ssm.start_component("trinity")
-                await self._phase_trinity()
+                # v265.0: Add outer timeout to _phase_trinity() — previously had NONE.
+                # Every other heavy phase (intelligence, two_tier, agi_os, visual_pipeline)
+                # has an asyncio.wait_for() guard. Trinity was the sole exception, meaning
+                # a hang inside _phase_trinity() would block startup indefinitely.
+                # Use the already-computed effective_trinity_timeout (which accounts for
+                # GCP mode, hollow client, etc.) plus a generous buffer since the internal
+                # Trinity budget + heartbeat handle normal operation — this outer guard
+                # is a defense-in-depth last resort.
+                _trinity_outer_timeout = effective_trinity_timeout + 60.0
+                try:
+                    await asyncio.wait_for(
+                        self._phase_trinity(),
+                        timeout=_trinity_outer_timeout,
+                    )
+                except asyncio.TimeoutError:
+                    self.logger.error(
+                        f"[Kernel] v265.0: _phase_trinity() OUTER timeout after "
+                        f"{_trinity_outer_timeout:.0f}s — continuing without Trinity"
+                    )
+                    self._update_component_status(
+                        "trinity", "error",
+                        f"Outer timeout ({_trinity_outer_timeout:.0f}s)",
+                    )
+                    issue_collector.add_warning(
+                        f"Trinity phase timed out ({_trinity_outer_timeout:.0f}s) — "
+                        "continuing without cross-repo integration",
+                        IssueCategory.GENERAL,
+                        suggestion="Check J-Prime and Reactor-Core availability"
+                    )
+                except asyncio.CancelledError:
+                    raise
                 if _ssm: await _ssm.complete_component("trinity")
             else:
                 # v170.0: Explicitly log when Trinity is disabled
@@ -64934,13 +65013,18 @@ class JarvisSystemKernel:
                 self.logger.debug(f"Reactor Core init error: {e}")
 
             # v239.0: Start auto-deploy watcher for Reactor Core outputs
+            # v265.0: Add timeout — previously bare await could hang
             try:
                 from backend.autonomy.reactor_core_watcher import start_reactor_core_watcher
-                _watcher = await start_reactor_core_watcher()
+                _watcher = await asyncio.wait_for(
+                    start_reactor_core_watcher(), timeout=15.0
+                )
                 self._reactor_core_watcher = _watcher
                 if hasattr(_watcher, '_watch_task') and _watcher._watch_task:
                     self._background_tasks.append(_watcher._watch_task)
                 add_dashboard_log("Reactor Core watcher active", "INFO")
+            except asyncio.TimeoutError:
+                self.logger.debug("Reactor Core watcher timed out (15s)")
             except Exception as e:
                 self.logger.debug(f"Reactor Core watcher error: {e}")
 
@@ -64962,7 +65046,29 @@ class JarvisSystemKernel:
             self._emit_event(SupervisorEventType.PHASE_START, "Phase: Enterprise Services", phase="enterprise", correlation_id=_cid_en)
 
             if _ssm: await _ssm.start_component("enterprise_services")
-            await self._phase_enterprise_services()
+            # v265.0: Add outer timeout to _phase_enterprise_services() — previously
+            # had none. Internal per-service timeouts (30s each) provide normal
+            # protection, but if asyncio.gather itself hangs or a service coroutine
+            # leaks, the entire phase blocks indefinitely. Outer timeout = enterprise
+            # timeout (90s default) which is generous since 5 services run in parallel
+            # with 30s each.
+            _enterprise_outer_timeout = enterprise_timeout + 30.0
+            try:
+                await asyncio.wait_for(
+                    self._phase_enterprise_services(),
+                    timeout=_enterprise_outer_timeout,
+                )
+            except asyncio.TimeoutError:
+                self.logger.error(
+                    f"[Kernel] v265.0: _phase_enterprise_services() OUTER timeout "
+                    f"after {_enterprise_outer_timeout:.0f}s — continuing"
+                )
+                self._update_component_status(
+                    "enterprise", "degraded",
+                    f"Outer timeout ({_enterprise_outer_timeout:.0f}s)",
+                )
+            except asyncio.CancelledError:
+                raise
             if _ssm: await _ssm.complete_component("enterprise_services")
             if self._narrator:
                 await self._narrator.narrate_zone_complete(6, success=True)
@@ -65062,8 +65168,24 @@ class JarvisSystemKernel:
                 )
 
             if _ssm: await _ssm.start_component("ghost_display")
-            if not await self._initialize_ghost_display():
-                if _ssm: await _ssm.complete_component("ghost_display", error="Init failed")
+            # v265.0: Add timeout wrapper — previously bare await could hang
+            _ghost_display_ok = False
+            try:
+                _ghost_display_ok = await asyncio.wait_for(
+                    self._initialize_ghost_display(),
+                    timeout=ghost_display_timeout,
+                )
+            except asyncio.TimeoutError:
+                self.logger.warning(
+                    f"[Kernel] v265.0: Ghost Display init timed out "
+                    f"({ghost_display_timeout:.0f}s) — continuing without"
+                )
+            except asyncio.CancelledError:
+                raise
+            except Exception as _gd_err:
+                self.logger.warning(f"[Kernel] Ghost Display init error: {_gd_err}")
+            if not _ghost_display_ok:
+                if _ssm: await _ssm.complete_component("ghost_display", error="Init failed or timed out")
                 # Non-fatal — continue without Ghost Display
                 issue_collector.add_warning(
                     "Ghost Display failed to initialize — continuing without virtual display",
