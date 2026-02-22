@@ -3313,17 +3313,27 @@ class ProxyReadinessGate:
                     continue
                 just_started_proxy = True
 
-            # v3.2: Post-TCP settling delay — give proxy time to complete GCP
-            # authentication before attempting DB checks. The proxy opens its TCP
-            # port before GCP auth finishes, so immediate DB checks always fail.
+            # v244.0: Post-TCP settling delay — only needed when REUSING an
+            # already-running proxy whose auth state we haven't verified.
+            # When we just started the proxy, start() already confirmed
+            # readiness via log-signal gating ("ready for new connections").
             if just_started_proxy:
                 just_started_proxy = False
+                # No settling delay — start() already confirmed GCP auth
+                logger.debug(
+                    "[ReadinessGate v244.0] Skipping settling delay "
+                    "(start() confirmed readiness via log signal)"
+                )
+                elapsed = time.time() - start_time
+            elif proxy_running and proxy_settling_delay > 0:
+                # Reusing existing proxy — apply settling delay since we
+                # haven't verified its auth state
                 remaining = timeout - (time.time() - start_time)
                 settle = min(proxy_settling_delay, remaining * 0.5)
                 if settle > 0:
                     logger.debug(
                         "[ReadinessGate v3.2] Post-TCP settling delay %.1fs "
-                        "(proxy needs time for GCP auth)", settle
+                        "(reusing existing proxy)", settle
                     )
                     await asyncio.sleep(settle)
                 elapsed = time.time() - start_time
