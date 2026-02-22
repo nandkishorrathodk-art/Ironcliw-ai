@@ -64624,7 +64624,7 @@ class JarvisSystemKernel:
                 _two_tier_init_timeout = min(_two_tier_init_timeout, _fast_timeout)
             try:
                 _two_tier_ok = await asyncio.wait_for(
-                    self._initialize_two_tier_security(),
+                    self._initialize_integration_components(),
                     timeout=_two_tier_init_timeout,
                 )
                 if not _two_tier_ok:
@@ -68033,26 +68033,22 @@ class JarvisSystemKernel:
         )
 
     # =========================================================================
-    # v200.0: TWO-TIER SECURITY INITIALIZATION (VBIA/PAVA)
+    # v244.0: INTEGRATION COMPONENTS INITIALIZATION
     # =========================================================================
-    # Initialize the Two-Tier Security architecture:
+    # Initialize integration components:
     # - Agentic Watchdog (safety kill-switch for Computer Use)
-    # - Tiered VBIA Adapter (voice biometric with anti-spoofing)
-    # - Cross-Repo State (JARVIS ↔ Prime ↔ Reactor coordination)
-    # - Tiered Command Router (wake word → intent → authentication)
-    # - Wire execute_tier2 → AgenticTaskRunner
+    # - Cross-Repo State (JARVIS <-> Prime <-> Reactor coordination)
+    # - AgenticTaskRunner (autonomous task execution)
     # =========================================================================
 
-    async def _initialize_two_tier_security(self) -> bool:
+    async def _initialize_integration_components(self) -> bool:
         """
-        v200.0: Initialize Two-Tier Security (VBIA/PAVA) components.
+        v244.0: Initialize integration components (watchdog, cross-repo, runner).
 
-        This phase initializes the complete Two-Tier Security architecture:
+        Components:
         1. Agentic Watchdog - Safety system with kill-switch
-        2. Tiered VBIA Adapter - Voice biometric authentication
-        3. Cross-Repo State - Multi-repository coordination
-        4. Tiered Command Router - Three-tier command routing
-        5. Wire execute_tier2 to AgenticTaskRunner
+        2. Cross-Repo State - Multi-repository coordination
+        3. AgenticTaskRunner - Autonomous task execution
 
         On failure: Log warning and continue (graceful degradation)
 
@@ -68064,25 +68060,22 @@ class JarvisSystemKernel:
         """
         # v260.0: Shutdown gate
         if self._state in (KernelState.SHUTTING_DOWN, KernelState.FAILED):
-            self.logger.info("[TwoTier] Skipped — kernel shutting down")
+            self.logger.info("[Integration] Skipped — kernel shutting down")
             return False
 
         if not self.config.two_tier_security_enabled:
-            self.logger.info("[TwoTier] Two-Tier Security disabled via config")
+            self.logger.info("[Integration] Integration components disabled via config")
             self._update_component_status("two_tier", "skipped", "Disabled via config")
             return True
 
-        self._update_component_status("two_tier", "running", "Initializing Two-Tier Security...")
-        await self._broadcast_progress(55, "two_tier_init", "Initializing Two-Tier Security...")
+        self._update_component_status("two_tier", "running", "Initializing integration components...")
+        await self._broadcast_progress(55, "integration_init", "Initializing integration components...")
 
-        with self.logger.section_start(LogSection.BOOT, "Zone 4.5 | Two-Tier Security (VBIA/PAVA)"):
+        with self.logger.section_start(LogSection.BOOT, "Zone 4.5 | Integration Components"):
             try:
                 # =============================================================
-                # v256.0: Steps 1-4 run in parallel where possible.
-                # Dependency graph: Step 4 (Router) depends on Step 2 (VBIA)
-                # because it reads self._vbia_adapter. Steps 1 & 3 are
-                # independent. Strategy: chain Step 2→4, gather with 1 & 3.
-                # time = max(Step1, Step2+Step4, Step3) + Step5
+                # v244.0: Steps 1-2 run in parallel (watchdog + cross-repo).
+                # Step 3 (runner) runs after since it uses watchdog ref.
                 # =============================================================
 
                 # --- Step 1 closure: Agentic Watchdog (independent) ---
@@ -68090,7 +68083,7 @@ class JarvisSystemKernel:
                     # v260.0: Shutdown gate
                     if self._state in (KernelState.SHUTTING_DOWN, KernelState.FAILED):
                         return
-                    await self._broadcast_progress(56, "two_tier_watchdog", "Starting Agentic Watchdog...")
+                    await self._broadcast_progress(56, "integration_watchdog", "Starting Agentic Watchdog...")
                     try:
                         from core.agentic_watchdog import (
                             start_watchdog,
@@ -68104,7 +68097,7 @@ class JarvisSystemKernel:
                                 try:
                                     await self._narrator.speak(text, wait=False)
                                 except Exception as e:
-                                    self.logger.debug(f"[TwoTier/Watchdog] TTS error: {e}")
+                                    self.logger.debug(f"[Integration/Watchdog] TTS error: {e}")
 
                         watchdog_config = WatchdogConfig()
                         self._agentic_watchdog = await start_watchdog(
@@ -68116,7 +68109,7 @@ class JarvisSystemKernel:
                             "status": "active",
                             "mode": self._agentic_watchdog.mode.value if self._agentic_watchdog else None,
                         }
-                        self.logger.success("[TwoTier] ✓ Agentic Watchdog active")
+                        self.logger.success("[Integration] ✓ Agentic Watchdog active")
 
                     except asyncio.CancelledError:
                         # v256.1: Outer timeout cancelled us — ensure clean state
@@ -68124,51 +68117,13 @@ class JarvisSystemKernel:
                         self._two_tier_status["watchdog"]["status"] = "cancelled"
                         raise
                     except ImportError as e:
-                        self.logger.warning(f"[TwoTier] Watchdog module not available: {e}")
+                        self.logger.warning(f"[Integration] Watchdog module not available: {e}")
                         self._two_tier_status["watchdog"]["status"] = "unavailable"
                     except Exception as e:
-                        self.logger.warning(f"[TwoTier] Watchdog init failed: {e}")
+                        self.logger.warning(f"[Integration] Watchdog init failed: {e}")
                         self._two_tier_status["watchdog"]["status"] = "error"
 
-                # --- Step 2 closure: VBIA Adapter (must finish before Step 4) ---
-                async def _init_vbia() -> None:
-                    # v260.0: Shutdown gate
-                    if self._state in (KernelState.SHUTTING_DOWN, KernelState.FAILED):
-                        return
-                    await self._broadcast_progress(57, "two_tier_vbia", "Initializing VBIA Adapter...")
-                    try:
-                        from core.tiered_vbia_adapter import (
-                            TieredVBIAAdapter,
-                            TieredVBIAConfig,
-                            get_tiered_vbia_adapter,
-                        )
-
-                        self._vbia_adapter = await get_tiered_vbia_adapter()
-
-                        self._two_tier_status["vbia_adapter"] = {
-                            "status": "active",
-                            "initialized": True,
-                            "tier1_threshold": self.config.vbia_tier1_threshold,
-                            "tier2_threshold": self.config.vbia_tier2_threshold,
-                        }
-                        self.logger.success(
-                            f"[TwoTier] ✓ VBIA Adapter ready "
-                            f"(T1:{self.config.vbia_tier1_threshold:.0%}, T2:{self.config.vbia_tier2_threshold:.0%})"
-                        )
-
-                    except asyncio.CancelledError:
-                        # v256.1: Outer timeout cancelled us — ensure clean state
-                        self._vbia_adapter = None
-                        self._two_tier_status["vbia_adapter"]["status"] = "cancelled"
-                        raise
-                    except ImportError as e:
-                        self.logger.warning(f"[TwoTier] VBIA module not available: {e}")
-                        self._two_tier_status["vbia_adapter"]["status"] = "unavailable"
-                    except Exception as e:
-                        self.logger.warning(f"[TwoTier] VBIA init failed: {e}")
-                        self._two_tier_status["vbia_adapter"]["status"] = "error"
-
-                # --- Step 3 closure: Cross-Repo State (independent) ---
+                # --- Step 2 closure: Cross-Repo State (independent) ---
                 async def _init_cross_repo() -> None:
                     # v260.0: Shutdown gate
                     if self._state in (KernelState.SHUTTING_DOWN, KernelState.FAILED):
@@ -68192,9 +68147,9 @@ class JarvisSystemKernel:
                             "initialized": self._cross_repo_initialized,
                         }
                         if self._cross_repo_initialized:
-                            self.logger.success("[TwoTier] ✓ Cross-Repo State initialized")
+                            self.logger.success("[Integration] ✓ Cross-Repo State initialized")
                         else:
-                            self.logger.warning("[TwoTier] ⚠ Cross-Repo State failed to initialize")
+                            self.logger.warning("[Integration] Cross-Repo State failed to initialize")
 
                     except asyncio.CancelledError:
                         # v256.1: Outer timeout cancelled us — ensure clean state
@@ -68203,7 +68158,7 @@ class JarvisSystemKernel:
                         raise
                     except asyncio.TimeoutError:
                         self.logger.warning(
-                            f"[TwoTier] Cross-Repo init timed out ({_cross_repo_timeout}s) — "
+                            f"[Integration] Cross-Repo init timed out ({_cross_repo_timeout}s) — "
                             "possible stale DLM lock or hung filesystem. Continuing without cross-repo."
                         )
                         self._two_tier_status["cross_repo"] = {
@@ -68211,98 +68166,14 @@ class JarvisSystemKernel:
                             "initialized": False,
                         }
                     except ImportError as e:
-                        self.logger.warning(f"[TwoTier] Cross-Repo module not available: {e}")
+                        self.logger.warning(f"[Integration] Cross-Repo module not available: {e}")
                         self._two_tier_status["cross_repo"]["status"] = "unavailable"
                     except Exception as e:
-                        self.logger.warning(f"[TwoTier] Cross-Repo init failed: {e}")
+                        self.logger.warning(f"[Integration] Cross-Repo init failed: {e}")
                         self._two_tier_status["cross_repo"]["status"] = "error"
 
-                # --- Step 4 closure: Tiered Command Router (depends on Step 2) ---
-                async def _init_router() -> None:
-                    # v260.0: Shutdown gate
-                    if self._state in (KernelState.SHUTTING_DOWN, KernelState.FAILED):
-                        return
-                    await self._broadcast_progress(59, "two_tier_router", "Initializing Tiered Command Router...")
-                    try:
-                        from core.tiered_command_router import (
-                            TieredCommandRouter,
-                            TieredRouterConfig,
-                            set_tiered_router,
-                            get_tiered_router,
-                        )
-
-                        existing_router = get_tiered_router()
-                        if existing_router is not None:
-                            self._tiered_router = existing_router
-                            self._two_tier_status["router"] = {
-                                "status": "active",
-                                "initialized": True,
-                                "source": "existing_singleton",
-                            }
-                            self.logger.info("[TwoTier] Using existing TieredCommandRouter instance")
-                        else:
-                            async def router_tts(text: str) -> None:
-                                if self._narrator and self.config.voice_enabled:
-                                    try:
-                                        await self._narrator.speak(text, wait=False)
-                                    except Exception as e:
-                                        self.logger.debug(f"[TwoTier/Router] TTS error: {e}")
-
-                            router_config = TieredRouterConfig(
-                                tier1_vbia_threshold=self.config.vbia_tier1_threshold,
-                                tier2_vbia_threshold=self.config.vbia_tier2_threshold,
-                                tier2_require_liveness=self.config.tier2_require_liveness,
-                            )
-
-                            # Reads self._vbia_adapter — guaranteed set by Step 2 (chained)
-                            vbia_callback = None
-                            liveness_callback = None
-                            if self._vbia_adapter:
-                                vbia_callback = self._vbia_adapter.verify_speaker
-                                liveness_callback = self._vbia_adapter.verify_liveness
-
-                            self._tiered_router = TieredCommandRouter(
-                                config=router_config,
-                                vbia_callback=vbia_callback,
-                                liveness_callback=liveness_callback,
-                                tts_callback=router_tts if self.config.voice_enabled else None,
-                            )
-
-                            set_tiered_router(self._tiered_router)
-
-                            self._two_tier_status["router"] = {
-                                "status": "active",
-                                "initialized": True,
-                                "vbia_connected": vbia_callback is not None,
-                                "source": "new_instance",
-                            }
-                            self.logger.success("[TwoTier] ✓ Tiered Command Router ready")
-
-                    except ImportError as e:
-                        self.logger.warning(f"[TwoTier] Router module not available: {e}")
-                        self._two_tier_status["router"] = {
-                            "status": "unavailable",
-                            "error": str(e),
-                            "error_type": "ImportError",
-                        }
-                    except Exception as e:
-                        self.logger.warning(f"[TwoTier] Router init failed: {e}")
-                        import traceback
-                        self.logger.debug(f"[TwoTier] Router traceback: {traceback.format_exc()}")
-                        self._two_tier_status["router"] = {
-                            "status": "error",
-                            "error": str(e),
-                            "error_type": type(e).__name__,
-                        }
-
-                # --- v256.0: Chain Step 2 → Step 4 (dependency: router needs VBIA adapter) ---
-                async def _chain_vbia_then_router() -> None:
-                    await _init_vbia()    # Step 2 first (sets self._vbia_adapter or None)
-                    await _init_router()  # Step 4 after (uses self._vbia_adapter if available)
-
-                # --- v256.0: Parallel execution ---
-                # time = max(Step1, Step2+Step4, Step3) instead of Step1+Step2+Step3+Step4
-                await self._broadcast_progress(56, "two_tier_parallel", "Initializing Two-Tier components (parallel)...")
+                # --- v244.0: Parallel execution (watchdog + cross-repo) ---
+                await self._broadcast_progress(56, "integration_parallel", "Initializing integration components (parallel)...")
 
                 # v260.0: Progress heartbeat during parallel gather to prevent
                 # DMS stall detection false positives. The gather can take 30-60s
@@ -68319,7 +68190,7 @@ class JarvisSystemKernel:
                     flat at 58% for 300s+ triggering TRUE STALL.
 
                     v260.1: Heartbeat must NEVER regress progress below what closures
-                    already set. Closures broadcast 56/57/58 at t=0 concurrently with
+                    already set. Closures broadcast 56/58 at t=0 concurrently with
                     heartbeat. At t=15, heartbeat must only write if its value exceeds
                     the current progress (monotonic advance guard).
                     """
@@ -68330,7 +68201,7 @@ class JarvisSystemKernel:
                             break  # Event was set
                         except asyncio.TimeoutError:
                             _tick += 1
-                            # Candidate progress: 57→58→59 (capped at 59, step 5 takes 60).
+                            # Candidate progress: 57→58→59 (capped at 59, step 3 takes 60).
                             _candidate_progress = 56 + min(_tick, 3)
                             # v260.1: Monotonic advance guard — only write if we're
                             # actually advancing beyond what closures already set.
@@ -68353,9 +68224,8 @@ class JarvisSystemKernel:
                 # v256.1: Inspect gather results for unexpected exceptions (R1-#1, R2-#7)
                 try:
                     _gather_results = await asyncio.gather(
-                        _init_watchdog(),           # Step 1 (independent)
-                        _chain_vbia_then_router(),  # Step 2 → Step 4 (dependency chain)
-                        _init_cross_repo(),         # Step 3 (independent)
+                        _init_watchdog(),    # Step 1 (independent)
+                        _init_cross_repo(),  # Step 2 (independent)
                         return_exceptions=True,
                     )
                 finally:
@@ -68367,7 +68237,7 @@ class JarvisSystemKernel:
                         pass
                 for _i, _res in enumerate(_gather_results):
                     if isinstance(_res, BaseException):
-                        _step_names = ["watchdog", "vbia+router", "cross_repo"]
+                        _step_names = ["watchdog", "cross_repo"]
                         # v256.1: CancelledError is BaseException in 3.9+, Exception in 3.8
                         if isinstance(_res, (asyncio.CancelledError, KeyboardInterrupt, SystemExit)):
                             raise _res
@@ -68375,24 +68245,20 @@ class JarvisSystemKernel:
                             raise _res  # Unknown BaseException subclass — re-raise
                         else:
                             self.logger.warning(
-                                f"[TwoTier] Unexpected exception in {_step_names[_i]}: "
+                                f"[Integration] Unexpected exception in {_step_names[_i]}: "
                                 f"{type(_res).__name__}: {_res}"
                             )
 
                 # =====================================================================
-                # STEP 5: Wire execute_tier2 to AgenticTaskRunner
-                # =====================================================================
-                # v1.0.0: Use get_or_create_agentic_runner() instead of get_agentic_runner()
-                # to ensure the runner is initialized before wiring. This fixes the
-                # "router or runner unavailable" warning.
+                # STEP 3: Create AgenticTaskRunner
                 # =====================================================================
                 # v260.0: Shutdown gate before expensive runner creation
                 if self._state in (KernelState.SHUTTING_DOWN, KernelState.FAILED):
-                    self.logger.info("[TwoTier] Step 5 skipped — kernel shutting down")
+                    self.logger.info("[Integration] Step 3 skipped — kernel shutting down")
                     self._update_component_status("two_tier", "cancelled", "Shutdown during init")
                     return False
 
-                await self._broadcast_progress(60, "two_tier_wiring", "Wiring Tier 2 → AgenticTaskRunner...")
+                await self._broadcast_progress(60, "integration_runner", "Creating AgenticTaskRunner...")
 
                 try:
                     from core.agentic_task_runner import (
@@ -68404,13 +68270,12 @@ class JarvisSystemKernel:
                         AgenticRunnerConfig,
                     )
 
-                    # v1.0.0: Get or create the agentic runner instance
-                    # This ensures the runner is initialized even if it wasn't created earlier
+                    # Get or create the agentic runner instance
                     self._agentic_runner = get_agentic_runner()
-                    
+
                     if self._agentic_runner is None:
-                        self.logger.info("[TwoTier] AgenticTaskRunner not found, auto-creating...")
-                        
+                        self.logger.info("[Integration] AgenticTaskRunner not found, auto-creating...")
+
                         # Create TTS callback for runner
                         async def runner_tts(text: str) -> None:
                             """TTS callback for agentic runner announcements."""
@@ -68418,15 +68283,11 @@ class JarvisSystemKernel:
                                 try:
                                     await self._narrator.speak(text, wait=False)
                                 except Exception as e:
-                                    self.logger.debug(f"[TwoTier/Runner] TTS error: {e}")
-                        
-                        # v1.0.1: Try direct creation first for better error diagnostics
-                        # v2.0.0: Increased timeout to 60s to account for individual component timeouts
-                        # The runner now has 10s timeouts per component, so we need room for multiple
-                        # components to timeout without failing the overall creation.
+                                    self.logger.debug(f"[Integration/Runner] TTS error: {e}")
+
                         try:
                             from core.agentic_task_runner import create_agentic_runner
-                            
+
                             self._agentic_runner = await asyncio.wait_for(
                                 create_agentic_runner(
                                     config=None,
@@ -68435,184 +68296,69 @@ class JarvisSystemKernel:
                                 ),
                                 timeout=_get_env_float("JARVIS_AGENTIC_RUNNER_TIMEOUT", 60.0),
                             )
-                            
+
                             if self._agentic_runner:
                                 # Register as global instance
                                 set_agentic_runner(self._agentic_runner)
-                                self.logger.success("[TwoTier] ✓ AgenticTaskRunner auto-created")
+                                self.logger.success("[Integration] ✓ AgenticTaskRunner auto-created")
                             else:
-                                self.logger.warning("[TwoTier] ⚠ AgenticTaskRunner creation returned None")
-                                
+                                self.logger.warning("[Integration] AgenticTaskRunner creation returned None")
+
                         except asyncio.TimeoutError:
-                            self.logger.warning("[TwoTier] ⚠ AgenticTaskRunner creation timed out (60s) - check network/component health")
+                            self.logger.warning("[Integration] AgenticTaskRunner creation timed out (60s) - check network/component health")
                         except ImportError as ie:
-                            self.logger.warning(f"[TwoTier] ⚠ AgenticTaskRunner import failed: {ie}")
+                            self.logger.warning(f"[Integration] AgenticTaskRunner import failed: {ie}")
                         except Exception as create_err:
-                            # v1.0.1: Log full traceback for debugging
                             import traceback
-                            self.logger.warning(f"[TwoTier] ⚠ AgenticTaskRunner creation failed: {create_err}")
-                            self.logger.debug(f"[TwoTier] Full traceback:\n{traceback.format_exc()}")
+                            self.logger.warning(f"[Integration] AgenticTaskRunner creation failed: {create_err}")
+                            self.logger.debug(f"[Integration] Full traceback:\n{traceback.format_exc()}")
 
-                    # Now attempt to wire
-                    if self._tiered_router and self._agentic_runner:
-                        # Create execute_tier2 wrapper that routes to AgenticTaskRunner
-                        # v1.0.0: Capture runner in closure to avoid race conditions
-                        # v1.0.1: Handle partially-initialized runners gracefully
-                        runner_ref = self._agentic_runner
-                        
-                        # Check if runner has execution capabilities
-                        has_execution = (
-                            getattr(runner_ref, '_computer_use_tool', None) is not None or
-                            getattr(runner_ref, '_computer_use_connector', None) is not None
-                        )
-                        
-                        if has_execution:
-                            # v241.0: Save original workspace-aware execute_tier2 before monkey-patching.
-                            # The original method checks context.get("workspace_intent") and routes
-                            # to GoogleWorkspaceAgent via _execute_workspace_command().
-                            _original_execute_tier2 = self._tiered_router.execute_tier2
-
-                            async def execute_tier2_via_runner(
-                                command: str,
-                                context: Optional[Dict[str, Any]] = None,
-                            ) -> Dict[str, Any]:
-                                """Execute Tier 2 (agentic) commands via AgenticTaskRunner.
-
-                                v241.0: Workspace-aware — delegates calendar/email/docs commands
-                                to the original TieredCommandRouter.execute_tier2() which routes
-                                them to GoogleWorkspaceAgent.
-                                """
-                                # v241.0: Check for workspace intent FIRST — delegate to original
-                                # execute_tier2 which has workspace routing via GoogleWorkspaceAgent.
-                                context = context or {}
-                                workspace_intent = context.get("workspace_intent")
-                                if workspace_intent and getattr(workspace_intent, "is_workspace_command", False):
-                                    self.logger.info(
-                                        f"[TwoTier] Workspace intent detected — "
-                                        f"delegating to TieredCommandRouter"
-                                    )
-                                    return await _original_execute_tier2(command, context=context)
-
-                                try:
-                                    result = await runner_ref.run(
-                                        goal=command,
-                                        mode=RunnerMode.AUTONOMOUS,
-                                        context=context,
-                                        narrate=True,
-                                    )
-                                    return {
-                                        "success": result.success if result else False,
-                                        "result": result.final_message if result else None,
-                                        "goal": result.goal if result else None,
-                                        "actions_count": result.actions_count if result else 0,
-                                        "duration_ms": result.execution_time_ms if result else 0,
-                                        "error": result.error if result else None,
-                                    }
-                                except Exception as e:
-                                    self.logger.error(f"[TwoTier] execute_tier2 error: {e}")
-                                    return {"success": False, "error": str(e)}
-
-                            # Wire the router's execute_tier2 to our wrapper
-                            self._tiered_router.execute_tier2 = execute_tier2_via_runner
-                            self._two_tier_status["runner_wired"] = True
-                            self._two_tier_status["execution_capable"] = True
-                            self.logger.success("[TwoTier] ✓ execute_tier2 → AgenticTaskRunner wired (full execution)")
-                        else:
-                            # v1.0.1: Create a fallback handler that reports the limitation
-                            async def execute_tier2_limited(
-                                command: str,
-                                context: Optional[Dict[str, Any]] = None,
-                            ) -> Dict[str, Any]:
-                                """Execute Tier 2 - limited mode (no execution capabilities)."""
-                                self.logger.warning(
-                                    f"[TwoTier] Tier 2 command received but execution unavailable: {command[:50]}..."
-                                )
-                                return {
-                                    "success": False,
-                                    "error": "Tier 2 execution not available - computer use tools not initialized",
-                                    "command": command,
-                                    "suggestion": "Check autonomy.computer_use_tool and autonomy.claude_computer_use_connector",
-                                }
-                            
-                            self._tiered_router.execute_tier2 = execute_tier2_limited
-                            self._two_tier_status["runner_wired"] = True
-                            self._two_tier_status["execution_capable"] = False
-                            self.logger.warning(
-                                "[TwoTier] ⚠ execute_tier2 wired (LIMITED - no execution capabilities)"
-                            )
-                    elif self._tiered_router and not self._agentic_runner:
-                        # v1.0.1: Wire router with a placeholder that explains the situation
-                        async def execute_tier2_unavailable(
-                            command: str,
-                            context: Optional[Dict[str, Any]] = None,
-                        ) -> Dict[str, Any]:
-                            """Execute Tier 2 - runner unavailable."""
-                            self.logger.warning(
-                                f"[TwoTier] Tier 2 command blocked (runner unavailable): {command[:50]}..."
-                            )
-                            return {
-                                "success": False,
-                                "error": "AgenticTaskRunner not available",
-                                "command": command,
-                            }
-                        
-                        self._tiered_router.execute_tier2 = execute_tier2_unavailable
+                    # v244.0: Runner status (no router wiring needed — router was removed)
+                    if self._agentic_runner:
                         self._two_tier_status["runner_wired"] = True
-                        self._two_tier_status["execution_capable"] = False
-                        self.logger.warning("[TwoTier] ⚠ execute_tier2 wired (UNAVAILABLE - no runner)")
+                        self.logger.success("[Integration] ✓ AgenticTaskRunner ready")
                     else:
-                        # v1.0.0: More detailed diagnostic logging
-                        missing = []
-                        if not self._tiered_router:
-                            missing.append("TieredCommandRouter")
-                        if not self._agentic_runner:
-                            missing.append("AgenticTaskRunner")
-                        self.logger.warning(
-                            f"[TwoTier] ⚠ Cannot wire execute_tier2 (missing: {', '.join(missing)})"
-                        )
                         self._two_tier_status["runner_wired"] = False
-                        self._two_tier_status["wiring_missing"] = missing
 
                 except ImportError as e:
-                    self.logger.warning(f"[TwoTier] AgenticTaskRunner not available: {e}")
+                    self.logger.warning(f"[Integration] AgenticTaskRunner not available: {e}")
                     self._two_tier_status["runner_wired"] = False
                 except Exception as e:
-                    self.logger.warning(f"[TwoTier] Wiring failed: {e}")
+                    self.logger.warning(f"[Integration] Runner init failed: {e}")
                     self._two_tier_status["runner_wired"] = False
 
                 # =====================================================================
-                # STEP 6: Voice announcement
+                # STEP 4: Status and voice announcement
                 # =====================================================================
-                await self._broadcast_progress(61, "two_tier_ready", "Two-Tier Security ready")
+                await self._broadcast_progress(61, "integration_ready", "Integration components ready")
 
                 # Determine overall status
                 watchdog_ok = self._two_tier_status["watchdog"]["status"] == "active"
-                vbia_ok = self._two_tier_status["vbia_adapter"].get("status") == "active"
-                router_ok = self._two_tier_status["router"].get("status") == "active"
+                cross_repo_ok = self._two_tier_status.get("cross_repo", {}).get("status") == "active"
 
-                if watchdog_ok or vbia_ok or router_ok:
+                if watchdog_ok or cross_repo_ok:
                     # Voice announcement
                     if self._narrator and self.config.voice_enabled:
                         await self._narrator.speak(
-                            "Voice biometric authentication ready. Visual threat detection enabled.",
+                            "Integration components ready. Watchdog and coordination active.",
                             wait=False,
                         )
 
-                    self._update_component_status("two_tier", "complete", "Two-Tier Security active")
+                    self._update_component_status("two_tier", "complete", "Integration components active")
                     self.logger.success(
-                        f"[TwoTier] Two-Tier Security initialized "
+                        f"[Integration] Components initialized "
                         f"(Watchdog: {'✓' if watchdog_ok else '✗'}, "
-                        f"VBIA: {'✓' if vbia_ok else '✗'}, "
-                        f"Router: {'✓' if router_ok else '✗'})"
+                        f"CrossRepo: {'✓' if cross_repo_ok else '✗'}, "
+                        f"Runner: {'✓' if self._agentic_runner else '✗'})"
                     )
                     return True
                 else:
                     self._update_component_status("two_tier", "error", "All components failed")
-                    self.logger.warning("[TwoTier] All Two-Tier Security components failed")
+                    self.logger.warning("[Integration] All integration components failed")
                     return False
 
             except Exception as e:
-                self.logger.warning(f"[TwoTier] Two-Tier Security initialization failed: {e}")
+                self.logger.warning(f"[Integration] Integration components initialization failed: {e}")
                 self._update_component_status("two_tier", "error", f"Error: {e}")
                 return False  # Graceful degradation - don't crash kernel
 
