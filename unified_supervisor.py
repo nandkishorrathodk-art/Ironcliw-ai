@@ -77366,7 +77366,18 @@ class JarvisSystemKernel:
             return probe
 
         async def probe_local() -> Dict[str, Any]:
-            """Probe local ECAPA backend with memory-adaptive thresholds."""
+            """
+            Probe local ECAPA backend with memory-adaptive thresholds.
+
+            v265.2 ROOT CAUSE FIX: importlib.import_module("speechbrain") is a
+            SYNCHRONOUS operation that loads PyTorch, torchaudio, and 100+
+            submodules (5-10+ seconds on cold import). This blocked the event
+            loop, preventing asyncio.wait_for() timeouts from firing — the 4s
+            per-probe deadline and 6s outer deadline were both defeated because
+            cancellation can only fire between await points. The fix runs the
+            import check (and gc.collect) in a thread executor so the event
+            loop stays responsive and timeout mechanisms work correctly.
+            """
             probe = {"available": False, "memory_ok": False, "error": None}
             try:
                 import psutil
@@ -77385,17 +77396,33 @@ class JarvisSystemKernel:
                 if available_gb >= required_gb:
                     probe["memory_ok"] = True
                 elif available_gb >= required_gb * 0.75:
+                    # v265.2: gc.collect() in thread — can take 100ms-1s+ with
+                    # large heaps and blocks the event loop.
                     import gc
-                    gc.collect()
+                    _loop = asyncio.get_running_loop()
+                    await _loop.run_in_executor(None, gc.collect)
                     mem2 = psutil.virtual_memory()
                     if mem2.available / (1024 ** 3) >= required_gb * 0.75:
                         probe["memory_ok"] = True
-                # Check speechbrain availability
-                try:
-                    import importlib
-                    importlib.import_module("speechbrain")
+
+                # v265.2: Check speechbrain availability in thread executor.
+                # ROOT CAUSE FIX: This is the synchronous call that froze the
+                # event loop for 5-10+ seconds, defeating all timeout mechanisms.
+                # Running in a thread keeps the event loop responsive so that
+                # _timed_probe's asyncio.wait_for() can fire cancellation on time.
+                def _check_speechbrain_sync() -> bool:
+                    try:
+                        import importlib
+                        importlib.import_module("speechbrain")
+                        return True
+                    except ImportError:
+                        return False
+
+                _loop = asyncio.get_running_loop()
+                _sb_ok = await _loop.run_in_executor(None, _check_speechbrain_sync)
+                if _sb_ok:
                     probe["available"] = True
-                except ImportError:
+                else:
                     probe["error"] = "speechbrain not installed"
             except ImportError:
                 probe["error"] = "psutil not available"
@@ -77445,6 +77472,14 @@ class JarvisSystemKernel:
             elif force_backend == "local" and local_probe.get("available"):
                 result["selected_backend"] = "local"
                 result["decision_reason"] = "Forced local backend"
+
+            # v265.2: Warn when forced backend was overridden (unavailable/unhealthy).
+            if not result["selected_backend"] and force_backend:
+                self.logger.warning(
+                    "[ECAPA] Forced backend '%s' is not available/healthy — "
+                    "falling back to automatic selection",
+                    force_backend,
+                )
 
         if not result["selected_backend"]:
             # Priority: Docker (fastest) → Cloud Run → Local
@@ -77512,6 +77547,73 @@ class JarvisSystemKernel:
         else:
             result["decision_reason"] = "No ECAPA backend available"
             self.logger.warning("[ECAPA] No backend available — voice biometrics degraded")
+
+            # v265.2: Background re-probe for total failure recovery.
+            # If all probes failed at startup, periodically re-check and
+            # enable voice biometrics when a backend becomes available
+            # (e.g., Docker daemon starts 30s after JARVIS, or speechbrain
+            # finishes its cold import in the background thread).
+            _reprobe_interval = float(os.environ.get("ECAPA_REPROBE_INTERVAL", "30"))
+            _reprobe_max_wait = float(os.environ.get("ECAPA_REPROBE_MAX_WAIT", "300"))
+
+            async def _background_ecapa_reprobe() -> None:
+                _t0 = asyncio.get_running_loop().time()
+                _deadline = _probe_deadline
+                try:
+                    while True:
+                        elapsed = asyncio.get_running_loop().time() - _t0
+                        if elapsed > _reprobe_max_wait:
+                            self.logger.info(
+                                f"[ECAPA] Background re-probe gave up after {elapsed:.0f}s"
+                            )
+                            return
+
+                        await asyncio.sleep(_reprobe_interval)
+
+                        # Re-probe all backends with same deadline
+                        try:
+                            _d, _c, _l = await asyncio.gather(
+                                _timed_probe(probe_docker(), "Docker", {"available": False, "healthy": False}),
+                                _timed_probe(probe_cloud_run(), "Cloud Run", {"available": False, "healthy": False}),
+                                _timed_probe(probe_local(), "Local", {"available": False, "memory_ok": False}),
+                            )
+                        except Exception:
+                            continue
+
+                        # Check if any backend is now available
+                        _selected = None
+                        _endpoint = None
+                        if _d.get("healthy"):
+                            _selected, _endpoint = "docker", _d.get("endpoint")
+                        elif _c.get("healthy"):
+                            _selected, _endpoint = "cloud_run", _c.get("endpoint")
+                        elif _l.get("available") and _l.get("memory_ok"):
+                            _selected, _endpoint = "local", None
+
+                        if _selected:
+                            if _selected == "docker":
+                                os.environ["JARVIS_CLOUD_ML_ENDPOINT"] = _endpoint or ""
+                                os.environ["JARVIS_DOCKER_ECAPA_ACTIVE"] = "true"
+                            elif _selected == "cloud_run":
+                                os.environ["JARVIS_CLOUD_ML_ENDPOINT"] = _endpoint or ""
+                                os.environ["JARVIS_DOCKER_ECAPA_ACTIVE"] = "false"
+                            else:
+                                os.environ["JARVIS_DOCKER_ECAPA_ACTIVE"] = "false"
+                            os.environ["JARVIS_ECAPA_BACKEND"] = _selected
+                            self.logger.info(
+                                f"[ECAPA] Background re-probe found {_selected} after "
+                                f"{elapsed + _reprobe_interval:.0f}s — voice biometrics now active"
+                            )
+                            return
+                except asyncio.CancelledError:
+                    return
+                except Exception as e:
+                    self.logger.debug(f"[ECAPA] Background re-probe error: {e}")
+
+            create_safe_task(
+                _background_ecapa_reprobe(),
+                name="bg-ecapa-reprobe",
+            )
 
         # =====================================================================
         # v261.0: BACKGROUND CLOUD RUN WARMUP + HOT-SWAP
