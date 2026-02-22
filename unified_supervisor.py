@@ -67346,6 +67346,54 @@ class JarvisSystemKernel:
             )
             self._agent_runtime = None
 
+    async def _initialize_event_infrastructure(self) -> None:
+        """Initialize event bus infrastructure for command lifecycle events.
+
+        v243.1: Explicitly starts TrinityEventBus and ProactiveEventStream
+        so they're guaranteed to exist before any Phase 5-7 subscriber
+        connects. Previously lazily created on first use — caused boot
+        order races (NeuralMesh 10s retry was a symptom).
+        """
+        self._update_component_status(
+            "event_infrastructure", "running", "Starting event buses"
+        )
+
+        # 1. TrinityEventBus — cross-repo pub/sub
+        try:
+            from backend.core.trinity_event_bus import get_trinity_event_bus
+            _bus = await get_trinity_event_bus()  # Async factory: creates if not exists
+            self._event_bus_initialized = True
+            self.logger.info("[Kernel] v243.1: TrinityEventBus explicitly started")
+        except Exception as e:
+            self.logger.warning(f"[Kernel] v243.1: TrinityEventBus start failed: {e}")
+
+        # 2. ProactiveEventStream — AGI OS event system
+        try:
+            from backend.agi_os.proactive_event_stream import get_event_stream
+            _stream = await get_event_stream()  # Async factory
+            if _stream is not None:
+                self._event_stream_initialized = True
+                self.logger.info("[Kernel] v243.1: ProactiveEventStream explicitly started")
+        except Exception as e:
+            self.logger.warning(f"[Kernel] v243.1: ProactiveEventStream start failed: {e}")
+
+        # Update component status
+        if self._event_bus_initialized or self._event_stream_initialized:
+            _parts = []
+            if self._event_bus_initialized:
+                _parts.append("TrinityEventBus")
+            if self._event_stream_initialized:
+                _parts.append("ProactiveEventStream")
+            self._update_component_status(
+                "event_infrastructure", "ready",
+                f"Active: {', '.join(_parts)}"
+            )
+        else:
+            self._update_component_status(
+                "event_infrastructure", "degraded",
+                "No event buses available (non-critical)"
+            )
+
     async def _phase_intelligence(self) -> bool:
         """
         Phase 4: Initialize intelligence layer.
@@ -67372,6 +67420,13 @@ class JarvisSystemKernel:
         with self.logger.section_start(LogSection.INTELLIGENCE, "Zone 4 | Phase 4: Intelligence"):
             try:
                 self._intelligence_registry = IntelligenceRegistry(self.config)
+
+                # v243.1: Explicitly start event buses before intelligence managers
+                # Ensures buses exist when subscribers in Phases 5-7 connect
+                try:
+                    await self._initialize_event_infrastructure()
+                except Exception as _evb_err:
+                    self.logger.warning(f"[Kernel] v243.1: Event infrastructure init error: {_evb_err}")
 
                 # Create managers
                 router = HybridWorkloadRouter(self.config)
