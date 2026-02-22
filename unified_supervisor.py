@@ -60440,6 +60440,7 @@ class JarvisSystemKernel:
             "reactor_core": {"status": "pending", "message": "Waiting to start"},
             "enterprise": {"status": "pending", "message": "Waiting to start"},
             "agi_os": {"status": "pending", "message": "Waiting to start"},  # v200.0: AGI OS
+            "event_infrastructure": {"status": "pending", "message": "Waiting to start"},  # v243.1: Event buses
             "ghost_display": {"status": "pending", "message": "Waiting to start"},  # v240.0: Virtual Display
             "visual_pipeline": {"status": "pending", "message": "Waiting to start"},  # v250.0: Visual Pipeline
             "audio_infrastructure": {"status": "pending", "message": "Waiting to start"},  # v238.0: Audio Bus
@@ -60586,6 +60587,12 @@ class JarvisSystemKernel:
             "voice_communicator": False,
             "approval_manager": False,
         }
+
+        # v243.1: Event infrastructure lifecycle tracking
+        self._event_bus_initialized: bool = False
+        self._event_stream_initialized: bool = False
+        self._event_bus_health_registered: bool = False
+        self._event_stream_health_registered: bool = False
 
         # v210.0: Readiness revocation tracking
         # Monitors component health post-startup and revokes FULLY_READY if critical
