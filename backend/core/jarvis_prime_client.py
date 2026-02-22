@@ -1501,8 +1501,8 @@ class JarvisPrimeClient:
         """Fallback when J-Prime is completely unreachable.
 
         This covers startup windows, network failures, and circuit-breaker
-        open states.  Routes directly to the Gemini API (cheapest) to
-        maintain responsiveness while the Brain is offline.
+        open states.  v242.2: Routes to Claude API first (preferred), then
+        Gemini as last resort, to maintain responsiveness while offline.
         """
         try:
             messages: List[ChatMessage] = []
@@ -1808,6 +1808,7 @@ class JarvisPrimeClient:
                 self._claude_client.messages.create(
                     model=self.config.claude_model,
                     max_tokens=max_tokens,
+                    temperature=temperature,
                     system=system_prompt,
                     messages=api_messages,
                 ),
