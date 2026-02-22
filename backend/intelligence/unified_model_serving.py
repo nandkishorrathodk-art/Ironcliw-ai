@@ -117,6 +117,13 @@ PRIME_DEFAULT_MODEL = os.getenv("JARVIS_PRIME_DEFAULT_MODEL", "prime-7b-chat-v1.
 PRIME_CONTEXT_LENGTH = int(os.getenv("JARVIS_PRIME_CONTEXT_LENGTH", "4096"))
 PRIME_TIMEOUT_SECONDS = float(os.getenv("JARVIS_PRIME_TIMEOUT_SECONDS", "60.0"))
 
+# Fireworks configuration
+FIREWORKS_ENABLED = os.getenv("FIREWORKS_ENABLED", "true").lower() == "true"
+FIREWORKS_API_KEY = os.getenv("FIREWORKS_API_KEY", "")
+FIREWORKS_DEFAULT_MODEL = os.getenv("FIREWORKS_DEFAULT_MODEL", "accounts/fireworks/models/llama-v3p3-70b-instruct")
+FIREWORKS_TIMEOUT_SECONDS = float(os.getenv("FIREWORKS_TIMEOUT_SECONDS", "60.0"))
+FIREWORKS_MAX_TOKENS = int(os.getenv("FIREWORKS_MAX_TOKENS", "4096"))
+
 # Claude configuration
 CLAUDE_ENABLED = os.getenv("CLAUDE_FALLBACK_ENABLED", "true").lower() == "true"
 CLAUDE_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
@@ -147,6 +154,7 @@ class ModelProvider(Enum):
     PRIME_API = "prime_api"  # v17.0: J-Prime API (jarvis-prime repo server)
     PRIME_LOCAL = "prime_local"  # Local GGUF model
     PRIME_CLOUD_RUN = "prime_cloud_run"  # Cloud Run deployment
+    FIREWORKS = "fireworks"  # Fireworks AI (fast open-source models)
     CLAUDE = "claude"
     FALLBACK = "fallback"
 
@@ -1566,6 +1574,123 @@ class ClaudeClient(ModelClient):
     def get_supported_tasks(self) -> List[TaskType]:
         """Get supported task types."""
         return [TaskType.CHAT, TaskType.REASONING, TaskType.CODE, TaskType.VISION, TaskType.TOOL_USE]
+
+
+class FireworksModelClient(ModelClient):
+    """
+    Adapter for Fireworks AI client.
+    
+    Provides ModelClient interface for Fireworks AI inference with:
+    - Fast open-source model inference (~2x faster than standard APIs)
+    - Cost-effective pricing (50-80% cheaper than Claude)
+    - Support for Llama, Mixtral, Qwen models
+    - Streaming responses
+    - Function calling support
+    """
+    
+    def __init__(self, api_key: str = FIREWORKS_API_KEY):
+        self.logger = logging.getLogger("FireworksModelClient")
+        self._api_key = api_key
+        self._client = None
+        
+        # Lazy import
+        try:
+            from backend.intelligence.fireworks_client import get_fireworks_client
+            self._get_client_func = get_fireworks_client
+        except ImportError:
+            self.logger.warning("Fireworks client module not found")
+            self._get_client_func = None
+    
+    def _get_client(self):
+        """Get or create Fireworks client."""
+        if self._client is None and self._get_client_func:
+            self._client = self._get_client_func()
+        return self._client
+    
+    async def generate(self, request: ModelRequest) -> ModelResponse:
+        """Generate a response using Fireworks AI."""
+        start_time = time.time()
+        response = ModelResponse(
+            provider=ModelProvider.FIREWORKS,
+            model_name=FIREWORKS_DEFAULT_MODEL,
+        )
+        
+        if not self._api_key:
+            response.success = False
+            response.error = "Fireworks API key not configured"
+            return response
+        
+        client = self._get_client()
+        if not client:
+            response.success = False
+            response.error = "Fireworks client not available"
+            return response
+        
+        try:
+            result = await client.generate(
+                messages=request.messages,
+                model=request.model_override or FIREWORKS_DEFAULT_MODEL,
+                max_tokens=request.max_tokens,
+                temperature=request.temperature,
+                system_prompt=request.system_prompt,
+            )
+            
+            response.content = result.get("content", "")
+            response.tokens_used = result.get("tokens_input", 0) + result.get("tokens_output", 0)
+            response.success = result.get("success", False)
+            response.error = result.get("error")
+            response.cost = result.get("cost", 0.0)
+            
+        except Exception as e:
+            self.logger.error(f"Fireworks inference error: {e}")
+            response.success = False
+            response.error = str(e)
+        
+        response.latency_ms = (time.time() - start_time) * 1000
+        return response
+    
+    async def generate_stream(self, request: ModelRequest) -> AsyncIterator[str]:
+        """Generate a streaming response using Fireworks AI."""
+        if not self._api_key:
+            yield "[Error: Fireworks API key not configured]"
+            return
+        
+        client = self._get_client()
+        if not client:
+            yield "[Error: Fireworks client not available]"
+            return
+        
+        try:
+            async for chunk in client.generate_stream(
+                messages=request.messages,
+                model=request.model_override or FIREWORKS_DEFAULT_MODEL,
+                max_tokens=request.max_tokens,
+                temperature=request.temperature,
+                system_prompt=request.system_prompt,
+            ):
+                yield chunk
+        except Exception as e:
+            self.logger.error(f"Fireworks streaming error: {e}")
+            yield f"[Error: {e}]"
+    
+    async def health_check(self) -> bool:
+        """Check if Fireworks API is accessible."""
+        if not self._api_key:
+            return False
+        
+        client = self._get_client()
+        if not client:
+            return False
+        
+        try:
+            return await client.health_check()
+        except Exception as e:
+            self.logger.debug(f"Fireworks health check failed: {e}")
+            return False
+    
+    def get_supported_tasks(self) -> List[TaskType]:
+        """Get supported task types."""
+        return [TaskType.CHAT, TaskType.REASONING, TaskType.CODE]
 
 
 class CircuitBreaker:
