@@ -1222,6 +1222,14 @@ class MLEngineRegistry:
         self._cloud_endpoint_degraded_until: Dict[str, float] = {}
         self._cloud_endpoint_last_error: Dict[str, str] = {}
         self._cloud_failover_lock = LazyAsyncLock()
+        self._cloud_embedding_route = self._normalize_cloud_route(
+            os.getenv("JARVIS_CLOUD_EMBEDDING_ROUTE", "/api/ml/speaker_embedding"),
+            default="/api/ml/speaker_embedding",
+        )
+        self._cloud_verify_route = self._normalize_cloud_route(
+            os.getenv("JARVIS_CLOUD_VERIFY_ROUTE", "/api/ml/speaker_verify"),
+            default="/api/ml/speaker_verify",
+        )
 
         # v21.1.0: Cloud embedding circuit breaker
         self._cloud_embedding_cb = CloudEmbeddingCircuitBreaker()
@@ -1232,6 +1240,53 @@ class MLEngineRegistry:
         logger.info(f"🔧 MLEngineRegistry initialized with {len(self._engines)} engines")
         logger.info(f"   Config: {MLConfig.to_dict()}")
         logger.info(f"   Cloud fallback enabled: {self._cloud_fallback_enabled}")
+
+    @staticmethod
+    def _normalize_cloud_route(route: Optional[str], default: str) -> str:
+        """Normalize API route fragments to '/path' form without trailing slash."""
+        candidate = (route or default).strip()
+        if not candidate:
+            candidate = default
+        if not candidate.startswith("/"):
+            candidate = f"/{candidate}"
+        normalized = candidate.rstrip("/")
+        return normalized or default
+
+    def _cloud_route_candidates(self, operation: str) -> List[str]:
+        """
+        Return ordered route candidates for cloud ML API calls.
+
+        Supports contract drift between '/api/ml/*' and root-level routes.
+        """
+        if operation == "embedding":
+            primary = self._normalize_cloud_route(
+                self._cloud_embedding_route,
+                default="/api/ml/speaker_embedding",
+            )
+            fallback = self._normalize_cloud_route(
+                os.getenv(
+                    "JARVIS_CLOUD_EMBEDDING_ROUTE_FALLBACK", "/speaker_embedding"
+                ),
+                default="/speaker_embedding",
+            )
+        elif operation == "verify":
+            primary = self._normalize_cloud_route(
+                self._cloud_verify_route,
+                default="/api/ml/speaker_verify",
+            )
+            fallback = self._normalize_cloud_route(
+                os.getenv(
+                    "JARVIS_CLOUD_VERIFY_ROUTE_FALLBACK", "/speaker_verify"
+                ),
+                default="/speaker_verify",
+            )
+        else:
+            raise ValueError(f"Unknown cloud route operation: {operation}")
+
+        candidates = [primary]
+        if fallback not in candidates:
+            candidates.append(fallback)
+        return candidates
 
     def _register_engines(self):
         """Register all enabled engines."""
@@ -2221,7 +2276,7 @@ class MLEngineRegistry:
             float(os.getenv("JARVIS_CLOUD_CONTRACT_READ_TIMEOUT", str(req_timeout))),
         )
         health_url = f"{target}/api/ml/health"
-        embed_url = f"{target}/api/ml/speaker_embedding"
+        embed_paths = self._cloud_route_candidates("embedding")
 
         def _record_contract_failure(reason: str) -> Tuple[bool, str]:
             self._cloud_contract_verified = False
@@ -2257,23 +2312,53 @@ class MLEngineRegistry:
                             return _record_contract_failure(reason)
 
                     # Contract requirement 2: embedding path must be routable.
-                    async with session.options(
-                        embed_url,
-                        timeout=timeout_cfg,
-                        headers={"Accept": "application/json"},
-                    ) as response:
-                        if response.status == 404:
-                            reason = "/api/ml/speaker_embedding route missing (HTTP 404)"
-                            return _record_contract_failure(reason)
-                        if response.status >= 500:
-                            # 5xx during startup is usually transient (cold start/redeploy).
-                            last_transient_reason = (
-                                f"/api/ml/speaker_embedding options failed (HTTP {response.status})"
-                            )
-                            if attempt < probe_attempts:
-                                await asyncio.sleep(min(2.0, probe_backoff * (2 ** (attempt - 1))))
+                    route_selected = False
+                    route_failure_reason = ""
+                    route_transient_failure = False
+                    for embed_path in embed_paths:
+                        embed_url = f"{target}{embed_path}"
+                        async with session.options(
+                            embed_url,
+                            timeout=timeout_cfg,
+                            headers={"Accept": "application/json"},
+                        ) as response:
+                            if response.status == 404:
+                                route_failure_reason = (
+                                    f"{embed_path} route missing (HTTP 404)"
+                                )
                                 continue
-                            return _record_contract_failure(last_transient_reason)
+                            if response.status >= 500:
+                                route_transient_failure = True
+                                route_failure_reason = (
+                                    f"{embed_path} options failed (HTTP {response.status})"
+                                )
+                                continue
+
+                            route_selected = True
+                            if embed_path != self._cloud_embedding_route:
+                                logger.info(
+                                    "Cloud embedding route updated during contract "
+                                    "probe: %s -> %s",
+                                    self._cloud_embedding_route,
+                                    embed_path,
+                                )
+                                self._cloud_embedding_route = embed_path
+                            break
+
+                    if not route_selected:
+                        if route_transient_failure and attempt < probe_attempts:
+                            last_transient_reason = (
+                                route_failure_reason
+                                or "embedding route probe failed with transient 5xx"
+                            )
+                            await asyncio.sleep(
+                                min(2.0, probe_backoff * (2 ** (attempt - 1)))
+                            )
+                            continue
+                        return _record_contract_failure(
+                            route_failure_reason
+                            or "No routable embedding endpoint found"
+                        )
 
                     # Success
                     last_transient_reason = ""
@@ -3304,47 +3389,63 @@ class MLEngineRegistry:
             audio_b64 = base64.b64encode(audio_data).decode('utf-8')
 
             active_endpoint = (self._cloud_endpoint or "").rstrip("/")
-            endpoint = f"{active_endpoint}/api/ml/speaker_embedding"
+            route_candidates = self._cloud_route_candidates("embedding")
             payload = {
                 "audio_data": audio_b64,
                 "sample_rate": 16000,
                 "format": "float32",
             }
 
-            logger.debug(f"Sending speaker embedding request to cloud: {endpoint}")
-
             async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    endpoint,
-                    json=payload,
-                    timeout=aiohttp.ClientTimeout(total=timeout),
-                ) as response:
-                    if response.status == 200:
-                        result = await response.json()
+                for route_index, route_path in enumerate(route_candidates):
+                    endpoint = f"{active_endpoint}{route_path}"
+                    has_route_fallback = route_index + 1 < len(route_candidates)
+                    logger.debug(
+                        "Sending speaker embedding request to cloud: %s", endpoint
+                    )
 
-                        if result.get("success") and result.get("embedding"):
-                            # Convert embedding back to numpy/tensor
-                            embedding_list = result["embedding"]
-                            embedding = np.array(embedding_list, dtype=np.float32)
+                    async with session.post(
+                        endpoint,
+                        json=payload,
+                        timeout=aiohttp.ClientTimeout(total=timeout),
+                    ) as response:
+                        if response.status == 200:
+                            result = await response.json()
 
-                            # CRITICAL: Validate for NaN values
-                            if np.any(np.isnan(embedding)):
-                                logger.error("❌ Cloud embedding contains NaN values!")
-                                self._cloud_embedding_cb.record_failure("NaN in embedding")
-                                return None
+                            if result.get("success") and result.get("embedding"):
+                                # Convert embedding back to numpy/tensor
+                                embedding_list = result["embedding"]
+                                embedding = np.array(embedding_list, dtype=np.float32)
 
-                            import torch
-                            embedding_tensor = torch.tensor(embedding).unsqueeze(0)
+                                # CRITICAL: Validate for NaN values
+                                if np.any(np.isnan(embedding)):
+                                    logger.error("❌ Cloud embedding contains NaN values!")
+                                    self._cloud_embedding_cb.record_failure("NaN in embedding")
+                                    return None
 
-                            logger.debug(f"Cloud embedding received: shape {embedding_tensor.shape}")
-                            self._cloud_embedding_cb.record_success()
-                            self._mark_cloud_api_success()
-                            # v251.2: Reset fallback warning flag on success
-                            # so it fires again if cloud goes down later
-                            global _cloud_fallback_warned
-                            _cloud_fallback_warned = False
-                            return embedding_tensor
-                        else:
+                                import torch
+                                embedding_tensor = torch.tensor(embedding).unsqueeze(0)
+
+                                if route_path != self._cloud_embedding_route:
+                                    logger.info(
+                                        "Cloud embedding route switched: %s -> %s",
+                                        self._cloud_embedding_route,
+                                        route_path,
+                                    )
+                                    self._cloud_embedding_route = route_path
+
+                                logger.debug(
+                                    "Cloud embedding received: shape %s",
+                                    embedding_tensor.shape,
+                                )
+                                self._cloud_embedding_cb.record_success()
+                                self._mark_cloud_api_success()
+                                # v251.2: Reset fallback warning flag on success
+                                # so it fires again if cloud goes down later
+                                global _cloud_fallback_warned
+                                _cloud_fallback_warned = False
+                                return embedding_tensor
+
                             error_msg = result.get('error', 'unknown')
                             logger.error(f"Cloud embedding failed: {error_msg}")
                             self._cloud_embedding_cb.record_failure(f"API error: {error_msg}")
@@ -3355,61 +3456,83 @@ class MLEngineRegistry:
                             )
                             return None
 
-                    elif response.status == 503:
-                        # v21.1.0: Server not ready - parse structured 503 response
-                        retry_after = response.headers.get("Retry-After")
-                        try:
-                            body = await response.json()
-                            detail = body.get("detail", body.get("error", "unknown"))
-                            startup_state = body.get("startup_state", "")
-                        except Exception:
-                            detail = await response.text()
-                            startup_state = ""
-
-                        logger.warning(
-                            f"Cloud ECAPA not ready (503): {detail}"
-                            + (f", retry after {retry_after}s" if retry_after else "")
-                        )
-
-                        # Invalidate verification since server is not ready
-                        self._cloud_verified = False
-                        retry_after_seconds = self._parse_retry_after_seconds(retry_after)
-                        self._apply_cloud_retry_after(
-                            retry_after_seconds,
-                            reason=f"503: {detail}",
-                        )
-
-                        # Only trip circuit breaker for permanent failures,
-                        # not transient init states
-                        if startup_state in ("failed", "degraded"):
-                            self._cloud_embedding_cb.record_failure(f"503: {detail}")
-                            self._mark_cloud_api_failure(
-                                reason=detail,
-                                status_code=503,
-                                retry_after_seconds=retry_after_seconds,
-                            )
-                            self._record_cloud_endpoint_failure(
-                                active_endpoint,
-                                reason=detail,
-                                status_code=503,
-                                retry_after_seconds=retry_after_seconds,
-                            )
-                            if _allow_failover_retry:
-                                switched = await self._attempt_cloud_endpoint_failover(
-                                    trigger="embedding_503_startup_failed",
-                                    failed_endpoint=active_endpoint,
+                        if response.status == 503:
+                            if has_route_fallback:
+                                logger.warning(
+                                    "Cloud embedding route %s returned HTTP 503; "
+                                    "retrying with %s",
+                                    route_path,
+                                    route_candidates[route_index + 1],
                                 )
-                                if switched:
-                                    return await self.extract_speaker_embedding_cloud(
-                                        audio_data,
-                                        timeout=timeout,
-                                        _allow_failover_retry=False,
+                                continue
+
+                            # v21.1.0: Server not ready - parse structured 503 response
+                            retry_after = response.headers.get("Retry-After")
+                            try:
+                                body = await response.json()
+                                detail = body.get("detail", body.get("error", "unknown"))
+                                startup_state = body.get("startup_state", "")
+                            except Exception:
+                                detail = await response.text()
+                                startup_state = ""
+
+                            logger.warning(
+                                f"Cloud ECAPA not ready (503): {detail}"
+                                + (f", retry after {retry_after}s" if retry_after else "")
+                            )
+
+                            # Invalidate verification since server is not ready
+                            self._cloud_verified = False
+                            retry_after_seconds = self._parse_retry_after_seconds(retry_after)
+                            self._apply_cloud_retry_after(
+                                retry_after_seconds,
+                                reason=f"503: {detail}",
+                            )
+
+                            # Only trip circuit breaker for permanent failures,
+                            # not transient init states
+                            if startup_state in ("failed", "degraded"):
+                                self._cloud_embedding_cb.record_failure(f"503: {detail}")
+                                self._mark_cloud_api_failure(
+                                    reason=detail,
+                                    status_code=503,
+                                    retry_after_seconds=retry_after_seconds,
+                                )
+                                self._record_cloud_endpoint_failure(
+                                    active_endpoint,
+                                    reason=detail,
+                                    status_code=503,
+                                    retry_after_seconds=retry_after_seconds,
+                                )
+                                if _allow_failover_retry:
+                                    switched = await self._attempt_cloud_endpoint_failover(
+                                        trigger="embedding_503_startup_failed",
+                                        failed_endpoint=active_endpoint,
                                     )
+                                    if switched:
+                                        return await self.extract_speaker_embedding_cloud(
+                                            audio_data,
+                                            timeout=timeout,
+                                            _allow_failover_retry=False,
+                                        )
 
-                        return None
+                            return None
 
-                    else:
                         error_text = await response.text()
+                        should_try_next_route = (
+                            has_route_fallback
+                            and (response.status in (404, 405) or response.status >= 500)
+                        )
+                        if should_try_next_route:
+                            logger.warning(
+                                "Cloud embedding route %s failed (HTTP %s); "
+                                "retrying with %s",
+                                route_path,
+                                response.status,
+                                route_candidates[route_index + 1],
+                            )
+                            continue
+
                         if response.status in (404, 405):
                             reason = (
                                 f"Embedding route unavailable (HTTP {response.status}) "
@@ -3462,6 +3585,8 @@ class MLEngineRegistry:
                         else:
                             self._cloud_verified = False
                         return None
+
+                return None
 
         except ImportError:
             logger.error("aiohttp not available for cloud requests")
@@ -3571,7 +3696,7 @@ class MLEngineRegistry:
                 ref_list = list(reference_embedding)
 
             active_endpoint = (self._cloud_endpoint or "").rstrip("/")
-            endpoint = f"{active_endpoint}/api/ml/speaker_verify"
+            route_candidates = self._cloud_route_candidates("verify")
             payload = {
                 "audio_data": audio_b64,
                 "reference_embedding": ref_list,
@@ -3579,72 +3704,106 @@ class MLEngineRegistry:
                 "format": "float32",
             }
 
-            logger.debug(f"Sending speaker verification request to cloud: {endpoint}")
-
             async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    endpoint,
-                    json=payload,
-                    timeout=aiohttp.ClientTimeout(total=timeout),
-                ) as response:
-                    if response.status == 200:
-                        result = await response.json()
-                        logger.debug(f"Cloud verification result: {result}")
-                        self._cloud_embedding_cb.record_success()
-                        self._mark_cloud_api_success()
-                        return result
+                for route_index, route_path in enumerate(route_candidates):
+                    endpoint = f"{active_endpoint}{route_path}"
+                    has_route_fallback = route_index + 1 < len(route_candidates)
+                    logger.debug(
+                        "Sending speaker verification request to cloud: %s", endpoint
+                    )
 
-                    elif response.status == 503:
-                        # v21.1.0: Server not ready - handle structured 503
-                        try:
-                            body = await response.json()
-                            detail = body.get("detail", body.get("error", "unknown"))
-                            startup_state = body.get("startup_state", "")
-                        except Exception:
-                            detail = await response.text()
-                            startup_state = ""
-
-                        retry_after = response.headers.get("Retry-After")
-                        logger.warning(
-                            f"Cloud verification not ready (503): {detail}"
-                            + (f", retry after {retry_after}s" if retry_after else "")
-                        )
-                        self._cloud_verified = False
-                        retry_after_seconds = self._parse_retry_after_seconds(retry_after)
-                        self._apply_cloud_retry_after(
-                            retry_after_seconds,
-                            reason=f"503: {detail}",
-                        )
-
-                        if startup_state in ("failed", "degraded"):
-                            self._cloud_embedding_cb.record_failure(f"503: {detail}")
-                            self._mark_cloud_api_failure(
-                                reason=detail,
-                                status_code=503,
-                                retry_after_seconds=retry_after_seconds,
-                            )
-                            self._record_cloud_endpoint_failure(
-                                active_endpoint,
-                                reason=detail,
-                                status_code=503,
-                                retry_after_seconds=retry_after_seconds,
-                            )
-                            if _allow_failover_retry:
-                                switched = await self._attempt_cloud_endpoint_failover(
-                                    trigger="verify_503_startup_failed",
-                                    failed_endpoint=active_endpoint,
+                    async with session.post(
+                        endpoint,
+                        json=payload,
+                        timeout=aiohttp.ClientTimeout(total=timeout),
+                    ) as response:
+                        if response.status == 200:
+                            result = await response.json()
+                            if route_path != self._cloud_verify_route:
+                                logger.info(
+                                    "Cloud verification route switched: %s -> %s",
+                                    self._cloud_verify_route,
+                                    route_path,
                                 )
-                                if switched:
-                                    return await self.verify_speaker_cloud(
-                                        audio_data,
-                                        reference_embedding,
-                                        timeout=timeout,
-                                        _allow_failover_retry=False,
-                                    )
-                        return None
+                                self._cloud_verify_route = route_path
+                            logger.debug(f"Cloud verification result: {result}")
+                            self._cloud_embedding_cb.record_success()
+                            self._mark_cloud_api_success()
+                            return result
 
-                    else:
+                        if response.status == 503:
+                            if has_route_fallback:
+                                logger.warning(
+                                    "Cloud verification route %s returned HTTP 503; "
+                                    "retrying with %s",
+                                    route_path,
+                                    route_candidates[route_index + 1],
+                                )
+                                continue
+
+                            # v21.1.0: Server not ready - handle structured 503
+                            try:
+                                body = await response.json()
+                                detail = body.get("detail", body.get("error", "unknown"))
+                                startup_state = body.get("startup_state", "")
+                            except Exception:
+                                detail = await response.text()
+                                startup_state = ""
+
+                            retry_after = response.headers.get("Retry-After")
+                            logger.warning(
+                                f"Cloud verification not ready (503): {detail}"
+                                + (f", retry after {retry_after}s" if retry_after else "")
+                            )
+                            self._cloud_verified = False
+                            retry_after_seconds = self._parse_retry_after_seconds(retry_after)
+                            self._apply_cloud_retry_after(
+                                retry_after_seconds,
+                                reason=f"503: {detail}",
+                            )
+
+                            if startup_state in ("failed", "degraded"):
+                                self._cloud_embedding_cb.record_failure(f"503: {detail}")
+                                self._mark_cloud_api_failure(
+                                    reason=detail,
+                                    status_code=503,
+                                    retry_after_seconds=retry_after_seconds,
+                                )
+                                self._record_cloud_endpoint_failure(
+                                    active_endpoint,
+                                    reason=detail,
+                                    status_code=503,
+                                    retry_after_seconds=retry_after_seconds,
+                                )
+                                if _allow_failover_retry:
+                                    switched = await self._attempt_cloud_endpoint_failover(
+                                        trigger="verify_503_startup_failed",
+                                        failed_endpoint=active_endpoint,
+                                    )
+                                    if switched:
+                                        return await self.verify_speaker_cloud(
+                                            audio_data,
+                                            reference_embedding,
+                                            timeout=timeout,
+                                            _allow_failover_retry=False,
+                                        )
+                            return None
+
                         error_text = await response.text()
+                        should_try_next_route = (
+                            has_route_fallback
+                            and (response.status in (404, 405) or response.status >= 500)
+                        )
+                        if should_try_next_route:
+                            logger.warning(
+                                "Cloud verification route %s failed (HTTP %s); "
+                                "retrying with %s",
+                                route_path,
+                                response.status,
+                                route_candidates[route_index + 1],
+                            )
+                            continue
+
                         if response.status in (404, 405):
                             reason = (
                                 f"Speaker verification route unavailable (HTTP {response.status}) "
@@ -3695,6 +3854,8 @@ class MLEngineRegistry:
                         else:
                             self._cloud_verified = False
                         return None
+
+                return None
 
         except ImportError:
             logger.error("aiohttp not available for cloud requests")
