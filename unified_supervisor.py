@@ -76584,13 +76584,11 @@ class JarvisSystemKernel:
         if self._persistent_memory_agent:
             status["conversation_memory"] = self._persistent_memory_agent.get_stats()
 
-        # v200.0: Two-Tier Security status
+        # v244.0: Integration component status (was "two_tier" pre-v244)
         status["two_tier"] = {
             "enabled": self.config.two_tier_security_enabled,
             "watchdog": self._two_tier_status.get("watchdog", {}),
-            "vbia_adapter": self._two_tier_status.get("vbia_adapter", {}),
             "cross_repo": self._two_tier_status.get("cross_repo", {}),
-            "router": self._two_tier_status.get("router", {}),
             "runner_wired": self._two_tier_status.get("runner_wired", False),
         }
 
