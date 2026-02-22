@@ -752,13 +752,15 @@ class UnifiedTTSEngine:
         self._screen_lock_checker = None
         return None
 
-    async def _is_screen_locked_for_playback(self) -> bool:
+    async def _is_screen_locked_for_playback(self, force_refresh: bool = False) -> bool:
         """Check lock state with caching to avoid frequent expensive probes."""
         if not self._is_macos or not self._suppress_playback_when_locked:
             return False
 
         now = time.monotonic()
         if (
+            not force_refresh
+            and
             now - self._screen_lock_last_checked_monotonic
             <= self._screen_lock_cache_seconds
         ):
@@ -939,7 +941,7 @@ class UnifiedTTSEngine:
                     self._clear_audio_output_cooldown()
                     return
                 except Exception as afplay_err:
-                    if await self._is_screen_locked_for_playback():
+                    if await self._is_screen_locked_for_playback(force_refresh=True):
                         logger.info(
                             "[UnifiedTTS] Screen locked and afplay unavailable; "
                             "skipping fallback playback"

@@ -2187,6 +2187,12 @@ class ProxyReadinessGate:
         # Single check-in-progress future (Edge Case #1)
         self._check_future: Optional[asyncio.Future] = None
 
+        # v266.0: Single-flight ensure_proxy_ready() coordination.
+        # Prevents concurrent startup callers from racing proxy starts and
+        # duplicating DB-readiness loops.
+        self._ensure_proxy_ready_lock: Optional[asyncio.Lock] = None
+        self._ensure_proxy_ready_future: Optional[asyncio.Task] = None
+
         # Lazy events per loop (Edge Case #9, #29)
         self._ready_events: Dict[int, asyncio.Event] = {}
         self._degraded_events: Dict[int, asyncio.Event] = {}
@@ -2233,6 +2239,8 @@ class ProxyReadinessGate:
             self._state_lock = asyncio.Lock()
         if self._check_lock is None:
             self._check_lock = asyncio.Lock()
+        if self._ensure_proxy_ready_lock is None:
+            self._ensure_proxy_ready_lock = asyncio.Lock()
 
     def _get_ready_event(self, loop: asyncio.AbstractEventLoop) -> asyncio.Event:
         """
@@ -3213,6 +3221,92 @@ class ProxyReadinessGate:
         notify_cross_repo: bool = True,
     ) -> ReadinessResult:
         """
+        Proactively ensure Cloud SQL readiness with single-flight coordination.
+
+        v266.0: concurrent callers now share one in-flight ensure operation
+        instead of racing proxy lifecycle + readiness checks.
+        """
+        await self._ensure_locks()
+        assert self._ensure_proxy_ready_lock is not None  # from _ensure_locks()
+
+        wait_timeout = (
+            float(timeout)
+            if timeout is not None
+            else float(os.environ.get("CLOUDSQL_ENSURE_READY_TIMEOUT", "60.0"))
+        )
+
+        async with self._ensure_proxy_ready_lock:
+            in_flight = self._ensure_proxy_ready_future
+            if in_flight is None or in_flight.done():
+                in_flight = asyncio.create_task(
+                    self._ensure_proxy_ready_internal(
+                        timeout=timeout,
+                        auto_start=auto_start,
+                        max_start_attempts=max_start_attempts,
+                        notify_cross_repo=notify_cross_repo,
+                    ),
+                    name="cloudsql-ensure-proxy-ready",
+                )
+                self._ensure_proxy_ready_future = in_flight
+                is_leader = True
+            else:
+                is_leader = False
+
+        if not is_leader:
+            logger.debug(
+                "[ReadinessGate v266.0] Joining in-flight ensure_proxy_ready "
+                "(timeout=%.1fs)",
+                wait_timeout,
+            )
+            try:
+                return await asyncio.wait_for(asyncio.shield(in_flight), timeout=wait_timeout)
+            except asyncio.TimeoutError:
+                return ReadinessResult(
+                    state=self._state,
+                    timed_out=True,
+                    failure_reason=self._failure_reason or "timeout",
+                    message=(
+                        "Timed out waiting for in-flight ensure_proxy_ready() "
+                        f"after {wait_timeout:.1f}s"
+                    ),
+                )
+            except asyncio.CancelledError:
+                return ReadinessResult(
+                    state=ReadinessState.UNAVAILABLE,
+                    timed_out=False,
+                    failure_reason="cancelled",
+                    message="ensure_proxy_ready wait cancelled",
+                )
+
+        try:
+            return await in_flight
+        except asyncio.CancelledError:
+            if self._shutting_down:
+                return ReadinessResult(
+                    state=ReadinessState.UNAVAILABLE,
+                    timed_out=False,
+                    failure_reason="shutdown",
+                    message="Gate shutdown during ensure_proxy_ready",
+                )
+            return ReadinessResult(
+                state=ReadinessState.UNAVAILABLE,
+                timed_out=False,
+                failure_reason="cancelled",
+                message="ensure_proxy_ready cancelled",
+            )
+        finally:
+            async with self._ensure_proxy_ready_lock:
+                if self._ensure_proxy_ready_future is in_flight:
+                    self._ensure_proxy_ready_future = None
+
+    async def _ensure_proxy_ready_internal(
+        self,
+        timeout: Optional[float] = None,
+        auto_start: bool = True,
+        max_start_attempts: int = 3,
+        notify_cross_repo: bool = True,
+    ) -> ReadinessResult:
+        """
         Proactively ensure the Cloud SQL proxy is running and DB-level ready.
 
         v113.0: This is the ROOT FIX for "Connection refused" errors. Instead of
@@ -3665,6 +3759,19 @@ class ProxyReadinessGate:
         - #28: Cancel recheck task first, then set state/events
         """
         self._shutting_down = True
+
+        # v266.0: Cancel single-flight ensure operation so callers unblock
+        # immediately during shutdown.
+        in_flight_ensure = self._ensure_proxy_ready_future
+        if in_flight_ensure and not in_flight_ensure.done():
+            in_flight_ensure.cancel()
+            try:
+                await in_flight_ensure
+            except asyncio.CancelledError:
+                pass
+            except Exception:
+                pass
+        self._ensure_proxy_ready_future = None
 
         # Edge Case #28: Cancel recheck task first
         if self._recheck_task and not self._recheck_task.done():

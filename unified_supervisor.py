@@ -60470,8 +60470,10 @@ class JarvisSystemKernel:
         self._ghost_hands_orchestrator = None
         self._n_optic_nerve = None
         self._ghost_display_init_task: Optional[asyncio.Task] = None
+        self._ghost_display_recovery_task: Optional[asyncio.Task] = None
         self._ghost_display_health_task: Optional[asyncio.Task] = None
         self._visual_pipeline_health_task: Optional[asyncio.Task] = None
+        self._visual_pipeline_deferred_task: Optional[asyncio.Task] = None
         self._visual_pipeline_initialized: bool = False
 
         # v264.0: Screen Recording Permission + Real-Time Observation (Phase 6.4)
@@ -65199,17 +65201,18 @@ class JarvisSystemKernel:
                 )
 
             if _ssm: await _ssm.start_component("ghost_display")
-            # v265.0: Add timeout wrapper — previously bare await could hang
             _ghost_display_ok = False
+            _ghost_display_deferred = False
             try:
-                _ghost_display_ok = await asyncio.wait_for(
-                    self._initialize_ghost_display(),
-                    timeout=ghost_display_timeout,
-                )
-            except asyncio.TimeoutError:
-                self.logger.warning(
-                    f"[Kernel] v265.0: Ghost Display init timed out "
-                    f"({ghost_display_timeout:.0f}s) — continuing without"
+                # _initialize_ghost_display() already applies an internal startup
+                # budget and continuation path. Wrapping again with the same
+                # timeout causes misclassification (FAILED) while background
+                # initialization is still healthy.
+                _ghost_display_ok = await self._initialize_ghost_display()
+                _ghost_display_deferred = (
+                    _ghost_display_ok
+                    and self._component_status.get("ghost_display", {}).get("status")
+                    == "running"
                 )
             except asyncio.CancelledError:
                 raise
@@ -65224,11 +65227,22 @@ class JarvisSystemKernel:
                     suggestion="Check BetterDisplay installation and permissions"
                 )
             else:
-                if _ssm: await _ssm.complete_component("ghost_display")
+                if _ssm:
+                    if _ghost_display_deferred:
+                        await _ssm.skip_component(
+                            "ghost_display",
+                            "Initialization continuing in background",
+                        )
+                    else:
+                        await _ssm.complete_component("ghost_display")
 
             await self._broadcast_startup_progress(
                 stage="ghost_display",
-                message="Ghost Display ready — initializing AGI OS...",
+                message=(
+                    "Ghost Display initializing in background — initializing AGI OS..."
+                    if _ghost_display_deferred
+                    else "Ghost Display ready — initializing AGI OS..."
+                ),
                 progress=86,
                 metadata={
                     "icon": "monitor",
@@ -69007,8 +69021,15 @@ class JarvisSystemKernel:
 
     async def _run_ghost_display_initialization(self, phantom_mgr) -> bool:
         """Run the full Ghost Display bring-up sequence."""
+        registration_wait = _get_env_float(
+            "JARVIS_GHOST_REGISTRATION_WAIT_SECONDS",
+            _get_env_float("JARVIS_GHOST_DISPLAY_TIMEOUT", 30.0) * 0.6,
+        )
         try:
-            success, error = await phantom_mgr.ensure_ghost_display_exists_async()
+            success, error = await phantom_mgr.ensure_ghost_display_exists_async(
+                wait_for_registration=True,
+                max_wait_seconds=registration_wait,
+            )
         except Exception as e:
             self.logger.warning(f"[GhostDisplay] Failed while ensuring virtual display: {e}")
             self._update_component_status("ghost_display", "error", f"Error: {e}")
@@ -69037,15 +69058,17 @@ class JarvisSystemKernel:
 
         self.logger.info("[GhostDisplay] Virtual display ready")
 
-        # Crash recovery — audit & repatriate stranded windows
-        if _get_env_bool("JARVIS_GHOST_CRASH_RECOVERY", True):
-            await self._ghost_display_crash_recovery()
-
         # Publish state file for cross-repo exchange
         await self._publish_ghost_display_state(phantom_mgr)
 
         # Ensure exactly one health monitor is running.
         self._start_ghost_display_health_monitor(phantom_mgr)
+
+        # Crash recovery is non-blocking follow-up work. Running it inline can
+        # consume the startup budget and misclassify a healthy ghost display
+        # bring-up as failed.
+        if _get_env_bool("JARVIS_GHOST_CRASH_RECOVERY", True):
+            self._start_ghost_display_crash_recovery()
 
         self._update_component_status("ghost_display", "complete", "Ghost Display ready")
         return True
@@ -69060,10 +69083,57 @@ class JarvisSystemKernel:
         )
         self._background_tasks.append(self._ghost_display_health_task)
 
+    def _start_ghost_display_crash_recovery(self) -> None:
+        """Start ghost-display crash recovery if no recovery task is active."""
+        if self._ghost_display_recovery_task and not self._ghost_display_recovery_task.done():
+            return
+        self._ghost_display_recovery_task = create_safe_task(
+            self._ghost_display_crash_recovery(),
+            name="ghost-display-crash-recovery",
+        )
+        self._background_tasks.append(self._ghost_display_recovery_task)
+
     def _on_ghost_display_init_done(self, task: asyncio.Task) -> None:
         """Finalize background Ghost Display initialization task lifecycle."""
         if task is self._ghost_display_init_task:
             self._ghost_display_init_task = None
+
+        if task.cancelled():
+            return
+
+        try:
+            success = bool(task.result())
+        except Exception as e:
+            self.logger.debug(f"[GhostDisplay] Deferred init task failed: {e}")
+            return
+
+        if not success:
+            return
+
+        # If visual pipeline was skipped only because Ghost Display wasn't ready,
+        # retry once Ghost Display reaches COMPLETE in the background.
+        visual_state = self._component_status.get("visual_pipeline", {})
+        if (
+            not self._visual_pipeline_initialized
+            and visual_state.get("status") == "skipped"
+            and "Ghost Display not ready" in str(visual_state.get("message", ""))
+            and not self._shutdown_event.is_set()
+        ):
+            self.logger.info(
+                "[VisualPipeline] Ghost Display became ready; retrying deferred "
+                "visual pipeline initialization"
+            )
+            self._start_deferred_visual_pipeline_initialization()
+
+    def _start_deferred_visual_pipeline_initialization(self) -> None:
+        """Start deferred Visual Pipeline initialization if no retry is active."""
+        if self._visual_pipeline_deferred_task and not self._visual_pipeline_deferred_task.done():
+            return
+        self._visual_pipeline_deferred_task = create_safe_task(
+            self._initialize_visual_pipeline(),
+            name="visual-pipeline-deferred-init",
+        )
+        self._background_tasks.append(self._visual_pipeline_deferred_task)
 
     async def _ghost_display_crash_recovery(self) -> None:
         """

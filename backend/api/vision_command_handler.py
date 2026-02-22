@@ -9,6 +9,7 @@ import asyncio
 import logging
 import os
 import re as _re
+import sys
 from typing import Dict, Any, Optional, Callable, List
 from datetime import datetime
 
@@ -30,6 +31,15 @@ from .proactive_monitoring_handler import get_monitoring_handler
 from .activity_reporting_commands import is_activity_reporting_command
 
 logger = logging.getLogger(__name__)
+
+# Canonicalize module identity so both import styles share one singleton
+# instance/state (`vision_command_handler`) instead of split module copies.
+_this_module = sys.modules.get(__name__)
+if _this_module is not None:
+    if __name__.startswith("backend."):
+        sys.modules.setdefault("api.vision_command_handler", _this_module)
+    elif __name__ == "api.vision_command_handler":
+        sys.modules.setdefault("backend.api.vision_command_handler", _this_module)
 
 # Import new monitoring system components
 try:
