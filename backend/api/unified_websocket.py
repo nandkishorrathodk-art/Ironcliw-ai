@@ -1154,6 +1154,8 @@ class UnifiedWebSocketManager:
                 command_obj.deadline = _time_ws_legacy.monotonic() + 45.0 - _DEADLINE_HEADROOM_S
 
                 result = await jarvis_api.process_command(command_obj)
+                if not isinstance(result, dict):
+                    result = {"response": str(result), "status": "error", "success": False}
 
                 context.metadata["response"] = {
                     "type": "response",
@@ -2522,6 +2524,8 @@ class UnifiedWebSocketManager:
 
                     processor = get_unified_processor()
                     result = await processor.process_command(command_text, websocket=None)
+                    if not isinstance(result, dict):
+                        result = {"response": str(result), "status": "error", "success": False}
 
                     response_text = result.get("response", "Command processed, Sir.")
                     success = result.get("success", False)
@@ -2546,6 +2550,8 @@ class UnifiedWebSocketManager:
                         "[WS] Unified processor not available, falling back to async pipeline"
                     )
                     result = await self.pipeline.process_async(text=command_text)
+                    if not isinstance(result, dict):
+                        result = {"response": str(result), "status": "error", "success": False}
 
                     response_text = result.get("response", "Command processed, Sir.")
                     success = result.get("success", False)

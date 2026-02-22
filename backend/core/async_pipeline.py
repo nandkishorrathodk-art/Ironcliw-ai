@@ -878,13 +878,31 @@ class AdvancedAsyncPipeline:
         return context
 
     async def _generate_response(self, context: PipelineContext) -> PipelineContext:
-        """Generate final response."""
+        """Generate final response.
+
+        If the processing stage already produced a response dict with a
+        "response" key (the user-facing text), preserve it — only add a
+        timestamp.  Otherwise, build a generic wrapper from the raw result.
+        """
+        existing = context.data.get("response")
+
+        # Processing stage already built a proper response dict
+        if isinstance(existing, dict) and "response" in existing:
+            existing.setdefault("timestamp", datetime.now().isoformat())
+            return context
+
+        # Fallback: promote "result" into a response dict
         result = context.data.get("result", {})
-        context.data["response"] = {
-            "success": True,
-            "data": result,
-            "timestamp": datetime.now().isoformat()
-        }
+        if isinstance(result, dict) and "response" in result:
+            result.setdefault("timestamp", datetime.now().isoformat())
+            context.data["response"] = result
+        else:
+            context.data["response"] = {
+                "success": True,
+                "response": "Command processed successfully",
+                "data": result,
+                "timestamp": datetime.now().isoformat(),
+            }
         return context
 
     def _generate_error_response(self, context: PipelineContext, error: Exception) -> Dict[str, Any]:

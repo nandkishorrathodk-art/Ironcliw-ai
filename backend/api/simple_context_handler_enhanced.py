@@ -339,6 +339,8 @@ class EnhancedSimpleContextHandler:
                         result = await self.command_processor.process_command(
                             command, websocket
                         )
+                        if not isinstance(result, dict):
+                            result = {"response": str(result), "status": "error", "success": False}
 
                         # Build comprehensive response
                         self._add_step(

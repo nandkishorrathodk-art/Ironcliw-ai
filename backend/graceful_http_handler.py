@@ -5,7 +5,6 @@ Zero hardcoding - all responses are dynamically generated
 """
 
 from fastapi import Request, Response
-from fastapi.responses import JSONResponse
 from typing import Callable, Dict, Any, Optional
 import logging
 import time
@@ -327,12 +326,10 @@ def graceful_endpoint(func):
                 
             # Handle error gracefully
             recovery_result = await handler.handle_error(e, retry_func, context)
-            
-            # Always return 200 with appropriate data
-            return JSONResponse(
-                status_code=200,
-                content=recovery_result
-            )
+
+            # Return dict directly — FastAPI auto-serializes for HTTP,
+            # and internal callers (WebSocket, context handler) need .get()
+            return recovery_result
     
     return wrapper
 
