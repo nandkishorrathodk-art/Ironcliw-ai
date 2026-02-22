@@ -424,6 +424,7 @@ python backend/test_vision_api.py
 ---
 
 ### [ ] Phase 8: Ghost Hands Automation Port (Week 7-8)
+<!-- chat-id: d1b2b10c-d08f-4390-a426-fbcea8e62c47 -->
 
 Port the ghost_hands module for window automation, mouse/keyboard control using Windows APIs.
 
