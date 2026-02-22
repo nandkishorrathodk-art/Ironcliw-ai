@@ -61570,23 +61570,25 @@ class JarvisSystemKernel:
             try:
                 from backend.core.trinity_event_bus import shutdown_trinity_event_bus
                 await asyncio.wait_for(shutdown_trinity_event_bus(), timeout=5.0)
-                self._event_bus_initialized = False
                 self.logger.info("[Kernel] v243.1: TrinityEventBus shut down")
             except asyncio.TimeoutError:
                 self.logger.warning("[Kernel] v243.1: TrinityEventBus shutdown timed out (5s)")
             except Exception as _teb_err:
                 self.logger.debug(f"[Kernel] v243.1: TrinityEventBus shutdown error: {_teb_err}")
+            finally:
+                self._event_bus_initialized = False
 
         if self._event_stream_initialized:
             try:
                 from backend.agi_os.proactive_event_stream import stop_event_stream
                 await asyncio.wait_for(stop_event_stream(), timeout=5.0)
-                self._event_stream_initialized = False
                 self.logger.info("[Kernel] v243.1: ProactiveEventStream shut down")
             except asyncio.TimeoutError:
                 self.logger.warning("[Kernel] v243.1: ProactiveEventStream shutdown timed out (5s)")
             except Exception as _pes_err:
                 self.logger.debug(f"[Kernel] v243.1: ProactiveEventStream shutdown error: {_pes_err}")
+            finally:
+                self._event_stream_initialized = False
 
         self._update_component_status(
             "event_infrastructure", "stopped", "Event buses shut down"
@@ -67475,8 +67477,8 @@ class JarvisSystemKernel:
 
         v243.1: Verifies stream is alive and responsive.
         IMPORTANT: Reads module-level _event_stream singleton directly
-        (line 782) instead of calling get_event_stream() — which is a
-        factory that would recreate the stream if it was shut down.
+        instead of calling get_event_stream() — which is a factory
+        that would recreate the stream if it was shut down.
         Health checks must be side-effect-free.
         """
         try:
@@ -67488,7 +67490,7 @@ class JarvisSystemKernel:
                 return (False, "ProactiveEventStream singleton is None", {})
             # ProactiveEventStream tracks basic state
             _running = getattr(stream, '_running', False)
-            _sub_count = len(getattr(stream, '_subscribers', {}))
+            _sub_count = len(getattr(stream, '_subscriptions', {}))
             details = {"running": _running, "subscribers": _sub_count}
             if not _running:
                 return (False, "ProactiveEventStream not running", details)
@@ -76444,23 +76446,25 @@ class JarvisSystemKernel:
                 try:
                     from backend.core.trinity_event_bus import shutdown_trinity_event_bus
                     await asyncio.wait_for(shutdown_trinity_event_bus(), timeout=5.0)
-                    self._event_bus_initialized = False
                     self.logger.info("[Kernel] v243.1: TrinityEventBus shut down")
                 except asyncio.TimeoutError:
                     self.logger.warning("[Kernel] v243.1: TrinityEventBus shutdown timed out (5s)")
                 except Exception as _teb_err:
                     self.logger.debug(f"[Kernel] v243.1: TrinityEventBus shutdown error: {_teb_err}")
+                finally:
+                    self._event_bus_initialized = False
 
             if self._event_stream_initialized:
                 try:
                     from backend.agi_os.proactive_event_stream import stop_event_stream
                     await asyncio.wait_for(stop_event_stream(), timeout=5.0)
-                    self._event_stream_initialized = False
                     self.logger.info("[Kernel] v243.1: ProactiveEventStream shut down")
                 except asyncio.TimeoutError:
                     self.logger.warning("[Kernel] v243.1: ProactiveEventStream shutdown timed out (5s)")
                 except Exception as _pes_err:
                     self.logger.debug(f"[Kernel] v243.1: ProactiveEventStream shutdown error: {_pes_err}")
+                finally:
+                    self._event_stream_initialized = False
 
             self._update_component_status(
                 "event_infrastructure", "stopped", "Event buses shut down"
