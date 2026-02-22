@@ -64050,7 +64050,20 @@ class JarvisSystemKernel:
             self._emit_event(SupervisorEventType.PHASE_START, "Phase: Loading Experience", phase="loading_experience", correlation_id=_cid_le)
 
             if _ssm: await _ssm.start_component("loading_experience")
-            await self._phase_loading_experience()
+            # v265.0: Add timeout — loading experience starts Chrome/loading server,
+            # which can hang if Chrome is unresponsive or port is blocked
+            _loading_exp_timeout = _get_env_float("JARVIS_LOADING_EXPERIENCE_TIMEOUT", 30.0)
+            try:
+                await asyncio.wait_for(
+                    self._phase_loading_experience(), timeout=_loading_exp_timeout
+                )
+            except asyncio.TimeoutError:
+                self.logger.warning(
+                    f"[Kernel] v265.0: Loading Experience timed out "
+                    f"({_loading_exp_timeout:.0f}s) — continuing without loading page"
+                )
+            except asyncio.CancelledError:
+                raise
             if _ssm: await _ssm.complete_component("loading_experience")
 
             self._emit_event(
