@@ -76,6 +76,12 @@ from __future__ import annotations
 import sys as _early_sys
 import signal as _early_signal
 import os as _early_os
+import platform as _early_platform
+
+# Platform detection (before any platform-specific code)
+_is_windows = _early_platform.system().lower() == 'windows'
+_is_linux = _early_platform.system().lower() == 'linux'
+_is_macos = _early_platform.system().lower() == 'darwin'
 
 # Suppress multiprocessing resource_tracker semaphore warnings
 # This MUST be set BEFORE any multiprocessing imports to affect child processes
@@ -91,20 +97,30 @@ _is_cli_mode = any(flag in _early_sys.argv for flag in _cli_flags)
 
 if _is_cli_mode:
     # FIRST: Ignore ALL signals to protect this process
-    for _sig in (
-        _early_signal.SIGINT,   # 2 - Ctrl+C
-        _early_signal.SIGTERM,  # 15 - Termination
-        _early_signal.SIGHUP,   # 1 - Hangup
-        _early_signal.SIGURG,   # 16 - Urgent data (exit 144!)
-        _early_signal.SIGPIPE,  # 13 - Broken pipe
-        _early_signal.SIGALRM,  # 14 - Alarm
-        _early_signal.SIGUSR1,  # 30 - User signal 1
-        _early_signal.SIGUSR2,  # 31 - User signal 2
-    ):
+    # Platform-aware: Windows doesn't support POSIX signals
+    _signals_to_ignore = [
+        _early_signal.SIGINT,   # 2 - Ctrl+C (all platforms)
+        _early_signal.SIGTERM,  # 15 - Termination (all platforms)
+    ]
+    
+    # Add POSIX-only signals (not available on Windows)
+    if not _is_windows:
+        _signals_to_ignore.extend([
+            _early_signal.SIGHUP,   # 1 - Hangup
+            _early_signal.SIGURG,   # 16 - Urgent data (exit 144!)
+            _early_signal.SIGPIPE,  # 13 - Broken pipe
+            _early_signal.SIGALRM,  # 14 - Alarm
+            _early_signal.SIGUSR1,  # 30 - User signal 1
+            _early_signal.SIGUSR2,  # 31 - User signal 2
+        ])
+    
+    for _sig in _signals_to_ignore:
         try:
             _early_signal.signal(_sig, _early_signal.SIG_IGN)
-        except (OSError, ValueError):
-            pass  # Some signals can't be ignored
+        except (OSError, ValueError, AttributeError):
+            pass  # Some signals can't be ignored or don't exist on this platform
+    
+    del _signals_to_ignore
 
     # For --restart and --shutdown, launch detached child and EXIT IMMEDIATELY.
     # The detached child does the actual work in complete isolation.
@@ -119,24 +135,37 @@ if _is_cli_mode:
         _is_shutdown = '--shutdown' in _early_sys.argv
         _cmd_name = 'shutdown' if _is_shutdown else 'restart'
         _reexec_marker = '_JARVIS_SHUTDOWN_REEXEC' if _is_shutdown else '_JARVIS_RESTART_REEXEC'
-        _result_path = f"/tmp/jarvis_{_cmd_name}_{_early_os.getpid()}.result"
+        # Cross-platform temp directory
+        _result_path = _early_os.path.join(_tmp.gettempdir(), f"jarvis_{_cmd_name}_{_early_os.getpid()}.result")
 
         # Write standalone command script with full signal immunity
         _script_content = f'''#!/usr/bin/env python3
-import os, sys, signal, subprocess, time
+import os, sys, signal, subprocess, time, platform
 
-# Full signal immunity
-for s in range(1, 32):
+# Platform detection
+_is_windows = platform.system().lower() == 'windows'
+
+# Full signal immunity (platform-aware)
+if not _is_windows:
+    for s in range(1, 32):
+        try:
+            if s not in (9, 17):
+                signal.signal(s, signal.SIG_IGN)
+        except Exception:
+            pass
+else:
+    # Windows: only SIGINT and SIGTERM are available
     try:
-        if s not in (9, 17):
-            signal.signal(s, signal.SIG_IGN)
+        signal.signal(signal.SIGINT, signal.SIG_IGN)
+        signal.signal(signal.SIGTERM, signal.SIG_IGN)
     except Exception:
         pass
 
-# New session
-try: os.setsid()
-except Exception:
-    pass
+# New session (Unix-only)
+if not _is_windows:
+    try: os.setsid()
+    except Exception:
+        pass
 
 # Run the actual command
 env = dict(os.environ)
@@ -159,14 +188,25 @@ with open({_result_path!r}, "w") as f:
         _early_os.close(_fd)
         _early_os.chmod(_script_path, 0o700)
 
-        # Launch completely detached (double-fork daemon pattern)
-        _proc = _sp.Popen(
-            [_early_sys.executable, _script_path],
-            start_new_session=True,
-            stdin=_sp.DEVNULL,
-            stdout=_sp.DEVNULL,
-            stderr=_sp.DEVNULL,
-        )
+        # Launch completely detached (platform-specific approach)
+        if _is_windows:
+            # Windows: use CREATE_NEW_PROCESS_GROUP and DETACHED_PROCESS
+            _proc = _sp.Popen(
+                [_early_sys.executable, _script_path],
+                creationflags=_sp.CREATE_NEW_PROCESS_GROUP | 0x00000008,  # DETACHED_PROCESS
+                stdin=_sp.DEVNULL,
+                stdout=_sp.DEVNULL,
+                stderr=_sp.DEVNULL,
+            )
+        else:
+            # Unix: use start_new_session (double-fork daemon pattern)
+            _proc = _sp.Popen(
+                [_early_sys.executable, _script_path],
+                start_new_session=True,
+                stdin=_sp.DEVNULL,
+                stdout=_sp.DEVNULL,
+                stderr=_sp.DEVNULL,
+            )
 
         # Print message and exit IMMEDIATELY
         _early_sys.stdout.write(f"\n{'='*60}\n")
@@ -179,16 +219,19 @@ with open({_result_path!r}, "w") as f:
         _early_sys.stdout.flush()
         _early_os._exit(0)
 
-    # Try to create own process group for additional isolation
-    try:
-        _early_os.setpgrp()
-    except (OSError, PermissionError):
-        pass
+    # Try to create own process group for additional isolation (Unix-only)
+    if not _is_windows:
+        try:
+            _early_os.setpgrp()
+        except (OSError, PermissionError, AttributeError):
+            pass
 
     _early_os.environ['_JARVIS_CLI_PROTECTED'] = '1'
 
 # Clean up early imports
-del _early_sys, _early_signal, _early_os, _cli_flags, _is_cli_mode
+del _early_sys, _early_signal, _early_os, _early_platform, _cli_flags, _is_cli_mode
+# Keep platform flags for later use
+# _is_windows, _is_linux, _is_macos remain available
 
 
 # =============================================================================
@@ -4129,11 +4172,23 @@ class IntelligentKernelTakeover:
         except psutil.NoSuchProcess:
             return True
         except ImportError:
-            # Fallback without psutil
+            # Fallback without psutil (cross-platform)
             try:
-                os.kill(pid, signal.SIGTERM)
-                await asyncio.sleep(2)
-                os.kill(pid, signal.SIGKILL)
+                # Cross-platform process termination
+                if platform.system().lower() == 'windows':
+                    # Windows: SIGTERM is the only supported signal (maps to TerminateProcess)
+                    os.kill(pid, signal.SIGTERM)
+                    await asyncio.sleep(2)
+                    # Try again if still alive
+                    try:
+                        os.kill(pid, signal.SIGTERM)
+                    except ProcessLookupError:
+                        pass
+                else:
+                    # Unix: use SIGTERM then SIGKILL
+                    os.kill(pid, signal.SIGTERM)
+                    await asyncio.sleep(2)
+                    os.kill(pid, signal.SIGKILL)
                 return True
             except ProcessLookupError:
                 return True
@@ -7675,16 +7730,29 @@ class DockerDaemonManager(ResourceManagerBase):
     """
 
     # Socket paths to check
-    SOCKET_PATHS = [
-        Path('/var/run/docker.sock'),  # Linux/macOS (daemon)
-        Path.home() / '.docker' / 'run' / 'docker.sock',  # macOS (Desktop)
-    ]
+    # Platform-specific Docker socket paths
+    # Windows uses named pipe, Unix uses socket file
+    def _get_socket_paths(self) -> List[Path]:
+        """Get platform-specific Docker socket paths."""
+        if platform.system().lower() == 'windows':
+            # Windows uses named pipe (not a file path, handled differently)
+            return []  # Will use 'npipe:////./pipe/docker_engine' in client
+        else:
+            return [
+                Path('/var/run/docker.sock'),  # Linux/macOS (daemon)
+                Path.home() / '.docker' / 'run' / 'docker.sock',  # macOS (Desktop)
+            ]
+    
+    SOCKET_PATHS: List[Path] = []  # Initialized in __init__
 
     def __init__(self, config: Optional[SystemKernelConfig] = None):
         super().__init__("DockerDaemonManager", config)
 
         # Platform detection
         self.platform = platform.system().lower()
+        
+        # Initialize socket paths based on platform
+        self.SOCKET_PATHS = self._get_socket_paths()
 
         # Configuration from environment (zero hardcoding)
         self.enabled = os.getenv("DOCKER_ENABLED", "true").lower() == "true"
@@ -21036,8 +21104,9 @@ class HybridWorkloadRouter(IntelligenceManagerBase):
         startup_script: str
     ) -> Dict[str, Any]:
         """Deploy instance using gcloud CLI."""
-        # Write startup script to temp file
-        script_file = Path(f"/tmp/jarvis_startup_{uuid.uuid4().hex[:8]}.sh")
+        # Write startup script to temp file (cross-platform)
+        import tempfile
+        script_file = Path(tempfile.gettempdir()) / f"jarvis_startup_{uuid.uuid4().hex[:8]}.sh"
         script_file.write_text(startup_script)
 
         cmd = [
@@ -49642,7 +49711,8 @@ class DocumentManagementSystem:
     """
 
     def __init__(self, storage_path: Optional[str] = None) -> None:
-        self._storage_path = storage_path or "/tmp/dms_storage"
+        import tempfile
+        self._storage_path = storage_path or str(Path(tempfile.gettempdir()) / "dms_storage")
         self._documents: Dict[str, Document] = {}
         self._folders: Dict[str, Folder] = {}
         self._search_index: Dict[str, Set[str]] = {}  # word -> doc_ids
@@ -50947,7 +51017,8 @@ class DataLakeManager:
     """
 
     def __init__(self, storage_root: Optional[str] = None) -> None:
-        self._storage_root = storage_root or "/tmp/data_lake"
+        import tempfile
+        self._storage_root = storage_root or str(Path(tempfile.gettempdir()) / "data_lake")
         self._datasets: Dict[str, Dataset] = {}
         self._catalog: Dict[str, DataCatalogEntry] = {}
         self._lock = asyncio.Lock()
@@ -60368,9 +60439,10 @@ class JarvisSystemKernel:
 
     _instance: Optional["JarvisSystemKernel"] = None
 
-    # v119.0: Cross-process browser lock for safe window management
-    BROWSER_LOCK_FILE = Path("/tmp/jarvis_browser.lock")
-    BROWSER_PID_FILE = Path("/tmp/jarvis_browser_opener.pid")
+    # v119.0: Cross-process browser lock for safe window management (cross-platform)
+    import tempfile
+    BROWSER_LOCK_FILE = Path(tempfile.gettempdir()) / "jarvis_browser.lock"
+    BROWSER_PID_FILE = Path(tempfile.gettempdir()) / "jarvis_browser_opener.pid"
 
     def __new__(cls, *args: Any, **kwargs: Any) -> "JarvisSystemKernel":
         """Singleton pattern."""
@@ -60719,7 +60791,8 @@ class JarvisSystemKernel:
                 lock_timeout_seconds=float(os.getenv("JARVIS_LOCK_TIMEOUT", "30")),
                 heartbeat_interval=float(os.getenv("JARVIS_LOCK_HEARTBEAT", "5")),
                 storage_path=Path(os.getenv(
-                    "JARVIS_LOCK_DIR", "/tmp/.jarvis/state/locks",
+                    "JARVIS_LOCK_DIR", 
+                    str(Path(tempfile.gettempdir()) / ".jarvis" / "state" / "locks"),
                 )),
             ),
             phase=2,

@@ -46,7 +46,11 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from backend.core.robust_file_lock import RobustFileLock
+import sys
+if sys.platform == "win32":
+    from backend.core.robust_file_lock_windows import RobustFileLock
+else:
+    from backend.core.robust_file_lock import RobustFileLock
 from backend.utils.async_startup import _STARTUP_EXECUTOR
 
 logger = logging.getLogger(__name__)

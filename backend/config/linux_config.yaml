@@ -1,0 +1,243 @@
+# JARVIS Linux Platform Configuration
+# Linux-specific settings and overrides
+# Version: 1.0.0
+
+platform:
+  name: "Linux"
+  supported_distributions:
+    - "Ubuntu"
+    - "Debian"
+    - "Fedora"
+    - "Arch"
+    - "CentOS"
+  desktop_environments:
+    - "GNOME"
+    - "KDE Plasma"
+    - "XFCE"
+    - "i3"
+    - "Sway"
+  architecture: ["x86_64", "aarch64"]
+
+# System Paths (Linux-specific, XDG compliant)
+paths:
+  config_dir: "$HOME/.config/jarvis"
+  logs_dir: "$HOME/.local/share/jarvis/logs"
+  data_dir: "$HOME/.local/share/jarvis/data"
+  cache_dir: "$HOME/.cache/jarvis"
+  temp_dir: "/tmp/jarvis"
+  runtime_dir: "$XDG_RUNTIME_DIR/jarvis"  # For sockets, PID files
+
+# Screen Capture Configuration
+screen_capture:
+  method: "mss"  # Fast multi-monitor capture (X11/Wayland)
+  format: "png"
+  quality: 95
+  fps_target: 15
+  multi_monitor: true
+  primary_only: false
+  wayland_support: true  # Wayland compositor support
+  x11_fallback: true  # Fallback to X11 if Wayland unavailable
+
+# Display Management
+display:
+  multi_monitor_support: true
+  wayland_compositor: "auto"  # Auto-detect: wlroots, mutter, kwin
+  x11_display: "$DISPLAY"
+  virtual_desktop_support: true  # i3, Sway, KDE virtual desktops
+  
+# Text-to-Speech Configuration
+tts:
+  engine: "pyttsx3"  # Uses espeak/espeak-ng on Linux
+  voice_id: "english"
+  rate: 175  # Words per minute
+  volume: 0.9  # 0.0 to 1.0
+  fallback_engines:
+    - "espeak"
+    - "festival"
+    - "pico2wave"
+  command_fallback: "espeak -v en -s 175"  # Direct command if pyttsx3 fails
+
+# Window Management
+window_manager:
+  method: "auto"  # Auto-detect: wmctrl, xdotool, i3-msg, swaymsg
+  detection_order:
+    - "swaymsg"  # Sway (Wayland)
+    - "i3-msg"   # i3 (X11)
+    - "wmctrl"   # Generic X11
+    - "xdotool"  # Fallback X11
+  automation_library: "pyautogui"  # GUI automation
+  
+# Keyboard & Mouse Automation
+automation:
+  keyboard_library: "pynput"  # Cross-platform keyboard control
+  mouse_library: "pynput"  # Cross-platform mouse control
+  x11_fallback: "xdotool"  # Direct X11 tool if pynput fails
+  failsafe: true  # Move mouse to corner to abort
+  pause_between_actions: 0.1  # Seconds
+
+# Clipboard Operations
+clipboard:
+  library: "pyperclip"  # Cross-platform clipboard
+  x11_tools:
+    - "xclip"
+    - "xsel"
+  wayland_tool: "wl-clipboard"  # wl-copy / wl-paste
+  encoding: "utf-8"
+  max_size_kb: 10240  # 10MB max clipboard size
+
+# System Tray Configuration
+system_tray:
+  enabled: true
+  library: "pystray"  # Cross-platform system tray
+  backend: "appindicator"  # Use AppIndicator on GNOME/Unity
+  icon_path: "assets/jarvis_icon_linux.png"
+  show_notifications: true
+  notification_duration: 5  # seconds
+  notification_method: "libnotify"  # Desktop notifications
+
+# Process Management
+process:
+  creation_flags: null  # No special flags needed on Linux
+  signal_handling: "SIGTERM"  # Standard Unix signal
+  sigkill_timeout: 10  # SIGKILL after 10s if SIGTERM fails
+  graceful_shutdown_timeout: 30  # seconds
+  use_systemd: false  # Don't require systemd (optional)
+
+# Authentication
+authentication:
+  bypass_enabled: true  # Bypass voice unlock on Linux
+  fallback_method: "none"  # No authentication required
+  cloud_sql_proxy: false  # Disable Cloud SQL on Linux
+  keyring_backend: "keyring"  # Use cross-platform keyring library
+  keyring_service: "jarvis"  # Keyring service name
+
+# Voice Recognition
+voice:
+  wake_word_engine: "porcupine"  # Cross-platform wake word
+  stt_engine: "faster-whisper"  # Local speech-to-text
+  microphone:
+    default_device: null  # Auto-detect (PulseAudio/PipeWire/ALSA)
+    sample_rate: 16000
+    channels: 1
+    audio_backend: "auto"  # Auto-detect: PulseAudio, PipeWire, ALSA
+
+# Hardware Acceleration
+hardware:
+  gpu_acceleration: true
+  gpu_library: "vulkan"  # Vulkan on Linux (cross-vendor)
+  cuda_enabled: true  # Enable NVIDIA CUDA if available
+  rocm_enabled: true  # Enable AMD ROCm if available
+  fallback_to_cpu: true
+  
+# ML Model Configuration
+ml_models:
+  inference_backend: "onnxruntime"  # Cross-platform ML runtime
+  device: "auto"  # Auto-detect GPU/CPU
+  quantization: "dynamic"  # Dynamic quantization for speed
+  cache_models: true
+  cache_path: "$HOME/.cache/jarvis/models"
+
+# Docker Configuration (Linux-specific paths)
+docker:
+  enabled: true
+  socket_path: "unix:///var/run/docker.sock"  # Standard Unix socket
+  daemon_check: true
+  rootless_support: true  # Support rootless Docker
+
+# GCP Configuration (same across platforms)
+gcp:
+  enabled: true
+  spot_vm_enabled: true
+  golden_image_enabled: true
+  
+# Idle Detection (Linux-specific)
+idle:
+  enabled: true
+  method: "xprintidle"  # X11 idle detection
+  wayland_method: "dbus"  # D-Bus idle detection for Wayland
+  threshold_seconds: 7200  # 2 hours
+  monitor:
+    keyboard: true
+    mouse: true
+    audio_output: false
+  detection_command: "xprintidle"  # Fallback to command-line tool
+
+# Update Configuration
+update:
+  auto_update: true
+  check_interval: 300  # 5 minutes
+  git_executable: "git"  # Standard git command
+  package_manager: "auto"  # Auto-detect: apt, dnf, pacman, zypper
+
+# Logging Configuration
+logging:
+  level: "INFO"
+  file: "$HOME/.local/share/jarvis/logs/jarvis.log"
+  max_size_mb: 50
+  backup_count: 3
+  console_output: true
+  syslog_integration: false  # Optional syslog support
+
+# Feature Flags (Linux-specific overrides)
+features:
+  hot_reload: true
+  dev_mode: true
+  zero_touch_updates: true
+  dead_man_switch: true
+  vision_pipeline: true
+  voice_unlock: false  # Disabled on Linux (bypassed)
+  yabai_integration: false  # macOS-only window manager
+  metal_gpu: false  # macOS-only GPU framework
+  coreml_models: false  # macOS-only ML framework
+  wayland_support: true  # Enable Wayland compositor support
+
+# Performance Tuning
+performance:
+  worker_threads: 4
+  max_memory_mb: 8192  # 8GB max
+  garbage_collection: "auto"
+  async_io: true
+  io_uring: true  # Use io_uring if available (kernel 5.1+)
+
+# Security Settings
+security:
+  sandbox_enabled: false  # Sandbox not yet implemented
+  apparmor_profile: null  # Optional AppArmor profile
+  selinux_context: null  # Optional SELinux context
+  require_root: false  # Run as normal user
+  
+# Desktop Integration
+desktop:
+  autostart: false  # Auto-start on login
+  autostart_path: "$HOME/.config/autostart/jarvis.desktop"
+  desktop_entry: true  # Create .desktop file
+  freedesktop_compliant: true  # Follow FreeDesktop.org standards
+
+# Environment Variables (Linux-specific defaults)
+env_defaults:
+  JARVIS_PLATFORM: "linux"
+  JARVIS_AUTH_BYPASS: "true"
+  JARVIS_TTS_ENGINE: "pyttsx3"
+  JARVIS_CAPTURE_METHOD: "mss"
+  JARVIS_GPU_BACKEND: "vulkan"
+  JARVIS_CONFIG_DIR: "$HOME/.config/jarvis"
+  XDG_CONFIG_HOME: "$HOME/.config"
+  XDG_DATA_HOME: "$HOME/.local/share"
+  XDG_CACHE_HOME: "$HOME/.cache"
+
+# Distribution-Specific Overrides
+distribution_overrides:
+  ubuntu:
+    tts_install_cmd: "sudo apt-get install espeak espeak-ng"
+    clipboard_install_cmd: "sudo apt-get install xclip"
+    window_tools_install_cmd: "sudo apt-get install wmctrl xdotool"
+  
+  fedora:
+    tts_install_cmd: "sudo dnf install espeak espeak-ng"
+    clipboard_install_cmd: "sudo dnf install xclip"
+    window_tools_install_cmd: "sudo dnf install wmctrl xdotool"
+  
+  arch:
+    tts_install_cmd: "sudo pacman -S espeak-ng"
+    clipboard_install_cmd: "sudo pacman -S xclip"
+    window_tools_install_cmd: "sudo pacman -S wmctrl xdotool"

@@ -25,6 +25,33 @@ distro==1.9.0
 docstring_parser==0.17.0
 durationpy==0.10
 coremltools>=7.0.0; platform_system == "Darwin"
+
+# Cross-platform dependencies for Windows/Linux support
+# Screen capture (cross-platform alternative to Swift screen capture)
+mss>=9.0.0  # Fast multi-monitor screen capture
+
+# Text-to-Speech (cross-platform alternative to macOS 'say' command)
+pyttsx3>=2.90  # TTS engine (SAPI on Windows, espeak on Linux)
+
+# Clipboard operations (cross-platform alternative to pbcopy/pbpaste)
+pyperclip>=1.8.2  # Cross-platform clipboard support
+
+# Keyboard and mouse automation (cross-platform alternative to cliclick)
+pyautogui>=0.9.54  # GUI automation
+pynput>=1.7.6  # Keyboard and mouse control
+
+# System tray/menu bar (cross-platform)
+pystray>=0.19.5  # System tray icon support
+
+# Windows-specific dependencies
+wmi>=1.5.1; platform_system == "Windows"  # Windows Management Instrumentation
+pywin32>=306; platform_system == "Windows"  # Windows API bindings
+comtypes>=1.4.1; platform_system == "Windows"  # Windows COM support
+
+# Linux-specific dependencies
+python-xlib>=0.33; platform_system == "Linux"  # X11 protocol bindings
+Xlib>=0.21; platform_system == "Linux"  # X Window System library
+
 exceptiongroup==1.3.1
 faiss-cpu==1.13.0
 fastapi==0.124.2

@@ -1,0 +1,28 @@
+# Linux-specific dependencies for JARVIS
+# Install with: pip install -r requirements-linux.txt
+
+# Automation
+pynput>=1.7.6
+
+# Screen Capture
+mss>=9.0.1
+Pillow>=10.0.0
+
+# Audio (ALSA/PulseAudio bindings - optional)
+# pyalsaaudio>=0.10.0  # Uncomment if needed
+# pulsectl>=23.5.0     # Uncomment if needed
+
+# System Tools (most are command-line tools, install via package manager):
+# - wmctrl: sudo apt install wmctrl
+# - xdotool: sudo apt install xdotool
+# - xprintidle: sudo apt install xprintidle (for idle time detection)
+# - notify-send: Usually pre-installed (libnotify-bin package)
+# - paplay: Usually pre-installed (pulseaudio-utils package)
+
+# Note: For X11 development, you may need:
+# sudo apt install python3-xlib xorg-dev
+
+# Note: Some packages from main requirements.txt work cross-platform:
+# - psutil (Linux support)
+# - sounddevice (uses PortAudio)
+# - numpy, torch (ensure Linux wheels are used)

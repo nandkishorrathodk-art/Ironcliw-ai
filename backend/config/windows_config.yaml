@@ -1,0 +1,175 @@
+# JARVIS Windows Platform Configuration
+# Windows-specific settings and overrides
+# Version: 1.0.0
+
+platform:
+  name: "Windows"
+  supported_versions:
+    - "10"
+    - "11"
+  architecture: ["x64", "arm64"]
+
+# System Paths (Windows-specific)
+paths:
+  config_dir: "%APPDATA%\\JARVIS"
+  logs_dir: "%APPDATA%\\JARVIS\\logs"
+  data_dir: "%LOCALAPPDATA%\\JARVIS\\data"
+  cache_dir: "%LOCALAPPDATA%\\JARVIS\\cache"
+  temp_dir: "%TEMP%\\JARVIS"
+
+# Screen Capture Configuration
+screen_capture:
+  method: "mss"  # Fast multi-monitor capture library
+  format: "png"
+  quality: 95
+  fps_target: 15
+  multi_monitor: true
+  primary_only: false
+
+# Display Management
+display:
+  multi_monitor_support: true
+  dpi_awareness: true  # Handle high-DPI displays
+  virtual_desktop_support: false  # Not supported on Windows by default
+  
+# Text-to-Speech Configuration
+tts:
+  engine: "pyttsx3"  # Uses SAPI (Microsoft Speech API)
+  voice_id: null  # null = system default
+  rate: 175  # Words per minute
+  volume: 0.9  # 0.0 to 1.0
+  fallback_engine: "edge-tts"  # Microsoft Edge TTS (cloud-based)
+
+# Window Management
+window_manager:
+  method: "pygetwindow"  # Windows window management
+  automation_library: "pyautogui"  # GUI automation
+  focus_method: "win32gui"  # Native Windows API
+  
+# Keyboard & Mouse Automation
+automation:
+  keyboard_library: "pynput"  # Cross-platform keyboard control
+  mouse_library: "pynput"  # Cross-platform mouse control
+  failsafe: true  # Move mouse to corner to abort
+  pause_between_actions: 0.1  # Seconds
+
+# Clipboard Operations
+clipboard:
+  library: "pyperclip"  # Cross-platform clipboard
+  encoding: "utf-8"
+  max_size_kb: 10240  # 10MB max clipboard size
+
+# System Tray Configuration
+system_tray:
+  enabled: true
+  library: "pystray"  # Cross-platform system tray
+  icon_path: "assets/jarvis_icon_windows.ico"
+  show_notifications: true
+  notification_duration: 5  # seconds
+
+# Process Management
+process:
+  creation_flags: "CREATE_NEW_PROCESS_GROUP"  # Windows-specific
+  signal_handling: "CTRL_C_EVENT"  # Windows doesn't support SIGTERM
+  graceful_shutdown_timeout: 30  # seconds
+
+# Authentication
+authentication:
+  bypass_enabled: true  # Bypass voice unlock on Windows
+  fallback_method: "none"  # No authentication required
+  cloud_sql_proxy: false  # Disable Cloud SQL on Windows
+  keyring_backend: "keyring"  # Use cross-platform keyring library
+
+# Voice Recognition
+voice:
+  wake_word_engine: "porcupine"  # Cross-platform wake word
+  stt_engine: "faster-whisper"  # Local speech-to-text
+  microphone:
+    default_device: null  # Auto-detect
+    sample_rate: 16000
+    channels: 1
+
+# Hardware Acceleration
+hardware:
+  gpu_acceleration: true
+  gpu_library: "directx"  # Windows uses DirectX, not Metal
+  cuda_enabled: true  # Enable NVIDIA CUDA if available
+  fallback_to_cpu: true
+  
+# ML Model Configuration
+ml_models:
+  inference_backend: "onnxruntime"  # Cross-platform ML runtime
+  device: "auto"  # Auto-detect GPU/CPU
+  quantization: "dynamic"  # Dynamic quantization for speed
+  cache_models: true
+  cache_path: "%LOCALAPPDATA%\\JARVIS\\models"
+
+# Docker Configuration (Windows-specific paths)
+docker:
+  enabled: true
+  socket_path: "npipe:////./pipe/docker_engine"  # Windows named pipe
+  daemon_check: true
+
+# GCP Configuration (same across platforms)
+gcp:
+  enabled: true
+  spot_vm_enabled: true
+  golden_image_enabled: true
+  
+# Idle Detection (Windows-specific)
+idle:
+  enabled: true
+  method: "win32"  # Use Windows API for idle detection
+  threshold_seconds: 7200  # 2 hours
+  monitor:
+    keyboard: true
+    mouse: true
+    audio_output: false
+
+# Update Configuration
+update:
+  auto_update: true
+  check_interval: 300  # 5 minutes
+  git_executable: "git.exe"  # Windows git executable
+
+# Logging Configuration
+logging:
+  level: "INFO"
+  file: "%APPDATA%\\JARVIS\\logs\\jarvis.log"
+  max_size_mb: 50
+  backup_count: 3
+  console_output: true
+
+# Feature Flags (Windows-specific overrides)
+features:
+  hot_reload: true
+  dev_mode: true
+  zero_touch_updates: true
+  dead_man_switch: true
+  vision_pipeline: true
+  voice_unlock: false  # Disabled on Windows (bypassed)
+  yabai_integration: false  # macOS-only window manager
+  metal_gpu: false  # macOS-only GPU framework
+  coreml_models: false  # macOS-only ML framework
+
+# Performance Tuning
+performance:
+  worker_threads: 4
+  max_memory_mb: 8192  # 8GB max
+  garbage_collection: "auto"
+  async_io: true
+
+# Security Settings
+security:
+  sandbox_enabled: false  # Windows sandbox not yet implemented
+  firewall_integration: false
+  require_admin: false  # Run as normal user
+  
+# Environment Variables (Windows-specific defaults)
+env_defaults:
+  JARVIS_PLATFORM: "windows"
+  JARVIS_AUTH_BYPASS: "true"
+  JARVIS_TTS_ENGINE: "pyttsx3"
+  JARVIS_CAPTURE_METHOD: "mss"
+  JARVIS_GPU_BACKEND: "directx"
+  JARVIS_CONFIG_DIR: "%APPDATA%\\JARVIS"

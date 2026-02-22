@@ -1,0 +1,24 @@
+# macOS-specific dependencies for JARVIS
+# Install with: pip install -r requirements-macos.txt
+
+# CoreML (Apple Neural Engine acceleration)
+coremltools>=7.0.0
+
+# Screen Capture
+mss>=9.0.1
+Pillow>=10.0.0
+
+# System Tools (command-line tools, install via Homebrew):
+# - cliclick: brew install cliclick (mouse/keyboard automation)
+# - yabai: brew install koekeishiya/formulae/yabai (window management, optional)
+
+# Note: macOS has built-in support for:
+# - AppleScript (osascript command)
+# - screencapture command
+# - afplay (audio playback)
+# - ioreg (system information)
+
+# Note: Some packages from main requirements.txt work cross-platform:
+# - psutil (macOS support)
+# - sounddevice (Core Audio backend)
+# - numpy, torch (ensure macOS/Apple Silicon wheels are used)

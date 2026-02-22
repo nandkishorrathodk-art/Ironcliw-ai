@@ -1,0 +1,27 @@
+# Windows-specific dependencies for JARVIS
+# Install with: pip install -r requirements-windows.txt
+
+# Window Management & UI Automation
+pywin32>=306
+pywinauto>=0.6.8
+
+# Mouse & Keyboard Automation
+pyautogui>=0.9.54
+
+# Screen Capture
+mss>=9.0.1
+Pillow>=10.0.0
+
+# System Information
+wmi>=1.5.1
+
+# Notifications
+win10toast>=0.9
+
+# Audio (already in main requirements.txt, but listed for completeness)
+# sounddevice>=0.5.0
+# PyAudio>=0.2.14
+
+# Note: Some packages from main requirements.txt may need Windows-specific builds:
+# - psutil (cross-platform, works on Windows)
+# - numpy, torch (ensure Windows wheels are used)

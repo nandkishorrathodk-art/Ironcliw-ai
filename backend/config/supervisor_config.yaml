@@ -1,6 +1,44 @@
 # JARVIS Self-Updating Lifecycle Manager Configuration
 # Zero hardcoding - all settings configurable and environment-overridable
-# Version: 1.0.0
+# Version: 1.1.0 - Cross-platform support added
+
+# Platform Configuration (Cross-platform support)
+platform:
+  # Auto-detect platform or override with JARVIS_PLATFORM env var
+  auto_detect: true
+  
+  # Platform-specific config files (loaded based on detected platform)
+  configs:
+    windows: backend/config/windows_config.yaml
+    linux: backend/config/linux_config.yaml
+    darwin: null  # macOS uses this file as base config
+    
+  # Platform-specific feature flags
+  features:
+    # Features available on all platforms
+    common:
+      - hot_reload
+      - dev_mode
+      - zero_touch_updates
+      - dead_man_switch
+      - vision_pipeline
+    
+    # macOS-only features
+    darwin_only:
+      - voice_unlock
+      - yabai_integration
+      - metal_gpu
+      - coreml_models
+    
+    # Windows-only features
+    windows_only:
+      - directx_gpu
+      - win32_automation
+    
+    # Linux-only features
+    linux_only:
+      - wayland_support
+      - x11_automation
 
 supervisor:
   # Master enable/disable
@@ -75,11 +113,17 @@ idle:
   # Minimum consecutive idle time before triggering
   min_consecutive_seconds: 300  # 5 minutes
   
-  # Activity sources to monitor (macOS specific)
+  # Activity sources to monitor (cross-platform)
   monitor:
     keyboard: true
     mouse: true
     audio_output: false  # Don't count as idle if playing audio
+  
+  # Platform-specific idle detection methods
+  detection_method:
+    darwin: "ioreg"  # macOS: IOHIDSystem
+    windows: "win32"  # Windows: GetLastInputInfo API
+    linux: "xprintidle"  # Linux: X11 idle time
     
   # Do-not-disturb windows (24h format)
   quiet_hours:
