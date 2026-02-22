@@ -62932,7 +62932,16 @@ class JarvisSystemKernel:
         self._emit_event(SupervisorEventType.PHASE_START, "Phase: Clean Slate", phase="clean_slate", correlation_id=_cid_cs)
 
         if _ssm: await _ssm.start_component("clean_slate")
-        await self._phase_clean_slate()
+        # v265.0: Add timeout — clean slate runs BEFORE DMS, so no watchdog protection
+        _clean_slate_timeout = _get_env_float("JARVIS_CLEAN_SLATE_TIMEOUT", 30.0)
+        try:
+            await asyncio.wait_for(self._phase_clean_slate(), timeout=_clean_slate_timeout)
+        except asyncio.TimeoutError:
+            self.logger.warning(
+                f"[Kernel] v265.0: Clean Slate timed out ({_clean_slate_timeout:.0f}s) — continuing"
+            )
+        except asyncio.CancelledError:
+            raise
         if _ssm: await _ssm.complete_component("clean_slate")
 
         self._emit_event(
@@ -63038,7 +63047,16 @@ class JarvisSystemKernel:
             restart_callback=self._dms_restart_callback,
             rollback_callback=self._dms_rollback_callback,
         )
-        await self._startup_watchdog.start()
+        # v265.0: Add timeout — DMS is the timeout mechanism but can't protect itself.
+        # If StartupWatchdog.start() hangs, the entire supervisor bootstrap hangs.
+        try:
+            await asyncio.wait_for(self._startup_watchdog.start(), timeout=10.0)
+        except asyncio.TimeoutError:
+            self.logger.error("[Kernel] v265.0: DMS startup timed out (10s) — continuing without watchdog")
+            self._startup_watchdog = None
+        except Exception as _dms_err:
+            self.logger.error(f"[Kernel] v265.0: DMS startup failed: {_dms_err} — continuing without watchdog")
+            self._startup_watchdog = None
 
         # v3.2: Wire DMS ↔ parallel_initializer coordination
         # parallel_init heartbeats component completions to DMS, and DMS defers
