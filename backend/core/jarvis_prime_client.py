@@ -1655,6 +1655,7 @@ class JarvisPrimeClient:
                     backend="local",
                     tokens_used=data.get("usage", {}).get("total_tokens", 0),
                     cost_estimate=0.0,  # Local is free
+                    metadata=data,
                 )
             elif resp.status_code == 503:
                 data = resp.json()
@@ -1716,6 +1717,7 @@ class JarvisPrimeClient:
                     backend="cloud_run",
                     tokens_used=tokens,
                     cost_estimate=cost,
+                    metadata=data,
                 )
             elif resp.status_code == 503:
                 data = resp.json()
