@@ -306,6 +306,33 @@ class UnifiedCommandProcessor:
             "classifications": {},  # domain -> count
         }
 
+        # v242.2: Neural Mesh coordinator reference (lazy-resolved)
+        self._neural_mesh_coordinator = None
+        self._neural_mesh_lookup_attempted = False
+
+    def _get_neural_mesh_coordinator(self):
+        """Lazily resolve the Neural Mesh coordinator singleton.
+
+        v242.2: Avoids circular imports by deferring lookup until first use.
+        Only attempts lookup once -- if coordinator isn't available at first
+        call, subsequent workspace requests use the lazy singleton fallback.
+        """
+        if self._neural_mesh_coordinator is not None:
+            return self._neural_mesh_coordinator
+        if self._neural_mesh_lookup_attempted:
+            return None
+        self._neural_mesh_lookup_attempted = True
+        try:
+            from neural_mesh.integration import get_neural_mesh_coordinator
+            coordinator = get_neural_mesh_coordinator()
+            if coordinator is not None:
+                self._neural_mesh_coordinator = coordinator
+                logger.info("[v242.2] Neural Mesh coordinator resolved")
+            return coordinator
+        except (ImportError, Exception) as e:
+            logger.debug(f"[v242.2] Neural Mesh coordinator not available: {e}")
+            return None
+
     async def _initialize_resolvers(self):
         """
         Initialize resolver systems using robust parallel tiered initialization.
@@ -1391,7 +1418,8 @@ class UnifiedCommandProcessor:
                 self._v242_metrics["classifications"].get(_cls_domain, 0) + 1
             )
             result = await self._execute_action(
-                response, command_text, websocket, audio_data, speaker_name
+                response, command_text, websocket, audio_data, speaker_name,
+                deadline=deadline,
             )
 
             # === Telemetry: Emit interaction to Reactor-Core for training ===
@@ -1689,6 +1717,7 @@ class UnifiedCommandProcessor:
     async def _execute_action(
         self, response: Any, command_text: str,
         websocket=None, audio_data: bytes = None, speaker_name: str = None,
+        deadline: Optional[float] = None,
     ) -> Dict[str, Any]:
         """Execute the action determined by J-Prime's classification.
 
@@ -1714,19 +1743,19 @@ class UnifiedCommandProcessor:
         # Intent: action -- execute a system command
         if intent == "action":
             if domain == "surveillance":
-                return await self._handle_surveillance_action(command_text, websocket)
+                return await self._handle_surveillance_action(command_text, websocket, deadline=deadline)
             elif domain == "system":
                 return await self._handle_system_action_via_jprime(
-                    command_text, response.suggested_actions
+                    command_text, response.suggested_actions, deadline=deadline,
                 )
             elif domain == "screen_lock":
-                return await self._handle_screen_lock_action(command_text)
+                return await self._handle_screen_lock_action(command_text, deadline=deadline)
             elif domain == "voice_unlock":
                 return await self._handle_voice_unlock_action(
-                    command_text, websocket, audio_data, speaker_name
+                    command_text, websocket, audio_data, speaker_name, deadline=deadline,
                 )
             elif domain == "workspace":
-                return await self._handle_workspace_action(command_text, response)
+                return await self._handle_workspace_action(command_text, response, deadline=deadline)
             else:
                 return {
                     "success": True,
@@ -1737,12 +1766,13 @@ class UnifiedCommandProcessor:
 
         # Intent: vision_needed -- use existing vision handler
         if intent == "vision_needed":
-            return await self._handle_vision_action(command_text, websocket)
+            return await self._handle_vision_action(command_text, websocket, deadline=deadline)
 
         # Intent: multi_step_action -- execute step by step
         if intent == "multi_step_action":
             return await self._handle_compound_command(
-                command_text, context={"suggested_actions": response.suggested_actions}
+                command_text, context={"suggested_actions": response.suggested_actions},
+                deadline=deadline,
             )
 
         # Intent: clarify -- ask user to clarify
@@ -1764,6 +1794,7 @@ class UnifiedCommandProcessor:
 
     async def _handle_surveillance_action(
         self, command_text: str, websocket=None,
+        deadline: Optional[float] = None,
     ) -> Dict[str, Any]:
         """Route surveillance commands to IntelligentCommandHandler."""
         import os
@@ -1829,6 +1860,7 @@ class UnifiedCommandProcessor:
 
     async def _handle_system_action_via_jprime(
         self, command_text: str, suggested_actions: list,
+        deadline: Optional[float] = None,
     ) -> Dict[str, Any]:
         """Execute system commands using existing _execute_system_command."""
         try:
@@ -1858,7 +1890,7 @@ class UnifiedCommandProcessor:
                 "error": str(e),
             }
 
-    async def _handle_screen_lock_action(self, command_text: str) -> Dict[str, Any]:
+    async def _handle_screen_lock_action(self, command_text: str, deadline: Optional[float] = None) -> Dict[str, Any]:
         """Execute screen lock via transport handler."""
         try:
             from api.simple_unlock_handler import _get_owner_name
@@ -1894,6 +1926,7 @@ class UnifiedCommandProcessor:
     async def _handle_voice_unlock_action(
         self, command_text: str, websocket=None,
         audio_data: bytes = None, speaker_name: str = None,
+        deadline: Optional[float] = None,
     ) -> Dict[str, Any]:
         """Execute voice unlock via voice_unlock_handler."""
         try:
@@ -1931,18 +1964,26 @@ class UnifiedCommandProcessor:
 
     async def _handle_workspace_action(
         self, command_text: str, response: Any,
+        deadline: Optional[float] = None,
     ) -> Dict[str, Any]:
         """Route workspace commands to the registered GoogleWorkspaceAgent singleton.
 
         v242.1: Uses Neural Mesh agent registry singleton if available,
         falls back to lazy singleton to avoid expensive re-initialization.
         """
+        if deadline:
+            import time as _time
+            _remaining = deadline - _time.monotonic()
+            if _remaining <= 0:
+                return {"success": False, "response": "Request timed out",
+                        "command_type": "WORKSPACE", "error": "deadline_exceeded"}
         self._v242_metrics["workspace_requests"] += 1
         try:
             # Prefer existing agent instance from Neural Mesh coordinator
             agent = None
-            if hasattr(self, '_neural_mesh_coordinator') and self._neural_mesh_coordinator:
-                agent = self._neural_mesh_coordinator.get_agent("google_workspace_agent")
+            coordinator = self._get_neural_mesh_coordinator()
+            if coordinator:
+                agent = coordinator.get_agent("google_workspace_agent")
 
             if agent is None:
                 # Lazy singleton fallback (avoids re-constructing expensive OAuth clients)
@@ -1990,6 +2031,7 @@ class UnifiedCommandProcessor:
 
     async def _handle_vision_action(
         self, command_text: str, websocket=None,
+        deadline: Optional[float] = None,
     ) -> Dict[str, Any]:
         """Two-phase vision: Phase 1 (J-Prime classification) already done, now Phase 2 (capture + analyze).
 
@@ -1999,6 +2041,12 @@ class UnifiedCommandProcessor:
 
         This ensures no unnecessary screenshots are taken for non-vision intents.
         """
+        if deadline:
+            import time as _time
+            _remaining = deadline - _time.monotonic()
+            if _remaining <= 0:
+                return {"success": False, "response": "Request timed out",
+                        "command_type": "VISION", "error": "deadline_exceeded"}
         self._v242_metrics["vision_requests"] += 1
         try:
             # Phase 2: Capture screenshot and analyze
@@ -4355,7 +4403,8 @@ class UnifiedCommandProcessor:
             return None
 
     async def _handle_compound_command(
-        self, command_text: str, context: Dict[str, Any] = None
+        self, command_text: str, context: Dict[str, Any] = None,
+        deadline: Optional[float] = None,
     ) -> Dict[str, Any]:
         """Handle commands with multiple parts and maintain context between them"""
         logger.info(f"[COMPOUND] Handling compound command with context: {context is not None}")
@@ -4441,7 +4490,7 @@ class UnifiedCommandProcessor:
                 async def process_part(p):
                     sub_response = await self._call_jprime(p)
                     if sub_response:
-                        return await self._execute_action(sub_response, p)
+                        return await self._execute_action(sub_response, p, deadline=deadline)
                     return {"success": False, "response": f"Failed to process: {p}"}
 
                 tasks.append(process_part(part))
@@ -4476,7 +4525,7 @@ class UnifiedCommandProcessor:
                 # Process individual part via J-Prime (v242: no local classification)
                 sub_response = await self._call_jprime(enhanced_command)
                 if sub_response:
-                    result = await self._execute_action(sub_response, enhanced_command)
+                    result = await self._execute_action(sub_response, enhanced_command, deadline=deadline)
                 else:
                     result = {"success": False, "response": f"Failed to process: {enhanced_command}"}
                 results.append(result)
