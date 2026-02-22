@@ -479,11 +479,40 @@ class CloudDatabaseAdapter:
         - Auto-start with exponential backoff (only if not supervisor-managed)
         - Silent fallback when proxy unavailable
 
+        v265.1: Gate-aware fast-exit — if ProxyReadinessGate already marked
+        UNAVAILABLE, return False immediately instead of waiting 30-58s for
+        coordinator timeouts.  This is the inner guard that complements the
+        outer guard in get_database_adapter().
+
         Returns:
             bool: True if proxy is running, False otherwise
         """
         import asyncio
         import socket
+
+        # ── v265.1: Fast exit if gate already knows Cloud SQL is down ─────
+        try:
+            try:
+                from intelligence.cloud_sql_connection_manager import (
+                    get_readiness_gate as _get_gate,
+                    ReadinessState as _RS,
+                )
+            except ImportError:
+                from backend.intelligence.cloud_sql_connection_manager import (
+                    get_readiness_gate as _get_gate,
+                    ReadinessState as _RS,
+                )
+
+            _gs = _get_gate().state
+            if _gs in (_RS.UNAVAILABLE, _RS.DEGRADED_SQLITE):
+                logger.debug(
+                    "[ProxyCheck v265.1] ReadinessGate=%s — fast-exit, "
+                    "proxy known unavailable",
+                    _gs.value,
+                )
+                return False
+        except Exception:
+            pass  # Gate not importable — proceed with normal checks
 
         coordinator = get_proxy_coordinator()
         
@@ -1330,11 +1359,90 @@ _adapter: Optional[CloudDatabaseAdapter] = None
 
 
 async def get_database_adapter() -> CloudDatabaseAdapter:
-    """Get or create global database adapter"""
+    """
+    Get or create global database adapter.
+
+    v265.1: Readiness-gate pre-check — if ProxyReadinessGate already knows
+    Cloud SQL is UNAVAILABLE or DEGRADED_SQLITE, skip Cloud SQL init entirely
+    and return a SQLite-backed adapter immediately.  This is the ROOT FIX for
+    the cascade-hang bug: ~14 callers invoke this function without an outer
+    asyncio.wait_for(), so if _init_cloud_sql() blocks for 30-58s waiting on
+    a dead proxy every one of them stalls.  By checking the gate here, ALL
+    consumers get instant SQLite fallback when Cloud SQL is known-down.
+
+    Additionally wraps initialization in a configurable timeout so even if the
+    gate is not yet populated (UNKNOWN/CHECKING) the call cannot block forever.
+    """
+    import asyncio as _aio
+
     global _adapter
-    if _adapter is None:
-        _adapter = CloudDatabaseAdapter()
-        await _adapter.initialize()
+    if _adapter is not None:
+        return _adapter
+
+    # ── v265.1: Gate-aware fast path ──────────────────────────────────
+    _force_sqlite = False
+    try:
+        try:
+            from intelligence.cloud_sql_connection_manager import (
+                get_readiness_gate as _get_gate,
+                ReadinessState as _RS,
+            )
+        except ImportError:
+            from backend.intelligence.cloud_sql_connection_manager import (
+                get_readiness_gate as _get_gate,
+                ReadinessState as _RS,
+            )
+
+        _gate = _get_gate()
+        _gs = _gate.state
+        if _gs in (_RS.UNAVAILABLE, _RS.DEGRADED_SQLITE):
+            logger.info(
+                "[DatabaseAdapter v265.1] ReadinessGate=%s — skipping Cloud SQL, "
+                "instant SQLite fallback for all consumers",
+                _gs.value,
+            )
+            _force_sqlite = True
+    except Exception:
+        pass  # Gate not available — proceed with normal init
+
+    # ── Initialise adapter (with timeout safety net) ──────────────────
+    _init_timeout = float(os.getenv("JARVIS_DB_ADAPTER_INIT_TIMEOUT", "15.0"))
+
+    _adapter = CloudDatabaseAdapter()
+
+    if _force_sqlite:
+        # Bypass Cloud SQL entirely — direct SQLite init
+        await _adapter._init_sqlite()
+    else:
+        try:
+            await _aio.wait_for(_adapter.initialize(), timeout=_init_timeout)
+        except _aio.TimeoutError:
+            logger.warning(
+                "[DatabaseAdapter v265.1] Initialization timed out (%.0fs) "
+                "— falling back to SQLite",
+                _init_timeout,
+            )
+            # Adapter may be in partial state — reinitialize with SQLite
+            try:
+                _adapter = CloudDatabaseAdapter()
+                await _adapter._init_sqlite()
+            except Exception as _sq_err:
+                logger.error(f"[DatabaseAdapter v265.1] SQLite fallback failed: {_sq_err}")
+                _adapter = None
+                raise
+        except _aio.CancelledError:
+            _adapter = None
+            raise
+        except Exception:
+            # initialize() already handles fallback internally for most errors,
+            # but if something truly unexpected happens, ensure adapter is usable
+            if _adapter.pool is None and not getattr(_adapter, '_sqlite_conn', None):
+                try:
+                    await _adapter._init_sqlite()
+                except Exception:
+                    _adapter = None
+                    raise
+
     return _adapter
 
 

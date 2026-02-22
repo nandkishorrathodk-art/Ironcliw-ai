@@ -9254,8 +9254,44 @@ async def get_learning_database(
 
     On initialization failure, _db_instance is reset to None so the next
     call gets a fresh retry opportunity rather than the broken instance.
+
+    v265.1: Readiness-gate pre-check — if ProxyReadinessGate already knows
+    Cloud SQL is UNAVAILABLE/DEGRADED_SQLITE, force fast_mode=True so init
+    uses SQLite-first and never blocks on Cloud SQL.  This protects the ~12
+    callers that invoke get_learning_database() without an outer timeout.
+
+    Additionally wraps initialization in a configurable timeout so even when
+    the gate state is unknown, the call cannot block indefinitely.
     """
     global _db_instance
+
+    # ── v265.1: Gate-aware fast_mode promotion ────────────────────────
+    if not fast_mode:
+        try:
+            try:
+                from intelligence.cloud_sql_connection_manager import (
+                    get_readiness_gate as _get_gate,
+                    ReadinessState as _RS,
+                )
+            except ImportError:
+                from backend.intelligence.cloud_sql_connection_manager import (
+                    get_readiness_gate as _get_gate,
+                    ReadinessState as _RS,
+                )
+
+            _gs = _get_gate().state
+            if _gs in (_RS.UNAVAILABLE, _RS.DEGRADED_SQLITE):
+                logger.info(
+                    "[LearningDB v265.1] ReadinessGate=%s — promoting to fast_mode "
+                    "(SQLite-first, no Cloud SQL blocking)",
+                    _gs.value,
+                )
+                fast_mode = True
+        except Exception:
+            pass  # Gate not available — use caller's fast_mode preference
+
+    # ── v265.1: Configurable init timeout safety net ──────────────────
+    _init_timeout = float(os.environ.get("JARVIS_LEARNING_DB_INIT_TIMEOUT", "15.0"))
 
     async with _db_lock:
         # Fast path: already initialized and healthy
@@ -9290,7 +9326,32 @@ async def get_learning_database(
         _db_instance = JARVISLearningDatabase(config=config)
         _db_instance._singleton_managed = True
         try:
-            await _db_instance.initialize(fast_mode=fast_mode)  # v263.2
+            await asyncio.wait_for(
+                _db_instance.initialize(fast_mode=fast_mode),
+                timeout=_init_timeout,
+            )
+        except asyncio.TimeoutError:
+            logger.warning(
+                "[LearningDB v265.1] Initialization timed out (%.0fs) "
+                "— retrying with fast_mode (SQLite-first)",
+                _init_timeout,
+            )
+            # Discard partial state and retry with fast_mode
+            try:
+                if _db_instance:
+                    await _db_instance.close(force=True)
+            except BaseException:
+                pass
+            _db_instance = JARVISLearningDatabase(config=config)
+            _db_instance._singleton_managed = True
+            try:
+                await asyncio.wait_for(
+                    _db_instance.initialize(fast_mode=True),
+                    timeout=_init_timeout,
+                )
+            except BaseException:
+                _db_instance = None
+                raise
         except BaseException:
             # v226.1: Must catch BaseException, not just Exception.
             # In Python 3.9, asyncio.CancelledError is a BaseException subclass.

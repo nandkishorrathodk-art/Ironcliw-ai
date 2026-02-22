@@ -3302,15 +3302,27 @@ class ProxyReadinessGate:
                     remaining_timeout=timeout - elapsed
                 )
                 if not start_success:
-                    last_error = "proxy_start_failed"
-                    # Calculate backoff delay
-                    delay = min(base_delay * (2 ** (attempts - 1)), max_delay)
-                    logger.debug(
-                        "[ReadinessGate v114.0] Proxy start failed, backoff %.1fs (attempt %d)",
-                        delay, attempts
+                    # v265.1: EXIT IMMEDIATELY on proxy start failure.
+                    # _attempt_proxy_start() already exhausted its internal
+                    # max_attempts retries.  Continuing the outer loop just
+                    # burns time re-trying the same failed start — the proxy
+                    # binary is missing, permissions are wrong, or GCP auth
+                    # failed.  None of these will self-heal in 28s.
+                    logger.warning(
+                        "[ReadinessGate v265.1] Proxy start failed after %d "
+                        "internal attempts — returning UNAVAILABLE immediately "
+                        "(no outer-loop retry)",
+                        max_start_attempts,
                     )
-                    await asyncio.sleep(delay)
-                    continue
+                    return ReadinessResult(
+                        state=ReadinessState.UNAVAILABLE,
+                        timed_out=False,
+                        failure_reason="proxy_start_failed",
+                        message=(
+                            f"Proxy failed to start after {max_start_attempts} attempts. "
+                            "Check proxy binary, GCP credentials, and Cloud SQL instance."
+                        ),
+                    )
                 just_started_proxy = True
 
             # v244.0: Post-TCP settling delay — only needed when REUSING an
@@ -3367,6 +3379,22 @@ class ProxyReadinessGate:
             # Not ready yet - backoff and retry
             last_error = result.failure_reason
             delay = min(base_delay * (2 ** (attempts - 1)), max_delay)
+
+            # v265.1: Fast-exit for non-recoverable failures.
+            # wait_for_ready() → _run_check() already did 5 DB checks with
+            # exponential backoff.  If the failure reason is "network" or
+            # "proxy" (not credentials), the Cloud SQL instance is genuinely
+            # unreachable.  Retrying the entire wait_for_ready() cycle just
+            # wastes another 25-28s hitting the same dead endpoint.
+            if result.state == ReadinessState.UNAVAILABLE and result.failure_reason not in (
+                "credentials", "timeout", None
+            ):
+                logger.warning(
+                    "[ReadinessGate v265.1] DB checks exhausted with reason=%s "
+                    "— returning UNAVAILABLE immediately (no outer-loop retry)",
+                    result.failure_reason,
+                )
+                return result
 
             # v114.0: Handle credential failures specially - try to reload from alternate sources
             if result.failure_reason == "credentials":
