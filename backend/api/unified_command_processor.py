@@ -1972,11 +1972,48 @@ class UnifiedCommandProcessor:
             return await self._handle_vision_action(command_text, websocket, deadline=deadline)
 
         # Intent: multi_step_action -- execute step by step
-        if intent == "multi_step_action":
-            return await self._handle_compound_command(
-                command_text, context={"suggested_actions": response.suggested_actions},
-                deadline=deadline,
-            )
+        # v243.0: Prefer AgentRuntime for multi-step goals (cerebellum)
+        if intent == "multi_step_action" or (
+            hasattr(response, 'escalated') and response.escalated
+            and getattr(response, 'suggested_actions', None)
+        ):
+            _used_runtime = False
+            try:
+                from autonomy.agent_runtime import get_agent_runtime
+                runtime = get_agent_runtime()
+                if runtime is not None and getattr(runtime, '_running', False):
+                    # IMPORTANT: GoalPriority is in agent_runtime_models, NOT agent_runtime
+                    from autonomy.agent_runtime_models import GoalPriority
+                    goal_id = await runtime.submit_goal(
+                        description=command_text,
+                        priority=GoalPriority.HIGH,
+                        source="voice_command",
+                        context={
+                            "intent": response.intent,
+                            "domain": response.domain,
+                            "confidence": response.confidence,
+                            "suggested_actions": getattr(response, 'suggested_actions', []),
+                        },
+                        needs_vision=getattr(response, 'requires_vision', False),
+                    )
+                    _used_runtime = True
+                    logger.info(f"[v243] Routed multi-step to AgentRuntime: goal_id={goal_id}")
+                    return {
+                        "success": True,
+                        "response": "Working on it — I've started a multi-step task. I'll let you know when it's done.",
+                        "command_type": "multi_step_action",
+                        "source": "agent_runtime",
+                        "goal_id": goal_id,
+                    }
+            except Exception as e:
+                logger.debug(f"[v243] AgentRuntime routing failed, falling back: {e}")
+
+            if not _used_runtime:
+                # Fallback to existing compound command handler
+                return await self._handle_compound_command(
+                    command_text, context={"suggested_actions": response.suggested_actions},
+                    deadline=deadline,
+                )
 
         # Intent: clarify -- ask user to clarify
         if intent == "clarify":
