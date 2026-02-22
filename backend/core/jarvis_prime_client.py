@@ -1571,11 +1571,31 @@ class JarvisPrimeClient:
         This covers startup windows, network failures, and circuit-breaker
         open states.  v242.2: Routes to Claude API first (preferred), then
         Gemini as last resort, to maintain responsiveness while offline.
+
+        v244.0: Includes classification prompt so commands are properly
+        classified (not hardcoded to intent="answer"). This ensures
+        "lock my screen" executes as an action, not a text response.
         """
+        # v244.0: Classification prompt — ask the LLM to classify the
+        # command AND generate a response in a single call.
+        _classification_prefix = (
+            "IMPORTANT: Before your response, output a classification line in this exact format:\n"
+            "CLASSIFICATION: {\"intent\": \"<intent>\", \"domain\": \"<domain>\", "
+            "\"requires_action\": <true/false>, \"suggested_actions\": [\"<action>\"]}\n\n"
+            "Valid intents: answer, conversation, action, vision_needed, multi_step_action, clarify\n"
+            "Valid domains: general, system, security, workspace, development, media, smart_home\n\n"
+            "- Use intent=\"action\" for commands that DO something (lock screen, open app, etc.)\n"
+            "- Use intent=\"answer\" for questions that need information\n"
+            "- Use intent=\"conversation\" for casual chat\n"
+            "- suggested_actions: list specific actions like [\"lock_screen\"], [\"open_browser\"], etc.\n\n"
+            "After the CLASSIFICATION line, provide your normal response.\n\n"
+        )
+
         try:
             messages: List[ChatMessage] = []
             effective_system = (
-                system_prompt or "You are JARVIS, a helpful AI assistant."
+                _classification_prefix +
+                (system_prompt or "You are JARVIS, a helpful AI assistant.")
             )
             messages.append(ChatMessage(role="system", content=effective_system))
             messages.append(ChatMessage(role="user", content=query))
@@ -1598,10 +1618,18 @@ class JarvisPrimeClient:
                 )
 
             if response.success:
+                content = response.content or ""
+                # v244.0: Parse classification from response
+                intent, domain, requires_action, suggested_actions = self._parse_classification(content)
+                # Strip the CLASSIFICATION line from the content shown to user
+                clean_content = self._strip_classification_line(content)
+
                 return StructuredResponse(
-                    content=response.content or "",
-                    intent="answer",  # Conservative default
-                    domain="general",
+                    content=clean_content,
+                    intent=intent,
+                    domain=domain,
+                    requires_action=requires_action,
+                    suggested_actions=suggested_actions,
                     generator_model=response.backend,
                     generation_ms=int(response.latency_ms),
                     source="claude_fallback",
@@ -1618,6 +1646,51 @@ class JarvisPrimeClient:
             intent="answer",
             source="error",
         )
+
+    def _parse_classification(self, content: str) -> tuple:
+        """Parse CLASSIFICATION JSON from LLM response.
+
+        v244.0: Returns (intent, domain, requires_action, suggested_actions).
+        Falls back to conservative defaults if parsing fails.
+        """
+        import json as _json
+        import re as _re
+
+        _valid_intents = {"answer", "conversation", "action", "vision_needed", "multi_step_action", "clarify"}
+        _valid_domains = {"general", "system", "security", "workspace", "development", "media", "smart_home"}
+
+        try:
+            match = _re.search(r'CLASSIFICATION:\s*(\{[^}]+\})', content)
+            if match:
+                data = _json.loads(match.group(1))
+                intent = data.get("intent", "answer")
+                domain = data.get("domain", "general")
+                requires_action = data.get("requires_action", False)
+                suggested_actions = data.get("suggested_actions", [])
+
+                # Validate
+                if intent not in _valid_intents:
+                    intent = "answer"
+                if domain not in _valid_domains:
+                    domain = "general"
+                if not isinstance(suggested_actions, list):
+                    suggested_actions = []
+
+                return intent, domain, bool(requires_action), suggested_actions
+        except Exception as e:
+            logger.debug(f"[v244.0] Classification parse failed: {e}")
+
+        return "answer", "general", False, []
+
+    def _strip_classification_line(self, content: str) -> str:
+        """Remove the CLASSIFICATION: {...} line from content.
+
+        v244.0: Strips the machine-readable classification prefix so the
+        user only sees the natural language response.
+        """
+        import re as _re
+        cleaned = _re.sub(r'CLASSIFICATION:\s*\{[^}]+\}\s*\n?', '', content, count=1)
+        return cleaned.strip()
 
     async def _execute_completion(
         self,
