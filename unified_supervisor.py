@@ -63361,9 +63361,11 @@ class JarvisSystemKernel:
             async def _proactive_spot_vm_warm():
                 """Start Spot VM immediately so it's ready when Trinity reaches GCP."""
                 try:
-                    from core.gcp_vm_manager import GCPVMManager
-                    _vm_mgr = GCPVMManager()
-                    await _vm_mgr.initialize()
+                    # v261.0: Use singleton accessor instead of creating duplicate instance.
+                    # Previously `GCPVMManager()` was instantiated directly, bypassing the
+                    # singleton and causing duplicate VM tracking / racing with Phase 2.
+                    from backend.core.gcp_vm_manager import get_gcp_vm_manager
+                    _vm_mgr = await get_gcp_vm_manager()
 
                     import psutil
                     _mem = psutil.virtual_memory()
@@ -66869,16 +66871,18 @@ class JarvisSystemKernel:
 
             # v223.0: ECAPA backend selection (concurrent probing)
             # Runs after Docker/GCP are initialized so we can probe Docker ECAPA
+            # v261.0: Reduced timeout from 90s→15s. Cloud Run probe is now single-shot
+            # (no retry loop). Background warmup handles cold starts asynchronously.
             try:
                 ecapa_result = await asyncio.wait_for(
-                    self._select_ecapa_backend(), timeout=90.0
+                    self._select_ecapa_backend(), timeout=15.0
                 )
                 if ecapa_result.get("selected_backend"):
                     self.logger.info(
                         f"[Kernel] ECAPA backend: {ecapa_result['selected_backend']}"
                     )
             except asyncio.TimeoutError:
-                self.logger.warning("[Kernel] ECAPA backend selection timed out (90s)")
+                self.logger.warning("[Kernel] ECAPA backend selection timed out (15s)")
             except Exception as ecapa_err:
                 self.logger.debug(f"[Kernel] ECAPA backend selection skipped: {ecapa_err}")
 
@@ -77091,63 +77095,60 @@ class JarvisSystemKernel:
             return probe
 
         async def probe_cloud_run() -> Dict[str, Any]:
-            """Probe Cloud Run ECAPA backend with cold-start awareness."""
+            """
+            Probe Cloud Run ECAPA backend — single-shot, non-blocking.
+
+            v261.0 ROOT CAUSE FIX: Previously used exponential backoff retry loop
+            (3→6→12→24s delays, up to 60s max_wait) which blocked the entire
+            Resources phase for ~40 seconds during Cloud Run cold starts.
+
+            Now: single health check with short timeout. If Cloud Run isn't
+            immediately ready, we select a fallback and warm it in the background
+            via _background_cloud_run_ecapa_warmup() (hot-swap when ready).
+            """
             probe = {"available": False, "healthy": False, "endpoint": None, "latency_ms": 0}
             cloud_endpoint = os.environ.get("JARVIS_CLOUD_ML_ENDPOINT", "")
             if not cloud_endpoint:
                 return probe
             probe["available"] = True
-            request_timeout = float(os.environ.get("CLOUD_RUN_PROBE_REQUEST_TIMEOUT", "15"))
-            max_wait = float(os.environ.get("CLOUD_RUN_PROBE_MAX_WAIT", "60"))
-            poll_interval = float(os.environ.get("CLOUD_RUN_PROBE_POLL_INTERVAL", "3"))
-            max_retries = int(os.environ.get("CLOUD_RUN_PROBE_MAX_RETRIES", "10"))
+            # v261.0: Short timeout for initial probe — no retries on critical path
+            quick_timeout = float(os.environ.get("CLOUD_RUN_PROBE_QUICK_TIMEOUT", "5"))
             try:
                 import aiohttp
-                t_start = asyncio.get_running_loop().time()
                 health_paths = ["/health", "/api/ml/health", "/status"]
                 async with aiohttp.ClientSession() as sess:
-                    # Try prewarm first
+                    # Fire-and-forget prewarm to kick off cold start
                     prewarm = os.environ.get("CLOUD_RUN_ENABLE_PREWARM", "true").lower() == "true"
                     if prewarm:
                         try:
-                            prewarm_url = f"{cloud_endpoint}/api/ml/prewarm"
                             async with sess.post(
-                                prewarm_url,
+                                f"{cloud_endpoint}/api/ml/prewarm",
                                 json={"warmup": True},
-                                timeout=aiohttp.ClientTimeout(total=10.0),
+                                timeout=aiohttp.ClientTimeout(total=3.0),
                             ) as _:
                                 pass
                         except Exception:
                             pass
 
-                    for attempt in range(max_retries):
-                        elapsed = asyncio.get_running_loop().time() - t_start
-                        if elapsed > max_wait:
-                            break
-                        for path in health_paths:
-                            try:
-                                t0 = asyncio.get_running_loop().time()
-                                async with sess.get(
-                                    f"{cloud_endpoint}{path}",
-                                    timeout=aiohttp.ClientTimeout(total=request_timeout),
-                                ) as resp:
-                                    if resp.status == 200:
-                                        data = await resp.json()
-                                        if data.get("ecapa_ready", False):
-                                            probe["healthy"] = True
-                                            probe["endpoint"] = cloud_endpoint
-                                            probe["latency_ms"] = (
-                                                asyncio.get_running_loop().time() - t0
-                                            ) * 1000
-                                            return probe
-                                        status = data.get("status", "")
-                                        if status in ("initializing", "loading", "warming_up"):
-                                            break  # Retry after interval
-                            except Exception:
-                                continue
-                        if not probe["healthy"]:
-                            delay = min(poll_interval * (2 ** attempt), 60.0)
-                            await asyncio.sleep(delay)
+                    # Single-pass health check — no retry loop
+                    for path in health_paths:
+                        try:
+                            t0 = asyncio.get_running_loop().time()
+                            async with sess.get(
+                                f"{cloud_endpoint}{path}",
+                                timeout=aiohttp.ClientTimeout(total=quick_timeout),
+                            ) as resp:
+                                if resp.status == 200:
+                                    data = await resp.json()
+                                    if data.get("ecapa_ready", False):
+                                        probe["healthy"] = True
+                                        probe["endpoint"] = cloud_endpoint
+                                        probe["latency_ms"] = (
+                                            asyncio.get_running_loop().time() - t0
+                                        ) * 1000
+                                        return probe
+                        except Exception:
+                            continue
             except Exception as e:
                 self.logger.debug(f"[ECAPA] Cloud Run probe: {e}")
             return probe
@@ -77293,6 +77294,80 @@ class JarvisSystemKernel:
         else:
             result["decision_reason"] = "No ECAPA backend available"
             self.logger.warning("[ECAPA] No backend available — voice biometrics degraded")
+
+        # =====================================================================
+        # v261.0: BACKGROUND CLOUD RUN WARMUP + HOT-SWAP
+        # =====================================================================
+        # If Cloud Run endpoint is configured but wasn't healthy during the
+        # quick probe (cold start), warm it in the background and hot-swap
+        # to it when it becomes ready. This replaces the old blocking retry
+        # loop that stalled startup for ~40 seconds.
+        # =====================================================================
+        cloud_endpoint = os.environ.get("JARVIS_CLOUD_ML_ENDPOINT", "")
+        if (
+            cloud_endpoint
+            and cloud_probe.get("available")
+            and not cloud_probe.get("healthy")
+            and backend != "cloud_run"
+        ):
+            self.logger.info(
+                "[ECAPA] Cloud Run not ready yet — starting background warmup "
+                f"(current: {backend or 'none'})"
+            )
+
+            async def _background_cloud_run_ecapa_warmup() -> None:
+                """
+                v261.0: Background Cloud Run warmup with hot-swap.
+                Retries with backoff until Cloud Run responds, then
+                switches ECAPA backend to cloud_run transparently.
+                """
+                _max_wait = float(os.environ.get("CLOUD_RUN_BG_WARMUP_MAX_WAIT", "120"))
+                _poll_interval = float(os.environ.get("CLOUD_RUN_BG_WARMUP_POLL", "5"))
+                _request_timeout = float(os.environ.get("CLOUD_RUN_BG_WARMUP_REQ_TIMEOUT", "10"))
+                _health_paths = ["/health", "/api/ml/health", "/status"]
+                _t_start = asyncio.get_running_loop().time()
+
+                try:
+                    import aiohttp
+                    async with aiohttp.ClientSession() as sess:
+                        while True:
+                            elapsed = asyncio.get_running_loop().time() - _t_start
+                            if elapsed > _max_wait:
+                                self.logger.info(
+                                    f"[ECAPA] Cloud Run warmup gave up after {elapsed:.0f}s"
+                                )
+                                return
+
+                            for _path in _health_paths:
+                                try:
+                                    async with sess.get(
+                                        f"{cloud_endpoint}{_path}",
+                                        timeout=aiohttp.ClientTimeout(total=_request_timeout),
+                                    ) as resp:
+                                        if resp.status == 200:
+                                            data = await resp.json()
+                                            if data.get("ecapa_ready", False):
+                                                # Hot-swap to Cloud Run
+                                                os.environ["JARVIS_CLOUD_ML_ENDPOINT"] = cloud_endpoint
+                                                os.environ["JARVIS_DOCKER_ECAPA_ACTIVE"] = "false"
+                                                os.environ["JARVIS_ECAPA_BACKEND"] = "cloud_run"
+                                                self.logger.info(
+                                                    f"[ECAPA] Cloud Run ready after "
+                                                    f"{elapsed:.1f}s — hot-swapped from "
+                                                    f"{backend or 'none'} to cloud_run"
+                                                )
+                                                return
+                                except Exception:
+                                    continue
+
+                            await asyncio.sleep(_poll_interval)
+                except Exception as e:
+                    self.logger.debug(f"[ECAPA] Background Cloud Run warmup error: {e}")
+
+            create_safe_task(
+                _background_cloud_run_ecapa_warmup(),
+                name="bg-cloud-run-ecapa-warmup",
+            )
 
         return result
 

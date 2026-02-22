@@ -2,7 +2,7 @@
 
 **The Body of the AGI OS — macOS integration, computer use, action execution, and unified orchestration**
 
-JARVIS is the **control plane and execution layer** of the JARVIS AGI ecosystem. It provides macOS integration, computer use (keyboard, mouse, display), voice unlock, vision, safety management, and the **unified supervisor** that starts and coordinates JARVIS-Prime (Mind) and Reactor-Core (Nerves) with a single command. As of **v259.1**, JARVIS features a never-skip vision architecture with self-hosted LLaVA, parallel initialization with cooperative cancellation (v3.0–v3.2), CPU-pressure-aware cloud shifting (v258.x), enterprise hardening, and a fully activated training pipeline with deployment gates, model lineage tracking, and post-deployment probation monitoring across all three repos.
+JARVIS is the **control plane and execution layer** of the JARVIS AGI ecosystem. It provides macOS integration, computer use (keyboard, mouse, display), voice unlock, vision, safety management, and the **unified supervisor** that starts and coordinates JARVIS-Prime (Mind) and Reactor-Core (Nerves) with a single command. As of **v244.0**, JARVIS features command lifecycle event infrastructure with explicit bus management (v243.0/v243.1), zero startup warnings with 858 lines of dead code removed and Cloud SQL proxy startup reduced from ~47s to ~3-5s (v244.0), a never-skip vision architecture with self-hosted LLaVA (v259.1), parallel initialization with cooperative cancellation (v3.0–v3.2), CPU-pressure-aware cloud shifting (v258.x), enterprise hardening, and a fully activated training pipeline with deployment gates, model lineage tracking, and post-deployment probation monitoring across all three repos.
 
 ---
 
@@ -1395,6 +1395,183 @@ _infer_task_type()                             ChatRequest.metadata
 
 ---
 
+### v243.0/v243.1 — Command Lifecycle Events + Event Infrastructure Lifecycle Management (February 2026)
+
+**The Problem (v243.0):** The supervisor had no visibility into what happened to commands after classification. There was no pub/sub event system for command lifecycle, meaning NeuralMesh's Knowledge Graph couldn't learn from command outcomes, and ProactiveIntelligenceEngine couldn't feed observations back into future decisions.
+
+**The Problem (v243.1):** v243.0 wired command lifecycle events through TrinityEventBus and ProactiveEventStream, but these buses were lazily instantiated on first consumer access — the supervisor didn't know they existed. This caused boot-order races: Phase 5-7 subscribers (NeuralMesh, PIE) tried to connect before buses existed, and NeuralMesh had to implement a 10s delayed retry as a band-aid. Buses were also never health-checked and never shut down, leaking background tasks and connections.
+
+**v243.0 Fixes — Command Lifecycle Events:**
+
+| Event | Emitted By | Payload |
+|-------|-----------|---------|
+| `command.received` | UnifiedCommandProcessor | `{command, timestamp}` |
+| `command.classified` | UnifiedCommandProcessor | `{command, intent, domain, confidence, requires_action, requires_vision}` |
+| `command.completed` | UnifiedCommandProcessor | `{command, intent, result_summary, execution_ms}` |
+| `command.failed` | UnifiedCommandProcessor | `{command, intent, error, execution_ms}` |
+
+**Subscribers wired in v243.0:**
+- **NeuralMesh Knowledge Graph** — Feeds command outcomes as PATTERN entries into semantic memory
+- **ProactiveIntelligenceEngine** — Observes command results to improve proactive suggestions
+- **AgentRuntime** — Routes multi-step actions through compound fallback chain
+
+**v243.1 Fixes — Explicit Lifecycle Management (5 Tasks):**
+
+```
+BEFORE v243.1 (implicit, unmanaged):
+  Phase 4 starts → subscribers try to connect → bus may not exist
+  Shutdown → buses never stopped → orphaned tasks, leaked connections
+
+AFTER v243.1 (explicit lifecycle):
+  Phase 4 → _initialize_event_infrastructure() → buses started
+    → health registered → DMS tracking → subscribers guaranteed bus exists
+  Shutdown → buses stopped AFTER subscribers (reverse order) → clean exit
+```
+
+| Task | What Changed | File |
+|------|-------------|------|
+| 1 | Event infrastructure state tracking in `__init__` | `unified_supervisor.py` |
+| 2 | Explicit bus startup in Phase 4 (Intelligence) — before any subscriber | `unified_supervisor.py` |
+| 3 | Health checks registered with HealthAggregator (bus metrics, failure rates) | `unified_supervisor.py` |
+| 4 | DMS progress point 52 for event infrastructure | `unified_supervisor.py` |
+| 5 | Graceful shutdown: buses stop AFTER subscribers, BEFORE task sweep | `unified_supervisor.py` |
+
+**Health Check Details:**
+
+- **TrinityEventBus** — Reports `events_published`, `events_delivered`, `events_failed`, `active_subscriptions`. Flags unhealthy if `failed/published > 10%`.
+- **ProactiveEventStream** — Verifies `_running` flag and subscriber count. Reads module-level singleton directly (not factory) to avoid side effects.
+
+**Boot Order After v243.1:**
+```
+Phase 4: _initialize_event_infrastructure()     ← buses guaranteed running
+Phase 4: IntelligenceRegistry, HybridWorkloadRouter
+Phase 4: GoalInferenceEngine, intelligence managers
+Phase 5-7: NeuralMesh subscribes → success on first try (no 10s retry)
+```
+
+**Shutdown Order:**
+```
+AGI OS + NeuralMesh stopped (subscribers disconnect)
+  → TrinityEventBus shut down (5s timeout)
+    → ProactiveEventStream shut down (5s timeout)
+      → Hybrid orchestrator stopped
+        → Broad task cancellation sweep
+```
+
+**Files Modified (v243.0 + v243.1):**
+- `unified_supervisor.py` — Event state tracking, explicit startup, health checks, DMS, shutdown
+- `backend/core/trinity_event_bus.py` — Command lifecycle event types
+- `backend/api/unified_command_processor.py` — Event emission at command stages
+- `backend/neural_mesh/neural_mesh_coordinator.py` — Knowledge Graph subscription to `command.*` events
+- `backend/agi_os/proactive_intelligence_engine.py` — Feedback loop from command outcomes
+
+**Commits:** 9 commits (v243.0) + 6 commits (v243.1), all merged to main.
+
+---
+
+### v244.0 — Startup Warning Root Fix: Dead Code + Cloud SQL Proxy + Brain Vacuum (February 2026)
+
+**The Problem:** Three warning clusters appeared on every JARVIS startup, plus a latent classification bug:
+
+1. **`No module named 'core.tiered_vbia_adapter'`** — Dead import after intentional deletion of the two-tier routing system (commit 167fcecb). The supervisor still tried to import the deleted module on every boot.
+2. **`Cannot wire execute_tier2 (missing: TieredCommandRouter)`** — Same commit left orphaned wiring code that failed silently every startup.
+3. **`cloud_sql_proxy timeout (47s)`** — Redundant settling delay + double DB verification after proxy was already authenticated via log-signal gating. Wasted ~42 seconds on every boot.
+4. **Brain vacuum fallback hardcodes `intent="answer"`** — When J-Prime is down, ALL commands became text responses. "Lock my screen" returned a paragraph about screen locking instead of actually executing the lock.
+
+#### Section 1: Dead Code Surgical Removal (858 Lines Deleted)
+
+Commit 167fcecb deleted `tiered_vbia_adapter.py` and `tiered_command_router.py` but left orphaned imports, closures, API endpoints, and tests. v244.0 finishes the cleanup:
+
+| Task | What Was Removed | File | Lines Deleted |
+|------|-----------------|------|---------------|
+| 1 | Dead `self._vbia_adapter`, `self._tiered_router` instance vars | `unified_supervisor.py` | ~15 |
+| 2 | Dead closures: `_init_vbia()`, `_init_router()`, `_chain_vbia_then_router()`, execute_tier2 wiring block. Renamed method `_initialize_two_tier_security()` → `_initialize_integration_components()` | `unified_supervisor.py` | ~324 |
+| 3 | Dead endpoints: `/route` (always 503), `/tier1`. Dead functions: `get_tiered_router()`, `get_vbia_adapter()`. Dead models: `RouteCommandRequest`, `RouteCommandResponse`. Updated `/health`, `/metrics`, `/status`, `/execute` | `backend/api/agentic_api.py` | ~243 |
+| 4 | Dead PHASE 1 import block for `get_tiered_vbia_adapter` | `backend/core/voice_authentication_layer.py` | ~25 |
+| 5 | Deleted `test_two_tier_security.py` (100% tests for deleted components). Updated stale comment in `google_workspace_agent.py` referencing deleted file | `test_two_tier_security.py` (deleted), `google_workspace_agent.py` | ~418 |
+| 6 | Removed dead `vbia_adapter`, `router` keys from health status endpoint | `unified_supervisor.py` | ~5 |
+
+**Safety analysis (verified before deletion):**
+- `execute_tier2` wiring guarded by `if self._tiered_router and self._agentic_runner:` — always `False` since module deleted. AgenticTaskRunner works independently.
+- `/route` endpoint already returned HTTP 503 (`get_tiered_router()` returns `None`). Entirely dead.
+- `verify_for_tier2()` / `verify_for_tier1()` in voice auth have zero callers. Voice unlock uses separate `SpeakerVerificationService` (ECAPA-TDNN, alive and working).
+
+#### Section 2: Cloud SQL Proxy Readiness Gate Fix (47s → ~3-5s)
+
+**Root cause:** `proxy_manager.start()` already uses log-signal gating — it reads the proxy's stdout for `"ready for new connections"` and returns only after GCP authentication succeeds. But `ProxyReadinessGate.ensure_proxy_ready()` then applies a **redundant 2s settling delay** and runs **5 `SELECT 1` checks** against an already-ready proxy. Plus the supervisor calls `check_connection_health()` separately — double verification.
+
+| Task | What Changed | File |
+|------|-------------|------|
+| 7 | Skip settling delay when `start()` confirmed readiness via log signal. Only apply delay when reusing an already-running proxy. | `backend/intelligence/cloud_sql_connection_manager.py` |
+| 8 | Extended TCP-only fallback from 3s → 10s (configurable via `CLOUDSQL_LOG_READY_FALLBACK_TIMEOUT`). Removed hardcoded `asyncio.sleep(3)` in `_auto_heal_reconnect()` — replaced with direct `check_connection_health()`. | `backend/intelligence/cloud_sql_proxy_manager.py` |
+| 9 | Removed redundant `check_connection_health()` call between proxy `start()` and `ensure_proxy_ready()`. Gate is single source of truth. | `unified_supervisor.py` |
+
+**Before/After:**
+```
+BEFORE v244.0:
+  start() confirms readiness (log signal)        ← already authenticated
+    → check_connection_health()                   ← redundant (5-10s)
+      → ensure_proxy_ready()
+        → 2s settling delay                       ← redundant
+          → 5x SELECT 1 checks                   ← redundant
+  Total: ~47 seconds
+
+AFTER v244.0:
+  start() confirms readiness (log signal)         ← already authenticated
+    → ensure_proxy_ready()
+      → settling delay SKIPPED (just_started_proxy=True)
+        → 1x SELECT 1 verification
+  Total: ~3-5 seconds
+```
+
+#### Section 3: Brain Vacuum Classification Fix
+
+**Root cause:** `_brain_vacuum_fallback()` in `jarvis_prime_client.py` hardcodes `intent="answer"` for all responses. When J-Prime is down, commands that should execute actions ("lock my screen", "open Safari") become text answers instead.
+
+| Task | What Changed | File |
+|------|-------------|------|
+| 10 | Added classification prompt prefix to brain vacuum fallback. LLM now outputs `CLASSIFICATION: {"intent", "domain", "requires_action", "suggested_actions"}` before response. Parsed dynamically with validation. Falls back to `intent="answer"` on parse failure. | `backend/core/jarvis_prime_client.py` |
+
+**Classification flow:**
+```
+User: "lock my screen"
+  → J-Prime unreachable (brain vacuum)
+    → _brain_vacuum_fallback() invokes Claude/Gemini API
+      → System prompt includes classification prefix
+        → LLM returns: CLASSIFICATION: {"intent": "action", "domain": "system",
+                         "requires_action": true, "suggested_actions": ["lock_screen"]}
+           Locking your screen now.
+        → _parse_classification() extracts intent/domain/actions
+        → _strip_classification_line() removes machine-readable prefix
+        → StructuredResponse populated with:
+            intent="action"        (NOT hardcoded "answer")
+            domain="system"
+            requires_action=True
+            suggested_actions=["lock_screen"]
+  → Command pipeline sees intent="action" → executes lock_screen
+```
+
+**Valid intents:** `answer`, `conversation`, `action`, `vision_needed`, `multi_step_action`, `clarify`
+**Valid domains:** `general`, `system`, `security`, `workspace`, `development`, `media`, `smart_home`
+
+#### All Files Modified (v244.0)
+
+| File | Tasks | Net Change |
+|------|-------|------------|
+| `unified_supervisor.py` | 1, 2, 6, 9 | -344 lines |
+| `backend/api/agentic_api.py` | 3 | -243 lines |
+| `backend/core/voice_authentication_layer.py` | 4 | -25 lines |
+| `test_two_tier_security.py` | 5 | -418 lines (deleted) |
+| `backend/neural_mesh/agents/google_workspace_agent.py` | 5 | ~1 line |
+| `backend/intelligence/cloud_sql_connection_manager.py` | 7 | ~15 lines |
+| `backend/intelligence/cloud_sql_proxy_manager.py` | 8 | ~20 lines |
+| `backend/core/jarvis_prime_client.py` | 10 | ~80 lines |
+| **Total** | | **192 insertions, 1,050 deletions** |
+
+**Commits:** 10 commits, all merged to main. Design doc: `docs/plans/2026-02-22-startup-warning-root-fix-design.md`.
+
+---
+
 ### v245.0 — Google Workspace Live Verification & Critical Bug Fixes
 
 **The Problem:** Google Workspace commands (email, calendar, drafts) appeared functional in unit tests but exhibited critical failures in live production:
@@ -2106,7 +2283,34 @@ Build on v239.0 with DPO preference training:
 - [ ] **Per-model telemetry attribution** — Include `X-Model-Id` in every telemetry event for per-model DPO pair generation
 - [ ] Multi-model architecture becomes a **training data goldmine** — each model swap produces implicit quality comparisons
 
-#### v243.0 — Ouroboros: JARVIS Self-Programming (Planned)
+#### ✅ v243.0/v243.1 — Command Lifecycle Events + Event Infrastructure Lifecycle (COMPLETED)
+
+v243.0 wired command lifecycle events (`command.received`, `command.classified`, `command.completed`, `command.failed`) through TrinityEventBus and ProactiveEventStream. NeuralMesh Knowledge Graph subscribes to learn from command outcomes. v243.1 gave the supervisor explicit lifecycle management: boot-order guarantees (buses start in Phase 4 before subscribers), health monitoring via HealthAggregator, DMS progress tracking, and graceful shutdown in correct dependency order.
+
+- [x] **Command lifecycle events** — 4 event types emitted by UnifiedCommandProcessor at each pipeline stage
+- [x] **NeuralMesh subscription** — Knowledge Graph feeds on `command.*` events as PATTERN entries
+- [x] **ProactiveIntelligence feedback** — PIE observes command outcomes for proactive suggestions
+- [x] **AgentRuntime routing** — Multi-step actions routed through compound fallback chain
+- [x] **Explicit bus startup** — `_initialize_event_infrastructure()` in Phase 4, before any subscriber
+- [x] **Health check registration** — TrinityEventBus metrics + ProactiveEventStream state in HealthAggregator
+- [x] **DMS progress tracking** — Progress point 52 for event infrastructure
+- [x] **Graceful shutdown** — Buses stop after subscribers, before task cancellation sweep
+- [x] **15 commits** across 5 files, all merged to main
+
+See [§ v243.0/v243.1 detailed section](#v2430v2431--command-lifecycle-events--event-infrastructure-lifecycle-management-february-2026) above.
+
+#### ✅ v244.0 — Startup Warning Root Fix (COMPLETED)
+
+Eliminated 3 startup warning clusters and fixed brain vacuum classification. 858 lines of dead code removed, Cloud SQL proxy startup reduced from ~47s to ~3-5s, brain vacuum commands now properly classified during J-Prime downtime.
+
+- [x] **Dead code removal** — Orphaned imports, closures, API endpoints, tests from deleted tiered routing system (6 tasks, 858 lines deleted)
+- [x] **Cloud SQL proxy fix** — Skip redundant settling delay when `start()` confirmed readiness, extend TCP fallback to 10s, remove double verification (3 tasks, ~42s saved)
+- [x] **Brain vacuum classification** — Classification prompt in fallback so "lock my screen" returns `intent="action"` not `intent="answer"` (1 task)
+- [x] **10 commits**, 192 insertions, 1,050 deletions, 8 files modified, all merged to main
+
+See [§ v244.0 detailed section](#v2440--startup-warning-root-fix-dead-code--cloud-sql-proxy--brain-vacuum-february-2026) above.
+
+#### Ouroboros: JARVIS Self-Programming (Planned — Future Version)
 
 JARVIS becomes capable of reading, understanding, and improving its own codebase:
 
@@ -2116,7 +2320,7 @@ JARVIS becomes capable of reading, understanding, and improving its own codebase
 - [ ] **Two-model pipeline** — Architect → model swap → Implementer → model swap → Verifier (~2-3 min per cycle)
 - [ ] Safety guardrails: changes require human approval before commit, automated test suite must pass, rollback on failure
 
-#### v244.0 — LLaVA Vision Integration (PARTIALLY COMPLETED ✅)
+#### LLaVA Vision Integration (PARTIALLY COMPLETED ✅)
 
 LLaVA-v1.6-Mistral-7B activated for self-hosted vision as of v236.0 (Prime) and v259.1 (Body):
 
