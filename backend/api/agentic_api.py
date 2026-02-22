@@ -2,32 +2,26 @@
 JARVIS Unified Agentic API v2.0
 ================================
 
-REST API endpoints for the unified Two-Tier Agentic Security System.
+REST API endpoints for the unified Agentic Security System.
 All agentic task execution flows through the AgenticTaskRunner.
 
 Endpoints:
-- POST /api/agentic/execute - Execute a single goal (Tier 2)
-- POST /api/agentic/tier1 - Execute safe command (Tier 1)
-- POST /api/agentic/route - Route command through TieredRouter
+- POST /api/agentic/execute - Execute a single goal via AgenticTaskRunner
 - GET /api/agentic/status - Get unified system status
+- GET /api/agentic/health - Health check
 - GET /api/agentic/metrics - Get execution metrics
 - GET /api/agentic/watchdog - Get watchdog status
 - WebSocket /ws/agentic - Real-time task execution updates
 
 Architecture:
-    CLI/API -> TieredRouter -> VBIA Auth -> AgenticRunner -> Computer Use
-                            -> Watchdog (safety monitoring)
+    CLI/API -> AgenticRunner -> Computer Use
+            -> Watchdog (safety monitoring)
 
 Usage:
-    # Execute Tier 2 task
+    # Execute task
     curl -X POST http://localhost:8000/api/agentic/execute \\
         -H "Content-Type: application/json" \\
         -d '{"goal": "Open Safari and find the weather"}'
-
-    # Route through tiered system
-    curl -X POST http://localhost:8000/api/agentic/route \\
-        -H "Content-Type: application/json" \\
-        -d '{"command": "JARVIS ACCESS organize my desktop"}'
 """
 
 from __future__ import annotations
@@ -40,7 +34,6 @@ from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, Request, WebSocket, WebSocketDisconnect
-from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from backend.core.secure_logging import sanitize_for_log
@@ -82,37 +75,11 @@ class ExecuteGoalResponse(BaseModel):
     error: Optional[str] = None
 
 
-class RouteCommandRequest(BaseModel):
-    """Request to route a command through the TieredCommandRouter."""
-    command: str = Field(..., description="Voice command with wake word")
-    vbia_confidence: Optional[float] = Field(None, description="Pre-verified VBIA confidence")
-    speaker_id: Optional[str] = Field(None, description="Pre-verified speaker ID")
-    execute: bool = Field(True, description="Execute after routing or just return decision")
-
-
-class RouteCommandResponse(BaseModel):
-    """Response from command routing."""
-    tier: str
-    backend: str
-    command: str
-    auth_required: bool
-    auth_result: Optional[str]
-    vbia_confidence: Optional[float]
-    watchdog_armed: bool
-    execution_allowed: bool
-    denial_reason: Optional[str]
-    # Execution result (if execute=True)
-    executed: bool = False
-    execution_result: Optional[Dict[str, Any]] = None
-
-
 class AgenticStatusResponse(BaseModel):
     """Unified agentic system status."""
     initialized: bool
     runner_ready: bool
-    router_ready: bool
     watchdog_active: bool
-    vbia_adapter_ready: bool
     # Component details
     components: Dict[str, bool]
     # Stats
@@ -121,11 +88,6 @@ class AgenticStatusResponse(BaseModel):
     success_rate: float = 0.0
     # Watchdog
     watchdog_status: Optional[Dict[str, Any]] = None
-    # Config
-    tier1_backend: str = "gemini"
-    tier2_backend: str = "claude"
-    vbia_tier1_threshold: float = 0.70
-    vbia_tier2_threshold: float = 0.85
 
 
 class WatchdogStatusResponse(BaseModel):
@@ -163,43 +125,6 @@ def get_agentic_runner(request: Request):
     return getattr(request.app.state, 'agentic_runner', None)
 
 
-def get_tiered_router(request: Request):
-    """
-    Get the TieredCommandRouter.
-
-    Priority:
-    1. Module-level registry (set by supervisor)
-    2. app.state fallback (for compatibility)
-    """
-    try:
-        from core.tiered_command_router import get_tiered_router as _get_router
-        router = _get_router()
-        if router is not None:
-            return router
-    except ImportError:
-        pass
-    return getattr(request.app.state, 'tiered_router', None)
-
-
-def get_vbia_adapter(request: Request):
-    """
-    Get the TieredVBIAAdapter.
-
-    Priority:
-    1. Module-level registry (set by supervisor)
-    2. app.state fallback (for compatibility)
-    """
-    try:
-        from core.tiered_vbia_adapter import TieredVBIAAdapter
-        # Use _adapter_instance directly (sync access, don't create new)
-        from core.tiered_vbia_adapter import _adapter_instance
-        if _adapter_instance is not None:
-            return _adapter_instance
-    except ImportError:
-        pass
-    return getattr(request.app.state, 'vbia_adapter', None)
-
-
 def get_watchdog(request: Request):
     """
     Get the AgenticWatchdog.
@@ -227,12 +152,10 @@ async def get_agentic_status(request: Request) -> AgenticStatusResponse:
     """
     Get the unified agentic system status.
 
-    Returns information about all components: runner, router, watchdog, VBIA.
+    Returns information about all components: runner, watchdog.
     """
     runner = get_agentic_runner(request)
-    router_obj = get_tiered_router(request)
     watchdog = get_watchdog(request)
-    vbia = get_vbia_adapter(request)
 
     # Get runner stats
     runner_stats = runner.get_stats() if runner else {}
@@ -249,32 +172,15 @@ async def get_agentic_status(request: Request) -> AgenticStatusResponse:
         except Exception:
             watchdog_status = {"active": True}
 
-    # Get router config
-    tier1_backend = "gemini"
-    tier2_backend = "claude"
-    tier1_threshold = 0.70
-    tier2_threshold = 0.85
-    if router_obj:
-        tier1_backend = router_obj.config.tier1_backend
-        tier2_backend = router_obj.config.tier2_backend
-        tier1_threshold = router_obj.config.tier1_vbia_threshold
-        tier2_threshold = router_obj.config.tier2_vbia_threshold
-
     return AgenticStatusResponse(
         initialized=runner is not None and (runner.is_ready if runner else False),
         runner_ready=runner is not None and (runner.is_ready if runner else False),
-        router_ready=router_obj is not None,
         watchdog_active=watchdog is not None,
-        vbia_adapter_ready=vbia is not None,
         components=runner_stats.get("components", {}) if runner_stats else {},
         tasks_executed=runner_stats.get("tasks_executed", 0),
         tasks_succeeded=runner_stats.get("tasks_succeeded", 0),
         success_rate=runner_stats.get("success_rate", 0.0),
         watchdog_status=watchdog_status,
-        tier1_backend=tier1_backend,
-        tier2_backend=tier2_backend,
-        vbia_tier1_threshold=tier1_threshold,
-        vbia_tier2_threshold=tier2_threshold,
     )
 
 
@@ -332,7 +238,6 @@ async def execute_goal(request: Request, body: ExecuteGoalRequest) -> ExecuteGoa
     logger.info(f"[AgenticAPI] Execute goal: {sanitize_for_log(body.goal, 50)}...")
 
     runner = get_agentic_runner(request)
-    vbia = get_vbia_adapter(request)
     watchdog = get_watchdog(request)
 
     if not runner:
@@ -353,16 +258,6 @@ async def execute_goal(request: Request, body: ExecuteGoalRequest) -> ExecuteGoa
             status_code=403,
             detail="Agentic execution blocked by watchdog safety system"
         )
-
-    # Set VBIA cache if pre-verified credentials provided
-    if vbia and body.vbia_confidence is not None:
-        vbia.set_verification_result(
-            confidence=body.vbia_confidence,
-            speaker_id=body.speaker_id,
-            is_owner=True,
-            verified=body.vbia_confidence >= 0.85,
-        )
-        logger.debug(f"[AgenticAPI] VBIA cache set: {body.vbia_confidence:.2f}")
 
     try:
         # Import RunnerMode
@@ -409,134 +304,18 @@ async def execute_goal(request: Request, body: ExecuteGoalRequest) -> ExecuteGoa
         )
 
 
-@router.post("/route", response_model=RouteCommandResponse)
-async def route_command(request: Request, body: RouteCommandRequest) -> RouteCommandResponse:
-    """
-    Route a voice command through the TieredCommandRouter.
-
-    This parses wake words, classifies intent, performs VBIA authentication,
-    and optionally executes the command via the appropriate backend.
-    """
-    logger.info(f"[AgenticAPI] Route command: {sanitize_for_log(body.command, 50)}...")
-
-    router_obj = get_tiered_router(request)
-    vbia = get_vbia_adapter(request)
-    runner = get_agentic_runner(request)
-
-    if not router_obj:
-        raise HTTPException(
-            status_code=503,
-            detail="TieredCommandRouter not initialized"
-        )
-
-    # Set VBIA cache if pre-verified
-    if vbia and body.vbia_confidence is not None:
-        vbia.set_verification_result(
-            confidence=body.vbia_confidence,
-            speaker_id=body.speaker_id,
-            is_owner=True,
-            verified=body.vbia_confidence >= 0.85,
-        )
-
-    try:
-        # Route the command
-        route_result = await router_obj.route(body.command)
-
-        response = RouteCommandResponse(
-            tier=route_result.tier.value,
-            backend=route_result.backend,
-            command=route_result.command,
-            auth_required=route_result.auth_required,
-            auth_result=route_result.auth_result.value if route_result.auth_result else None,
-            vbia_confidence=route_result.vbia_confidence,
-            watchdog_armed=route_result.watchdog_armed,
-            execution_allowed=route_result.execution_allowed,
-            denial_reason=route_result.denial_reason,
-        )
-
-        # Execute if requested and allowed
-        if body.execute and route_result.execution_allowed:
-            try:
-                from core.tiered_command_router import CommandTier
-            except ImportError:
-                CommandTier = None
-
-            if CommandTier and route_result.tier == CommandTier.TIER2_AGENTIC and runner:
-                # Execute via runner
-                from core.agentic_task_runner import RunnerMode
-                exec_result = await runner.run(
-                    goal=route_result.command,
-                    mode=RunnerMode.AUTONOMOUS,
-                    narrate=True,
-                )
-                response.executed = True
-                response.execution_result = {
-                    "success": exec_result.success,
-                    "message": exec_result.final_message,
-                    "actions": exec_result.actions_count,
-                    "time_ms": exec_result.execution_time_ms,
-                }
-
-            elif CommandTier and route_result.tier == CommandTier.TIER1_STANDARD:
-                # Execute Tier 1 via router's handler
-                exec_result = await router_obj.execute_tier1(route_result.command)
-                response.executed = True
-                response.execution_result = exec_result
-
-        return response
-
-    except Exception as e:
-        logger.error(f"[AgenticAPI] Route failed: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail=f"Command routing failed: {str(e)}"
-        )
-
-
-@router.post("/tier1")
-async def execute_tier1(request: Request, body: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Execute a Tier 1 (safe) command.
-
-    No strict VBIA required, uses Gemini Flash backend.
-    """
-    command = body.get("command", "")
-    context = body.get("context", {})
-
-    if not command:
-        raise HTTPException(status_code=400, detail="Command required")
-
-    router_obj = get_tiered_router(request)
-    if not router_obj:
-        raise HTTPException(status_code=503, detail="Router not available")
-
-    try:
-        result = await router_obj.execute_tier1(command, context)
-        return result
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
 @router.get("/health")
 async def agentic_health(request: Request) -> Dict[str, Any]:
-    """
-    Health check for the unified agentic system.
-    """
+    """Health check for the unified agentic system."""
     runner = get_agentic_runner(request)
-    router_obj = get_tiered_router(request)
     watchdog = get_watchdog(request)
-    vbia = get_vbia_adapter(request)
 
     components = {
         "runner": runner is not None and (runner.is_ready if runner else False),
-        "router": router_obj is not None,
         "watchdog": watchdog is not None,
-        "vbia": vbia is not None,
     }
 
-    all_ready = all([runner, router_obj])  # Minimum required
-
-    if not all_ready:
+    if not runner:
         return {
             "status": "initializing",
             "message": "Agentic system is starting up",
@@ -555,28 +334,17 @@ async def agentic_health(request: Request) -> Dict[str, Any]:
         "message": "Unified agentic system operational",
         "components": components,
         "capabilities": {
-            "tier1": True,
             "tier2": runner.is_ready if runner else False,
             "watchdog": watchdog is not None,
-            "vbia": vbia is not None,
         }
     }
 
 
 @router.get("/metrics")
 async def get_metrics(request: Request) -> Dict[str, Any]:
-    """
-    Get execution metrics for the agentic system.
-    """
+    """Get execution metrics for the agentic system."""
     runner = get_agentic_runner(request)
-    router_obj = get_tiered_router(request)
-
-    metrics = {
-        "runner": runner.get_stats() if runner else {},
-        "router": router_obj.get_stats() if router_obj else {},
-    }
-
-    return metrics
+    return {"runner": runner.get_stats() if runner else {}}
 
 
 # ============================================================================
