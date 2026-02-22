@@ -70380,7 +70380,89 @@ class JarvisSystemKernel:
                     # Task raised an exception
                     self.logger.error(f"[{integrator_name}] Startup task error: {e}")
                     return {}, False, f"Error: {e}"
-                
+
+                # =============================================================
+                # v265.2: LATE-ARRIVAL GCP VM DETECTION
+                # =============================================================
+                # ROOT CAUSE FIX: The golden image wait budget (90s hedge mode)
+                # can expire before the VM is ready (~120-200s). After that,
+                # start_components() commits to local Prime (slow on 83% RAM).
+                # The VM becomes ready 30-100s later, but nobody reads
+                # _invincible_node_ready during the progress-aware polling loop.
+                #
+                # Fix: Every polling cycle (15s), check if the VM became ready.
+                # If so, set up Hollow Client routing so inference routes to GCP
+                # immediately, even while local Prime is still loading. This
+                # turns a 660s timeout into a ~300s success.
+                # =============================================================
+                _vm_just_became_ready = False
+                if not getattr(self, '_gcp_late_arrival_handled', False):
+                    _inv_ready = getattr(self, '_invincible_node_ready', False)
+                    _inv_ip = getattr(self, '_invincible_node_ip', None)
+                    if _inv_ready and _inv_ip:
+                        self.logger.info(
+                            f"[{integrator_name}] v265.2: GCP VM LATE ARRIVAL detected! "
+                            f"VM ready at {_inv_ip} — activating Hollow Client routing "
+                            f"(local Prime still loading after golden image wait expired)"
+                        )
+                        self._gcp_late_arrival_handled = True
+                        _vm_just_became_ready = True
+
+                        # Set up Hollow Client routing
+                        _gcp_url = f"http://{_inv_ip}:8001"
+                        os.environ["GCP_PRIME_ENDPOINT"] = _gcp_url
+                        os.environ["JARVIS_GCP_OFFLOAD_ACTIVE"] = "true"
+
+                        # Propagate to PrimeClient + PrimeRouter for hot-swap
+                        try:
+                            self._propagate_invincible_node_url(
+                                _inv_ip, source="late_arrival_v265.2"
+                            )
+                        except Exception as _prop_err:
+                            self.logger.debug(
+                                f"[{integrator_name}] URL propagation error: {_prop_err}"
+                            )
+
+                        # Mark Prime as effectively "done" via Hollow Client.
+                        # The startup task continues (Reactor-Core may still be
+                        # starting) but inference is now routed to GCP.
+                        try:
+                            if hasattr(self, '_trinity') and self._trinity:
+                                _jprime = getattr(self._trinity, '_jprime', None)
+                                if _jprime and getattr(_jprime, 'state', '') == 'starting':
+                                    _jprime.state = 'hollow_client'
+                                    self.logger.info(
+                                        f"[{integrator_name}] Local Prime demoted to "
+                                        f"hollow_client — GCP routing active"
+                                    )
+                                    # Kill local Prime process (it's wasting resources)
+                                    _prime_proc = getattr(_jprime, 'process', None)
+                                    if _prime_proc and _prime_proc.returncode is None:
+                                        try:
+                                            _prime_proc.terminate()
+                                            self.logger.info(
+                                                f"[{integrator_name}] Terminated local Prime "
+                                                f"process (PID {_prime_proc.pid}) — GCP VM "
+                                                f"will handle inference"
+                                            )
+                                        except Exception:
+                                            pass
+                        except Exception as _kill_err:
+                            self.logger.debug(
+                                f"[{integrator_name}] Local Prime cleanup: {_kill_err}"
+                            )
+
+                        # Update dashboard
+                        try:
+                            _dashboard = get_live_dashboard()
+                            _dashboard.update_component(
+                                "jarvis-prime",
+                                status="healthy",
+                                detail=f"Hollow Client → GCP {_inv_ip} (late arrival)",
+                            )
+                        except Exception:
+                            pass
+
                 # Check model loading progress
                 # v223.0: Dashboard fallback — ensure progress is observable even
                 # if _live_dashboard was not initialized before this function runs.
@@ -78237,6 +78319,52 @@ class JarvisSystemKernel:
                 signal_proxy_failed()
             return result
 
+        # v265.2: Gate pre-check — if Cloud SQL was already determined
+        # UNAVAILABLE by an earlier startup phase (e.g., parallel_initializer,
+        # learning_database), skip immediately instead of wasting 28s in
+        # ensure_proxy_ready() retries.  This is the ROOT CAUSE of the 30s
+        # CloudSQL timeout in Zone 6: the 28s gate retry budget consumes
+        # nearly the entire 30s service timeout when Cloud SQL is unreachable.
+        try:
+            try:
+                from intelligence.cloud_sql_connection_manager import (
+                    get_readiness_gate as _gate_preflight,
+                    ReadinessState as _RS,
+                )
+            except ImportError:
+                from backend.intelligence.cloud_sql_connection_manager import (
+                    get_readiness_gate as _gate_preflight,
+                    ReadinessState as _RS,
+                )
+            _pre_gate = _gate_preflight()
+            if _pre_gate.state == _RS.UNAVAILABLE:
+                self.logger.info(
+                    "[CloudSQL] v265.2: Gate already UNAVAILABLE (prior phase "
+                    "determined Cloud SQL unreachable) — skipping proxy init "
+                    "to avoid 28s retry waste"
+                )
+                result["fallback_to_sqlite"] = True
+                result["gate_state"] = "unavailable"
+                result["gate_reason"] = "prior_phase_unavailable"
+                if signal_proxy_failed:
+                    signal_proxy_failed()
+                return result
+            elif _pre_gate.state == _RS.DEGRADED_SQLITE:
+                self.logger.info(
+                    "[CloudSQL] v265.2: Gate already DEGRADED_SQLITE — "
+                    "skipping proxy init (SQLite fallback active)"
+                )
+                result["fallback_to_sqlite"] = True
+                result["gate_state"] = "degraded_sqlite"
+                result["gate_reason"] = "prior_phase_degraded"
+                if signal_proxy_failed:
+                    signal_proxy_failed()
+                return result
+        except ImportError:
+            pass  # Gate module not available yet, proceed normally
+        except Exception as _gate_pre_err:
+            self.logger.debug(f"[CloudSQL] Gate pre-check error: {_gate_pre_err}")
+
         self.logger.info("[CloudSQL] Initializing Cloud SQL proxy...")
 
         try:
@@ -78505,22 +78633,29 @@ class JarvisSystemKernel:
         self.logger.info("[VoiceCache] Initializing semantic voice cache...")
 
         try:
-            import chromadb
-            from chromadb.config import Settings
-
             # Configure persistent storage
             cache_dir = self.config.jarvis_home / "cache" / "voice_embeddings"
             cache_dir.mkdir(parents=True, exist_ok=True)
 
-            # Initialize ChromaDB in thread pool (blocking operations - don't block event loop)
+            # v265.2 ROOT CAUSE FIX: `import chromadb` is a SYNCHRONOUS operation
+            # that loads numpy, tokenizers, and many heavy deps (5-20+s on cold import).
+            # When executed at the top of this async method, it FREEZES the event loop,
+            # cascading timeout pressure to ALL parallel Zone 6 services (CloudSQL,
+            # InfraOrch, etc.) since they share the same event loop via asyncio.gather().
+            # The fix moves the import INTO the thread executor function so the event
+            # loop stays responsive and timeout mechanisms work correctly.
+            _collection_name = result["collection_name"]
+
             def _init_chromadb_sync():
-                """Sync ChromaDB initialization - runs in thread pool."""
+                """Sync ChromaDB init — import + create, all in thread pool."""
+                import chromadb
+                from chromadb.config import Settings
                 client = chromadb.PersistentClient(
                     path=str(cache_dir),
                     settings=Settings(anonymized_telemetry=False)
                 )
                 collection = client.get_or_create_collection(
-                    name=result["collection_name"],
+                    name=_collection_name,
                     metadata={"description": "Voice embedding cache for ECAPA-TDNN"}
                 )
                 return collection.count()
@@ -78576,20 +78711,29 @@ class JarvisSystemKernel:
             if str(backend_dir) not in sys.path:
                 sys.path.insert(0, str(backend_dir))
 
-            from core.infrastructure_orchestrator import (
-                get_infrastructure_orchestrator,
-                start_orphan_detection,
-            )
+            # v265.2 ROOT CAUSE FIX: `from core.infrastructure_orchestrator import ...`
+            # is a synchronous import that may load GCP client libraries (google-cloud-*),
+            # protobuf, grpcio, etc. (5-15+s on cold import). This freezes the event loop
+            # and cascades timeout pressure to ALL parallel Zone 6 services. The fix moves
+            # the import into a thread executor so the event loop stays responsive.
+            def _import_infra_orch_sync():
+                from core.infrastructure_orchestrator import (
+                    get_infrastructure_orchestrator,
+                    start_orphan_detection,
+                )
+                return get_infrastructure_orchestrator, start_orphan_detection
 
-            # Initialize orchestrator
-            orchestrator = await get_infrastructure_orchestrator()
+            _get_orch, _start_orphan = await asyncio.to_thread(_import_infra_orch_sync)
+
+            # Initialize orchestrator (async — safe on event loop)
+            orchestrator = await _get_orch()
             result["session_id"] = orchestrator.session_id if hasattr(orchestrator, 'session_id') else None
             result["enabled"] = True
 
             self.logger.success("[InfraOrch] Orchestrator initialized")
 
             # Start orphan detection
-            orphan_task = await start_orphan_detection(auto_cleanup=True)
+            orphan_task = await _start_orphan(auto_cleanup=True)
             result["orphan_detection"] = True
 
             self.logger.success("[InfraOrch] Orphan detection loop started (5-min interval)")

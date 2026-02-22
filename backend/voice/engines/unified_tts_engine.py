@@ -23,7 +23,7 @@ import tempfile
 import time
 from collections import OrderedDict
 from pathlib import Path
-from typing import AsyncIterator, Dict, List, Optional
+from typing import AsyncIterator, Awaitable, Callable, Dict, List, Optional
 
 import numpy as np
 import sounddevice as sd
@@ -529,6 +529,41 @@ class UnifiedTTSEngine:
         self.total_requests = 0
         self.total_latency_ms = 0.0
 
+        # Audio output resilience state (device contention / lockscreen handling)
+        self._audio_output_failure_streak = 0
+        self._audio_output_last_error = ""
+        self._audio_output_cooldown_until = 0.0
+        self._audio_output_cooldown_base_seconds = max(
+            1.0,
+            float(os.getenv("JARVIS_TTS_AUDIO_COOLDOWN_BASE_SECONDS", "5.0")),
+        )
+        self._audio_output_cooldown_max_seconds = max(
+            self._audio_output_cooldown_base_seconds,
+            float(os.getenv("JARVIS_TTS_AUDIO_COOLDOWN_MAX_SECONDS", "60.0")),
+        )
+        self._audio_output_last_cooldown_log_at = 0.0
+        self._audio_output_cooldown_log_interval_seconds = max(
+            1.0,
+            float(os.getenv("JARVIS_TTS_AUDIO_COOLDOWN_LOG_INTERVAL_SECONDS", "20.0")),
+        )
+
+        # Screen-lock-aware playback suppression (macOS only)
+        self._suppress_playback_when_locked = _env_flag(
+            "JARVIS_TTS_SUPPRESS_WHEN_SCREEN_LOCKED", "true"
+        )
+        self._screen_lock_cache_seconds = max(
+            0.25,
+            float(os.getenv("JARVIS_TTS_SCREEN_LOCK_CACHE_SECONDS", "1.5")),
+        )
+        self._screen_lock_check_timeout_seconds = max(
+            0.2,
+            float(os.getenv("JARVIS_TTS_SCREEN_LOCK_CHECK_TIMEOUT_SECONDS", "1.0")),
+        )
+        self._screen_lock_last_checked_monotonic = 0.0
+        self._screen_lock_last_state = False
+        self._screen_lock_checker: Optional[Callable[[], Awaitable[bool]]] = None
+        self._screen_lock_checker_resolved = False
+
         logger.info(
             f"🔊 Unified TTS Engine initialized (preferred: {self.preferred_engine.value})"
         )
@@ -609,6 +644,144 @@ class UnifiedTTSEngine:
         except Exception as e:
             logger.debug(f"Could not initialize {engine_type.value}: {e}")
             return None
+
+    def _audio_output_cooldown_remaining(self) -> float:
+        """Return remaining audio-output cooldown in seconds."""
+        return max(0.0, self._audio_output_cooldown_until - time.monotonic())
+
+    def _is_audio_output_in_cooldown(self) -> bool:
+        """Rate-limit playback retries when local output repeatedly fails."""
+        remaining = self._audio_output_cooldown_remaining()
+        if remaining <= 0:
+            return False
+
+        now = time.monotonic()
+        if (
+            now - self._audio_output_last_cooldown_log_at
+            >= self._audio_output_cooldown_log_interval_seconds
+        ):
+            self._audio_output_last_cooldown_log_at = now
+            logger.warning(
+                "[UnifiedTTS] Audio output cooldown active (%.1fs remaining, "
+                "streak=%d, last_error=%s)",
+                remaining,
+                self._audio_output_failure_streak,
+                self._audio_output_last_error or "unknown",
+            )
+        return True
+
+    def _enter_audio_output_cooldown(self, reason: str) -> None:
+        """Back off repeated local-audio failures with exponential cooldown."""
+        self._audio_output_failure_streak += 1
+        cooldown = min(
+            self._audio_output_cooldown_max_seconds,
+            self._audio_output_cooldown_base_seconds
+            * (2 ** max(0, self._audio_output_failure_streak - 1)),
+        )
+        self._audio_output_cooldown_until = time.monotonic() + cooldown
+        self._audio_output_last_error = (reason or "unknown")[:240]
+        logger.warning(
+            "[UnifiedTTS] Audio output unavailable; cooldown %.1fs "
+            "(streak=%d, reason=%s)",
+            cooldown,
+            self._audio_output_failure_streak,
+            self._audio_output_last_error,
+        )
+
+    def _clear_audio_output_cooldown(self) -> None:
+        """Reset cooldown/failure state after a successful playback."""
+        if self._audio_output_failure_streak > 0:
+            logger.info("[UnifiedTTS] Audio output recovered")
+        self._audio_output_failure_streak = 0
+        self._audio_output_last_error = ""
+        self._audio_output_cooldown_until = 0.0
+
+    def _has_sounddevice_output(self) -> bool:
+        """Check whether a sounddevice output route is currently available."""
+        try:
+            output_device = sd.query_devices(kind="output")
+            if isinstance(output_device, dict):
+                return int(output_device.get("max_output_channels", 0)) > 0
+            return output_device is not None
+        except Exception:
+            return False
+
+    @staticmethod
+    def _is_expected_output_error(error: Exception) -> bool:
+        """Identify expected local-audio failure modes (not code bugs)."""
+        msg = str(error).lower()
+        signatures = (
+            "internal portaudio error",
+            "error opening outputstream",
+            "paerrorcode -9986",
+            "paerrorcode -10851",
+            "invalid property value",
+            "no default output device",
+            "device unavailable",
+            "audio output unavailable",
+            "returned non-zero exit status 1",
+        )
+        return any(sig in msg for sig in signatures)
+
+    @staticmethod
+    def _play_with_sounddevice(data: np.ndarray, sample_rate: int) -> None:
+        """Blocking sounddevice playback helper (for executor use)."""
+        sd.play(data, sample_rate)
+        sd.wait()
+
+    def _get_screen_lock_checker(self) -> Optional[Callable[[], Awaitable[bool]]]:
+        """Resolve async screen-lock checker lazily (if available)."""
+        if self._screen_lock_checker_resolved:
+            return self._screen_lock_checker
+
+        self._screen_lock_checker_resolved = True
+        import_paths = (
+            "backend.voice_unlock.objc.server.screen_lock_detector",
+            "voice_unlock.objc.server.screen_lock_detector",
+        )
+        for module_path in import_paths:
+            try:
+                module = __import__(module_path, fromlist=["async_is_screen_locked"])
+                checker = getattr(module, "async_is_screen_locked", None)
+                if checker is not None and callable(checker):
+                    self._screen_lock_checker = checker
+                    return checker
+            except Exception:
+                continue
+
+        self._screen_lock_checker = None
+        return None
+
+    async def _is_screen_locked_for_playback(self) -> bool:
+        """Check lock state with caching to avoid frequent expensive probes."""
+        if not self._is_macos or not self._suppress_playback_when_locked:
+            return False
+
+        now = time.monotonic()
+        if (
+            now - self._screen_lock_last_checked_monotonic
+            <= self._screen_lock_cache_seconds
+        ):
+            return self._screen_lock_last_state
+
+        self._screen_lock_last_checked_monotonic = now
+        checker = self._get_screen_lock_checker()
+        if checker is None:
+            self._screen_lock_last_state = False
+            return False
+
+        try:
+            self._screen_lock_last_state = bool(
+                await asyncio.wait_for(
+                    checker(),
+                    timeout=self._screen_lock_check_timeout_seconds,
+                )
+            )
+        except Exception as e:
+            logger.debug("[UnifiedTTS] Screen lock check failed: %s", e)
+            self._screen_lock_last_state = False
+
+        return self._screen_lock_last_state
 
     async def speak(
         self,
@@ -703,6 +876,17 @@ class UnifiedTTSEngine:
                                              else sounddevice fallback
         """
         try:
+            if self._is_audio_output_in_cooldown():
+                return
+
+            # When locked, local audio routes are often unavailable on macOS.
+            # Skip playback deterministically to avoid repeated PortAudio churn.
+            if await self._is_screen_locked_for_playback():
+                logger.info(
+                    "[UnifiedTTS] Screen is locked; skipping local playback"
+                )
+                return
+
             # Load audio from bytes
             audio_buffer = io.BytesIO(audio_data)
             data, sr = sf.read(audio_buffer, dtype="float32")
@@ -722,6 +906,7 @@ class UnifiedTTSEngine:
             _bus_running = False
             try:
                 from backend.audio.audio_bus import AudioBus as _ABClass
+
                 _bus = _ABClass.get_instance_safe()
                 _bus_running = _bus is not None and _bus.is_running
             except ImportError:
@@ -737,9 +922,8 @@ class UnifiedTTSEngine:
                 #   2. Consecutive utterances to overflow the ring buffer
                 #      (silent data drops → truncated / garbled audio)
                 audio_np = np.asarray(data, dtype=np.float32)
-                await _bus.play_audio(
-                    audio_np, sample_rate, wait_for_drain=True
-                )
+                await _bus.play_audio(audio_np, sample_rate, wait_for_drain=True)
+                self._clear_audio_output_cooldown()
                 return
                 # If play_audio() raises, exception propagates — we do NOT
                 # fall through to sd.play() (would always fail with -9986).
@@ -747,19 +931,45 @@ class UnifiedTTSEngine:
             # Device is free (AudioBus not running / not started / failed).
             # Prefer native macOS playback to avoid PortAudio startup artifacts.
             loop = asyncio.get_event_loop()
-            if platform.system() == "Darwin":
+            if self._is_macos:
                 try:
-                    await loop.run_in_executor(None, lambda: self._play_with_afplay(audio_data))
+                    await loop.run_in_executor(
+                        None, lambda: self._play_with_afplay(audio_data)
+                    )
+                    self._clear_audio_output_cooldown()
                     return
                 except Exception as afplay_err:
+                    if await self._is_screen_locked_for_playback():
+                        logger.info(
+                            "[UnifiedTTS] Screen locked and afplay unavailable; "
+                            "skipping fallback playback"
+                        )
+                        return
                     logger.warning(
-                        f"[UnifiedTTS] afplay failed, falling back to sounddevice: {afplay_err}"
+                        "[UnifiedTTS] afplay failed, considering sounddevice "
+                        "fallback: %s",
+                        afplay_err,
                     )
 
-            # Non-macOS fallback: use PortAudio/sounddevice.
-            await loop.run_in_executor(None, lambda: sd.play(data, sample_rate) or sd.wait())
+            if not self._has_sounddevice_output():
+                self._enter_audio_output_cooldown(
+                    "No output device available for sounddevice playback"
+                )
+                return
+
+            await loop.run_in_executor(
+                None, lambda: self._play_with_sounddevice(data, sample_rate)
+            )
+            self._clear_audio_output_cooldown()
 
         except Exception as e:
+            if self._is_expected_output_error(e):
+                self._enter_audio_output_cooldown(str(e))
+                logger.warning(
+                    "[UnifiedTTS] Playback skipped due to unavailable audio output: %s",
+                    e,
+                )
+                return
             logger.error(f"Audio playback error: {e}", exc_info=True)
 
     @staticmethod

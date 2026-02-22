@@ -173,6 +173,53 @@ class WebSocketLogger:
 ws_logger = WebSocketLogger()
 
 
+class VisionDescribeResult(dict):
+    """Backward-compatible describe_screen result with dict + attribute access."""
+
+    def __init__(
+        self,
+        *,
+        success: bool,
+        description: str,
+        data: Optional[Dict[str, Any]] = None,
+        error: Optional[str] = None,
+        confidence: float = 1.0,
+    ):
+        super().__init__(
+            success=bool(success),
+            description=description or "",
+            data=data if isinstance(data, dict) else {},
+            error=error,
+            confidence=float(confidence),
+        )
+
+    @property
+    def success(self) -> bool:
+        return bool(self.get("success", False))
+
+    @property
+    def description(self) -> str:
+        return str(self.get("description", ""))
+
+    @property
+    def data(self) -> Dict[str, Any]:
+        value = self.get("data", {})
+        return value if isinstance(value, dict) else {}
+
+    @property
+    def error(self) -> Optional[str]:
+        value = self.get("error")
+        return str(value) if value not in (None, "") else None
+
+    @property
+    def confidence(self) -> float:
+        raw = self.get("confidence", 0.0)
+        try:
+            return float(raw)
+        except (TypeError, ValueError):
+            return 0.0
+
+
 class VisionCommandHandler:
     """
     Handles vision commands using pure Claude intelligence.
@@ -970,6 +1017,190 @@ class VisionCommandHandler:
             "response": "Let me analyze your desktop spaces for you, Sir.",
             "fallback": True,
         }
+
+    @staticmethod
+    def _build_describe_result(
+        raw_result: Dict[str, Any], query: str
+    ) -> VisionDescribeResult:
+        """Normalize internal response payloads into a stable describe_screen contract."""
+        if not isinstance(raw_result, dict):
+            raw_result = {
+                "handled": False,
+                "response": str(raw_result),
+                "error": "invalid_describe_payload",
+            }
+
+        handled = bool(raw_result.get("handled", False))
+        explicit_success = raw_result.get("success")
+        error_value = raw_result.get("error")
+        success = (
+            bool(explicit_success)
+            if isinstance(explicit_success, bool)
+            else handled and not bool(error_value)
+        )
+
+        description = str(
+            raw_result.get("description")
+            or raw_result.get("response")
+            or ""
+        )
+
+        confidence_raw = raw_result.get("confidence")
+        if confidence_raw is None:
+            confidence = 1.0 if success else 0.0
+        else:
+            try:
+                confidence = float(confidence_raw)
+            except (TypeError, ValueError):
+                confidence = 1.0 if success else 0.0
+
+        raw_data = raw_result.get("data")
+        data = dict(raw_data) if isinstance(raw_data, dict) else {}
+        for key, value in raw_result.items():
+            if key in {"success", "description", "data", "error", "confidence"}:
+                continue
+            data.setdefault(key, value)
+        data.setdefault("query", query)
+
+        error_text: Optional[str] = None
+        if error_value not in (None, False, ""):
+            error_text = str(error_value)
+        elif not success:
+            error_text = str(raw_result.get("error_type") or "describe_screen_failed")
+
+        return VisionDescribeResult(
+            success=success,
+            description=description,
+            data=data,
+            error=error_text,
+            confidence=confidence,
+        )
+
+    async def describe_screen(
+        self, params: Optional[Dict[str, Any]] = None, **kwargs
+    ) -> VisionDescribeResult:
+        """
+        Backward-compatible screen description API consumed across subsystems.
+
+        Supports both historical callers that pass ``{"query": ...}`` and newer
+        call sites that provide keyword arguments.
+        """
+        payload: Dict[str, Any] = {}
+        if isinstance(params, dict):
+            payload.update(params)
+        elif params is not None:
+            payload["query"] = str(params)
+        if kwargs:
+            payload.update(kwargs)
+
+        query = str(
+            payload.get("query")
+            or payload.get("command")
+            or payload.get("text")
+            or "Describe what is currently visible on screen."
+        )
+
+        timeout: Optional[float] = None
+        timeout_raw = payload.get("timeout")
+        if timeout_raw is not None:
+            try:
+                timeout = max(0.1, float(timeout_raw))
+            except (TypeError, ValueError):
+                timeout = None
+
+        screenshot = payload.get("screenshot")
+
+        try:
+            if screenshot is not None:
+                if not self.intelligence:
+                    await self.initialize_intelligence()
+
+                if not self.intelligence:
+                    return VisionDescribeResult(
+                        success=False,
+                        description="Vision intelligence is not initialized yet.",
+                        data={"handled": False, "query": query},
+                        error="intelligence_not_ready",
+                        confidence=0.0,
+                    )
+
+                response_text = await self.intelligence.understand_and_respond(
+                    screenshot,
+                    query,
+                )
+                raw_result = {
+                    "handled": True,
+                    "response": response_text,
+                    "monitoring_active": self.monitoring_active,
+                    "source": "describe_screen_direct",
+                    "query": query,
+                }
+            else:
+                if timeout is not None:
+                    raw_result = await asyncio.wait_for(
+                        self.analyze_screen(query),
+                        timeout=timeout,
+                    )
+                else:
+                    raw_result = await self.analyze_screen(query)
+
+            return self._build_describe_result(raw_result, query=query)
+
+        except asyncio.TimeoutError:
+            return VisionDescribeResult(
+                success=False,
+                description=(
+                    f"Screen analysis timed out after {timeout:.1f}s."
+                    if timeout is not None
+                    else "Screen analysis timed out."
+                ),
+                data={"handled": False, "query": query},
+                error="timeout",
+                confidence=0.0,
+            )
+        except Exception as e:
+            logger.error(f"[VISION] describe_screen failed: {e}", exc_info=True)
+            return VisionDescribeResult(
+                success=False,
+                description=f"I encountered an error while analyzing the screen: {e}",
+                data={"handled": False, "query": query},
+                error=str(e),
+                confidence=0.0,
+            )
+
+    async def analyze_window(
+        self, params: Optional[Dict[str, Any]] = None, **kwargs
+    ) -> VisionDescribeResult:
+        """Legacy API wrapper for window-centric analysis."""
+        payload: Dict[str, Any] = {}
+        if isinstance(params, dict):
+            payload.update(params)
+        elif params is not None:
+            payload["query"] = str(params)
+        if kwargs:
+            payload.update(kwargs)
+        payload.setdefault(
+            "query",
+            "Analyze the currently focused window and summarize key actionable content.",
+        )
+        return await self.describe_screen(payload)
+
+    async def check_screen(
+        self, params: Optional[Dict[str, Any]] = None, **kwargs
+    ) -> VisionDescribeResult:
+        """Legacy API wrapper for quick screen checks."""
+        payload: Dict[str, Any] = {}
+        if isinstance(params, dict):
+            payload.update(params)
+        elif params is not None:
+            payload["query"] = str(params)
+        if kwargs:
+            payload.update(kwargs)
+        payload.setdefault(
+            "query",
+            "Check the screen for important updates, alerts, or user blockers.",
+        )
+        return await self.describe_screen(payload)
 
     async def analyze_screen(self, command_text: str) -> Dict[str, Any]:
         """Analyze screen with enhanced multi-space intelligence"""

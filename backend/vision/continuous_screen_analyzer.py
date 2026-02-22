@@ -135,6 +135,7 @@ class MemoryAwareScreenAnalyzer:
             update_interval: How often to capture screen (in seconds)
         """
         self.vision_handler = vision_handler
+        self._validate_vision_handler_interface()
         
         # Load all configuration from environment variables
         self.config = {
@@ -239,7 +240,30 @@ class MemoryAwareScreenAnalyzer:
         self.last_memory_check = time.time()
         
         logger.info(f"Memory-Aware Screen Analyzer initialized with config: {self.config}")
-    
+
+    def _validate_vision_handler_interface(self) -> None:
+        """
+        Enforce the explicit async contract required by the analyzer.
+
+        This prevents runtime monitoring-loop failures caused by handler contract
+        drift (for example, missing ``describe_screen``).
+        """
+        required_methods = ("capture_screen", "describe_screen")
+        missing = []
+        for method_name in required_methods:
+            method = getattr(self.vision_handler, method_name, None)
+            if method is None or not callable(method):
+                missing.append(method_name)
+
+        if missing:
+            handler_type = type(self.vision_handler).__name__
+            missing_csv = ", ".join(missing)
+            raise TypeError(
+                f"Invalid vision handler contract for {handler_type}: missing "
+                f"{missing_csv}. Required async API: capture_screen(), "
+                "describe_screen(params)."
+            )
+
     async def start_monitoring(self):
         """Start continuous screen monitoring with memory management"""
         if self.is_monitoring:
