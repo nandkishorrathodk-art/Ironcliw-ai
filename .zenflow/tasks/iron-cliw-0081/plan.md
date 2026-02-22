@@ -510,6 +510,7 @@ python scripts/benchmark.py
 ---
 
 ### [ ] Phase 11: Documentation & Release (Week 11-12)
+<!-- chat-id: 5feb0859-1b53-4c10-8974-0b479db75cd4 -->
 
 Create comprehensive documentation for Windows installation, usage, and troubleshooting.
 
