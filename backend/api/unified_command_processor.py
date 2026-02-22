@@ -1555,6 +1555,7 @@ class UnifiedCommandProcessor:
                 client.classify_and_complete(
                     query=command_text,
                     max_tokens=512,
+                    context_metadata=source_context,
                 ),
                 timeout=timeout,
             )

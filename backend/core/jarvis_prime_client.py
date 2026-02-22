@@ -1279,14 +1279,31 @@ class JarvisPrimeClient:
         """
         start_time = time.time()
 
+        # v242.1: Enrich query with context metadata for better classification
+        _enriched_query = query
+        if context_metadata:
+            _ctx_parts: list[str] = []
+            if context_metadata.get("active_app"):
+                _ctx_parts.append(f"Active app: {context_metadata['active_app']}")
+            if context_metadata.get("speaker"):
+                _ctx_parts.append(f"Speaker: {context_metadata['speaker']}")
+            if context_metadata.get("recent_history"):
+                _history_summary = "; ".join(
+                    f"{h['role']}: {h['content']}"
+                    for h in context_metadata["recent_history"][-3:]
+                )
+                _ctx_parts.append(f"Recent conversation: {_history_summary}")
+            if _ctx_parts:
+                _enriched_query = f"[Context: {', '.join(_ctx_parts)}]\n{query}"
+
         # Try J-Prime first (normal path via complete())
         try:
             response = await self.complete(
-                prompt=query,
+                prompt=_enriched_query,
                 system_prompt=system_prompt,
                 max_tokens=max_tokens,
                 temperature=temperature,
-                messages=[ChatMessage(role="user", content=query)],
+                messages=[ChatMessage(role="user", content=_enriched_query)],
                 enrich_with_repo_map=False,  # Body handles its own enrichment
             )
 
