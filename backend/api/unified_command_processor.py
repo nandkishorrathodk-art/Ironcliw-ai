@@ -302,6 +302,7 @@ class UnifiedCommandProcessor:
             "brain_vacuum_activations": 0,
             "vision_requests": 0,
             "workspace_requests": 0,
+            "self_voice_suppressions": 0,
             "classifications": {},  # domain -> count
         }
 
@@ -1287,13 +1288,19 @@ class UnifiedCommandProcessor:
             from agi_os.realtime_voice_communicator import get_voice_communicator
             voice_comm = await asyncio.wait_for(get_voice_communicator(), timeout=0.5)
             if voice_comm and voice_comm.is_speaking and not allow_during_tts_interrupt:
-                logger.warning(f"🔇 [SELF-VOICE-SUPPRESSION] Rejecting command while JARVIS is speaking: '{command_text[:50]}...'")
+                logger.warning(
+                    f"[SELF-VOICE-SUPPRESSION] Rejecting command while JARVIS is speaking: "
+                    f"'{command_text[:50]}...'"
+                )
+                self._v242_metrics["self_voice_suppressions"] += 1
                 return {
                     "success": False,
-                    "response": None,  # Silent - don't speak or it creates more echo
+                    "response": None,  # Silent -- don't speak or it creates more echo
                     "type": "self_voice_suppressed",
-                    "message": "Command rejected - JARVIS is currently speaking",
-                    "original_command": command_text
+                    "message": "Command rejected — JARVIS is currently speaking",
+                    "original_command": command_text,
+                    "suppressed": True,  # v242.2: Explicit flag for callers to detect
+                    "retry_after_ms": 2000,  # Hint: retry after TTS likely done
                 }
             if voice_comm and voice_comm.is_speaking and allow_during_tts_interrupt:
                 logger.debug(
@@ -1348,12 +1355,15 @@ class UnifiedCommandProcessor:
             _jprime_ctx["speaker"] = speaker_name
         # Lightweight screen context (active app name, no screenshot)
         try:
-            import subprocess
-            _active_app = subprocess.check_output(
+            import subprocess as _sp
+            _active_app_raw = await asyncio.to_thread(
+                _sp.check_output,
                 ["osascript", "-e",
                  'tell application "System Events" to get name of first application process whose frontmost is true'],
-                timeout=1, stderr=subprocess.DEVNULL,
-            ).decode().strip()
+                timeout=1,
+                stderr=_sp.DEVNULL,
+            )
+            _active_app = _active_app_raw.decode().strip()
             if _active_app:
                 _jprime_ctx["active_app"] = _active_app
         except Exception:
@@ -1537,17 +1547,36 @@ class UnifiedCommandProcessor:
                     if reflex_id in inhibited:
                         published = inhibition.get("published_at", "")
                         ttl = inhibition.get("ttl_seconds", 0)
+                        if ttl <= 0:
+                            # Permanent inhibition (no TTL)
+                            logger.info(
+                                f"[v242] Reflex '{reflex_id}' permanently inhibited: "
+                                f"{inhibition.get('reason', 'no reason')}"
+                            )
+                            return None
                         try:
                             from datetime import timezone
                             pub_time = datetime.fromisoformat(published)
-                            if (datetime.now(timezone.utc) - pub_time).total_seconds() < ttl:
+                            elapsed = (datetime.now(timezone.utc) - pub_time).total_seconds()
+                            if elapsed < ttl:
                                 logger.info(
-                                    f"[v242] Reflex '{reflex_id}' inhibited: "
-                                    f"{inhibition.get('reason')}"
+                                    f"[v242] Reflex '{reflex_id}' inhibited "
+                                    f"({ttl - elapsed:.0f}s remaining): "
+                                    f"{inhibition.get('reason', 'no reason')}"
                                 )
-                                return None  # Inhibited -- send to J-Prime instead
-                        except (ValueError, TypeError):
-                            pass  # Inhibition check failed -- execute reflex anyway
+                                return None  # Inhibited -- send to J-Prime
+                            else:
+                                logger.info(
+                                    f"[v242.2] Reflex inhibition expired for '{reflex_id}' "
+                                    f"(expired {elapsed - ttl:.0f}s ago)"
+                                )
+                                # TTL expired -- execute reflex normally (fall through)
+                        except (ValueError, TypeError) as e:
+                            logger.warning(
+                                f"[v242.2] Failed to parse inhibition timestamp "
+                                f"for '{reflex_id}': {e} (executing reflex as safety default)"
+                            )
+                            # Parse failure -- safer to execute reflex than silently inhibit
 
                 return {"reflex_id": reflex_id, **reflex}
 
