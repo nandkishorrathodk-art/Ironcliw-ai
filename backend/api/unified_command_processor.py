@@ -3114,50 +3114,16 @@ class UnifiedCommandProcessor:
         context: Dict[str, Any] = None,
         deadline: Optional[float] = None,
     ) -> Dict[str, Any]:
-        """
-        v88.0: Execute command with ultra protection stack.
+        """DEPRECATED v242.1: Redirects to v242 Spinal Reflex Arc.
 
-        Protection includes:
-        - Adaptive circuit breaker with ML-based prediction
-        - Backpressure handling with AIMD rate limiting
-        - W3C distributed tracing
-        - Timeout enforcement
+        This method was the entry point for the old keyword-based dispatch.
+        All callers should use process_command() directly instead.
         """
-        # v88.0: Use ultra coordinator protection if available
-        ultra_coord = await _get_ultra_coordinator()
-        if ultra_coord:
-            # v241.0: Cap ultra coordinator timeout to remaining deadline budget
-            from core.prime_router import compute_remaining
-            timeout = compute_remaining(deadline, float(os.getenv("JARVIS_COMMAND_EXECUTION_TIMEOUT", "120.0")))
-            success, result, metadata = await ultra_coord.execute_with_protection(
-                component=f"command_{command_type.value}",
-                operation=lambda: self._execute_command_internal(
-                    command_type, command_text, websocket, context, deadline=deadline
-                ),
-                timeout=timeout,
-            )
-            if success and result is not None:
-                # Inject v88.0 trace info into result
-                if isinstance(result, dict):
-                    result["v88_protected"] = True
-                    if "trace_id" in metadata:
-                        result["v88_trace_id"] = metadata["trace_id"]
-                return result
-            elif not success:
-                error_msg = metadata.get("error", "Unknown protection error")
-                logger.warning(f"[UnifiedProcessor] v88.0 Protection failed: {error_msg}")
-                return {
-                    "success": False,
-                    "response": "I'm experiencing some difficulties. Please try again.",
-                    "command_type": command_type.value,
-                    "v88_error": error_msg,
-                    "circuit_open": metadata.get("circuit_open", False),
-                }
-
-        # Fallback: direct execution without protection
-        return await self._execute_command_internal(
-            command_type, command_text, websocket, context
+        logger.warning(
+            "[DEPRECATED] _execute_command() called — redirecting to v242 process_command(). "
+            "Caller should migrate to process_command() directly."
         )
+        return await self.process_command(command_text, websocket=websocket, deadline=deadline)
 
     async def _execute_command_internal(
         self,
@@ -3168,6 +3134,9 @@ class UnifiedCommandProcessor:
         deadline: Optional[float] = None,
     ) -> Dict[str, Any]:
         """v88.0: Internal command execution (called by protection wrapper)"""
+        # DEPRECATED v242.1 — delete after monitoring confirms zero invocations.
+        # This ~700-line keyword-based dispatch is replaced by the v242 Spinal Reflex Arc
+        # (process_command -> reflex -> J-Prime -> action executor).
 
         # =========================================================================
         # 🛡️ SOVEREIGN SURVEILLANCE ROUTING v1.0.0
