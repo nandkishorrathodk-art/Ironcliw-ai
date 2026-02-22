@@ -61564,6 +61564,34 @@ class JarvisSystemKernel:
         except Exception as e:
             self.logger.debug(f"[Kernel] AGI OS cleanup error: {e}")
 
+        # v243.1: Stop event buses AFTER subscribers (AGI OS, NeuralMesh)
+        # but BEFORE broad task cancellation
+        if self._event_bus_initialized:
+            try:
+                from backend.core.trinity_event_bus import shutdown_trinity_event_bus
+                await asyncio.wait_for(shutdown_trinity_event_bus(), timeout=5.0)
+                self._event_bus_initialized = False
+                self.logger.info("[Kernel] v243.1: TrinityEventBus shut down")
+            except asyncio.TimeoutError:
+                self.logger.warning("[Kernel] v243.1: TrinityEventBus shutdown timed out (5s)")
+            except Exception as _teb_err:
+                self.logger.debug(f"[Kernel] v243.1: TrinityEventBus shutdown error: {_teb_err}")
+
+        if self._event_stream_initialized:
+            try:
+                from backend.agi_os.proactive_event_stream import stop_event_stream
+                await asyncio.wait_for(stop_event_stream(), timeout=5.0)
+                self._event_stream_initialized = False
+                self.logger.info("[Kernel] v243.1: ProactiveEventStream shut down")
+            except asyncio.TimeoutError:
+                self.logger.warning("[Kernel] v243.1: ProactiveEventStream shutdown timed out (5s)")
+            except Exception as _pes_err:
+                self.logger.debug(f"[Kernel] v243.1: ProactiveEventStream shutdown error: {_pes_err}")
+
+        self._update_component_status(
+            "event_infrastructure", "stopped", "Event buses shut down"
+        )
+
         # Stop global hybrid orchestrator singleton if present.
         try:
             from core.hybrid_orchestrator import stop_orchestrator
@@ -76409,6 +76437,34 @@ class JarvisSystemKernel:
                     self.logger.debug(f"[Kernel] AGI fallback teardown error: {agi_fallback_err}")
             except Exception as agi_err:
                 self.logger.debug(f"[Kernel] AGI OS cleanup error: {agi_err}")
+
+            # v243.1: Stop event buses AFTER subscribers (AGI OS, NeuralMesh)
+            # but BEFORE broad task cancellation
+            if self._event_bus_initialized:
+                try:
+                    from backend.core.trinity_event_bus import shutdown_trinity_event_bus
+                    await asyncio.wait_for(shutdown_trinity_event_bus(), timeout=5.0)
+                    self._event_bus_initialized = False
+                    self.logger.info("[Kernel] v243.1: TrinityEventBus shut down")
+                except asyncio.TimeoutError:
+                    self.logger.warning("[Kernel] v243.1: TrinityEventBus shutdown timed out (5s)")
+                except Exception as _teb_err:
+                    self.logger.debug(f"[Kernel] v243.1: TrinityEventBus shutdown error: {_teb_err}")
+
+            if self._event_stream_initialized:
+                try:
+                    from backend.agi_os.proactive_event_stream import stop_event_stream
+                    await asyncio.wait_for(stop_event_stream(), timeout=5.0)
+                    self._event_stream_initialized = False
+                    self.logger.info("[Kernel] v243.1: ProactiveEventStream shut down")
+                except asyncio.TimeoutError:
+                    self.logger.warning("[Kernel] v243.1: ProactiveEventStream shutdown timed out (5s)")
+                except Exception as _pes_err:
+                    self.logger.debug(f"[Kernel] v243.1: ProactiveEventStream shutdown error: {_pes_err}")
+
+            self._update_component_status(
+                "event_infrastructure", "stopped", "Event buses shut down"
+            )
 
             # Stop global hybrid orchestrator singleton if present.
             try:
