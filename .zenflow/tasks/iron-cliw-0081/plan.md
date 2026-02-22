@@ -537,6 +537,7 @@ Create comprehensive documentation for Windows installation, usage, and troubles
 ---
 
 ### [ ] Final Step: Release Report
+<!-- chat-id: 11c2380e-4834-40fe-95bc-010121aedcd6 -->
 
 Write final implementation report to `{@artifacts_path}/report.md` describing:
 - What was implemented
