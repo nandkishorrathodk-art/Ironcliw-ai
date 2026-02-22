@@ -1,0 +1,2928 @@
+{
+  "workflow_name": "Complete Unlock Test Suite (Master)",
+  "workflow_url": "https://github.com/nandkishorrathodk-art/Ironcliw-ai/actions/runs/22284655623",
+  "branch": "main",
+  "commit_sha": "9c3daeb",
+  "run_number": 2,
+  "failed_count": 22,
+  "fix_branch": "fix/ci/complete-unlock-test-suite-master-run2-20260222-202647",
+  "pr_title": "\ud83d\udea8 Fix CI/CD: Complete Unlock Test Suite (Master) (Run #2)",
+  "analyses": [
+    {
+      "error_patterns": [
+        {
+          "pattern": "ERROR|Error|error",
+          "matches": [
+            {
+              "line_number": 39,
+              "content": "2026-02-22T20:24:54.2665677Z 2026-02-22 20:24:54,266 - __main__ - ERROR - \u274c 1 test(s) failed",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 56,
+              "content": "2026-02-22T20:24:54.2787725Z ##[error]Process completed with exit code 1.",
+              "severity": "high",
+              "emoji": "\u274c"
+            }
+          ],
+          "count": 2
+        },
+        {
+          "pattern": "FAIL|Failed|failed",
+          "matches": [
+            {
+              "line_number": 39,
+              "content": "2026-02-22T20:24:54.2665677Z 2026-02-22 20:24:54,266 - __main__ - ERROR - \u274c 1 test(s) failed",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            },
+            {
+              "line_number": 48,
+              "content": "2026-02-22T20:24:54.2674269Z \u274c Failed: 1",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            },
+            {
+              "line_number": 97,
+              "content": "2026-02-22T20:24:55.0809202Z ##[warning]The process '/usr/bin/git' failed with exit code 128",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            }
+          ],
+          "count": 3
+        },
+        {
+          "pattern": "WARN|Warning|warning",
+          "matches": [
+            {
+              "line_number": 62,
+              "content": "2026-02-22T20:24:54.2862485Z   if-no-files-found: warn",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            },
+            {
+              "line_number": 97,
+              "content": "2026-02-22T20:24:55.0809202Z ##[warning]The process '/usr/bin/git' failed with exit code 128",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            }
+          ],
+          "count": 2
+        }
+      ],
+      "suggested_fixes": [
+        "Consider increasing timeout values or optimizing slow operations",
+        "Review test cases and ensure code changes haven't broken existing functionality"
+      ],
+      "severity": "high",
+      "category": "test_failure",
+      "similar_failures": []
+    },
+    {
+      "error_patterns": [
+        {
+          "pattern": "ERROR|Error|error",
+          "matches": [
+            {
+              "line_number": 64,
+              "content": "2026-02-22T20:25:27.8748164Z ERROR: Could not find a version that satisfies the requirement google-cloud-sql-python-connector (from versions: none)",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 65,
+              "content": "2026-02-22T20:25:27.8756583Z ERROR: No matching distribution found for google-cloud-sql-python-connector",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 66,
+              "content": "2026-02-22T20:25:27.9102453Z ##[error]Process completed with exit code 1.",
+              "severity": "high",
+              "emoji": "\u274c"
+            }
+          ],
+          "count": 3
+        },
+        {
+          "pattern": "FAIL|Failed|failed",
+          "matches": [
+            {
+              "line_number": 97,
+              "content": "2026-02-22T20:25:28.2884198Z ##[warning]The process '/usr/bin/git' failed with exit code 128",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            }
+          ],
+          "count": 1
+        },
+        {
+          "pattern": "WARN|Warning|warning",
+          "matches": [
+            {
+              "line_number": 72,
+              "content": "2026-02-22T20:25:27.9210538Z   if-no-files-found: warn",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            },
+            {
+              "line_number": 87,
+              "content": "2026-02-22T20:25:28.1375496Z ##[warning]No files were found with the provided path: test-results/biometric-voice-e2e. No artifacts will be uploaded.",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            },
+            {
+              "line_number": 97,
+              "content": "2026-02-22T20:25:28.2884198Z ##[warning]The process '/usr/bin/git' failed with exit code 128",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            }
+          ],
+          "count": 3
+        },
+        {
+          "pattern": "AssertionError|Exception",
+          "matches": [
+            {
+              "line_number": 0,
+              "content": "2026-02-22T20:25:18.8394774Z Collecting exceptiongroup>=1 (from pytest)",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            },
+            {
+              "line_number": 1,
+              "content": "2026-02-22T20:25:18.8409383Z   Using cached exceptiongroup-1.3.1-py3-none-any.whl.metadata (6.7 kB)",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            },
+            {
+              "line_number": 52,
+              "content": "2026-02-22T20:25:20.3988145Z Using cached exceptiongroup-1.3.1-py3-none-any.whl (16 kB)",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            },
+            {
+              "line_number": 61,
+              "content": "2026-02-22T20:25:20.5457846Z Installing collected packages: typing-extensions, tomli, pygments, propcache, pluggy, packaging, numpy, iniconfig, idna, frozenlist, backports-asyncio-runner, attrs, asyncio-pool, async-timeout, aiohappyeyeballs, scipy, multidict, exceptiongroup, aiosignal, yarl, pytest, pytest-timeout, pytest-mock, pytest-asyncio, aiohttp",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            },
+            {
+              "line_number": 63,
+              "content": "2026-02-22T20:25:27.1724931Z Successfully installed aiohappyeyeballs-2.6.1 aiohttp-3.13.3 aiosignal-1.4.0 async-timeout-5.0.1 asyncio-pool-0.6.0 attrs-25.4.0 backports-asyncio-runner-1.2.0 exceptiongroup-1.3.1 frozenlist-1.8.0 idna-3.11 iniconfig-2.3.0 multidict-6.7.1 numpy-2.2.6 packaging-26.0 pluggy-1.6.0 propcache-0.4.1 pygments-2.19.2 pytest-9.0.2 pytest-asyncio-1.3.0 pytest-mock-3.15.1 pytest-timeout-2.4.0 scipy-1.15.3 tomli-2.4.0 typing-extensions-4.15.0 yarl-1.22.0",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            }
+          ],
+          "count": 5
+        },
+        {
+          "pattern": "timeout|timed out",
+          "matches": [
+            {
+              "line_number": 20,
+              "content": "2026-02-22T20:25:19.0269147Z Collecting async-timeout<6.0,>=4.0 (from aiohttp)",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 21,
+              "content": "2026-02-22T20:25:19.0282042Z   Using cached async_timeout-5.0.1-py3-none-any.whl.metadata (5.1 kB)",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 38,
+              "content": "2026-02-22T20:25:19.8525300Z Using cached pytest_timeout-2.4.0-py3-none-any.whl (14 kB)",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 41,
+              "content": "2026-02-22T20:25:19.8573623Z Using cached async_timeout-5.0.1-py3-none-any.whl (6.2 kB)",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 61,
+              "content": "2026-02-22T20:25:20.5457846Z Installing collected packages: typing-extensions, tomli, pygments, propcache, pluggy, packaging, numpy, iniconfig, idna, frozenlist, backports-asyncio-runner, attrs, asyncio-pool, async-timeout, aiohappyeyeballs, scipy, multidict, exceptiongroup, aiosignal, yarl, pytest, pytest-timeout, pytest-mock, pytest-asyncio, aiohttp",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 63,
+              "content": "2026-02-22T20:25:27.1724931Z Successfully installed aiohappyeyeballs-2.6.1 aiohttp-3.13.3 aiosignal-1.4.0 async-timeout-5.0.1 asyncio-pool-0.6.0 attrs-25.4.0 backports-asyncio-runner-1.2.0 exceptiongroup-1.3.1 frozenlist-1.8.0 idna-3.11 iniconfig-2.3.0 multidict-6.7.1 numpy-2.2.6 packaging-26.0 pluggy-1.6.0 propcache-0.4.1 pygments-2.19.2 pytest-9.0.2 pytest-asyncio-1.3.0 pytest-mock-3.15.1 pytest-timeout-2.4.0 scipy-1.15.3 tomli-2.4.0 typing-extensions-4.15.0 yarl-1.22.0",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            }
+          ],
+          "count": 6
+        }
+      ],
+      "suggested_fixes": [
+        "Consider increasing timeout values or optimizing slow operations"
+      ],
+      "severity": "high",
+      "category": "timeout",
+      "similar_failures": []
+    },
+    {
+      "error_patterns": [
+        {
+          "pattern": "ERROR|Error|error",
+          "matches": [
+            {
+              "line_number": 64,
+              "content": "2026-02-22T20:25:33.6986602Z ERROR: Could not find a version that satisfies the requirement google-cloud-sql-python-connector (from versions: none)",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 65,
+              "content": "2026-02-22T20:25:33.6996771Z ERROR: No matching distribution found for google-cloud-sql-python-connector",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 66,
+              "content": "2026-02-22T20:25:33.7377936Z ##[error]Process completed with exit code 1.",
+              "severity": "high",
+              "emoji": "\u274c"
+            }
+          ],
+          "count": 3
+        },
+        {
+          "pattern": "FAIL|Failed|failed",
+          "matches": [
+            {
+              "line_number": 97,
+              "content": "2026-02-22T20:25:34.1149677Z ##[warning]The process '/usr/bin/git' failed with exit code 128",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            }
+          ],
+          "count": 1
+        },
+        {
+          "pattern": "WARN|Warning|warning",
+          "matches": [
+            {
+              "line_number": 72,
+              "content": "2026-02-22T20:25:33.7487355Z   if-no-files-found: warn",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            },
+            {
+              "line_number": 87,
+              "content": "2026-02-22T20:25:33.9624929Z ##[warning]No files were found with the provided path: test-results/biometric-voice-e2e. No artifacts will be uploaded.",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            },
+            {
+              "line_number": 97,
+              "content": "2026-02-22T20:25:34.1149677Z ##[warning]The process '/usr/bin/git' failed with exit code 128",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            }
+          ],
+          "count": 3
+        },
+        {
+          "pattern": "AssertionError|Exception",
+          "matches": [
+            {
+              "line_number": 0,
+              "content": "2026-02-22T20:25:24.1048066Z Collecting exceptiongroup>=1 (from pytest)",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            },
+            {
+              "line_number": 1,
+              "content": "2026-02-22T20:25:24.1062610Z   Using cached exceptiongroup-1.3.1-py3-none-any.whl.metadata (6.7 kB)",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            },
+            {
+              "line_number": 52,
+              "content": "2026-02-22T20:25:26.1591919Z Using cached exceptiongroup-1.3.1-py3-none-any.whl (16 kB)",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            },
+            {
+              "line_number": 61,
+              "content": "2026-02-22T20:25:26.3076358Z Installing collected packages: typing-extensions, tomli, pygments, propcache, pluggy, packaging, numpy, iniconfig, idna, frozenlist, backports-asyncio-runner, attrs, asyncio-pool, async-timeout, aiohappyeyeballs, scipy, multidict, exceptiongroup, aiosignal, yarl, pytest, pytest-timeout, pytest-mock, pytest-asyncio, aiohttp",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            },
+            {
+              "line_number": 63,
+              "content": "2026-02-22T20:25:32.9560733Z Successfully installed aiohappyeyeballs-2.6.1 aiohttp-3.13.3 aiosignal-1.4.0 async-timeout-5.0.1 asyncio-pool-0.6.0 attrs-25.4.0 backports-asyncio-runner-1.2.0 exceptiongroup-1.3.1 frozenlist-1.8.0 idna-3.11 iniconfig-2.3.0 multidict-6.7.1 numpy-2.2.6 packaging-26.0 pluggy-1.6.0 propcache-0.4.1 pygments-2.19.2 pytest-9.0.2 pytest-asyncio-1.3.0 pytest-mock-3.15.1 pytest-timeout-2.4.0 scipy-1.15.3 tomli-2.4.0 typing-extensions-4.15.0 yarl-1.22.0",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            }
+          ],
+          "count": 5
+        },
+        {
+          "pattern": "timeout|timed out",
+          "matches": [
+            {
+              "line_number": 20,
+              "content": "2026-02-22T20:25:24.3399977Z Collecting async-timeout<6.0,>=4.0 (from aiohttp)",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 21,
+              "content": "2026-02-22T20:25:24.3413143Z   Using cached async_timeout-5.0.1-py3-none-any.whl.metadata (5.1 kB)",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 38,
+              "content": "2026-02-22T20:25:25.1930918Z Using cached pytest_timeout-2.4.0-py3-none-any.whl (14 kB)",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 41,
+              "content": "2026-02-22T20:25:25.1980668Z Using cached async_timeout-5.0.1-py3-none-any.whl (6.2 kB)",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 61,
+              "content": "2026-02-22T20:25:26.3076358Z Installing collected packages: typing-extensions, tomli, pygments, propcache, pluggy, packaging, numpy, iniconfig, idna, frozenlist, backports-asyncio-runner, attrs, asyncio-pool, async-timeout, aiohappyeyeballs, scipy, multidict, exceptiongroup, aiosignal, yarl, pytest, pytest-timeout, pytest-mock, pytest-asyncio, aiohttp",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 63,
+              "content": "2026-02-22T20:25:32.9560733Z Successfully installed aiohappyeyeballs-2.6.1 aiohttp-3.13.3 aiosignal-1.4.0 async-timeout-5.0.1 asyncio-pool-0.6.0 attrs-25.4.0 backports-asyncio-runner-1.2.0 exceptiongroup-1.3.1 frozenlist-1.8.0 idna-3.11 iniconfig-2.3.0 multidict-6.7.1 numpy-2.2.6 packaging-26.0 pluggy-1.6.0 propcache-0.4.1 pygments-2.19.2 pytest-9.0.2 pytest-asyncio-1.3.0 pytest-mock-3.15.1 pytest-timeout-2.4.0 scipy-1.15.3 tomli-2.4.0 typing-extensions-4.15.0 yarl-1.22.0",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            }
+          ],
+          "count": 6
+        }
+      ],
+      "suggested_fixes": [
+        "Consider increasing timeout values or optimizing slow operations"
+      ],
+      "severity": "high",
+      "category": "timeout",
+      "similar_failures": []
+    },
+    {
+      "error_patterns": [
+        {
+          "pattern": "ERROR|Error|error",
+          "matches": [
+            {
+              "line_number": 64,
+              "content": "2026-02-22T20:25:25.6747356Z ERROR: Could not find a version that satisfies the requirement google-cloud-sql-python-connector (from versions: none)",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 65,
+              "content": "2026-02-22T20:25:25.6755775Z ERROR: No matching distribution found for google-cloud-sql-python-connector",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 66,
+              "content": "2026-02-22T20:25:25.7103601Z ##[error]Process completed with exit code 1.",
+              "severity": "high",
+              "emoji": "\u274c"
+            }
+          ],
+          "count": 3
+        },
+        {
+          "pattern": "FAIL|Failed|failed",
+          "matches": [
+            {
+              "line_number": 97,
+              "content": "2026-02-22T20:25:26.0809101Z ##[warning]The process '/usr/bin/git' failed with exit code 128",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            }
+          ],
+          "count": 1
+        },
+        {
+          "pattern": "WARN|Warning|warning",
+          "matches": [
+            {
+              "line_number": 72,
+              "content": "2026-02-22T20:25:25.7206455Z   if-no-files-found: warn",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            },
+            {
+              "line_number": 87,
+              "content": "2026-02-22T20:25:25.9317511Z ##[warning]No files were found with the provided path: test-results/biometric-voice-e2e. No artifacts will be uploaded.",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            },
+            {
+              "line_number": 97,
+              "content": "2026-02-22T20:25:26.0809101Z ##[warning]The process '/usr/bin/git' failed with exit code 128",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            }
+          ],
+          "count": 3
+        },
+        {
+          "pattern": "AssertionError|Exception",
+          "matches": [
+            {
+              "line_number": 0,
+              "content": "2026-02-22T20:25:16.2516904Z Collecting exceptiongroup>=1 (from pytest)",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            },
+            {
+              "line_number": 1,
+              "content": "2026-02-22T20:25:16.2530096Z   Using cached exceptiongroup-1.3.1-py3-none-any.whl.metadata (6.7 kB)",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            },
+            {
+              "line_number": 52,
+              "content": "2026-02-22T20:25:18.1026328Z Using cached exceptiongroup-1.3.1-py3-none-any.whl (16 kB)",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            },
+            {
+              "line_number": 61,
+              "content": "2026-02-22T20:25:18.2507684Z Installing collected packages: typing-extensions, tomli, pygments, propcache, pluggy, packaging, numpy, iniconfig, idna, frozenlist, backports-asyncio-runner, attrs, asyncio-pool, async-timeout, aiohappyeyeballs, scipy, multidict, exceptiongroup, aiosignal, yarl, pytest, pytest-timeout, pytest-mock, pytest-asyncio, aiohttp",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            },
+            {
+              "line_number": 63,
+              "content": "2026-02-22T20:25:24.5680253Z Successfully installed aiohappyeyeballs-2.6.1 aiohttp-3.13.3 aiosignal-1.4.0 async-timeout-5.0.1 asyncio-pool-0.6.0 attrs-25.4.0 backports-asyncio-runner-1.2.0 exceptiongroup-1.3.1 frozenlist-1.8.0 idna-3.11 iniconfig-2.3.0 multidict-6.7.1 numpy-2.2.6 packaging-26.0 pluggy-1.6.0 propcache-0.4.1 pygments-2.19.2 pytest-9.0.2 pytest-asyncio-1.3.0 pytest-mock-3.15.1 pytest-timeout-2.4.0 scipy-1.15.3 tomli-2.4.0 typing-extensions-4.15.0 yarl-1.22.0",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            }
+          ],
+          "count": 5
+        },
+        {
+          "pattern": "timeout|timed out",
+          "matches": [
+            {
+              "line_number": 20,
+              "content": "2026-02-22T20:25:16.4457408Z Collecting async-timeout<6.0,>=4.0 (from aiohttp)",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 21,
+              "content": "2026-02-22T20:25:16.4476680Z   Using cached async_timeout-5.0.1-py3-none-any.whl.metadata (5.1 kB)",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 38,
+              "content": "2026-02-22T20:25:17.2877474Z Using cached pytest_timeout-2.4.0-py3-none-any.whl (14 kB)",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 41,
+              "content": "2026-02-22T20:25:17.2926476Z Using cached async_timeout-5.0.1-py3-none-any.whl (6.2 kB)",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 61,
+              "content": "2026-02-22T20:25:18.2507684Z Installing collected packages: typing-extensions, tomli, pygments, propcache, pluggy, packaging, numpy, iniconfig, idna, frozenlist, backports-asyncio-runner, attrs, asyncio-pool, async-timeout, aiohappyeyeballs, scipy, multidict, exceptiongroup, aiosignal, yarl, pytest, pytest-timeout, pytest-mock, pytest-asyncio, aiohttp",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 63,
+              "content": "2026-02-22T20:25:24.5680253Z Successfully installed aiohappyeyeballs-2.6.1 aiohttp-3.13.3 aiosignal-1.4.0 async-timeout-5.0.1 asyncio-pool-0.6.0 attrs-25.4.0 backports-asyncio-runner-1.2.0 exceptiongroup-1.3.1 frozenlist-1.8.0 idna-3.11 iniconfig-2.3.0 multidict-6.7.1 numpy-2.2.6 packaging-26.0 pluggy-1.6.0 propcache-0.4.1 pygments-2.19.2 pytest-9.0.2 pytest-asyncio-1.3.0 pytest-mock-3.15.1 pytest-timeout-2.4.0 scipy-1.15.3 tomli-2.4.0 typing-extensions-4.15.0 yarl-1.22.0",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            }
+          ],
+          "count": 6
+        }
+      ],
+      "suggested_fixes": [
+        "Consider increasing timeout values or optimizing slow operations"
+      ],
+      "severity": "high",
+      "category": "timeout",
+      "similar_failures": []
+    },
+    {
+      "error_patterns": [
+        {
+          "pattern": "ERROR|Error|error",
+          "matches": [
+            {
+              "line_number": 64,
+              "content": "2026-02-22T20:25:29.2157480Z ERROR: Could not find a version that satisfies the requirement google-cloud-sql-python-connector (from versions: none)",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 65,
+              "content": "2026-02-22T20:25:29.2166248Z ERROR: No matching distribution found for google-cloud-sql-python-connector",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 66,
+              "content": "2026-02-22T20:25:29.2562540Z ##[error]Process completed with exit code 1.",
+              "severity": "high",
+              "emoji": "\u274c"
+            }
+          ],
+          "count": 3
+        },
+        {
+          "pattern": "FAIL|Failed|failed",
+          "matches": [
+            {
+              "line_number": 97,
+              "content": "2026-02-22T20:25:29.6355369Z ##[warning]The process '/usr/bin/git' failed with exit code 128",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            }
+          ],
+          "count": 1
+        },
+        {
+          "pattern": "WARN|Warning|warning",
+          "matches": [
+            {
+              "line_number": 72,
+              "content": "2026-02-22T20:25:29.2669018Z   if-no-files-found: warn",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            },
+            {
+              "line_number": 87,
+              "content": "2026-02-22T20:25:29.4829605Z ##[warning]No files were found with the provided path: test-results/biometric-voice-e2e. No artifacts will be uploaded.",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            },
+            {
+              "line_number": 97,
+              "content": "2026-02-22T20:25:29.6355369Z ##[warning]The process '/usr/bin/git' failed with exit code 128",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            }
+          ],
+          "count": 3
+        },
+        {
+          "pattern": "AssertionError|Exception",
+          "matches": [
+            {
+              "line_number": 0,
+              "content": "2026-02-22T20:25:20.6058154Z Collecting exceptiongroup>=1 (from pytest)",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            },
+            {
+              "line_number": 1,
+              "content": "2026-02-22T20:25:20.6071610Z   Using cached exceptiongroup-1.3.1-py3-none-any.whl.metadata (6.7 kB)",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            },
+            {
+              "line_number": 52,
+              "content": "2026-02-22T20:25:21.8911648Z Using cached exceptiongroup-1.3.1-py3-none-any.whl (16 kB)",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            },
+            {
+              "line_number": 61,
+              "content": "2026-02-22T20:25:22.0400442Z Installing collected packages: typing-extensions, tomli, pygments, propcache, pluggy, packaging, numpy, iniconfig, idna, frozenlist, backports-asyncio-runner, attrs, asyncio-pool, async-timeout, aiohappyeyeballs, scipy, multidict, exceptiongroup, aiosignal, yarl, pytest, pytest-timeout, pytest-mock, pytest-asyncio, aiohttp",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            },
+            {
+              "line_number": 63,
+              "content": "2026-02-22T20:25:28.4765688Z Successfully installed aiohappyeyeballs-2.6.1 aiohttp-3.13.3 aiosignal-1.4.0 async-timeout-5.0.1 asyncio-pool-0.6.0 attrs-25.4.0 backports-asyncio-runner-1.2.0 exceptiongroup-1.3.1 frozenlist-1.8.0 idna-3.11 iniconfig-2.3.0 multidict-6.7.1 numpy-2.2.6 packaging-26.0 pluggy-1.6.0 propcache-0.4.1 pygments-2.19.2 pytest-9.0.2 pytest-asyncio-1.3.0 pytest-mock-3.15.1 pytest-timeout-2.4.0 scipy-1.15.3 tomli-2.4.0 typing-extensions-4.15.0 yarl-1.22.0",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            }
+          ],
+          "count": 5
+        },
+        {
+          "pattern": "timeout|timed out",
+          "matches": [
+            {
+              "line_number": 20,
+              "content": "2026-02-22T20:25:20.7565512Z Collecting async-timeout<6.0,>=4.0 (from aiohttp)",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 21,
+              "content": "2026-02-22T20:25:20.7578665Z   Using cached async_timeout-5.0.1-py3-none-any.whl.metadata (5.1 kB)",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 38,
+              "content": "2026-02-22T20:25:21.5661907Z Using cached pytest_timeout-2.4.0-py3-none-any.whl (14 kB)",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 41,
+              "content": "2026-02-22T20:25:21.5710355Z Using cached async_timeout-5.0.1-py3-none-any.whl (6.2 kB)",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 61,
+              "content": "2026-02-22T20:25:22.0400442Z Installing collected packages: typing-extensions, tomli, pygments, propcache, pluggy, packaging, numpy, iniconfig, idna, frozenlist, backports-asyncio-runner, attrs, asyncio-pool, async-timeout, aiohappyeyeballs, scipy, multidict, exceptiongroup, aiosignal, yarl, pytest, pytest-timeout, pytest-mock, pytest-asyncio, aiohttp",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 63,
+              "content": "2026-02-22T20:25:28.4765688Z Successfully installed aiohappyeyeballs-2.6.1 aiohttp-3.13.3 aiosignal-1.4.0 async-timeout-5.0.1 asyncio-pool-0.6.0 attrs-25.4.0 backports-asyncio-runner-1.2.0 exceptiongroup-1.3.1 frozenlist-1.8.0 idna-3.11 iniconfig-2.3.0 multidict-6.7.1 numpy-2.2.6 packaging-26.0 pluggy-1.6.0 propcache-0.4.1 pygments-2.19.2 pytest-9.0.2 pytest-asyncio-1.3.0 pytest-mock-3.15.1 pytest-timeout-2.4.0 scipy-1.15.3 tomli-2.4.0 typing-extensions-4.15.0 yarl-1.22.0",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            }
+          ],
+          "count": 6
+        }
+      ],
+      "suggested_fixes": [
+        "Consider increasing timeout values or optimizing slow operations"
+      ],
+      "severity": "high",
+      "category": "timeout",
+      "similar_failures": []
+    },
+    {
+      "error_patterns": [
+        {
+          "pattern": "ERROR|Error|error",
+          "matches": [
+            {
+              "line_number": 64,
+              "content": "2026-02-22T20:25:50.6585840Z ERROR: Could not find a version that satisfies the requirement google-cloud-sql-python-connector (from versions: none)",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 65,
+              "content": "2026-02-22T20:25:50.6595184Z ERROR: No matching distribution found for google-cloud-sql-python-connector",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 66,
+              "content": "2026-02-22T20:25:50.6945122Z ##[error]Process completed with exit code 1.",
+              "severity": "high",
+              "emoji": "\u274c"
+            }
+          ],
+          "count": 3
+        },
+        {
+          "pattern": "FAIL|Failed|failed",
+          "matches": [
+            {
+              "line_number": 97,
+              "content": "2026-02-22T20:25:51.0690591Z ##[warning]The process '/usr/bin/git' failed with exit code 128",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            }
+          ],
+          "count": 1
+        },
+        {
+          "pattern": "WARN|Warning|warning",
+          "matches": [
+            {
+              "line_number": 72,
+              "content": "2026-02-22T20:25:50.7049150Z   if-no-files-found: warn",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            },
+            {
+              "line_number": 87,
+              "content": "2026-02-22T20:25:50.9166390Z ##[warning]No files were found with the provided path: test-results/biometric-voice-e2e. No artifacts will be uploaded.",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            },
+            {
+              "line_number": 97,
+              "content": "2026-02-22T20:25:51.0690591Z ##[warning]The process '/usr/bin/git' failed with exit code 128",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            }
+          ],
+          "count": 3
+        },
+        {
+          "pattern": "AssertionError|Exception",
+          "matches": [
+            {
+              "line_number": 0,
+              "content": "2026-02-22T20:25:41.0538760Z Collecting exceptiongroup>=1 (from pytest)",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            },
+            {
+              "line_number": 1,
+              "content": "2026-02-22T20:25:41.0552336Z   Using cached exceptiongroup-1.3.1-py3-none-any.whl.metadata (6.7 kB)",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            },
+            {
+              "line_number": 52,
+              "content": "2026-02-22T20:25:42.9893641Z Using cached exceptiongroup-1.3.1-py3-none-any.whl (16 kB)",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            },
+            {
+              "line_number": 61,
+              "content": "2026-02-22T20:25:43.1364224Z Installing collected packages: typing-extensions, tomli, pygments, propcache, pluggy, packaging, numpy, iniconfig, idna, frozenlist, backports-asyncio-runner, attrs, asyncio-pool, async-timeout, aiohappyeyeballs, scipy, multidict, exceptiongroup, aiosignal, yarl, pytest, pytest-timeout, pytest-mock, pytest-asyncio, aiohttp",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            },
+            {
+              "line_number": 63,
+              "content": "2026-02-22T20:25:49.7092541Z Successfully installed aiohappyeyeballs-2.6.1 aiohttp-3.13.3 aiosignal-1.4.0 async-timeout-5.0.1 asyncio-pool-0.6.0 attrs-25.4.0 backports-asyncio-runner-1.2.0 exceptiongroup-1.3.1 frozenlist-1.8.0 idna-3.11 iniconfig-2.3.0 multidict-6.7.1 numpy-2.2.6 packaging-26.0 pluggy-1.6.0 propcache-0.4.1 pygments-2.19.2 pytest-9.0.2 pytest-asyncio-1.3.0 pytest-mock-3.15.1 pytest-timeout-2.4.0 scipy-1.15.3 tomli-2.4.0 typing-extensions-4.15.0 yarl-1.22.0",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            }
+          ],
+          "count": 5
+        },
+        {
+          "pattern": "timeout|timed out",
+          "matches": [
+            {
+              "line_number": 20,
+              "content": "2026-02-22T20:25:41.3140946Z Collecting async-timeout<6.0,>=4.0 (from aiohttp)",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 21,
+              "content": "2026-02-22T20:25:41.3153801Z   Using cached async_timeout-5.0.1-py3-none-any.whl.metadata (5.1 kB)",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 38,
+              "content": "2026-02-22T20:25:42.1833042Z Using cached pytest_timeout-2.4.0-py3-none-any.whl (14 kB)",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 41,
+              "content": "2026-02-22T20:25:42.1882056Z Using cached async_timeout-5.0.1-py3-none-any.whl (6.2 kB)",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 61,
+              "content": "2026-02-22T20:25:43.1364224Z Installing collected packages: typing-extensions, tomli, pygments, propcache, pluggy, packaging, numpy, iniconfig, idna, frozenlist, backports-asyncio-runner, attrs, asyncio-pool, async-timeout, aiohappyeyeballs, scipy, multidict, exceptiongroup, aiosignal, yarl, pytest, pytest-timeout, pytest-mock, pytest-asyncio, aiohttp",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 63,
+              "content": "2026-02-22T20:25:49.7092541Z Successfully installed aiohappyeyeballs-2.6.1 aiohttp-3.13.3 aiosignal-1.4.0 async-timeout-5.0.1 asyncio-pool-0.6.0 attrs-25.4.0 backports-asyncio-runner-1.2.0 exceptiongroup-1.3.1 frozenlist-1.8.0 idna-3.11 iniconfig-2.3.0 multidict-6.7.1 numpy-2.2.6 packaging-26.0 pluggy-1.6.0 propcache-0.4.1 pygments-2.19.2 pytest-9.0.2 pytest-asyncio-1.3.0 pytest-mock-3.15.1 pytest-timeout-2.4.0 scipy-1.15.3 tomli-2.4.0 typing-extensions-4.15.0 yarl-1.22.0",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            }
+          ],
+          "count": 6
+        }
+      ],
+      "suggested_fixes": [
+        "Consider increasing timeout values or optimizing slow operations"
+      ],
+      "severity": "high",
+      "category": "timeout",
+      "similar_failures": []
+    },
+    {
+      "error_patterns": [
+        {
+          "pattern": "ERROR|Error|error",
+          "matches": [
+            {
+              "line_number": 64,
+              "content": "2026-02-22T20:25:10.9631415Z ERROR: Could not find a version that satisfies the requirement google-cloud-sql-python-connector (from versions: none)",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 65,
+              "content": "2026-02-22T20:25:10.9640528Z ERROR: No matching distribution found for google-cloud-sql-python-connector",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 66,
+              "content": "2026-02-22T20:25:11.0016471Z ##[error]Process completed with exit code 1.",
+              "severity": "high",
+              "emoji": "\u274c"
+            }
+          ],
+          "count": 3
+        },
+        {
+          "pattern": "FAIL|Failed|failed",
+          "matches": [
+            {
+              "line_number": 97,
+              "content": "2026-02-22T20:25:11.3791355Z ##[warning]The process '/usr/bin/git' failed with exit code 128",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            }
+          ],
+          "count": 1
+        },
+        {
+          "pattern": "WARN|Warning|warning",
+          "matches": [
+            {
+              "line_number": 72,
+              "content": "2026-02-22T20:25:11.0127750Z   if-no-files-found: warn",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            },
+            {
+              "line_number": 87,
+              "content": "2026-02-22T20:25:11.2258285Z ##[warning]No files were found with the provided path: test-results/biometric-voice-e2e. No artifacts will be uploaded.",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            },
+            {
+              "line_number": 97,
+              "content": "2026-02-22T20:25:11.3791355Z ##[warning]The process '/usr/bin/git' failed with exit code 128",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            }
+          ],
+          "count": 3
+        },
+        {
+          "pattern": "AssertionError|Exception",
+          "matches": [
+            {
+              "line_number": 0,
+              "content": "2026-02-22T20:25:01.1266257Z Collecting exceptiongroup>=1 (from pytest)",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            },
+            {
+              "line_number": 1,
+              "content": "2026-02-22T20:25:01.1279827Z   Using cached exceptiongroup-1.3.1-py3-none-any.whl.metadata (6.7 kB)",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            },
+            {
+              "line_number": 52,
+              "content": "2026-02-22T20:25:02.7072900Z Using cached exceptiongroup-1.3.1-py3-none-any.whl (16 kB)",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            },
+            {
+              "line_number": 61,
+              "content": "2026-02-22T20:25:02.8574478Z Installing collected packages: typing-extensions, tomli, pygments, propcache, pluggy, packaging, numpy, iniconfig, idna, frozenlist, backports-asyncio-runner, attrs, asyncio-pool, async-timeout, aiohappyeyeballs, scipy, multidict, exceptiongroup, aiosignal, yarl, pytest, pytest-timeout, pytest-mock, pytest-asyncio, aiohttp",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            },
+            {
+              "line_number": 63,
+              "content": "2026-02-22T20:25:10.2797036Z Successfully installed aiohappyeyeballs-2.6.1 aiohttp-3.13.3 aiosignal-1.4.0 async-timeout-5.0.1 asyncio-pool-0.6.0 attrs-25.4.0 backports-asyncio-runner-1.2.0 exceptiongroup-1.3.1 frozenlist-1.8.0 idna-3.11 iniconfig-2.3.0 multidict-6.7.1 numpy-2.2.6 packaging-26.0 pluggy-1.6.0 propcache-0.4.1 pygments-2.19.2 pytest-9.0.2 pytest-asyncio-1.3.0 pytest-mock-3.15.1 pytest-timeout-2.4.0 scipy-1.15.3 tomli-2.4.0 typing-extensions-4.15.0 yarl-1.22.0",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            }
+          ],
+          "count": 5
+        },
+        {
+          "pattern": "timeout|timed out",
+          "matches": [
+            {
+              "line_number": 20,
+              "content": "2026-02-22T20:25:01.3046197Z Collecting async-timeout<6.0,>=4.0 (from aiohttp)",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 21,
+              "content": "2026-02-22T20:25:01.3065519Z   Using cached async_timeout-5.0.1-py3-none-any.whl.metadata (5.1 kB)",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 38,
+              "content": "2026-02-22T20:25:02.0110131Z Using cached pytest_timeout-2.4.0-py3-none-any.whl (14 kB)",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 41,
+              "content": "2026-02-22T20:25:02.0159043Z Using cached async_timeout-5.0.1-py3-none-any.whl (6.2 kB)",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 61,
+              "content": "2026-02-22T20:25:02.8574478Z Installing collected packages: typing-extensions, tomli, pygments, propcache, pluggy, packaging, numpy, iniconfig, idna, frozenlist, backports-asyncio-runner, attrs, asyncio-pool, async-timeout, aiohappyeyeballs, scipy, multidict, exceptiongroup, aiosignal, yarl, pytest, pytest-timeout, pytest-mock, pytest-asyncio, aiohttp",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 63,
+              "content": "2026-02-22T20:25:10.2797036Z Successfully installed aiohappyeyeballs-2.6.1 aiohttp-3.13.3 aiosignal-1.4.0 async-timeout-5.0.1 asyncio-pool-0.6.0 attrs-25.4.0 backports-asyncio-runner-1.2.0 exceptiongroup-1.3.1 frozenlist-1.8.0 idna-3.11 iniconfig-2.3.0 multidict-6.7.1 numpy-2.2.6 packaging-26.0 pluggy-1.6.0 propcache-0.4.1 pygments-2.19.2 pytest-9.0.2 pytest-asyncio-1.3.0 pytest-mock-3.15.1 pytest-timeout-2.4.0 scipy-1.15.3 tomli-2.4.0 typing-extensions-4.15.0 yarl-1.22.0",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            }
+          ],
+          "count": 6
+        }
+      ],
+      "suggested_fixes": [
+        "Consider increasing timeout values or optimizing slow operations"
+      ],
+      "severity": "high",
+      "category": "timeout",
+      "similar_failures": []
+    },
+    {
+      "error_patterns": [
+        {
+          "pattern": "ERROR|Error|error",
+          "matches": [
+            {
+              "line_number": 64,
+              "content": "2026-02-22T20:25:33.3564239Z ERROR: Could not find a version that satisfies the requirement google-cloud-sql-python-connector (from versions: none)",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 65,
+              "content": "2026-02-22T20:25:33.3574328Z ERROR: No matching distribution found for google-cloud-sql-python-connector",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 66,
+              "content": "2026-02-22T20:25:33.3987249Z ##[error]Process completed with exit code 1.",
+              "severity": "high",
+              "emoji": "\u274c"
+            }
+          ],
+          "count": 3
+        },
+        {
+          "pattern": "FAIL|Failed|failed",
+          "matches": [
+            {
+              "line_number": 97,
+              "content": "2026-02-22T20:25:33.8061124Z ##[warning]The process '/usr/bin/git' failed with exit code 128",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            }
+          ],
+          "count": 1
+        },
+        {
+          "pattern": "WARN|Warning|warning",
+          "matches": [
+            {
+              "line_number": 72,
+              "content": "2026-02-22T20:25:33.4127341Z   if-no-files-found: warn",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            },
+            {
+              "line_number": 87,
+              "content": "2026-02-22T20:25:33.6388709Z ##[warning]No files were found with the provided path: test-results/biometric-voice-e2e. No artifacts will be uploaded.",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            },
+            {
+              "line_number": 97,
+              "content": "2026-02-22T20:25:33.8061124Z ##[warning]The process '/usr/bin/git' failed with exit code 128",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            }
+          ],
+          "count": 3
+        },
+        {
+          "pattern": "AssertionError|Exception",
+          "matches": [
+            {
+              "line_number": 0,
+              "content": "2026-02-22T20:25:24.0495696Z Collecting exceptiongroup>=1 (from pytest)",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            },
+            {
+              "line_number": 1,
+              "content": "2026-02-22T20:25:24.0509170Z   Using cached exceptiongroup-1.3.1-py3-none-any.whl.metadata (6.7 kB)",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            },
+            {
+              "line_number": 52,
+              "content": "2026-02-22T20:25:25.7202707Z Using cached exceptiongroup-1.3.1-py3-none-any.whl (16 kB)",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            },
+            {
+              "line_number": 61,
+              "content": "2026-02-22T20:25:25.8770711Z Installing collected packages: typing-extensions, tomli, pygments, propcache, pluggy, packaging, numpy, iniconfig, idna, frozenlist, backports-asyncio-runner, attrs, asyncio-pool, async-timeout, aiohappyeyeballs, scipy, multidict, exceptiongroup, aiosignal, yarl, pytest, pytest-timeout, pytest-mock, pytest-asyncio, aiohttp",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            },
+            {
+              "line_number": 63,
+              "content": "2026-02-22T20:25:32.5901356Z Successfully installed aiohappyeyeballs-2.6.1 aiohttp-3.13.3 aiosignal-1.4.0 async-timeout-5.0.1 asyncio-pool-0.6.0 attrs-25.4.0 backports-asyncio-runner-1.2.0 exceptiongroup-1.3.1 frozenlist-1.8.0 idna-3.11 iniconfig-2.3.0 multidict-6.7.1 numpy-2.2.6 packaging-26.0 pluggy-1.6.0 propcache-0.4.1 pygments-2.19.2 pytest-9.0.2 pytest-asyncio-1.3.0 pytest-mock-3.15.1 pytest-timeout-2.4.0 scipy-1.15.3 tomli-2.4.0 typing-extensions-4.15.0 yarl-1.22.0",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            }
+          ],
+          "count": 5
+        },
+        {
+          "pattern": "timeout|timed out",
+          "matches": [
+            {
+              "line_number": 20,
+              "content": "2026-02-22T20:25:24.2451751Z Collecting async-timeout<6.0,>=4.0 (from aiohttp)",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 21,
+              "content": "2026-02-22T20:25:24.2465816Z   Using cached async_timeout-5.0.1-py3-none-any.whl.metadata (5.1 kB)",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 38,
+              "content": "2026-02-22T20:25:25.1035838Z Using cached pytest_timeout-2.4.0-py3-none-any.whl (14 kB)",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 41,
+              "content": "2026-02-22T20:25:25.1085436Z Using cached async_timeout-5.0.1-py3-none-any.whl (6.2 kB)",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 61,
+              "content": "2026-02-22T20:25:25.8770711Z Installing collected packages: typing-extensions, tomli, pygments, propcache, pluggy, packaging, numpy, iniconfig, idna, frozenlist, backports-asyncio-runner, attrs, asyncio-pool, async-timeout, aiohappyeyeballs, scipy, multidict, exceptiongroup, aiosignal, yarl, pytest, pytest-timeout, pytest-mock, pytest-asyncio, aiohttp",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 63,
+              "content": "2026-02-22T20:25:32.5901356Z Successfully installed aiohappyeyeballs-2.6.1 aiohttp-3.13.3 aiosignal-1.4.0 async-timeout-5.0.1 asyncio-pool-0.6.0 attrs-25.4.0 backports-asyncio-runner-1.2.0 exceptiongroup-1.3.1 frozenlist-1.8.0 idna-3.11 iniconfig-2.3.0 multidict-6.7.1 numpy-2.2.6 packaging-26.0 pluggy-1.6.0 propcache-0.4.1 pygments-2.19.2 pytest-9.0.2 pytest-asyncio-1.3.0 pytest-mock-3.15.1 pytest-timeout-2.4.0 scipy-1.15.3 tomli-2.4.0 typing-extensions-4.15.0 yarl-1.22.0",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            }
+          ],
+          "count": 6
+        }
+      ],
+      "suggested_fixes": [
+        "Consider increasing timeout values or optimizing slow operations"
+      ],
+      "severity": "high",
+      "category": "timeout",
+      "similar_failures": []
+    },
+    {
+      "error_patterns": [
+        {
+          "pattern": "ERROR|Error|error",
+          "matches": [
+            {
+              "line_number": 64,
+              "content": "2026-02-22T20:24:45.1985855Z ERROR: Could not find a version that satisfies the requirement google-cloud-sql-python-connector (from versions: none)",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 65,
+              "content": "2026-02-22T20:24:45.1994798Z ERROR: No matching distribution found for google-cloud-sql-python-connector",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 66,
+              "content": "2026-02-22T20:24:45.2361306Z ##[error]Process completed with exit code 1.",
+              "severity": "high",
+              "emoji": "\u274c"
+            }
+          ],
+          "count": 3
+        },
+        {
+          "pattern": "FAIL|Failed|failed",
+          "matches": [
+            {
+              "line_number": 97,
+              "content": "2026-02-22T20:24:45.6147549Z ##[warning]The process '/usr/bin/git' failed with exit code 128",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            }
+          ],
+          "count": 1
+        },
+        {
+          "pattern": "WARN|Warning|warning",
+          "matches": [
+            {
+              "line_number": 72,
+              "content": "2026-02-22T20:24:45.2473036Z   if-no-files-found: warn",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            },
+            {
+              "line_number": 87,
+              "content": "2026-02-22T20:24:45.4623709Z ##[warning]No files were found with the provided path: test-results/biometric-voice-e2e. No artifacts will be uploaded.",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            },
+            {
+              "line_number": 97,
+              "content": "2026-02-22T20:24:45.6147549Z ##[warning]The process '/usr/bin/git' failed with exit code 128",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            }
+          ],
+          "count": 3
+        },
+        {
+          "pattern": "AssertionError|Exception",
+          "matches": [
+            {
+              "line_number": 0,
+              "content": "2026-02-22T20:24:36.1985143Z Collecting exceptiongroup>=1 (from pytest)",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            },
+            {
+              "line_number": 1,
+              "content": "2026-02-22T20:24:36.1998305Z   Using cached exceptiongroup-1.3.1-py3-none-any.whl.metadata (6.7 kB)",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            },
+            {
+              "line_number": 52,
+              "content": "2026-02-22T20:24:37.4623071Z Using cached exceptiongroup-1.3.1-py3-none-any.whl (16 kB)",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            },
+            {
+              "line_number": 61,
+              "content": "2026-02-22T20:24:37.6112915Z Installing collected packages: typing-extensions, tomli, pygments, propcache, pluggy, packaging, numpy, iniconfig, idna, frozenlist, backports-asyncio-runner, attrs, asyncio-pool, async-timeout, aiohappyeyeballs, scipy, multidict, exceptiongroup, aiosignal, yarl, pytest, pytest-timeout, pytest-mock, pytest-asyncio, aiohttp",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            },
+            {
+              "line_number": 63,
+              "content": "2026-02-22T20:24:44.3759463Z Successfully installed aiohappyeyeballs-2.6.1 aiohttp-3.13.3 aiosignal-1.4.0 async-timeout-5.0.1 asyncio-pool-0.6.0 attrs-25.4.0 backports-asyncio-runner-1.2.0 exceptiongroup-1.3.1 frozenlist-1.8.0 idna-3.11 iniconfig-2.3.0 multidict-6.7.1 numpy-2.2.6 packaging-26.0 pluggy-1.6.0 propcache-0.4.1 pygments-2.19.2 pytest-9.0.2 pytest-asyncio-1.3.0 pytest-mock-3.15.1 pytest-timeout-2.4.0 scipy-1.15.3 tomli-2.4.0 typing-extensions-4.15.0 yarl-1.22.0",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            }
+          ],
+          "count": 5
+        },
+        {
+          "pattern": "timeout|timed out",
+          "matches": [
+            {
+              "line_number": 20,
+              "content": "2026-02-22T20:24:36.3741514Z Collecting async-timeout<6.0,>=4.0 (from aiohttp)",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 21,
+              "content": "2026-02-22T20:24:36.3763102Z   Using cached async_timeout-5.0.1-py3-none-any.whl.metadata (5.1 kB)",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 38,
+              "content": "2026-02-22T20:24:37.1907604Z Using cached pytest_timeout-2.4.0-py3-none-any.whl (14 kB)",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 41,
+              "content": "2026-02-22T20:24:37.1957248Z Using cached async_timeout-5.0.1-py3-none-any.whl (6.2 kB)",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 61,
+              "content": "2026-02-22T20:24:37.6112915Z Installing collected packages: typing-extensions, tomli, pygments, propcache, pluggy, packaging, numpy, iniconfig, idna, frozenlist, backports-asyncio-runner, attrs, asyncio-pool, async-timeout, aiohappyeyeballs, scipy, multidict, exceptiongroup, aiosignal, yarl, pytest, pytest-timeout, pytest-mock, pytest-asyncio, aiohttp",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 63,
+              "content": "2026-02-22T20:24:44.3759463Z Successfully installed aiohappyeyeballs-2.6.1 aiohttp-3.13.3 aiosignal-1.4.0 async-timeout-5.0.1 asyncio-pool-0.6.0 attrs-25.4.0 backports-asyncio-runner-1.2.0 exceptiongroup-1.3.1 frozenlist-1.8.0 idna-3.11 iniconfig-2.3.0 multidict-6.7.1 numpy-2.2.6 packaging-26.0 pluggy-1.6.0 propcache-0.4.1 pygments-2.19.2 pytest-9.0.2 pytest-asyncio-1.3.0 pytest-mock-3.15.1 pytest-timeout-2.4.0 scipy-1.15.3 tomli-2.4.0 typing-extensions-4.15.0 yarl-1.22.0",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            }
+          ],
+          "count": 6
+        }
+      ],
+      "suggested_fixes": [
+        "Consider increasing timeout values or optimizing slow operations"
+      ],
+      "severity": "high",
+      "category": "timeout",
+      "similar_failures": []
+    },
+    {
+      "error_patterns": [
+        {
+          "pattern": "ERROR|Error|error",
+          "matches": [
+            {
+              "line_number": 64,
+              "content": "2026-02-22T20:25:29.2147099Z ERROR: Could not find a version that satisfies the requirement google-cloud-sql-python-connector (from versions: none)",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 65,
+              "content": "2026-02-22T20:25:29.2156583Z ERROR: No matching distribution found for google-cloud-sql-python-connector",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 66,
+              "content": "2026-02-22T20:25:29.2515091Z ##[error]Process completed with exit code 1.",
+              "severity": "high",
+              "emoji": "\u274c"
+            }
+          ],
+          "count": 3
+        },
+        {
+          "pattern": "FAIL|Failed|failed",
+          "matches": [
+            {
+              "line_number": 69,
+              "content": "2026-02-22T20:25:29.2621856Z   name: test-results-biometric-mock-edge-case-database-failure",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            },
+            {
+              "line_number": 97,
+              "content": "2026-02-22T20:25:29.6204701Z ##[warning]The process '/usr/bin/git' failed with exit code 128",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            }
+          ],
+          "count": 2
+        },
+        {
+          "pattern": "WARN|Warning|warning",
+          "matches": [
+            {
+              "line_number": 72,
+              "content": "2026-02-22T20:25:29.2622698Z   if-no-files-found: warn",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            },
+            {
+              "line_number": 87,
+              "content": "2026-02-22T20:25:29.4713364Z ##[warning]No files were found with the provided path: test-results/biometric-voice-e2e. No artifacts will be uploaded.",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            },
+            {
+              "line_number": 97,
+              "content": "2026-02-22T20:25:29.6204701Z ##[warning]The process '/usr/bin/git' failed with exit code 128",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            }
+          ],
+          "count": 3
+        },
+        {
+          "pattern": "AssertionError|Exception",
+          "matches": [
+            {
+              "line_number": 0,
+              "content": "2026-02-22T20:25:20.2700837Z Collecting exceptiongroup>=1 (from pytest)",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            },
+            {
+              "line_number": 1,
+              "content": "2026-02-22T20:25:20.2720493Z   Using cached exceptiongroup-1.3.1-py3-none-any.whl.metadata (6.7 kB)",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            },
+            {
+              "line_number": 52,
+              "content": "2026-02-22T20:25:21.6059769Z Using cached exceptiongroup-1.3.1-py3-none-any.whl (16 kB)",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            },
+            {
+              "line_number": 61,
+              "content": "2026-02-22T20:25:21.7539514Z Installing collected packages: typing-extensions, tomli, pygments, propcache, pluggy, packaging, numpy, iniconfig, idna, frozenlist, backports-asyncio-runner, attrs, asyncio-pool, async-timeout, aiohappyeyeballs, scipy, multidict, exceptiongroup, aiosignal, yarl, pytest, pytest-timeout, pytest-mock, pytest-asyncio, aiohttp",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            },
+            {
+              "line_number": 63,
+              "content": "2026-02-22T20:25:28.4752646Z Successfully installed aiohappyeyeballs-2.6.1 aiohttp-3.13.3 aiosignal-1.4.0 async-timeout-5.0.1 asyncio-pool-0.6.0 attrs-25.4.0 backports-asyncio-runner-1.2.0 exceptiongroup-1.3.1 frozenlist-1.8.0 idna-3.11 iniconfig-2.3.0 multidict-6.7.1 numpy-2.2.6 packaging-26.0 pluggy-1.6.0 propcache-0.4.1 pygments-2.19.2 pytest-9.0.2 pytest-asyncio-1.3.0 pytest-mock-3.15.1 pytest-timeout-2.4.0 scipy-1.15.3 tomli-2.4.0 typing-extensions-4.15.0 yarl-1.22.0",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            }
+          ],
+          "count": 5
+        },
+        {
+          "pattern": "timeout|timed out",
+          "matches": [
+            {
+              "line_number": 20,
+              "content": "2026-02-22T20:25:20.4235029Z Collecting async-timeout<6.0,>=4.0 (from aiohttp)",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 21,
+              "content": "2026-02-22T20:25:20.4247901Z   Using cached async_timeout-5.0.1-py3-none-any.whl.metadata (5.1 kB)",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 38,
+              "content": "2026-02-22T20:25:21.2270699Z Using cached pytest_timeout-2.4.0-py3-none-any.whl (14 kB)",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 41,
+              "content": "2026-02-22T20:25:21.2318801Z Using cached async_timeout-5.0.1-py3-none-any.whl (6.2 kB)",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 61,
+              "content": "2026-02-22T20:25:21.7539514Z Installing collected packages: typing-extensions, tomli, pygments, propcache, pluggy, packaging, numpy, iniconfig, idna, frozenlist, backports-asyncio-runner, attrs, asyncio-pool, async-timeout, aiohappyeyeballs, scipy, multidict, exceptiongroup, aiosignal, yarl, pytest, pytest-timeout, pytest-mock, pytest-asyncio, aiohttp",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 63,
+              "content": "2026-02-22T20:25:28.4752646Z Successfully installed aiohappyeyeballs-2.6.1 aiohttp-3.13.3 aiosignal-1.4.0 async-timeout-5.0.1 asyncio-pool-0.6.0 attrs-25.4.0 backports-asyncio-runner-1.2.0 exceptiongroup-1.3.1 frozenlist-1.8.0 idna-3.11 iniconfig-2.3.0 multidict-6.7.1 numpy-2.2.6 packaging-26.0 pluggy-1.6.0 propcache-0.4.1 pygments-2.19.2 pytest-9.0.2 pytest-asyncio-1.3.0 pytest-mock-3.15.1 pytest-timeout-2.4.0 scipy-1.15.3 tomli-2.4.0 typing-extensions-4.15.0 yarl-1.22.0",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            }
+          ],
+          "count": 6
+        }
+      ],
+      "suggested_fixes": [
+        "Consider increasing timeout values or optimizing slow operations"
+      ],
+      "severity": "high",
+      "category": "test_failure",
+      "similar_failures": []
+    },
+    {
+      "error_patterns": [
+        {
+          "pattern": "ERROR|Error|error",
+          "matches": [
+            {
+              "line_number": 64,
+              "content": "2026-02-22T20:25:06.0869493Z ERROR: Could not find a version that satisfies the requirement google-cloud-sql-python-connector (from versions: none)",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 65,
+              "content": "2026-02-22T20:25:06.0878817Z ERROR: No matching distribution found for google-cloud-sql-python-connector",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 66,
+              "content": "2026-02-22T20:25:06.1241012Z ##[error]Process completed with exit code 1.",
+              "severity": "high",
+              "emoji": "\u274c"
+            }
+          ],
+          "count": 3
+        },
+        {
+          "pattern": "FAIL|Failed|failed",
+          "matches": [
+            {
+              "line_number": 97,
+              "content": "2026-02-22T20:25:06.5026243Z ##[warning]The process '/usr/bin/git' failed with exit code 128",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            }
+          ],
+          "count": 1
+        },
+        {
+          "pattern": "WARN|Warning|warning",
+          "matches": [
+            {
+              "line_number": 72,
+              "content": "2026-02-22T20:25:06.1345139Z   if-no-files-found: warn",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            },
+            {
+              "line_number": 87,
+              "content": "2026-02-22T20:25:06.3517897Z ##[warning]No files were found with the provided path: test-results/biometric-voice-e2e. No artifacts will be uploaded.",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            },
+            {
+              "line_number": 97,
+              "content": "2026-02-22T20:25:06.5026243Z ##[warning]The process '/usr/bin/git' failed with exit code 128",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            }
+          ],
+          "count": 3
+        },
+        {
+          "pattern": "AssertionError|Exception",
+          "matches": [
+            {
+              "line_number": 0,
+              "content": "2026-02-22T20:24:52.6349504Z Collecting exceptiongroup>=1 (from pytest)",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            },
+            {
+              "line_number": 1,
+              "content": "2026-02-22T20:24:52.6363323Z   Using cached exceptiongroup-1.3.1-py3-none-any.whl.metadata (6.7 kB)",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            },
+            {
+              "line_number": 52,
+              "content": "2026-02-22T20:24:58.0952846Z Using cached exceptiongroup-1.3.1-py3-none-any.whl (16 kB)",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            },
+            {
+              "line_number": 61,
+              "content": "2026-02-22T20:24:58.2428978Z Installing collected packages: typing-extensions, tomli, pygments, propcache, pluggy, packaging, numpy, iniconfig, idna, frozenlist, backports-asyncio-runner, attrs, asyncio-pool, async-timeout, aiohappyeyeballs, scipy, multidict, exceptiongroup, aiosignal, yarl, pytest, pytest-timeout, pytest-mock, pytest-asyncio, aiohttp",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            },
+            {
+              "line_number": 63,
+              "content": "2026-02-22T20:25:05.3759394Z Successfully installed aiohappyeyeballs-2.6.1 aiohttp-3.13.3 aiosignal-1.4.0 async-timeout-5.0.1 asyncio-pool-0.6.0 attrs-25.4.0 backports-asyncio-runner-1.2.0 exceptiongroup-1.3.1 frozenlist-1.8.0 idna-3.11 iniconfig-2.3.0 multidict-6.7.1 numpy-2.2.6 packaging-26.0 pluggy-1.6.0 propcache-0.4.1 pygments-2.19.2 pytest-9.0.2 pytest-asyncio-1.3.0 pytest-mock-3.15.1 pytest-timeout-2.4.0 scipy-1.15.3 tomli-2.4.0 typing-extensions-4.15.0 yarl-1.22.0",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            }
+          ],
+          "count": 5
+        },
+        {
+          "pattern": "timeout|timed out",
+          "matches": [
+            {
+              "line_number": 20,
+              "content": "2026-02-22T20:24:52.8009253Z Collecting async-timeout<6.0,>=4.0 (from aiohttp)",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 21,
+              "content": "2026-02-22T20:24:52.8022856Z   Using cached async_timeout-5.0.1-py3-none-any.whl.metadata (5.1 kB)",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 38,
+              "content": "2026-02-22T20:24:53.6098966Z Using cached pytest_timeout-2.4.0-py3-none-any.whl (14 kB)",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 41,
+              "content": "2026-02-22T20:24:53.6147967Z Using cached async_timeout-5.0.1-py3-none-any.whl (6.2 kB)",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 61,
+              "content": "2026-02-22T20:24:58.2428978Z Installing collected packages: typing-extensions, tomli, pygments, propcache, pluggy, packaging, numpy, iniconfig, idna, frozenlist, backports-asyncio-runner, attrs, asyncio-pool, async-timeout, aiohappyeyeballs, scipy, multidict, exceptiongroup, aiosignal, yarl, pytest, pytest-timeout, pytest-mock, pytest-asyncio, aiohttp",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 63,
+              "content": "2026-02-22T20:25:05.3759394Z Successfully installed aiohappyeyeballs-2.6.1 aiohttp-3.13.3 aiosignal-1.4.0 async-timeout-5.0.1 asyncio-pool-0.6.0 attrs-25.4.0 backports-asyncio-runner-1.2.0 exceptiongroup-1.3.1 frozenlist-1.8.0 idna-3.11 iniconfig-2.3.0 multidict-6.7.1 numpy-2.2.6 packaging-26.0 pluggy-1.6.0 propcache-0.4.1 pygments-2.19.2 pytest-9.0.2 pytest-asyncio-1.3.0 pytest-mock-3.15.1 pytest-timeout-2.4.0 scipy-1.15.3 tomli-2.4.0 typing-extensions-4.15.0 yarl-1.22.0",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            }
+          ],
+          "count": 6
+        }
+      ],
+      "suggested_fixes": [
+        "Consider increasing timeout values or optimizing slow operations"
+      ],
+      "severity": "high",
+      "category": "timeout",
+      "similar_failures": []
+    },
+    {
+      "error_patterns": [
+        {
+          "pattern": "ERROR|Error|error",
+          "matches": [
+            {
+              "line_number": 64,
+              "content": "2026-02-22T20:25:04.9231325Z ERROR: Could not find a version that satisfies the requirement google-cloud-sql-python-connector (from versions: none)",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 65,
+              "content": "2026-02-22T20:25:04.9241470Z ERROR: No matching distribution found for google-cloud-sql-python-connector",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 66,
+              "content": "2026-02-22T20:25:04.9674076Z ##[error]Process completed with exit code 1.",
+              "severity": "high",
+              "emoji": "\u274c"
+            }
+          ],
+          "count": 3
+        },
+        {
+          "pattern": "FAIL|Failed|failed",
+          "matches": [
+            {
+              "line_number": 97,
+              "content": "2026-02-22T20:25:05.3579316Z ##[warning]The process '/usr/bin/git' failed with exit code 128",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            }
+          ],
+          "count": 1
+        },
+        {
+          "pattern": "WARN|Warning|warning",
+          "matches": [
+            {
+              "line_number": 72,
+              "content": "2026-02-22T20:25:04.9782549Z   if-no-files-found: warn",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            },
+            {
+              "line_number": 87,
+              "content": "2026-02-22T20:25:05.1995338Z ##[warning]No files were found with the provided path: test-results/biometric-voice-e2e. No artifacts will be uploaded.",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            },
+            {
+              "line_number": 97,
+              "content": "2026-02-22T20:25:05.3579316Z ##[warning]The process '/usr/bin/git' failed with exit code 128",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            }
+          ],
+          "count": 3
+        },
+        {
+          "pattern": "AssertionError|Exception",
+          "matches": [
+            {
+              "line_number": 0,
+              "content": "2026-02-22T20:24:55.5788628Z Collecting exceptiongroup>=1 (from pytest)",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            },
+            {
+              "line_number": 1,
+              "content": "2026-02-22T20:24:55.5802648Z   Using cached exceptiongroup-1.3.1-py3-none-any.whl.metadata (6.7 kB)",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            },
+            {
+              "line_number": 52,
+              "content": "2026-02-22T20:24:57.0545933Z Using cached exceptiongroup-1.3.1-py3-none-any.whl (16 kB)",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            },
+            {
+              "line_number": 61,
+              "content": "2026-02-22T20:24:57.2032458Z Installing collected packages: typing-extensions, tomli, pygments, propcache, pluggy, packaging, numpy, iniconfig, idna, frozenlist, backports-asyncio-runner, attrs, asyncio-pool, async-timeout, aiohappyeyeballs, scipy, multidict, exceptiongroup, aiosignal, yarl, pytest, pytest-timeout, pytest-mock, pytest-asyncio, aiohttp",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            },
+            {
+              "line_number": 63,
+              "content": "2026-02-22T20:25:04.0970975Z Successfully installed aiohappyeyeballs-2.6.1 aiohttp-3.13.3 aiosignal-1.4.0 async-timeout-5.0.1 asyncio-pool-0.6.0 attrs-25.4.0 backports-asyncio-runner-1.2.0 exceptiongroup-1.3.1 frozenlist-1.8.0 idna-3.11 iniconfig-2.3.0 multidict-6.7.1 numpy-2.2.6 packaging-26.0 pluggy-1.6.0 propcache-0.4.1 pygments-2.19.2 pytest-9.0.2 pytest-asyncio-1.3.0 pytest-mock-3.15.1 pytest-timeout-2.4.0 scipy-1.15.3 tomli-2.4.0 typing-extensions-4.15.0 yarl-1.22.0",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            }
+          ],
+          "count": 5
+        },
+        {
+          "pattern": "timeout|timed out",
+          "matches": [
+            {
+              "line_number": 20,
+              "content": "2026-02-22T20:24:55.7401345Z Collecting async-timeout<6.0,>=4.0 (from aiohttp)",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 21,
+              "content": "2026-02-22T20:24:55.7415015Z   Using cached async_timeout-5.0.1-py3-none-any.whl.metadata (5.1 kB)",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 38,
+              "content": "2026-02-22T20:24:56.5736893Z Using cached pytest_timeout-2.4.0-py3-none-any.whl (14 kB)",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 41,
+              "content": "2026-02-22T20:24:56.5787135Z Using cached async_timeout-5.0.1-py3-none-any.whl (6.2 kB)",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 61,
+              "content": "2026-02-22T20:24:57.2032458Z Installing collected packages: typing-extensions, tomli, pygments, propcache, pluggy, packaging, numpy, iniconfig, idna, frozenlist, backports-asyncio-runner, attrs, asyncio-pool, async-timeout, aiohappyeyeballs, scipy, multidict, exceptiongroup, aiosignal, yarl, pytest, pytest-timeout, pytest-mock, pytest-asyncio, aiohttp",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 63,
+              "content": "2026-02-22T20:25:04.0970975Z Successfully installed aiohappyeyeballs-2.6.1 aiohttp-3.13.3 aiosignal-1.4.0 async-timeout-5.0.1 asyncio-pool-0.6.0 attrs-25.4.0 backports-asyncio-runner-1.2.0 exceptiongroup-1.3.1 frozenlist-1.8.0 idna-3.11 iniconfig-2.3.0 multidict-6.7.1 numpy-2.2.6 packaging-26.0 pluggy-1.6.0 propcache-0.4.1 pygments-2.19.2 pytest-9.0.2 pytest-asyncio-1.3.0 pytest-mock-3.15.1 pytest-timeout-2.4.0 scipy-1.15.3 tomli-2.4.0 typing-extensions-4.15.0 yarl-1.22.0",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            }
+          ],
+          "count": 6
+        }
+      ],
+      "suggested_fixes": [
+        "Consider increasing timeout values or optimizing slow operations"
+      ],
+      "severity": "high",
+      "category": "timeout",
+      "similar_failures": []
+    },
+    {
+      "error_patterns": [
+        {
+          "pattern": "ERROR|Error|error",
+          "matches": [
+            {
+              "line_number": 64,
+              "content": "2026-02-22T20:25:30.1945643Z ERROR: Could not find a version that satisfies the requirement google-cloud-sql-python-connector (from versions: none)",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 65,
+              "content": "2026-02-22T20:25:30.1953836Z ERROR: No matching distribution found for google-cloud-sql-python-connector",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 66,
+              "content": "2026-02-22T20:25:30.2317988Z ##[error]Process completed with exit code 1.",
+              "severity": "high",
+              "emoji": "\u274c"
+            }
+          ],
+          "count": 3
+        },
+        {
+          "pattern": "FAIL|Failed|failed",
+          "matches": [
+            {
+              "line_number": 97,
+              "content": "2026-02-22T20:25:30.6808795Z ##[warning]The process '/usr/bin/git' failed with exit code 128",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            }
+          ],
+          "count": 1
+        },
+        {
+          "pattern": "WARN|Warning|warning",
+          "matches": [
+            {
+              "line_number": 72,
+              "content": "2026-02-22T20:25:30.2427888Z   if-no-files-found: warn",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            },
+            {
+              "line_number": 87,
+              "content": "2026-02-22T20:25:30.4613939Z ##[warning]No files were found with the provided path: test-results/biometric-voice-e2e. No artifacts will be uploaded.",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            },
+            {
+              "line_number": 97,
+              "content": "2026-02-22T20:25:30.6808795Z ##[warning]The process '/usr/bin/git' failed with exit code 128",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            }
+          ],
+          "count": 3
+        },
+        {
+          "pattern": "AssertionError|Exception",
+          "matches": [
+            {
+              "line_number": 0,
+              "content": "2026-02-22T20:25:21.2255662Z Collecting exceptiongroup>=1 (from pytest)",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            },
+            {
+              "line_number": 1,
+              "content": "2026-02-22T20:25:21.2269794Z   Using cached exceptiongroup-1.3.1-py3-none-any.whl.metadata (6.7 kB)",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            },
+            {
+              "line_number": 52,
+              "content": "2026-02-22T20:25:22.6120763Z Using cached exceptiongroup-1.3.1-py3-none-any.whl (16 kB)",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            },
+            {
+              "line_number": 61,
+              "content": "2026-02-22T20:25:22.7596215Z Installing collected packages: typing-extensions, tomli, pygments, propcache, pluggy, packaging, numpy, iniconfig, idna, frozenlist, backports-asyncio-runner, attrs, asyncio-pool, async-timeout, aiohappyeyeballs, scipy, multidict, exceptiongroup, aiosignal, yarl, pytest, pytest-timeout, pytest-mock, pytest-asyncio, aiohttp",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            },
+            {
+              "line_number": 63,
+              "content": "2026-02-22T20:25:29.3439117Z Successfully installed aiohappyeyeballs-2.6.1 aiohttp-3.13.3 aiosignal-1.4.0 async-timeout-5.0.1 asyncio-pool-0.6.0 attrs-25.4.0 backports-asyncio-runner-1.2.0 exceptiongroup-1.3.1 frozenlist-1.8.0 idna-3.11 iniconfig-2.3.0 multidict-6.7.1 numpy-2.2.6 packaging-26.0 pluggy-1.6.0 propcache-0.4.1 pygments-2.19.2 pytest-9.0.2 pytest-asyncio-1.3.0 pytest-mock-3.15.1 pytest-timeout-2.4.0 scipy-1.15.3 tomli-2.4.0 typing-extensions-4.15.0 yarl-1.22.0",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            }
+          ],
+          "count": 5
+        },
+        {
+          "pattern": "timeout|timed out",
+          "matches": [
+            {
+              "line_number": 20,
+              "content": "2026-02-22T20:25:21.3774420Z Collecting async-timeout<6.0,>=4.0 (from aiohttp)",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 21,
+              "content": "2026-02-22T20:25:21.3787620Z   Using cached async_timeout-5.0.1-py3-none-any.whl.metadata (5.1 kB)",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 38,
+              "content": "2026-02-22T20:25:22.1745804Z Using cached pytest_timeout-2.4.0-py3-none-any.whl (14 kB)",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 41,
+              "content": "2026-02-22T20:25:22.1795511Z Using cached async_timeout-5.0.1-py3-none-any.whl (6.2 kB)",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 61,
+              "content": "2026-02-22T20:25:22.7596215Z Installing collected packages: typing-extensions, tomli, pygments, propcache, pluggy, packaging, numpy, iniconfig, idna, frozenlist, backports-asyncio-runner, attrs, asyncio-pool, async-timeout, aiohappyeyeballs, scipy, multidict, exceptiongroup, aiosignal, yarl, pytest, pytest-timeout, pytest-mock, pytest-asyncio, aiohttp",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 63,
+              "content": "2026-02-22T20:25:29.3439117Z Successfully installed aiohappyeyeballs-2.6.1 aiohttp-3.13.3 aiosignal-1.4.0 async-timeout-5.0.1 asyncio-pool-0.6.0 attrs-25.4.0 backports-asyncio-runner-1.2.0 exceptiongroup-1.3.1 frozenlist-1.8.0 idna-3.11 iniconfig-2.3.0 multidict-6.7.1 numpy-2.2.6 packaging-26.0 pluggy-1.6.0 propcache-0.4.1 pygments-2.19.2 pytest-9.0.2 pytest-asyncio-1.3.0 pytest-mock-3.15.1 pytest-timeout-2.4.0 scipy-1.15.3 tomli-2.4.0 typing-extensions-4.15.0 yarl-1.22.0",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            }
+          ],
+          "count": 6
+        }
+      ],
+      "suggested_fixes": [
+        "Consider increasing timeout values or optimizing slow operations"
+      ],
+      "severity": "high",
+      "category": "timeout",
+      "similar_failures": []
+    },
+    {
+      "error_patterns": [
+        {
+          "pattern": "ERROR|Error|error",
+          "matches": [
+            {
+              "line_number": 64,
+              "content": "2026-02-22T20:25:49.2604724Z ERROR: Could not find a version that satisfies the requirement google-cloud-sql-python-connector (from versions: none)",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 65,
+              "content": "2026-02-22T20:25:49.2613654Z ERROR: No matching distribution found for google-cloud-sql-python-connector",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 66,
+              "content": "2026-02-22T20:25:49.3004836Z ##[error]Process completed with exit code 1.",
+              "severity": "high",
+              "emoji": "\u274c"
+            }
+          ],
+          "count": 3
+        },
+        {
+          "pattern": "FAIL|Failed|failed",
+          "matches": [
+            {
+              "line_number": 97,
+              "content": "2026-02-22T20:25:49.6834224Z ##[warning]The process '/usr/bin/git' failed with exit code 128",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            }
+          ],
+          "count": 1
+        },
+        {
+          "pattern": "WARN|Warning|warning",
+          "matches": [
+            {
+              "line_number": 72,
+              "content": "2026-02-22T20:25:49.3108637Z   if-no-files-found: warn",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            },
+            {
+              "line_number": 87,
+              "content": "2026-02-22T20:25:49.5281974Z ##[warning]No files were found with the provided path: test-results/biometric-voice-e2e. No artifacts will be uploaded.",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            },
+            {
+              "line_number": 97,
+              "content": "2026-02-22T20:25:49.6834224Z ##[warning]The process '/usr/bin/git' failed with exit code 128",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            }
+          ],
+          "count": 3
+        },
+        {
+          "pattern": "AssertionError|Exception",
+          "matches": [
+            {
+              "line_number": 0,
+              "content": "2026-02-22T20:25:39.8354447Z Collecting exceptiongroup>=1 (from pytest)",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            },
+            {
+              "line_number": 1,
+              "content": "2026-02-22T20:25:39.8368476Z   Using cached exceptiongroup-1.3.1-py3-none-any.whl.metadata (6.7 kB)",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            },
+            {
+              "line_number": 52,
+              "content": "2026-02-22T20:25:41.1966195Z Using cached exceptiongroup-1.3.1-py3-none-any.whl (16 kB)",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            },
+            {
+              "line_number": 61,
+              "content": "2026-02-22T20:25:41.3464981Z Installing collected packages: typing-extensions, tomli, pygments, propcache, pluggy, packaging, numpy, iniconfig, idna, frozenlist, backports-asyncio-runner, attrs, asyncio-pool, async-timeout, aiohappyeyeballs, scipy, multidict, exceptiongroup, aiosignal, yarl, pytest, pytest-timeout, pytest-mock, pytest-asyncio, aiohttp",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            },
+            {
+              "line_number": 63,
+              "content": "2026-02-22T20:25:47.9293687Z Successfully installed aiohappyeyeballs-2.6.1 aiohttp-3.13.3 aiosignal-1.4.0 async-timeout-5.0.1 asyncio-pool-0.6.0 attrs-25.4.0 backports-asyncio-runner-1.2.0 exceptiongroup-1.3.1 frozenlist-1.8.0 idna-3.11 iniconfig-2.3.0 multidict-6.7.1 numpy-2.2.6 packaging-26.0 pluggy-1.6.0 propcache-0.4.1 pygments-2.19.2 pytest-9.0.2 pytest-asyncio-1.3.0 pytest-mock-3.15.1 pytest-timeout-2.4.0 scipy-1.15.3 tomli-2.4.0 typing-extensions-4.15.0 yarl-1.22.0",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            }
+          ],
+          "count": 5
+        },
+        {
+          "pattern": "timeout|timed out",
+          "matches": [
+            {
+              "line_number": 20,
+              "content": "2026-02-22T20:25:39.9858599Z Collecting async-timeout<6.0,>=4.0 (from aiohttp)",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 21,
+              "content": "2026-02-22T20:25:39.9878790Z   Using cached async_timeout-5.0.1-py3-none-any.whl.metadata (5.1 kB)",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 38,
+              "content": "2026-02-22T20:25:40.8033685Z Using cached pytest_timeout-2.4.0-py3-none-any.whl (14 kB)",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 41,
+              "content": "2026-02-22T20:25:40.8084135Z Using cached async_timeout-5.0.1-py3-none-any.whl (6.2 kB)",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 61,
+              "content": "2026-02-22T20:25:41.3464981Z Installing collected packages: typing-extensions, tomli, pygments, propcache, pluggy, packaging, numpy, iniconfig, idna, frozenlist, backports-asyncio-runner, attrs, asyncio-pool, async-timeout, aiohappyeyeballs, scipy, multidict, exceptiongroup, aiosignal, yarl, pytest, pytest-timeout, pytest-mock, pytest-asyncio, aiohttp",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 63,
+              "content": "2026-02-22T20:25:47.9293687Z Successfully installed aiohappyeyeballs-2.6.1 aiohttp-3.13.3 aiosignal-1.4.0 async-timeout-5.0.1 asyncio-pool-0.6.0 attrs-25.4.0 backports-asyncio-runner-1.2.0 exceptiongroup-1.3.1 frozenlist-1.8.0 idna-3.11 iniconfig-2.3.0 multidict-6.7.1 numpy-2.2.6 packaging-26.0 pluggy-1.6.0 propcache-0.4.1 pygments-2.19.2 pytest-9.0.2 pytest-asyncio-1.3.0 pytest-mock-3.15.1 pytest-timeout-2.4.0 scipy-1.15.3 tomli-2.4.0 typing-extensions-4.15.0 yarl-1.22.0",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            }
+          ],
+          "count": 6
+        }
+      ],
+      "suggested_fixes": [
+        "Consider increasing timeout values or optimizing slow operations"
+      ],
+      "severity": "high",
+      "category": "timeout",
+      "similar_failures": []
+    },
+    {
+      "error_patterns": [
+        {
+          "pattern": "ERROR|Error|error",
+          "matches": [
+            {
+              "line_number": 64,
+              "content": "2026-02-22T20:25:45.9481334Z ERROR: Could not find a version that satisfies the requirement google-cloud-sql-python-connector (from versions: none)",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 65,
+              "content": "2026-02-22T20:25:45.9490582Z ERROR: No matching distribution found for google-cloud-sql-python-connector",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 66,
+              "content": "2026-02-22T20:25:45.9870868Z ##[error]Process completed with exit code 1.",
+              "severity": "high",
+              "emoji": "\u274c"
+            }
+          ],
+          "count": 3
+        },
+        {
+          "pattern": "FAIL|Failed|failed",
+          "matches": [
+            {
+              "line_number": 97,
+              "content": "2026-02-22T20:25:46.3648718Z ##[warning]The process '/usr/bin/git' failed with exit code 128",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            }
+          ],
+          "count": 1
+        },
+        {
+          "pattern": "WARN|Warning|warning",
+          "matches": [
+            {
+              "line_number": 72,
+              "content": "2026-02-22T20:25:45.9980901Z   if-no-files-found: warn",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            },
+            {
+              "line_number": 87,
+              "content": "2026-02-22T20:25:46.2119089Z ##[warning]No files were found with the provided path: test-results/biometric-voice-e2e. No artifacts will be uploaded.",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            },
+            {
+              "line_number": 97,
+              "content": "2026-02-22T20:25:46.3648718Z ##[warning]The process '/usr/bin/git' failed with exit code 128",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            }
+          ],
+          "count": 3
+        },
+        {
+          "pattern": "AssertionError|Exception",
+          "matches": [
+            {
+              "line_number": 0,
+              "content": "2026-02-22T20:25:36.9718155Z Collecting exceptiongroup>=1 (from pytest)",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            },
+            {
+              "line_number": 1,
+              "content": "2026-02-22T20:25:36.9732382Z   Using cached exceptiongroup-1.3.1-py3-none-any.whl.metadata (6.7 kB)",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            },
+            {
+              "line_number": 52,
+              "content": "2026-02-22T20:25:38.2641071Z Using cached exceptiongroup-1.3.1-py3-none-any.whl (16 kB)",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            },
+            {
+              "line_number": 61,
+              "content": "2026-02-22T20:25:38.4144345Z Installing collected packages: typing-extensions, tomli, pygments, propcache, pluggy, packaging, numpy, iniconfig, idna, frozenlist, backports-asyncio-runner, attrs, asyncio-pool, async-timeout, aiohappyeyeballs, scipy, multidict, exceptiongroup, aiosignal, yarl, pytest, pytest-timeout, pytest-mock, pytest-asyncio, aiohttp",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            },
+            {
+              "line_number": 63,
+              "content": "2026-02-22T20:25:45.1934743Z Successfully installed aiohappyeyeballs-2.6.1 aiohttp-3.13.3 aiosignal-1.4.0 async-timeout-5.0.1 asyncio-pool-0.6.0 attrs-25.4.0 backports-asyncio-runner-1.2.0 exceptiongroup-1.3.1 frozenlist-1.8.0 idna-3.11 iniconfig-2.3.0 multidict-6.7.1 numpy-2.2.6 packaging-26.0 pluggy-1.6.0 propcache-0.4.1 pygments-2.19.2 pytest-9.0.2 pytest-asyncio-1.3.0 pytest-mock-3.15.1 pytest-timeout-2.4.0 scipy-1.15.3 tomli-2.4.0 typing-extensions-4.15.0 yarl-1.22.0",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            }
+          ],
+          "count": 5
+        },
+        {
+          "pattern": "timeout|timed out",
+          "matches": [
+            {
+              "line_number": 20,
+              "content": "2026-02-22T20:25:37.1151250Z Collecting async-timeout<6.0,>=4.0 (from aiohttp)",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 21,
+              "content": "2026-02-22T20:25:37.1164794Z   Using cached async_timeout-5.0.1-py3-none-any.whl.metadata (5.1 kB)",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 38,
+              "content": "2026-02-22T20:25:37.9479739Z Using cached pytest_timeout-2.4.0-py3-none-any.whl (14 kB)",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 41,
+              "content": "2026-02-22T20:25:37.9527748Z Using cached async_timeout-5.0.1-py3-none-any.whl (6.2 kB)",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 61,
+              "content": "2026-02-22T20:25:38.4144345Z Installing collected packages: typing-extensions, tomli, pygments, propcache, pluggy, packaging, numpy, iniconfig, idna, frozenlist, backports-asyncio-runner, attrs, asyncio-pool, async-timeout, aiohappyeyeballs, scipy, multidict, exceptiongroup, aiosignal, yarl, pytest, pytest-timeout, pytest-mock, pytest-asyncio, aiohttp",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 63,
+              "content": "2026-02-22T20:25:45.1934743Z Successfully installed aiohappyeyeballs-2.6.1 aiohttp-3.13.3 aiosignal-1.4.0 async-timeout-5.0.1 asyncio-pool-0.6.0 attrs-25.4.0 backports-asyncio-runner-1.2.0 exceptiongroup-1.3.1 frozenlist-1.8.0 idna-3.11 iniconfig-2.3.0 multidict-6.7.1 numpy-2.2.6 packaging-26.0 pluggy-1.6.0 propcache-0.4.1 pygments-2.19.2 pytest-9.0.2 pytest-asyncio-1.3.0 pytest-mock-3.15.1 pytest-timeout-2.4.0 scipy-1.15.3 tomli-2.4.0 typing-extensions-4.15.0 yarl-1.22.0",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            }
+          ],
+          "count": 6
+        }
+      ],
+      "suggested_fixes": [
+        "Consider increasing timeout values or optimizing slow operations"
+      ],
+      "severity": "high",
+      "category": "timeout",
+      "similar_failures": []
+    },
+    {
+      "error_patterns": [
+        {
+          "pattern": "ERROR|Error|error",
+          "matches": [
+            {
+              "line_number": 64,
+              "content": "2026-02-22T20:25:30.2902904Z ERROR: Could not find a version that satisfies the requirement google-cloud-sql-python-connector (from versions: none)",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 65,
+              "content": "2026-02-22T20:25:30.2912028Z ERROR: No matching distribution found for google-cloud-sql-python-connector",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 66,
+              "content": "2026-02-22T20:25:30.3365759Z ##[error]Process completed with exit code 1.",
+              "severity": "high",
+              "emoji": "\u274c"
+            }
+          ],
+          "count": 3
+        },
+        {
+          "pattern": "FAIL|Failed|failed",
+          "matches": [
+            {
+              "line_number": 97,
+              "content": "2026-02-22T20:25:30.7284405Z ##[warning]The process '/usr/bin/git' failed with exit code 128",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            }
+          ],
+          "count": 1
+        },
+        {
+          "pattern": "WARN|Warning|warning",
+          "matches": [
+            {
+              "line_number": 72,
+              "content": "2026-02-22T20:25:30.3479780Z   if-no-files-found: warn",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            },
+            {
+              "line_number": 87,
+              "content": "2026-02-22T20:25:30.5732066Z ##[warning]No files were found with the provided path: test-results/biometric-voice-e2e. No artifacts will be uploaded.",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            },
+            {
+              "line_number": 97,
+              "content": "2026-02-22T20:25:30.7284405Z ##[warning]The process '/usr/bin/git' failed with exit code 128",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            }
+          ],
+          "count": 3
+        },
+        {
+          "pattern": "AssertionError|Exception",
+          "matches": [
+            {
+              "line_number": 0,
+              "content": "2026-02-22T20:25:21.2116940Z Collecting exceptiongroup>=1 (from pytest)",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            },
+            {
+              "line_number": 1,
+              "content": "2026-02-22T20:25:21.2131141Z   Using cached exceptiongroup-1.3.1-py3-none-any.whl.metadata (6.7 kB)",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            },
+            {
+              "line_number": 52,
+              "content": "2026-02-22T20:25:22.4772218Z Using cached exceptiongroup-1.3.1-py3-none-any.whl (16 kB)",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            },
+            {
+              "line_number": 61,
+              "content": "2026-02-22T20:25:22.6269031Z Installing collected packages: typing-extensions, tomli, pygments, propcache, pluggy, packaging, numpy, iniconfig, idna, frozenlist, backports-asyncio-runner, attrs, asyncio-pool, async-timeout, aiohappyeyeballs, scipy, multidict, exceptiongroup, aiosignal, yarl, pytest, pytest-timeout, pytest-mock, pytest-asyncio, aiohttp",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            },
+            {
+              "line_number": 63,
+              "content": "2026-02-22T20:25:29.4657888Z Successfully installed aiohappyeyeballs-2.6.1 aiohttp-3.13.3 aiosignal-1.4.0 async-timeout-5.0.1 asyncio-pool-0.6.0 attrs-25.4.0 backports-asyncio-runner-1.2.0 exceptiongroup-1.3.1 frozenlist-1.8.0 idna-3.11 iniconfig-2.3.0 multidict-6.7.1 numpy-2.2.6 packaging-26.0 pluggy-1.6.0 propcache-0.4.1 pygments-2.19.2 pytest-9.0.2 pytest-asyncio-1.3.0 pytest-mock-3.15.1 pytest-timeout-2.4.0 scipy-1.15.3 tomli-2.4.0 typing-extensions-4.15.0 yarl-1.22.0",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            }
+          ],
+          "count": 5
+        },
+        {
+          "pattern": "timeout|timed out",
+          "matches": [
+            {
+              "line_number": 20,
+              "content": "2026-02-22T20:25:21.3812655Z Collecting async-timeout<6.0,>=4.0 (from aiohttp)",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 21,
+              "content": "2026-02-22T20:25:21.3826179Z   Using cached async_timeout-5.0.1-py3-none-any.whl.metadata (5.1 kB)",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 38,
+              "content": "2026-02-22T20:25:22.2081424Z Using cached pytest_timeout-2.4.0-py3-none-any.whl (14 kB)",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 41,
+              "content": "2026-02-22T20:25:22.2131007Z Using cached async_timeout-5.0.1-py3-none-any.whl (6.2 kB)",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 61,
+              "content": "2026-02-22T20:25:22.6269031Z Installing collected packages: typing-extensions, tomli, pygments, propcache, pluggy, packaging, numpy, iniconfig, idna, frozenlist, backports-asyncio-runner, attrs, asyncio-pool, async-timeout, aiohappyeyeballs, scipy, multidict, exceptiongroup, aiosignal, yarl, pytest, pytest-timeout, pytest-mock, pytest-asyncio, aiohttp",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 63,
+              "content": "2026-02-22T20:25:29.4657888Z Successfully installed aiohappyeyeballs-2.6.1 aiohttp-3.13.3 aiosignal-1.4.0 async-timeout-5.0.1 asyncio-pool-0.6.0 attrs-25.4.0 backports-asyncio-runner-1.2.0 exceptiongroup-1.3.1 frozenlist-1.8.0 idna-3.11 iniconfig-2.3.0 multidict-6.7.1 numpy-2.2.6 packaging-26.0 pluggy-1.6.0 propcache-0.4.1 pygments-2.19.2 pytest-9.0.2 pytest-asyncio-1.3.0 pytest-mock-3.15.1 pytest-timeout-2.4.0 scipy-1.15.3 tomli-2.4.0 typing-extensions-4.15.0 yarl-1.22.0",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            }
+          ],
+          "count": 6
+        }
+      ],
+      "suggested_fixes": [
+        "Consider increasing timeout values or optimizing slow operations"
+      ],
+      "severity": "high",
+      "category": "timeout",
+      "similar_failures": []
+    },
+    {
+      "error_patterns": [
+        {
+          "pattern": "ERROR|Error|error",
+          "matches": [
+            {
+              "line_number": 64,
+              "content": "2026-02-22T20:25:34.6628351Z ERROR: Could not find a version that satisfies the requirement google-cloud-sql-python-connector (from versions: none)",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 65,
+              "content": "2026-02-22T20:25:34.6636930Z ERROR: No matching distribution found for google-cloud-sql-python-connector",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 66,
+              "content": "2026-02-22T20:25:34.7023380Z ##[error]Process completed with exit code 1.",
+              "severity": "high",
+              "emoji": "\u274c"
+            }
+          ],
+          "count": 3
+        },
+        {
+          "pattern": "FAIL|Failed|failed",
+          "matches": [
+            {
+              "line_number": 97,
+              "content": "2026-02-22T20:25:35.0759305Z ##[warning]The process '/usr/bin/git' failed with exit code 128",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            }
+          ],
+          "count": 1
+        },
+        {
+          "pattern": "WARN|Warning|warning",
+          "matches": [
+            {
+              "line_number": 72,
+              "content": "2026-02-22T20:25:34.7131905Z   if-no-files-found: warn",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            },
+            {
+              "line_number": 87,
+              "content": "2026-02-22T20:25:34.9240644Z ##[warning]No files were found with the provided path: test-results/biometric-voice-e2e. No artifacts will be uploaded.",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            },
+            {
+              "line_number": 97,
+              "content": "2026-02-22T20:25:35.0759305Z ##[warning]The process '/usr/bin/git' failed with exit code 128",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            }
+          ],
+          "count": 3
+        },
+        {
+          "pattern": "AssertionError|Exception",
+          "matches": [
+            {
+              "line_number": 0,
+              "content": "2026-02-22T20:25:25.6961293Z Collecting exceptiongroup>=1 (from pytest)",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            },
+            {
+              "line_number": 1,
+              "content": "2026-02-22T20:25:25.6975145Z   Using cached exceptiongroup-1.3.1-py3-none-any.whl.metadata (6.7 kB)",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            },
+            {
+              "line_number": 52,
+              "content": "2026-02-22T20:25:27.0303443Z Using cached exceptiongroup-1.3.1-py3-none-any.whl (16 kB)",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            },
+            {
+              "line_number": 61,
+              "content": "2026-02-22T20:25:27.1776144Z Installing collected packages: typing-extensions, tomli, pygments, propcache, pluggy, packaging, numpy, iniconfig, idna, frozenlist, backports-asyncio-runner, attrs, asyncio-pool, async-timeout, aiohappyeyeballs, scipy, multidict, exceptiongroup, aiosignal, yarl, pytest, pytest-timeout, pytest-mock, pytest-asyncio, aiohttp",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            },
+            {
+              "line_number": 63,
+              "content": "2026-02-22T20:25:33.8770986Z Successfully installed aiohappyeyeballs-2.6.1 aiohttp-3.13.3 aiosignal-1.4.0 async-timeout-5.0.1 asyncio-pool-0.6.0 attrs-25.4.0 backports-asyncio-runner-1.2.0 exceptiongroup-1.3.1 frozenlist-1.8.0 idna-3.11 iniconfig-2.3.0 multidict-6.7.1 numpy-2.2.6 packaging-26.0 pluggy-1.6.0 propcache-0.4.1 pygments-2.19.2 pytest-9.0.2 pytest-asyncio-1.3.0 pytest-mock-3.15.1 pytest-timeout-2.4.0 scipy-1.15.3 tomli-2.4.0 typing-extensions-4.15.0 yarl-1.22.0",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            }
+          ],
+          "count": 5
+        },
+        {
+          "pattern": "timeout|timed out",
+          "matches": [
+            {
+              "line_number": 20,
+              "content": "2026-02-22T20:25:25.8591557Z Collecting async-timeout<6.0,>=4.0 (from aiohttp)",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 21,
+              "content": "2026-02-22T20:25:25.8604348Z   Using cached async_timeout-5.0.1-py3-none-any.whl.metadata (5.1 kB)",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 38,
+              "content": "2026-02-22T20:25:26.6921269Z Using cached pytest_timeout-2.4.0-py3-none-any.whl (14 kB)",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 41,
+              "content": "2026-02-22T20:25:26.6969248Z Using cached async_timeout-5.0.1-py3-none-any.whl (6.2 kB)",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 61,
+              "content": "2026-02-22T20:25:27.1776144Z Installing collected packages: typing-extensions, tomli, pygments, propcache, pluggy, packaging, numpy, iniconfig, idna, frozenlist, backports-asyncio-runner, attrs, asyncio-pool, async-timeout, aiohappyeyeballs, scipy, multidict, exceptiongroup, aiosignal, yarl, pytest, pytest-timeout, pytest-mock, pytest-asyncio, aiohttp",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 63,
+              "content": "2026-02-22T20:25:33.8770986Z Successfully installed aiohappyeyeballs-2.6.1 aiohttp-3.13.3 aiosignal-1.4.0 async-timeout-5.0.1 asyncio-pool-0.6.0 attrs-25.4.0 backports-asyncio-runner-1.2.0 exceptiongroup-1.3.1 frozenlist-1.8.0 idna-3.11 iniconfig-2.3.0 multidict-6.7.1 numpy-2.2.6 packaging-26.0 pluggy-1.6.0 propcache-0.4.1 pygments-2.19.2 pytest-9.0.2 pytest-asyncio-1.3.0 pytest-mock-3.15.1 pytest-timeout-2.4.0 scipy-1.15.3 tomli-2.4.0 typing-extensions-4.15.0 yarl-1.22.0",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            }
+          ],
+          "count": 6
+        }
+      ],
+      "suggested_fixes": [
+        "Consider increasing timeout values or optimizing slow operations"
+      ],
+      "severity": "high",
+      "category": "timeout",
+      "similar_failures": []
+    },
+    {
+      "error_patterns": [
+        {
+          "pattern": "ERROR|Error|error",
+          "matches": [
+            {
+              "line_number": 64,
+              "content": "2026-02-22T20:25:36.1477240Z ERROR: Could not find a version that satisfies the requirement google-cloud-sql-python-connector (from versions: none)",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 65,
+              "content": "2026-02-22T20:25:36.1485994Z ERROR: No matching distribution found for google-cloud-sql-python-connector",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 66,
+              "content": "2026-02-22T20:25:36.1875669Z ##[error]Process completed with exit code 1.",
+              "severity": "high",
+              "emoji": "\u274c"
+            }
+          ],
+          "count": 3
+        },
+        {
+          "pattern": "FAIL|Failed|failed",
+          "matches": [
+            {
+              "line_number": 97,
+              "content": "2026-02-22T20:25:36.5327369Z ##[warning]The process '/usr/bin/git' failed with exit code 128",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            }
+          ],
+          "count": 1
+        },
+        {
+          "pattern": "WARN|Warning|warning",
+          "matches": [
+            {
+              "line_number": 72,
+              "content": "2026-02-22T20:25:36.1978823Z   if-no-files-found: warn",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            },
+            {
+              "line_number": 87,
+              "content": "2026-02-22T20:25:36.3973957Z ##[warning]No files were found with the provided path: test-results/biometric-voice-e2e. No artifacts will be uploaded.",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            },
+            {
+              "line_number": 97,
+              "content": "2026-02-22T20:25:36.5327369Z ##[warning]The process '/usr/bin/git' failed with exit code 128",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            }
+          ],
+          "count": 3
+        },
+        {
+          "pattern": "AssertionError|Exception",
+          "matches": [
+            {
+              "line_number": 0,
+              "content": "2026-02-22T20:25:27.8138061Z Collecting exceptiongroup>=1 (from pytest)",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            },
+            {
+              "line_number": 1,
+              "content": "2026-02-22T20:25:27.8150654Z   Using cached exceptiongroup-1.3.1-py3-none-any.whl.metadata (6.7 kB)",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            },
+            {
+              "line_number": 52,
+              "content": "2026-02-22T20:25:29.5455378Z Using cached exceptiongroup-1.3.1-py3-none-any.whl (16 kB)",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            },
+            {
+              "line_number": 61,
+              "content": "2026-02-22T20:25:29.6945561Z Installing collected packages: typing-extensions, tomli, pygments, propcache, pluggy, packaging, numpy, iniconfig, idna, frozenlist, backports-asyncio-runner, attrs, asyncio-pool, async-timeout, aiohappyeyeballs, scipy, multidict, exceptiongroup, aiosignal, yarl, pytest, pytest-timeout, pytest-mock, pytest-asyncio, aiohttp",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            },
+            {
+              "line_number": 63,
+              "content": "2026-02-22T20:25:35.3756435Z Successfully installed aiohappyeyeballs-2.6.1 aiohttp-3.13.3 aiosignal-1.4.0 async-timeout-5.0.1 asyncio-pool-0.6.0 attrs-25.4.0 backports-asyncio-runner-1.2.0 exceptiongroup-1.3.1 frozenlist-1.8.0 idna-3.11 iniconfig-2.3.0 multidict-6.7.1 numpy-2.2.6 packaging-26.0 pluggy-1.6.0 propcache-0.4.1 pygments-2.19.2 pytest-9.0.2 pytest-asyncio-1.3.0 pytest-mock-3.15.1 pytest-timeout-2.4.0 scipy-1.15.3 tomli-2.4.0 typing-extensions-4.15.0 yarl-1.22.0",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            }
+          ],
+          "count": 5
+        },
+        {
+          "pattern": "timeout|timed out",
+          "matches": [
+            {
+              "line_number": 20,
+              "content": "2026-02-22T20:25:28.0316591Z Collecting async-timeout<6.0,>=4.0 (from aiohttp)",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 21,
+              "content": "2026-02-22T20:25:28.0330078Z   Using cached async_timeout-5.0.1-py3-none-any.whl.metadata (5.1 kB)",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 38,
+              "content": "2026-02-22T20:25:28.7737268Z Using cached pytest_timeout-2.4.0-py3-none-any.whl (14 kB)",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 41,
+              "content": "2026-02-22T20:25:28.7780909Z Using cached async_timeout-5.0.1-py3-none-any.whl (6.2 kB)",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 61,
+              "content": "2026-02-22T20:25:29.6945561Z Installing collected packages: typing-extensions, tomli, pygments, propcache, pluggy, packaging, numpy, iniconfig, idna, frozenlist, backports-asyncio-runner, attrs, asyncio-pool, async-timeout, aiohappyeyeballs, scipy, multidict, exceptiongroup, aiosignal, yarl, pytest, pytest-timeout, pytest-mock, pytest-asyncio, aiohttp",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 63,
+              "content": "2026-02-22T20:25:35.3756435Z Successfully installed aiohappyeyeballs-2.6.1 aiohttp-3.13.3 aiosignal-1.4.0 async-timeout-5.0.1 asyncio-pool-0.6.0 attrs-25.4.0 backports-asyncio-runner-1.2.0 exceptiongroup-1.3.1 frozenlist-1.8.0 idna-3.11 iniconfig-2.3.0 multidict-6.7.1 numpy-2.2.6 packaging-26.0 pluggy-1.6.0 propcache-0.4.1 pygments-2.19.2 pytest-9.0.2 pytest-asyncio-1.3.0 pytest-mock-3.15.1 pytest-timeout-2.4.0 scipy-1.15.3 tomli-2.4.0 typing-extensions-4.15.0 yarl-1.22.0",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            }
+          ],
+          "count": 6
+        }
+      ],
+      "suggested_fixes": [
+        "Consider increasing timeout values or optimizing slow operations"
+      ],
+      "severity": "high",
+      "category": "timeout",
+      "similar_failures": []
+    },
+    {
+      "error_patterns": [
+        {
+          "pattern": "ERROR|Error|error",
+          "matches": [
+            {
+              "line_number": 97,
+              "content": "2026-02-22T20:25:25.5562345Z ##[error]Process completed with exit code 1.",
+              "severity": "high",
+              "emoji": "\u274c"
+            }
+          ],
+          "count": 1
+        },
+        {
+          "pattern": "FAIL|Failed|failed",
+          "matches": [
+            {
+              "line_number": 39,
+              "content": "2026-02-22T20:25:25.3719691Z \u001b[36;1mTOTAL_FAILED=0\u001b[0m",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            },
+            {
+              "line_number": 44,
+              "content": "2026-02-22T20:25:25.3726917Z \u001b[36;1m    FAILED=$(jq -r '.summary.failed' \"$report\")\u001b[0m",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            },
+            {
+              "line_number": 46,
+              "content": "2026-02-22T20:25:25.3730104Z \u001b[36;1m    TOTAL_FAILED=$((TOTAL_FAILED + FAILED))\u001b[0m",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            },
+            {
+              "line_number": 50,
+              "content": "2026-02-22T20:25:25.3734728Z \u001b[36;1mTOTAL=$((TOTAL_PASSED + TOTAL_FAILED))\u001b[0m",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            },
+            {
+              "line_number": 55,
+              "content": "2026-02-22T20:25:25.3742903Z \u001b[36;1mecho \"- \u274c Failed: $TOTAL_FAILED\" >> $GITHUB_STEP_SUMMARY\u001b[0m",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            },
+            {
+              "line_number": 59,
+              "content": "2026-02-22T20:25:25.3748928Z \u001b[36;1mif [ $TOTAL_FAILED -gt 0 ]; then\u001b[0m",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            },
+            {
+              "line_number": 60,
+              "content": "2026-02-22T20:25:25.3750481Z \u001b[36;1m  echo \"## \u26a0\ufe0f Failed Tests\" >> $GITHUB_STEP_SUMMARY\u001b[0m",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            },
+            {
+              "line_number": 77,
+              "content": "2026-02-22T20:25:25.5063496Z ##[group]Run # Fail workflow if any tests failed",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            },
+            {
+              "line_number": 78,
+              "content": "2026-02-22T20:25:25.5066168Z \u001b[36;1m# Fail workflow if any tests failed\u001b[0m",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            },
+            {
+              "line_number": 81,
+              "content": "2026-02-22T20:25:25.5072461Z \u001b[36;1m    FAILED=$(jq -r '.summary.failed' \"$report\")\u001b[0m",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            }
+          ],
+          "count": 13
+        },
+        {
+          "pattern": "WARN|Warning|warning",
+          "matches": [
+            {
+              "line_number": 4,
+              "content": "2026-02-22T20:25:25.2032840Z (node:2126) [DEP0005] DeprecationWarning: Buffer() is deprecated due to security and usability issues. Please use the Buffer.alloc(), Buffer.allocUnsafe(), or Buffer.from() methods instead.",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            },
+            {
+              "line_number": 5,
+              "content": "2026-02-22T20:25:25.2036938Z (Use `node --trace-deprecation ...` to show where the warning was created)",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            }
+          ],
+          "count": 2
+        }
+      ],
+      "suggested_fixes": [
+        "Review test cases and ensure code changes haven't broken existing functionality"
+      ],
+      "severity": "high",
+      "category": "test_failure",
+      "similar_failures": []
+    },
+    {
+      "error_patterns": [
+        {
+          "pattern": "ERROR|Error|error",
+          "matches": [
+            {
+              "line_number": 97,
+              "content": "2026-02-22T20:25:57.0928049Z ##[error]Process completed with exit code 1.",
+              "severity": "high",
+              "emoji": "\u274c"
+            }
+          ],
+          "count": 1
+        },
+        {
+          "pattern": "FAIL|Failed|failed",
+          "matches": [
+            {
+              "line_number": 32,
+              "content": "2026-02-22T20:25:56.9295290Z \u001b[36;1mTOTAL_FAILED=0\u001b[0m",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            },
+            {
+              "line_number": 37,
+              "content": "2026-02-22T20:25:56.9298797Z \u001b[36;1m    FAILED=$(jq -r '.summary.failed' \"$report\")\u001b[0m",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            },
+            {
+              "line_number": 39,
+              "content": "2026-02-22T20:25:56.9300391Z \u001b[36;1m    TOTAL_FAILED=$((TOTAL_FAILED + FAILED))\u001b[0m",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            },
+            {
+              "line_number": 43,
+              "content": "2026-02-22T20:25:56.9302928Z \u001b[36;1mTOTAL=$((TOTAL_PASSED + TOTAL_FAILED))\u001b[0m",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            },
+            {
+              "line_number": 52,
+              "content": "2026-02-22T20:25:56.9309698Z \u001b[36;1mecho \"- \u274c Failed: $TOTAL_FAILED\" >> $GITHUB_STEP_SUMMARY\u001b[0m",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            },
+            {
+              "line_number": 60,
+              "content": "2026-02-22T20:25:56.9316320Z \u001b[36;1mif [ $TOTAL_FAILED -gt 0 ]; then\u001b[0m",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            },
+            {
+              "line_number": 61,
+              "content": "2026-02-22T20:25:56.9317121Z \u001b[36;1m  echo \"## \u26a0\ufe0f Failed Tests\" >> $GITHUB_STEP_SUMMARY\u001b[0m",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            },
+            {
+              "line_number": 81,
+              "content": "2026-02-22T20:25:57.0442498Z \u001b[36;1m    FAILED=$(jq -r '.summary.failed' \"$report\")\u001b[0m",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            },
+            {
+              "line_number": 82,
+              "content": "2026-02-22T20:25:57.0443250Z \u001b[36;1m    if [ \"$FAILED\" -gt 0 ]; then\u001b[0m",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            },
+            {
+              "line_number": 83,
+              "content": "2026-02-22T20:25:57.0444897Z \u001b[36;1m      echo \"\u274c Critical biometric tests failed - 'unlock my screen' may be broken!\"\u001b[0m",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            }
+          ],
+          "count": 11
+        }
+      ],
+      "suggested_fixes": [
+        "Review test cases and ensure code changes haven't broken existing functionality"
+      ],
+      "severity": "high",
+      "category": "test_failure",
+      "similar_failures": []
+    },
+    {
+      "error_patterns": [
+        {
+          "pattern": "ERROR|Error|error",
+          "matches": [
+            {
+              "line_number": 61,
+              "content": "2026-02-22T20:26:02.6562146Z ##[error]Process completed with exit code 1.",
+              "severity": "high",
+              "emoji": "\u274c"
+            }
+          ],
+          "count": 1
+        },
+        {
+          "pattern": "FAIL|Failed|failed",
+          "matches": [
+            {
+              "line_number": 25,
+              "content": "2026-02-22T20:26:02.6388496Z \u001b[36;1mif [ \"failure\" = \"success\" ]; then\u001b[0m",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            },
+            {
+              "line_number": 28,
+              "content": "2026-02-22T20:26:02.6390924Z \u001b[36;1m  echo \"- \u274c **Unlock Integration E2E:** failure\" >> $GITHUB_STEP_SUMMARY\u001b[0m",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            },
+            {
+              "line_number": 32,
+              "content": "2026-02-22T20:26:02.6393675Z \u001b[36;1mif [ \"failure\" = \"success\" ]; then\u001b[0m",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            },
+            {
+              "line_number": 35,
+              "content": "2026-02-22T20:26:02.6396081Z \u001b[36;1m  echo \"- \u274c **Biometric Voice E2E:** failure\" >> $GITHUB_STEP_SUMMARY\u001b[0m",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            },
+            {
+              "line_number": 41,
+              "content": "2026-02-22T20:26:02.6399792Z \u001b[36;1mif [ \"failure\" = \"success\" ] && [ \"failure\" = \"success\" ]; then\u001b[0m",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            },
+            {
+              "line_number": 45,
+              "content": "2026-02-22T20:26:02.6403826Z \u001b[36;1m  FAIL=0\u001b[0m",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            },
+            {
+              "line_number": 47,
+              "content": "2026-02-22T20:26:02.6405029Z \u001b[36;1m  echo \"## \u274c Overall Status: TESTS FAILED\" >> $GITHUB_STEP_SUMMARY\u001b[0m",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            },
+            {
+              "line_number": 50,
+              "content": "2026-02-22T20:26:02.6407543Z \u001b[36;1m  FAIL=1\u001b[0m",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            },
+            {
+              "line_number": 58,
+              "content": "2026-02-22T20:26:02.6412876Z \u001b[36;1mexit $FAIL\u001b[0m",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            }
+          ],
+          "count": 9
+        }
+      ],
+      "suggested_fixes": [
+        "Review test cases and ensure code changes haven't broken existing functionality"
+      ],
+      "severity": "high",
+      "category": "test_failure",
+      "similar_failures": []
+    },
+    {
+      "error_patterns": [
+        {
+          "pattern": "ERROR|Error|error",
+          "matches": [
+            {
+              "line_number": -23,
+              "content": "2026-02-22T20:26:07.3467829Z ##[error]Process completed with exit code 1.",
+              "severity": "high",
+              "emoji": "\u274c"
+            }
+          ],
+          "count": 1
+        },
+        {
+          "pattern": "FAIL|Failed|failed",
+          "matches": [
+            {
+              "line_number": -31,
+              "content": "2026-02-22T20:26:07.2645563Z ##[group]Run echo \"\u274c Unlock tests failed - 'unlock my screen' may be broken!\"",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            },
+            {
+              "line_number": -30,
+              "content": "2026-02-22T20:26:07.2646690Z \u001b[36;1mecho \"\u274c Unlock tests failed - 'unlock my screen' may be broken!\"\u001b[0m",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            },
+            {
+              "line_number": -25,
+              "content": "2026-02-22T20:26:07.3450302Z \u274c Unlock tests failed - 'unlock my screen' may be broken!",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            }
+          ],
+          "count": 3
+        }
+      ],
+      "suggested_fixes": [
+        "Review test cases and ensure code changes haven't broken existing functionality"
+      ],
+      "severity": "high",
+      "category": "test_failure",
+      "similar_failures": []
+    }
+  ],
+  "timestamp": "2026-02-22T20:26:47.271636"
+}
