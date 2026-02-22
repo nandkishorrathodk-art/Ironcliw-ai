@@ -244,8 +244,11 @@ if _new_filter not in _existing_pythonwarnings:
         os.environ['PYTHONWARNINGS'] = _new_filter
 
 # Set spawn mode IMMEDIATELY - before anything else can start threads/processes
+# On macOS, fork() causes crashes due to Objective-C runtime locks
+# On Windows, spawn is default (no fork available)
+# On Linux, spawn is safer for multi-threaded processes
 if sys.platform == "darwin":
-    # Must be called before any other multiprocessing usage
+    # macOS: Must be called before any other multiprocessing usage
     try:
         multiprocessing.set_start_method("spawn", force=True)
     except RuntimeError:
@@ -253,7 +256,7 @@ if sys.platform == "darwin":
 
     # Additional fork-safety environment variables for macOS
     os.environ["OBJC_DISABLE_INITIALIZE_FORK_SAFETY"] = "YES"
-
+    
     # v128.0: Also apply warnings filter in current process
     # On macOS with 'spawn' mode, internal Python semaphores may appear
     # "leaked" at exit even when properly cleaned up. This is a known issue
@@ -288,6 +291,14 @@ if sys.platform == "darwin":
     os.environ["MKL_NUM_THREADS"] = "1"  # Intel MKL
     os.environ["OPENBLAS_NUM_THREADS"] = "1"  # OpenBLAS
     os.environ["VECLIB_MAXIMUM_THREADS"] = "1"  # macOS Accelerate
+
+elif sys.platform == "linux":
+    # Linux: Use spawn for safety (fork() can be problematic with threads)
+    try:
+        multiprocessing.set_start_method("spawn", force=True)
+    except RuntimeError:
+        pass  # Already set
+# Windows uses 'spawn' by default, no configuration needed
 
 import subprocess
 
@@ -502,6 +513,38 @@ import time
 from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import Optional
+
+# =============================================================================
+# PLATFORM DETECTION AND ABSTRACTION (Windows Port)
+# =============================================================================
+# Import platform detection to enable Windows/Linux support alongside macOS.
+# This determines which platform-specific implementations to load.
+# =============================================================================
+try:
+    from backend.platform import (
+        get_platform,
+        is_windows,
+        is_macos,
+        is_linux,
+        get_platform_info,
+    )
+    JARVIS_PLATFORM = get_platform()
+    JARVIS_IS_WINDOWS = is_windows()
+    JARVIS_IS_MACOS = is_macos()
+    JARVIS_IS_LINUX = is_linux()
+    JARVIS_PLATFORM_INFO = get_platform_info()
+    print(f"[STARTUP] ✅ Platform detected: {JARVIS_PLATFORM} ({JARVIS_PLATFORM_INFO.os_release})")
+except ImportError as e:
+    print(f"[STARTUP] ⚠️ Platform detection unavailable: {e}")
+    # Fallback to sys.platform
+    import platform as _fallback_platform
+    _sys_platform = sys.platform.lower()
+    JARVIS_PLATFORM = 'macos' if _sys_platform == 'darwin' else ('windows' if _sys_platform == 'win32' else 'linux')
+    JARVIS_IS_WINDOWS = JARVIS_PLATFORM == 'windows'
+    JARVIS_IS_MACOS = JARVIS_PLATFORM == 'macos'
+    JARVIS_IS_LINUX = JARVIS_PLATFORM == 'linux'
+    JARVIS_PLATFORM_INFO = None
+    print(f"[STARTUP] ⚠️ Using fallback platform detection: {JARVIS_PLATFORM}")
 
 # v242.2: Centralized log sanitization for CWE-117 (log injection) prevention
 try:
