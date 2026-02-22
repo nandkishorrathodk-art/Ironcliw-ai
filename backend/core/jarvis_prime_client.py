@@ -1185,6 +1185,7 @@ class JarvisPrimeClient:
 
         # Try in order: decided mode → Cloud Run → Gemini
         fallback_order = self._get_fallback_order(mode)
+        _saw_model_swap_503 = False  # v242.1: track 503 for retry signalling
 
         for try_mode in fallback_order:
             cb = self._circuit_breakers[try_mode]
@@ -1209,6 +1210,9 @@ class JarvisPrimeClient:
                     self._update_stats(try_mode, response)
                     return response
                 else:
+                    # v242.1: Track if any backend returned 503 (model swap)
+                    if response.metadata.get("model_swapping"):
+                        _saw_model_swap_503 = True
                     cb.record_failure()
                     logger.warning(f"[JarvisPrimeClient] {try_mode.value} failed: {response.error}")
                     self._fallback_count += 1
@@ -1222,6 +1226,7 @@ class JarvisPrimeClient:
             success=False,
             error="All backends failed",
             backend="none",
+            metadata={"model_swapping": True} if _saw_model_swap_503 else {},
         )
 
     def _get_fallback_order(self, initial_mode: RoutingMode) -> List[RoutingMode]:
@@ -1310,6 +1315,18 @@ class JarvisPrimeClient:
             total_ms = int((time.time() - start_time) * 1000)
 
             if not response.success:
+                # v242.1: If a backend returned 503, signal model_swapping
+                # so the caller (_call_jprime) can retry after a brief delay.
+                if response.metadata.get("model_swapping"):
+                    logger.info(
+                        "[v242] J-Prime returned 503 (model swap in progress). "
+                        "Signalling caller to retry."
+                    )
+                    return StructuredResponse(
+                        content="",
+                        source="model_swapping",
+                    )
+
                 logger.warning(
                     f"[v242] J-Prime complete() failed: {response.error}. "
                     f"Brain vacuum fallback."
@@ -1537,6 +1554,7 @@ class JarvisPrimeClient:
                     success=False,
                     error=data.get("detail", "Model not loaded"),
                     backend="local",
+                    metadata={"http_status": 503, "model_swapping": True},
                 )
             else:
                 return CompletionResponse(
@@ -1597,6 +1615,7 @@ class JarvisPrimeClient:
                     success=False,
                     error=data.get("detail", "Model not loaded"),
                     backend="cloud_run",
+                    metadata={"http_status": 503, "model_swapping": True},
                 )
             else:
                 return CompletionResponse(

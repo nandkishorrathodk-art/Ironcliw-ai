@@ -1536,6 +1536,7 @@ class UnifiedCommandProcessor:
         Returns StructuredResponse or None on failure.
         v242.1: On J-Prime failure, attempts brain vacuum fallback via client
         before returning None.
+        v242.1: Retries once after 2s on 503 model-swap (source='model_swapping').
         """
         client = None
         try:
@@ -1551,7 +1552,7 @@ class UnifiedCommandProcessor:
                 remaining = deadline - _time.monotonic()
                 timeout = max(2.0, remaining - 1.0)
 
-            return await asyncio.wait_for(
+            response = await asyncio.wait_for(
                 client.classify_and_complete(
                     query=command_text,
                     max_tokens=512,
@@ -1559,6 +1560,56 @@ class UnifiedCommandProcessor:
                 ),
                 timeout=timeout,
             )
+
+            # v242.1: Detect model-swap 503 and retry once after 2s
+            if response and getattr(response, 'source', '') == 'model_swapping':
+                # Only retry if we have enough time left
+                retry_timeout = timeout
+                if deadline:
+                    remaining = deadline - _time.monotonic()
+                    retry_timeout = max(2.0, remaining - 1.0)
+                    if remaining < 4.0:
+                        # Not enough time for 2s sleep + retry
+                        logger.info(
+                            "[v242] J-Prime mid-model-swap but insufficient "
+                            f"time for retry ({remaining:.1f}s left)"
+                        )
+                        # Fall through to brain vacuum below
+                        response = None
+                    else:
+                        logger.info("[v242] J-Prime mid-model-swap, retrying in 2s")
+                        await asyncio.sleep(2.0)
+                        # Recalculate timeout for retry
+                        remaining = deadline - _time.monotonic()
+                        retry_timeout = max(2.0, remaining - 1.0)
+                        response = await asyncio.wait_for(
+                            client.classify_and_complete(
+                                query=command_text,
+                                max_tokens=512,
+                                context_metadata=source_context,
+                            ),
+                            timeout=retry_timeout,
+                        )
+                else:
+                    logger.info("[v242] J-Prime mid-model-swap, retrying in 2s")
+                    await asyncio.sleep(2.0)
+                    response = await asyncio.wait_for(
+                        client.classify_and_complete(
+                            query=command_text,
+                            max_tokens=512,
+                            context_metadata=source_context,
+                        ),
+                        timeout=retry_timeout,
+                    )
+
+            # If retry also returned model_swapping, treat as failure
+            if response and getattr(response, 'source', '') == 'model_swapping':
+                logger.warning("[v242] J-Prime still swapping after retry, falling back")
+                response = None
+
+            if response is not None:
+                return response
+
         except asyncio.TimeoutError:
             logger.warning("[v242] J-Prime call timed out")
         except Exception as e:
