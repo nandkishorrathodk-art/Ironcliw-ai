@@ -1826,6 +1826,9 @@ class CloudSQLProxyManager:
 
                 # Wait for proxy to be ready (max 15 seconds) - ASYNC!
                 # v124.0: All checks in this loop are now async to not block event loop
+                # v244.0: TCP-only fallback timeout is configurable (default 10s)
+                _tcp_fallback_s = float(os.environ.get("CLOUDSQL_LOG_READY_FALLBACK_TIMEOUT", "10.0"))
+                _tcp_fallback_iters = int(_tcp_fallback_s / 0.5)
                 logger.info(f"⏳ Waiting for proxy to be ready...")
                 for i in range(30):
                     await asyncio.sleep(0.5)  # Non-blocking async sleep
@@ -1918,7 +1921,7 @@ class CloudSQLProxyManager:
                                 f"(took {i * 0.5:.1f}s, log confirmed)"
                             )
                             return True
-                        elif i >= 6:  # After 3s with TCP open but no log signal
+                        elif i >= _tcp_fallback_iters:  # v244.0: Configurable (default 10s)
                             # Fall back to TCP-only readiness (proxy might not emit
                             # this log line in all versions)
                             logger.info(
@@ -2725,10 +2728,8 @@ WantedBy=default.target
             success = await self.start()
 
             if success:
-                # Wait for proxy to be ready
-                await asyncio.sleep(3)
-
-                # Verify connection
+                # v244.0: start() already waits for log-signal readiness.
+                # No hardcoded sleep needed — verify connection directly.
                 test_result = await self.check_connection_health()
                 if test_result.get('connection_active'):
                     logger.info("[CLOUDSQL] ✅ Reconnection successful")
