@@ -452,6 +452,7 @@ python backend/ghost_hands/test_window_control.py
 ---
 
 ### [ ] Phase 9: Frontend Integration & Testing (Week 8)
+<!-- chat-id: 9c918326-0dc3-43f2-adfe-4410f5f01e81 -->
 
 Ensure the React frontend works with the Windows backend, including WebSocket communication and loading page.
 
