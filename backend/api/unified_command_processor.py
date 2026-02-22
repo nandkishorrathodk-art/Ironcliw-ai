@@ -1323,7 +1323,38 @@ class UnifiedCommandProcessor:
 
         # === Step 2: J-Prime call (the brain) ===
         logger.info(f"[v242] Sending to J-Prime: '{command_text[:80]}'")
-        response = await self._call_jprime(command_text, deadline=deadline)
+
+        # v242.1: Build lightweight context for J-Prime classification
+        _jprime_ctx: Dict[str, Any] = {}
+        if source_context and isinstance(source_context, dict):
+            _jprime_ctx["source"] = source_context.get("source", "unknown")
+        if audio_data is not None:
+            _jprime_ctx["has_audio"] = True
+        if speaker_name:
+            _jprime_ctx["speaker"] = speaker_name
+        # Lightweight screen context (active app name, no screenshot)
+        try:
+            import subprocess
+            _active_app = subprocess.check_output(
+                ["osascript", "-e",
+                 'tell application "System Events" to get name of first application process whose frontmost is true'],
+                timeout=1, stderr=subprocess.DEVNULL,
+            ).decode().strip()
+            if _active_app:
+                _jprime_ctx["active_app"] = _active_app
+        except Exception:
+            pass
+        # Last 5 conversation turns for continuity
+        if hasattr(self, 'context') and hasattr(self.context, 'conversation_history'):
+            history = self.context.conversation_history
+            if history:
+                _jprime_ctx["recent_history"] = [
+                    {"role": h.get("role", "user"), "content": str(h.get("content", ""))[:200]}
+                    for h in (history[-5:] if isinstance(history, list) else [])
+                ]
+        response = await self._call_jprime(
+            command_text, deadline=deadline, source_context=_jprime_ctx or None,
+        )
         if response:
             logger.info(
                 f"[v242] J-Prime classified: intent={response.intent}, "
@@ -1583,6 +1614,8 @@ class UnifiedCommandProcessor:
                 return await self._handle_voice_unlock_action(
                     command_text, websocket, audio_data, speaker_name
                 )
+            elif domain == "workspace":
+                return await self._handle_workspace_action(command_text, response)
             else:
                 return {
                     "success": True,
@@ -1783,6 +1816,64 @@ class UnifiedCommandProcessor:
                 "response": f"Voice unlock failed: {str(e)}",
                 "command_type": "voice_unlock",
                 "error": str(e),
+            }
+
+    async def _handle_workspace_action(
+        self, command_text: str, response: Any,
+    ) -> Dict[str, Any]:
+        """Route workspace commands to the registered GoogleWorkspaceAgent singleton.
+
+        v242.1: Uses Neural Mesh agent registry singleton if available,
+        falls back to lazy singleton to avoid expensive re-initialization.
+        """
+        try:
+            # Prefer existing agent instance from Neural Mesh coordinator
+            agent = None
+            if hasattr(self, '_neural_mesh_coordinator') and self._neural_mesh_coordinator:
+                agent = self._neural_mesh_coordinator.get_agent("google_workspace_agent")
+
+            if agent is None:
+                # Lazy singleton fallback (avoids re-constructing expensive OAuth clients)
+                if not hasattr(self, '_workspace_agent_singleton'):
+                    try:
+                        from neural_mesh.agents.google_workspace_agent import GoogleWorkspaceAgent
+                        self._workspace_agent_singleton = GoogleWorkspaceAgent()
+                    except ImportError:
+                        logger.warning("[v242] GoogleWorkspaceAgent not available")
+                        self._workspace_agent_singleton = None
+                agent = self._workspace_agent_singleton
+
+            if agent is None:
+                # No workspace agent available — return J-Prime's text response
+                return {
+                    "success": True,
+                    "response": response.content or "Workspace features are not currently available.",
+                    "command_type": "WORKSPACE",
+                    "source": response.source,
+                }
+
+            result = await agent.execute_task({
+                "action": "handle_workspace_query",
+                "query": command_text,
+            })
+            summary = self._summarize_workspace_result(
+                result if isinstance(result, dict) else {"response": str(result)},
+                getattr(response, 'intent', 'workspace'),
+            )
+            return {
+                "success": True,
+                "response": summary,
+                "command_type": "WORKSPACE",
+                "source": response.source,
+            }
+        except Exception as e:
+            logger.error(f"[v242] Workspace action failed: {e}", exc_info=True)
+            # Fallback: return J-Prime's text response
+            return {
+                "success": True,
+                "response": response.content or "I couldn't complete that workspace action.",
+                "command_type": "WORKSPACE",
+                "source": response.source,
             }
 
     async def _handle_vision_action(
