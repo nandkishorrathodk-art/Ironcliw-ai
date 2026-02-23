@@ -63801,7 +63801,12 @@ class JarvisSystemKernel:
                 _ideal_sev = _REEVAL_SEVERITY.get(_ideal, 0)
 
                 # Only change if significantly different (at least 1 severity level)
-                if abs(_ideal_sev - _current_sev) >= 1 and _ideal != _current:
+                # v266.2: During startup, mode can only degrade (never recover upward).
+                # Upward recovery only after startup completes.
+                _startup_complete = os.environ.get("JARVIS_STARTUP_COMPLETE", "") == "true"
+                _is_degradation = _ideal_sev > _current_sev
+                _can_change = _is_degradation or _startup_complete
+                if abs(_ideal_sev - _current_sev) >= 1 and _ideal != _current and _can_change:
                     _direction = "upgraded" if _ideal_sev < _current_sev else "downgraded"
                     self.logger.info(
                         "[ModeReeval] %s: %s %s → %s (avail=%.1fGB, predicted=%.1fGB)",
