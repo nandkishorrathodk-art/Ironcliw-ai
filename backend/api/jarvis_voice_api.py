@@ -742,6 +742,26 @@ class JARVISVoiceAPI:
         logger.debug(f"[INIT ORDER] Returning JARVIS instance: {self._jarvis is not None}")
         return self._jarvis
 
+    @staticmethod
+    def _coerce_text(value: Any, fallback: str = "") -> str:
+        """Normalize arbitrary payloads into safe non-empty text."""
+        if isinstance(value, str):
+            text = value.strip()
+            return text if text else fallback
+        if value is None:
+            return fallback
+        try:
+            text = str(value).strip()
+        except Exception:
+            return fallback
+        return text if text else fallback
+
+    @staticmethod
+    def _preview_text(value: Any, limit: int = 100) -> str:
+        """Create a bounded, log-safe text preview."""
+        text = JARVISVoiceAPI._coerce_text(value, fallback="<empty>")
+        return text if len(text) <= limit else text[:limit]
+
     def _get_or_create_session_id(self) -> str:
         """Get or create session ID for conversation tracking"""
         if not self._session_id:
@@ -1827,8 +1847,34 @@ class JARVISVoiceAPI:
     @graceful_endpoint
     async def process_command(self, command: JARVISCommand) -> Dict:
         """Process a JARVIS command"""
+        # Enforce input text contract at ingress so downstream layers never
+        # receive None/whitespace command text.
+        if command is None:
+            logger.warning("Received process_command request with null command payload")
+            return {
+                "response": "I didn't catch that. Could you please repeat?",
+                "status": "error",
+                "confidence": 0.0,
+            }
+
+        command_text = self._coerce_text(getattr(command, "text", None), fallback="")
+        if not command_text:
+            logger.warning("Received command with empty or None text")
+            return {
+                "response": "I didn't catch that. Could you please repeat?",
+                "status": "error",
+                "confidence": 0.0,
+            }
+
+        # Keep a canonical text copy for all subsequent logic.
+        if getattr(command, "text", None) != command_text:
+            try:
+                command.text = command_text
+            except Exception:
+                pass
+
         # v241.0: Extract deadline from command for timeout propagation
-        deadline = command.deadline
+        deadline = getattr(command, "deadline", None)
 
         # =====================================================================
         # 🔒 PROACTIVE CAI (Context Awareness Intelligence) - SCREEN LOCK CHECK
@@ -2126,9 +2172,9 @@ class JARVISVoiceAPI:
                 }
 
         try:
-            # Validate command text
-            if not command.text or command.text is None:
-                logger.warning("Received command with empty or None text")
+            # Validate command text (defensive second gate for mutated payloads)
+            if not self._coerce_text(getattr(command, "text", None), fallback=""):
+                logger.warning("Received command with empty or None text (late validation)")
                 return {
                     "response": "I didn't catch that. Could you please repeat?",
                     "status": "error",
@@ -2223,19 +2269,22 @@ class JARVISVoiceAPI:
                 )
 
                 # Extract response from pipeline result
+                default_response = "I processed your command, Sir."
                 if isinstance(pipeline_result, dict):
-                    response = pipeline_result.get("response", "I processed your command, Sir.")
-                    # If we got a lock/unlock response, use it directly
-                    if pipeline_result.get("type") in [
-                        "voice_unlock",
-                        "screen_lock",
-                        "screen_unlock",
-                    ]:
-                        response = pipeline_result.get("response", response)
+                    response = self._coerce_text(
+                        pipeline_result.get("response"),
+                        fallback=default_response,
+                    )
                 else:
-                    response = str(pipeline_result)
+                    response = self._coerce_text(
+                        pipeline_result,
+                        fallback=default_response,
+                    )
 
-                logger.info(f"[JARVIS API] Pipeline response: '{response[:100]}...' (truncated)")
+                logger.info(
+                    "[JARVIS API] Pipeline response: '%s...' (truncated)",
+                    self._preview_text(response, limit=100),
+                )
             except asyncio.TimeoutError:
                 logger.error(
                     f"[JARVIS API] Command processing timed out (deadline budget exhausted): '{command.text}'"
