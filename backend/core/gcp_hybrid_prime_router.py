@@ -1638,6 +1638,89 @@ class GCPHybridPrimeRouter:
             self._emergency_offload_hysteresis_armed = True
             return
 
+    async def _check_model_recovery(self, current_used_percent: float) -> None:
+        """v266.2: Check if conditions are right for post-crisis model reload.
+
+        Called every monitoring poll when _model_needs_recovery is True.
+        Implements hybrid lazy+background warm-up:
+        - Waits for RAM to stabilize below RECOVERY_STABILITY_THRESHOLD_PERCENT
+        - After RECOVERY_STABILITY_DURATION_SEC sustained, starts background reload
+        - CLAUDE handles requests during reload (circuit breaker OPEN for LOCAL)
+        - On success: resets circuit breaker, clears recovery flag
+        - On failure: resets stability window, increments attempt counter
+        """
+        if self._recovery_in_progress:
+            return  # Reload already running in background
+
+        if self._recovery_attempts >= RECOVERY_MAX_ATTEMPTS:
+            self.logger.info(
+                f"[v266.2] Recovery exhausted ({RECOVERY_MAX_ATTEMPTS} attempts) "
+                f"— staying on CLAUDE until next crisis cycle"
+            )
+            self._model_needs_recovery = False
+            return
+
+        # Check stability: RAM must be below threshold
+        if current_used_percent < RECOVERY_STABILITY_THRESHOLD_PERCENT:
+            if self._recovery_stable_since == 0.0:
+                self._recovery_stable_since = time.time()
+                self.logger.info(
+                    f"[v266.2] RAM at {current_used_percent:.1f}% "
+                    f"(< {RECOVERY_STABILITY_THRESHOLD_PERCENT}%) — "
+                    f"stability window started"
+                )
+                return
+
+            elapsed = time.time() - self._recovery_stable_since
+            if elapsed < RECOVERY_STABILITY_DURATION_SEC:
+                return  # Still waiting for stability
+
+            # Stability window met — attempt background reload
+            self.logger.warning(
+                f"[v266.2] RAM stable at {current_used_percent:.1f}% "
+                f"for {elapsed:.0f}s — starting background model reload "
+                f"(attempt {self._recovery_attempts + 1}/{RECOVERY_MAX_ATTEMPTS})"
+            )
+            self._recovery_in_progress = True
+            try:
+                from backend.intelligence.unified_model_serving import get_model_serving
+                model_serving = await get_model_serving()
+                success = await model_serving.load_model()
+                if success:
+                    model_serving.reset_local_circuit_breaker()
+                    self._model_needs_recovery = False
+                    self._recovery_attempts = 0
+                    self._recovery_stable_since = 0.0
+                    self.logger.warning(
+                        "[v266.2] Post-crisis recovery COMPLETE — "
+                        "local model reloaded, PRIME_LOCAL circuit breaker reset"
+                    )
+                    await self._signal_memory_pressure_to_repos(
+                        status="recovered", action=None,
+                        used_percent=current_used_percent,
+                    )
+                else:
+                    self._recovery_attempts += 1
+                    self._recovery_stable_since = 0.0
+                    self.logger.warning(
+                        f"[v266.2] Model reload failed (attempt {self._recovery_attempts}/"
+                        f"{RECOVERY_MAX_ATTEMPTS}) — waiting for next stability window"
+                    )
+            except Exception as e:
+                self._recovery_attempts += 1
+                self._recovery_stable_since = 0.0
+                self.logger.error(f"[v266.2] Recovery error: {e}")
+            finally:
+                self._recovery_in_progress = False
+        else:
+            # RAM climbed back up — reset stability window
+            if self._recovery_stable_since > 0.0:
+                self.logger.debug(
+                    f"[v266.2] RAM at {current_used_percent:.1f}% — "
+                    f"stability window reset"
+                )
+                self._recovery_stable_since = 0.0
+
     async def _release_emergency_offload(self, reason: str) -> None:
         """
         v93.0/v266.1: Release emergency offload - SIGCONT all paused processes.
