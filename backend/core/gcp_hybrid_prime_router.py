@@ -191,6 +191,13 @@ VM_PROVISIONING_ENABLED = os.getenv("GCP_VM_PROVISIONING_ENABLED", "true").lower
 VM_PROVISIONING_LOCK_TTL = int(os.getenv("VM_PROVISIONING_LOCK_TTL", "300"))  # 5 minutes
 VM_MIN_ACTIVE_REQUESTS = int(os.getenv("VM_MIN_ACTIVE_REQUESTS", "1"))  # Min requests before termination
 
+# v266.0: Pressure-driven VM lifecycle hysteresis
+GCP_RELEASE_RAM_PERCENT = float(os.getenv("GCP_RELEASE_RAM_PERCENT", "70.0"))
+GCP_TRIGGER_READINGS_REQUIRED = int(os.getenv("GCP_TRIGGER_READINGS_REQUIRED", "3"))
+GCP_TRIGGER_READINGS_WINDOW = int(os.getenv("GCP_TRIGGER_READINGS_WINDOW", "5"))
+GCP_ACTIVE_STABILITY_CHECKS = int(os.getenv("GCP_ACTIVE_STABILITY_CHECKS", "3"))
+GCP_COOLING_GRACE_SECONDS = float(os.getenv("GCP_COOLING_GRACE_SECONDS", "120.0"))
+
 # =============================================================================
 # Distributed Locking for VM Provisioning (v2.0)
 # =============================================================================
@@ -229,6 +236,17 @@ class RoutingReason(Enum):
     CAPABILITY_REQUIRED = "capability_required"
     FALLBACK = "fallback"
     CIRCUIT_BREAKER_OPEN = "circuit_breaker_open"
+
+
+class VMLifecycleState(Enum):
+    """v266.0: State machine for pressure-driven GCP VM lifecycle."""
+    IDLE = "idle"
+    TRIGGERING = "triggering"
+    PROVISIONING = "provisioning"
+    BOOTING = "booting"
+    ACTIVE = "active"
+    COOLING_DOWN = "cooling_down"
+    STOPPING = "stopping"
 
 
 @dataclass
@@ -702,8 +720,15 @@ class GCPHybridPrimeRouter:
         # v2.0: VM provisioning with distributed locking
         self._vm_provisioning_enabled = VM_PROVISIONING_ENABLED and self._use_resilience
         self._vm_provisioning_lock: Optional[DistributedLock] = None
-        self._vm_provisioning_in_progress = False
         self._active_requests: Dict[RoutingTier, int] = {tier: 0 for tier in RoutingTier}
+
+        # v266.0: VM Lifecycle State Machine (replaces scattered booleans)
+        self._vm_lifecycle_state: VMLifecycleState = VMLifecycleState.IDLE
+        self._vm_lifecycle_changed_at: float = 0.0
+        self._trigger_readings: Deque[bool] = deque(maxlen=GCP_TRIGGER_READINGS_WINDOW)
+        self._active_stability_count: int = 0
+        self._cooling_started_at: float = 0.0
+        self._model_unload_task: Optional[asyncio.Task] = None
         self._vm_provisioning_task: Optional[asyncio.Task] = None
         self._memory_pressure_task: Optional[asyncio.Task] = None
 
@@ -1162,37 +1187,82 @@ class GCPHybridPrimeRouter:
                     )
                     continue
 
-                # v93.0: Rate-of-change trigger - detect memory spikes BEFORE hitting threshold
+                # v266.0: State-machine-driven VM provisioning
                 spike_detected = memory_rate_mb_sec >= MEMORY_SPIKE_RATE_THRESHOLD_MB
-                if spike_detected and not self._vm_provisioning_in_progress:
-                    self.logger.warning(
-                        f"[v93.0] Memory SPIKE detected: {memory_rate_mb_sec:.1f} MB/s "
-                        f"(threshold: {MEMORY_SPIKE_RATE_THRESHOLD_MB} MB/s), "
-                        f"current RAM: {used_percent:.1f}%"
-                    )
-                    # Check cooldown
-                    if not self._is_in_cooldown():
+                current_state = self._vm_lifecycle_state
+
+                if current_state == VMLifecycleState.IDLE:
+                    above_trigger = used_percent >= CRITICAL_RAM_PERCENT  # 85%
+                    self._trigger_readings.append(above_trigger)
+
+                    # Spike bypass: 100MB/sec rate triggers instantly
+                    if spike_detected and not self._is_in_cooldown():
+                        self.logger.warning(
+                            f"[v93.0] Memory SPIKE detected: {memory_rate_mb_sec:.1f} MB/s "
+                            f"(threshold: {MEMORY_SPIKE_RATE_THRESHOLD_MB} MB/s), "
+                            f"current RAM: {used_percent:.1f}%"
+                        )
+                        self._transition_vm_lifecycle(VMLifecycleState.TRIGGERING,
+                                                       f"memory_spike_{memory_rate_mb_sec:.0f}mb_sec")
+                        self._transition_vm_lifecycle(VMLifecycleState.PROVISIONING,
+                                                       "spike_bypass")
                         self._last_pressure_event = time.time()
                         success = await self._trigger_vm_provisioning(
                             reason=f"memory_spike_{memory_rate_mb_sec:.0f}mb_sec"
                         )
+                        if not success:
+                            self._transition_vm_lifecycle(VMLifecycleState.COOLING_DOWN,
+                                                           "provisioning_failed")
+                            self._cooling_started_at = time.time()
                         self._handle_provisioning_result(success)
-                    continue
+                    elif above_trigger:
+                        self._transition_vm_lifecycle(VMLifecycleState.TRIGGERING,
+                                                       f"pressure_{used_percent:.1f}pct")
 
-                # v93.0: Standard threshold trigger (lowered to 70%)
-                if used_percent >= VM_PROVISIONING_THRESHOLD:
-                    if not self._vm_provisioning_in_progress and not self._is_in_cooldown():
-                        self.logger.warning(
-                            f"[v93.0] Memory pressure detected: {used_percent:.1f}% "
-                            f"(threshold: {VM_PROVISIONING_THRESHOLD}%), "
-                            f"rate: {memory_rate_mb_sec:.1f} MB/s"
-                        )
+                elif current_state == VMLifecycleState.TRIGGERING:
+                    above_trigger = used_percent >= CRITICAL_RAM_PERCENT
+                    self._trigger_readings.append(above_trigger)
+
+                    above_count = sum(1 for r in self._trigger_readings if r)
+
+                    if above_count >= GCP_TRIGGER_READINGS_REQUIRED:
+                        # Sustained pressure confirmed — provision
+                        self._transition_vm_lifecycle(VMLifecycleState.PROVISIONING,
+                                                       f"sustained_{above_count}/{len(self._trigger_readings)}")
                         self._last_pressure_event = time.time()
-                        success = await self._trigger_vm_provisioning(reason="memory_pressure")
+                        success = await self._trigger_vm_provisioning(reason="sustained_pressure")
+                        if not success:
+                            self._transition_vm_lifecycle(VMLifecycleState.COOLING_DOWN,
+                                                           "provisioning_failed")
+                            self._cooling_started_at = time.time()
                         self._handle_provisioning_result(success)
+                    elif not above_trigger and above_count == 0:
+                        # Pressure gone completely — back to idle
+                        self._transition_vm_lifecycle(VMLifecycleState.IDLE, "pressure_cleared")
+                        self._trigger_readings.clear()
 
-                # Check if we should terminate VM (low usage)
-                elif used_percent < GCP_TRIGGER_RAM_PERCENT - 20:
+                elif current_state == VMLifecycleState.ACTIVE:
+                    # Check release threshold (hysteresis: must drop below 70%)
+                    if used_percent < GCP_RELEASE_RAM_PERCENT:
+                        self._transition_vm_lifecycle(VMLifecycleState.COOLING_DOWN,
+                                                       f"pressure_released_{used_percent:.1f}pct")
+                        self._cooling_started_at = time.time()
+
+                elif current_state == VMLifecycleState.COOLING_DOWN:
+                    elapsed = time.time() - self._cooling_started_at
+                    if elapsed >= GCP_COOLING_GRACE_SECONDS:
+                        self._transition_vm_lifecycle(VMLifecycleState.IDLE, "cooling_complete")
+                        self._trigger_readings.clear()
+                    elif used_percent >= CRITICAL_RAM_PERCENT:
+                        # Pressure back — return to triggering (VM still running)
+                        self._transition_vm_lifecycle(VMLifecycleState.TRIGGERING,
+                                                       "pressure_returned")
+
+                # PROVISIONING and BOOTING states are managed by _trigger_vm_provisioning()
+                # and health check callbacks — not by the pressure monitor
+
+                # Check if we should terminate VM (low usage, only in IDLE)
+                if current_state == VMLifecycleState.IDLE and used_percent < GCP_TRIGGER_RAM_PERCENT - 20:
                     await self._check_vm_termination()
 
                 # v93.0: Check if emergency offload should be released
@@ -2008,6 +2078,54 @@ class GCPHybridPrimeRouter:
             f"db={cleanup_stats['db_pools_cleaned']}, enterprise={cleanup_stats['enterprise_notified']}"
         )
 
+    # =========================================================================
+    # v266.0: VM Lifecycle State Machine
+    # =========================================================================
+
+    def _transition_vm_lifecycle(self, new_state: VMLifecycleState, reason: str = "") -> bool:
+        """Transition the VM lifecycle state machine. Returns True if transition was valid."""
+        old_state = self._vm_lifecycle_state
+
+        # Define valid transitions
+        valid_transitions = {
+            VMLifecycleState.IDLE: {VMLifecycleState.TRIGGERING, VMLifecycleState.STOPPING},
+            VMLifecycleState.TRIGGERING: {VMLifecycleState.PROVISIONING, VMLifecycleState.IDLE, VMLifecycleState.STOPPING},
+            VMLifecycleState.PROVISIONING: {VMLifecycleState.BOOTING, VMLifecycleState.COOLING_DOWN, VMLifecycleState.STOPPING},
+            VMLifecycleState.BOOTING: {VMLifecycleState.ACTIVE, VMLifecycleState.COOLING_DOWN, VMLifecycleState.STOPPING},
+            VMLifecycleState.ACTIVE: {VMLifecycleState.COOLING_DOWN, VMLifecycleState.STOPPING},
+            VMLifecycleState.COOLING_DOWN: {VMLifecycleState.IDLE, VMLifecycleState.TRIGGERING, VMLifecycleState.STOPPING},
+            VMLifecycleState.STOPPING: {VMLifecycleState.IDLE},
+        }
+
+        # STOPPING is always reachable (session shutdown)
+        if new_state == VMLifecycleState.STOPPING:
+            pass  # Always allowed
+        elif new_state not in valid_transitions.get(old_state, set()):
+            self.logger.warning(
+                f"[VMLifecycle] Invalid transition {old_state.value} -> {new_state.value} "
+                f"(reason: {reason})"
+            )
+            return False
+
+        self._vm_lifecycle_state = new_state
+        self._vm_lifecycle_changed_at = time.time()
+        self.logger.info(
+            f"[VMLifecycle] {old_state.value} -> {new_state.value} (reason: {reason})"
+        )
+        return True
+
+    @property
+    def _vm_provisioning_in_progress(self) -> bool:
+        """Backward compat: True when VM is being provisioned or booting."""
+        return self._vm_lifecycle_state in (
+            VMLifecycleState.PROVISIONING, VMLifecycleState.BOOTING
+        )
+
+    @_vm_provisioning_in_progress.setter
+    def _vm_provisioning_in_progress(self, value: bool) -> None:
+        """Backward compat setter — no-op. State machine handles transitions."""
+        pass  # Ignored — state machine handles this
+
     async def _trigger_vm_provisioning(self, reason: str = "unknown") -> bool:
         """
         v2.0: Trigger GCP VM provisioning with distributed locking.
@@ -2021,11 +2139,11 @@ class GCPHybridPrimeRouter:
         Returns:
             True if VM was provisioned, False otherwise
         """
-        if self._vm_provisioning_in_progress:
-            self.logger.debug("VM provisioning already in progress")
+        # v266.0: State machine handles guard
+        if self._vm_lifecycle_state in (VMLifecycleState.PROVISIONING, VMLifecycleState.BOOTING, VMLifecycleState.ACTIVE):
+            self.logger.debug(f"VM lifecycle in {self._vm_lifecycle_state.value}, skipping provision")
             return False
 
-        self._vm_provisioning_in_progress = True
         token: Optional[str] = None
 
         try:
@@ -2079,6 +2197,10 @@ class GCPHybridPrimeRouter:
                 if result:
                     self.logger.info("GCP VM provisioned successfully")
                     self._metrics.gcp_requests += 1
+
+                    # v266.0: Transition through BOOTING → ACTIVE
+                    self._transition_vm_lifecycle(VMLifecycleState.BOOTING, "vm_created")
+                    self._transition_vm_lifecycle(VMLifecycleState.ACTIVE, "vm_provisioned_healthy")
 
                     # v148.1: Record success for circuit breaker
                     if ENTERPRISE_HOOKS_AVAILABLE and record_provider_success:
@@ -2171,7 +2293,8 @@ class GCPHybridPrimeRouter:
             return False
 
         finally:
-            self._vm_provisioning_in_progress = False
+            # v266.0: State transitions handled by success/failure paths above
+            pass  # self._vm_provisioning_in_progress is now a derived property
             # Release distributed lock
             if self._vm_provisioning_lock and token:
                 try:
@@ -2233,6 +2356,10 @@ class GCPHybridPrimeRouter:
     async def stop(self) -> None:
         """Stop the hybrid router."""
         self._running = False
+
+        # v266.0: Transition to STOPPING state
+        if self._vm_lifecycle_state != VMLifecycleState.IDLE:
+            self._transition_vm_lifecycle(VMLifecycleState.STOPPING, "router_shutdown")
 
         # v93.0: Release emergency offload FIRST to ensure paused processes resume
         if self._emergency_offload_active:
