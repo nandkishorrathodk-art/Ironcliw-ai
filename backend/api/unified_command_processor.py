@@ -2354,16 +2354,25 @@ class UnifiedCommandProcessor:
                         f"falling back to handle_workspace_query"
                     )
 
-            # Disease 5 cure: enforce deadline via asyncio.wait_for() at UCP level.
-            # This cancels the coroutine on timeout, preventing zombie API calls.
-            remaining = (deadline - _time.monotonic()) if deadline else 30.0
+            # Enforce caller budget at UCP level and propagate absolute deadline
+            # into workspace agent so inner operations can cooperatively budget.
+            if deadline:
+                remaining = deadline - _time.monotonic()
+            else:
+                try:
+                    remaining = float(os.getenv("JARVIS_WORKSPACE_ACTION_TIMEOUT", "30.0"))
+                except (TypeError, ValueError):
+                    remaining = 30.0
+
             timeout = max(remaining, 1.0)
+            task_payload = {
+                "action": workspace_action,
+                "query": command_text,
+                "deadline_monotonic": deadline,
+            }
 
             result = await asyncio.wait_for(
-                agent.execute_task({
-                    "action": workspace_action,
-                    "query": command_text,
-                }),
+                agent.execute_task(task_payload),
                 timeout=timeout,
             )
 

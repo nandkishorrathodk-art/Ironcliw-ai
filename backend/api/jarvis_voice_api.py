@@ -2189,7 +2189,21 @@ class JARVISVoiceAPI:
                 logger.debug("[JARVIS API] No audio data in command (text-only)")
 
             # Use async pipeline for all commands - ensures consistent handling
+            pipeline_result = None
             try:
+                try:
+                    default_timeout = float(os.getenv("JARVIS_API_COMMAND_TIMEOUT", "35.0"))
+                except (TypeError, ValueError):
+                    default_timeout = 35.0
+                now_mono = time.monotonic()
+                effective_deadline = deadline
+                if effective_deadline is None:
+                    effective_deadline = now_mono + default_timeout
+
+                remaining_budget = effective_deadline - now_mono
+                if remaining_budget <= 0:
+                    raise asyncio.TimeoutError("Deadline exceeded before pipeline dispatch")
+
                 # Process through pipeline with proper metadata AND audio_data for voice biometrics
                 pipeline_result = await asyncio.wait_for(
                     self.pipeline.process_async(
@@ -2197,10 +2211,15 @@ class JARVISVoiceAPI:
                         user_name=(
                             getattr(self.jarvis, "user_name", "Sir") if self.jarvis else "Sir"
                         ),
-                        metadata={"source": "voice_api", "jarvis_instance": self.jarvis},
+                        metadata={
+                            "source": "voice_api",
+                            "jarvis_instance": self.jarvis,
+                            "deadline_monotonic": effective_deadline,
+                        },
                         audio_data=audio_bytes,  # CRITICAL: Pass audio for VIBA/PAVA voice verification
                     ),
-                    timeout=35.0,  # 35 second timeout for API calls (to accommodate weather)
+                    # Safety net only; inner layers consume deadline_monotonic.
+                    timeout=max(1.0, remaining_budget + 0.5),
                 )
 
                 # Extract response from pipeline result
@@ -2219,7 +2238,7 @@ class JARVISVoiceAPI:
                 logger.info(f"[JARVIS API] Pipeline response: '{response[:100]}...' (truncated)")
             except asyncio.TimeoutError:
                 logger.error(
-                    f"[JARVIS API] Command processing timed out after 35s: '{command.text}'"
+                    f"[JARVIS API] Command processing timed out (deadline budget exhausted): '{command.text}'"
                 )
                 # For weather commands, open the Weather app as fallback
                 if any(

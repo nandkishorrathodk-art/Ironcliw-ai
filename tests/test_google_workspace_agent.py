@@ -15,6 +15,7 @@ Author: JARVIS AI System
 import asyncio
 import pytest
 import sys
+import time
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict
@@ -117,6 +118,7 @@ class TestWorkspaceIntentDetector:
             "Morning briefing please",
             "Daily summary",
             "Catch me up",
+            "What's happening across my workspace",
         ]
 
         for query in queries:
@@ -390,6 +392,63 @@ class TestGoogleWorkspaceAgentExecution:
 
         # Should route to email check
         mock_client.fetch_unread_emails.assert_called()
+
+    @pytest.mark.asyncio
+    async def test_execute_task_respects_expired_deadline(self, agent_with_mock):
+        """Expired deadline should fail fast without executing action handlers."""
+        result = await agent_with_mock.execute_task(
+            {
+                "action": "fetch_unread_emails",
+                "deadline_monotonic": time.monotonic() - 1.0,
+            }
+        )
+
+        assert result["success"] is False
+        assert result["error"] == "deadline_exceeded"
+
+    @pytest.mark.asyncio
+    async def test_workspace_summary_uses_non_visual_mode(self, agent_with_mock):
+        """Workspace summary should avoid slow visual fallback paths by default."""
+        agent_with_mock._fetch_unread_emails = AsyncMock(
+            return_value={"emails": [], "total_unread": 0}
+        )
+        agent_with_mock._check_calendar = AsyncMock(
+            return_value={"events": [], "count": 0}
+        )
+
+        result = await agent_with_mock.execute_task(
+            {
+                "action": "workspace_summary",
+                "deadline_monotonic": time.monotonic() + 10.0,
+            }
+        )
+
+        email_payload = agent_with_mock._fetch_unread_emails.await_args.args[0]
+        calendar_payload = agent_with_mock._check_calendar.await_args.args[0]
+        assert email_payload["allow_visual_fallback"] is False
+        assert calendar_payload["allow_visual_fallback"] is False
+        assert result["workspace_action"] == "workspace_summary"
+
+    @pytest.mark.asyncio
+    async def test_ensure_client_uses_non_interactive_auth(self):
+        """Agent should never trigger interactive OAuth during command execution."""
+        from backend.neural_mesh.agents.google_workspace_agent import (
+            GoogleWorkspaceAgent,
+            GoogleWorkspaceConfig,
+        )
+
+        agent = GoogleWorkspaceAgent(
+            config=GoogleWorkspaceConfig(
+                credentials_path="/tmp/test.json",
+                token_path="/tmp/token.json",
+            )
+        )
+        agent._client = MagicMock()
+        agent._client.authenticate = AsyncMock(return_value=True)
+
+        ok = await agent._ensure_client()
+        assert ok is True
+        agent._client.authenticate.assert_awaited_once_with(interactive=False)
 
 
 # =============================================================================

@@ -691,6 +691,22 @@ class AdvancedAsyncPipeline:
 
     def _register_default_stages(self):
         """Register default pipeline stages with appropriate timeouts and requirements."""
+        try:
+            processing_timeout = float(
+                os.getenv("JARVIS_PIPELINE_PROCESSING_STAGE_TIMEOUT", "60.0")
+            )
+        except (TypeError, ValueError):
+            processing_timeout = 60.0
+
+        try:
+            # Processing can trigger side effects (email send, app actions, etc.).
+            # Default to 0 retries unless explicitly configured.
+            processing_retries = max(
+                0, int(os.getenv("JARVIS_PIPELINE_PROCESSING_RETRIES", "0"))
+            )
+        except (TypeError, ValueError):
+            processing_retries = 0
+
         self.register_stage("validation", self._validate_command, timeout=5.0, required=True)
 
         self.register_stage(
@@ -711,8 +727,8 @@ class AdvancedAsyncPipeline:
         self.register_stage(
             "processing",
             self._process_command,
-            timeout=60.0,  # Increased for locked screen unlock flow
-            retry_count=2,
+            timeout=processing_timeout,
+            retry_count=processing_retries,
             required=True,
         )
 
@@ -826,17 +842,50 @@ class AdvancedAsyncPipeline:
             api_key = os.environ.get("ANTHROPIC_API_KEY") or context.metadata.get("api_key")
             processor = get_unified_processor(api_key)
 
+            # Determine effective processing budget.
+            # Prefer propagated absolute deadline from ingress layers.
+            now = time.monotonic()
+            raw_deadline = context.metadata.get("deadline_monotonic")
+            deadline: Optional[float]
+            if isinstance(raw_deadline, (int, float)):
+                deadline = float(raw_deadline)
+            else:
+                try:
+                    default_budget = float(
+                        os.getenv("JARVIS_PIPELINE_PROCESSING_TIMEOUT", "45.0")
+                    )
+                except (TypeError, ValueError):
+                    default_budget = 45.0
+                deadline = now + max(1.0, default_budget)
+
+            remaining = deadline - now
+            if remaining <= 0:
+                logger.warning(
+                    "[PIPELINE] Deadline already exceeded before processing: '%s'",
+                    command_text[:80],
+                )
+                context.data["processed"] = True
+                context.data["result"] = {
+                    "success": False,
+                    "response": "Request timed out before processing could begin.",
+                    "error": "deadline_exceeded",
+                }
+                context.data["response"] = context.data["result"]
+                return context
+
             logger.info(f"[PIPELINE] Routing to UnifiedCommandProcessor: '{command_text[:50]}...'")
 
-            # Process the command with full context
+            # Process the command with propagated deadline; wait_for is safety net.
+            wait_timeout = max(1.0, remaining)
             result = await asyncio.wait_for(
                 processor.process_command(
                     command_text,
                     websocket=context.metadata.get("websocket"),
                     audio_data=audio_data,
                     speaker_name=speaker_name,
+                    deadline=deadline,
                 ),
-                timeout=30.0
+                timeout=wait_timeout,
             )
 
             logger.info(f"[PIPELINE] UnifiedCommandProcessor result: success={result.get('success', False)}")
