@@ -56421,6 +56421,7 @@ class TrinityComponent:
     health_url: Optional[str] = None
     last_health_check: Optional[float] = None
     restart_count: int = 0
+    last_restart_attempt: float = 0.0
     # v3.4: Track when component was last started to enforce grace period
     start_time: float = 0.0
 
@@ -56948,6 +56949,9 @@ class TrinityIntegrator:
         self._shutdown_event = asyncio.Event()
         self._health_check_interval = float(os.getenv("TRINITY_HEALTH_INTERVAL", "10.0"))
         self._max_restarts = int(os.getenv("TRINITY_MAX_RESTARTS", "3"))
+        self._restart_budget_cooldown_seconds = float(
+            os.getenv("TRINITY_RESTART_BUDGET_COOLDOWN_SECONDS", "300.0")
+        )
 
         # Discovery cache
         self._discovery_cache: Dict[str, Optional[Path]] = {}
@@ -58782,6 +58786,181 @@ class TrinityIntegrator:
             name="trinity-health-monitor"
         )
 
+    def _should_monitor_runtime_health(self, component: Optional[TrinityComponent]) -> bool:
+        """
+        Decide whether a component should be checked by the runtime health loop.
+
+        Components intentionally disabled/offloaded are excluded. Everything else
+        with a health endpoint remains observable, including currently unhealthy
+        components so they can recover back to healthy without manual intervention.
+        """
+        if component is None:
+            return False
+        if component.state in {"disabled", "hollow_client", "abandoned"}:
+            return False
+        return bool(component.health_url)
+
+    def _is_within_startup_grace_period(
+        self,
+        component: TrinityComponent,
+        grace_periods: Dict[str, float],
+        now: Optional[float] = None,
+    ) -> bool:
+        """Return True when failed health checks are still expected during startup."""
+        if component.start_time <= 0:
+            return False
+        now_ts = now if now is not None else time.time()
+        grace = grace_periods.get(component.name, 120.0)
+        elapsed = now_ts - component.start_time
+        if elapsed < grace:
+            self.logger.debug(
+                f"[Trinity] {component.name} health check failed but within "
+                f"startup grace period ({elapsed:.0f}s / {grace:.0f}s) — not marking unhealthy"
+            )
+            return True
+        return False
+
+    def _refresh_restart_budget(
+        self,
+        component: TrinityComponent,
+        now: Optional[float] = None,
+    ) -> None:
+        """
+        Reset restart budget after a cooldown window.
+
+        This prevents permanent dead states when a component remains unhealthy
+        across a long outage and later becomes recoverable again.
+        """
+        if component.restart_count <= 0:
+            return
+
+        cooldown = max(0.0, self._restart_budget_cooldown_seconds)
+        if cooldown <= 0:
+            return
+
+        now_ts = now if now is not None else time.time()
+        reference_ts = component.last_restart_attempt or component.start_time
+        if reference_ts <= 0:
+            return
+
+        elapsed = now_ts - reference_ts
+        if elapsed >= cooldown:
+            self.logger.info(
+                f"[Trinity] {component.name} restart budget cooldown elapsed "
+                f"({elapsed:.0f}s >= {cooldown:.0f}s), resetting restart count "
+                f"from {component.restart_count} to 0"
+            )
+            component.restart_count = 0
+            component.last_restart_attempt = 0.0
+
+    async def _restart_component_with_budget(
+        self,
+        component: TrinityComponent,
+        reason: str,
+    ) -> bool:
+        """Attempt a restart while enforcing bounded restart budget semantics."""
+        self._refresh_restart_budget(component)
+
+        if component.restart_count >= self._max_restarts:
+            self.logger.warning(
+                f"[Trinity] {component.name} restart budget exhausted "
+                f"({component.restart_count}/{self._max_restarts}); "
+                f"waiting for cooldown ({self._restart_budget_cooldown_seconds:.0f}s)"
+            )
+            return False
+
+        component.restart_count += 1
+        component.last_restart_attempt = time.time()
+        self.logger.info(
+            f"[Trinity] Attempting restart for {component.name} ({reason}) "
+            f"(attempt {component.restart_count}/{self._max_restarts})"
+        )
+        try:
+            return await self._start_component(component)
+        except Exception as e:
+            self.logger.debug(f"[Trinity] Restart call failed for {component.name}: {e}")
+            return False
+
+    async def _handle_unhealthy_component(self, component: TrinityComponent) -> None:
+        """
+        Handle unhealthy runtime state using enterprise recovery policy when available.
+        """
+        if component.state != "unhealthy":
+            self.logger.warning(f"[Trinity] {component.name} became unhealthy")
+        component.state = "unhealthy"
+
+        # v238.0: Use RecoveryEngine for intelligent failure handling.
+        if ENTERPRISE_RECOVERY_AVAILABLE and self._recovery_engine:
+            try:
+                _err = RuntimeError(f"{component.name} health check failed")
+                _action = await self._recovery_engine.handle_failure(
+                    component.name,
+                    _err,
+                    RecoveryPhase.RUNTIME,
+                )
+                if _action.strategy == RecoveryStrategy.RETRY:
+                    _delay = max(0.0, float(_action.delay or 0.0))
+                    self.logger.info(
+                        f"[Trinity] Recovery engine: RETRY {component.name} after {_delay:.1f}s"
+                    )
+                    if _delay > 0:
+                        await asyncio.sleep(_delay)
+                    if not self._shutdown_event.is_set():
+                        await self._restart_component_with_budget(
+                            component,
+                            reason="recovery-engine retry",
+                        )
+                elif _action.strategy == RecoveryStrategy.FULL_RESTART:
+                    self.logger.info(f"[Trinity] Recovery engine: RESTART {component.name}")
+                    await self._restart_component_with_budget(
+                        component,
+                        reason="recovery-engine full restart",
+                    )
+                elif _action.strategy == RecoveryStrategy.FALLBACK_MODE:
+                    self.logger.warning(
+                        f"[Trinity] Recovery engine: FALLBACK for {component.name}"
+                    )
+                    component.state = "degraded"
+                elif _action.strategy == RecoveryStrategy.DISABLE_AND_CONTINUE:
+                    self.logger.warning(
+                        f"[Trinity] Recovery engine: DISABLE {component.name}"
+                    )
+                    component.state = "disabled"
+                else:
+                    self.logger.error(
+                        f"[Trinity] Recovery engine: ESCALATE {component.name} — "
+                        f"{_action.message or 'manual intervention needed'}"
+                    )
+                return
+            except Exception as _re_err:
+                self.logger.debug(f"[Trinity] Recovery engine error: {_re_err}")
+
+        await self._restart_component_with_budget(component, reason="runtime health failure")
+
+    async def _evaluate_component_runtime_health(
+        self,
+        component: TrinityComponent,
+        grace_periods: Dict[str, float],
+    ) -> None:
+        """
+        Run one health-monitor evaluation cycle for a single component.
+        """
+        if not self._should_monitor_runtime_health(component):
+            return
+
+        self._refresh_restart_budget(component)
+        healthy = await self._check_health(component)
+        if healthy:
+            if component.state != "healthy":
+                self.logger.info(f"[Trinity] {component.name} recovered to healthy")
+            component.state = "healthy"
+            return
+
+        if self._is_within_startup_grace_period(component, grace_periods):
+            return
+
+        await self._handle_unhealthy_component(component)
+
     async def _health_monitor_loop(self) -> None:
         """Monitor component health and auto-restart if needed.
 
@@ -58801,71 +58980,11 @@ class TrinityIntegrator:
                 await asyncio.sleep(self._health_check_interval)
 
                 for component in [self._jprime, self._reactor]:
-                    if component and component.state == "healthy":
-                        healthy = await self._check_health(component)
-                        if not healthy:
-                            # v3.4: Check startup grace period before marking unhealthy.
-                            # Components like reactor-core take 10-15 min to load ML models.
-                            # During this window, failed health checks are expected (training_ready=False).
-                            grace = _grace_periods.get(component.name, 120.0)
-                            if component.start_time > 0:
-                                elapsed = time.time() - component.start_time
-                                if elapsed < grace:
-                                    self.logger.debug(
-                                        f"[Trinity] {component.name} health check failed but within "
-                                        f"startup grace period ({elapsed:.0f}s / {grace:.0f}s) — not marking unhealthy"
-                                    )
-                                    continue
-
-                            self.logger.warning(f"[Trinity] {component.name} became unhealthy")
-                            component.state = "unhealthy"
-
-                            # v238.0: Use RecoveryEngine for intelligent failure handling
-                            # instead of bare restart. Classifies failure type and decides
-                            # strategy: retry, restart, fallback, disable, or escalate.
-                            if ENTERPRISE_RECOVERY_AVAILABLE and self._recovery_engine:
-                                try:
-                                    _err = RuntimeError(f"{component.name} health check failed")
-                                    _action = await self._recovery_engine.handle_failure(
-                                        component.name, _err, RecoveryPhase.RUNTIME,
-                                    )
-                                    if _action.strategy == RecoveryStrategy.RETRY:
-                                        self.logger.info(
-                                            f"[Trinity] Recovery engine: RETRY {component.name} "
-                                            f"after {_action.delay:.1f}s"
-                                        )
-                                        await asyncio.sleep(_action.delay)
-                                        component.restart_count += 1
-                                        await self._start_component(component)
-                                    elif _action.strategy == RecoveryStrategy.FULL_RESTART:
-                                        self.logger.info(f"[Trinity] Recovery engine: RESTART {component.name}")
-                                        component.restart_count += 1
-                                        await self._start_component(component)
-                                    elif _action.strategy == RecoveryStrategy.FALLBACK_MODE:
-                                        self.logger.warning(
-                                            f"[Trinity] Recovery engine: FALLBACK for {component.name}"
-                                        )
-                                        component.state = "degraded"
-                                    elif _action.strategy == RecoveryStrategy.DISABLE_AND_CONTINUE:
-                                        self.logger.warning(
-                                            f"[Trinity] Recovery engine: DISABLE {component.name}"
-                                        )
-                                        component.state = "disabled"
-                                    else:
-                                        self.logger.error(
-                                            f"[Trinity] Recovery engine: ESCALATE {component.name} — "
-                                            f"{_action.message or 'manual intervention needed'}"
-                                        )
-                                except Exception as _re_err:
-                                    self.logger.debug(f"[Trinity] Recovery engine error: {_re_err}")
-                                    # Fall through to legacy restart
-                                    if component.restart_count < self._max_restarts:
-                                        component.restart_count += 1
-                                        await self._start_component(component)
-                            elif component.restart_count < self._max_restarts:
-                                self.logger.info(f"[Trinity] Attempting to restart {component.name}")
-                                component.restart_count += 1
-                                await self._start_component(component)
+                    if component:
+                        await self._evaluate_component_runtime_health(
+                            component,
+                            grace_periods=_grace_periods,
+                        )
 
             except asyncio.CancelledError:
                 break

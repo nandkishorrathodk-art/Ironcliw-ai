@@ -42,6 +42,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import subprocess
 import time
 from dataclasses import dataclass, field
@@ -622,6 +623,7 @@ class StartupResilience:
     # State
     _started: bool = field(default=False, init=False, repr=False)
     _get_vm_manager: Optional[Callable[[], Awaitable[Any]]] = field(default=None, init=False, repr=False)
+    _recovery_pause_deadlines: Dict[str, float] = field(default_factory=dict, init=False, repr=False)
 
     def configure_invincible_node(
         self,
@@ -751,8 +753,70 @@ class StartupResilience:
         if self._invincible_node_recovery:
             await self._invincible_node_recovery.stop()
 
+        self._recovery_pause_deadlines.clear()
         self._started = False
         self.logger.info("[Resilience] Startup resilience components stopped")
+
+    def _set_recovery_pause_deadline(
+        self,
+        service: str,
+        recovery: Optional[BackgroundRecovery],
+    ) -> None:
+        """
+        Set the minimum delay before attempting resume() after PAUSED.
+
+        Uses the recovery's own backoff configuration instead of hardcoded
+        values so cooldown behavior stays aligned with service policy.
+        """
+        if recovery is None:
+            return
+        cooldown = max(recovery.config.base_delay, recovery.config.max_delay)
+        self._recovery_pause_deadlines[service] = time.monotonic() + cooldown
+
+    def _clear_recovery_pause_deadline(self, service: str) -> None:
+        """Clear paused-recovery cooldown gate for a service."""
+        self._recovery_pause_deadlines.pop(service, None)
+
+    async def _activate_recovery_if_needed(
+        self,
+        service: str,
+        is_healthy: bool,
+        recovery: Optional[BackgroundRecovery],
+    ) -> None:
+        """
+        Keep recovery state machine aligned with current health.
+
+        Handles all non-running states explicitly:
+        - IDLE: start recovery
+        - SUCCEEDED: restart recovery loop if service regressed
+        - PAUSED: resume after cooldown window
+        """
+        if recovery is None:
+            return
+
+        if is_healthy:
+            self._clear_recovery_pause_deadline(service)
+            return
+
+        if recovery.state in (RecoveryState.IDLE, RecoveryState.SUCCEEDED):
+            action = "starting" if recovery.state == RecoveryState.IDLE else "restarting"
+            self.logger.info(
+                f"[Resilience] {service.title()} unhealthy, {action} background recovery..."
+            )
+            self._clear_recovery_pause_deadline(service)
+            await recovery.start()
+            return
+
+        if recovery.state == RecoveryState.PAUSED:
+            now = time.monotonic()
+            resume_at = self._recovery_pause_deadlines.get(service, 0.0)
+            if now < resume_at:
+                return
+            self.logger.warning(
+                f"[Resilience] {service.title()} still unhealthy after pause cooldown, resuming recovery..."
+            )
+            self._clear_recovery_pause_deadline(service)
+            await recovery.resume()
 
     async def check_docker(self, force: bool = False) -> bool:
         """
@@ -771,12 +835,11 @@ class StartupResilience:
             return False
 
         is_healthy = await self._docker_probe.check(force=force)
-
-        # Start recovery if unhealthy and not already recovering
-        if not is_healthy and self._docker_recovery:
-            if self._docker_recovery.state == RecoveryState.IDLE:
-                self.logger.info("[Resilience] Docker unhealthy, starting background recovery...")
-                await self._docker_recovery.start()
+        await self._activate_recovery_if_needed(
+            service="docker",
+            is_healthy=is_healthy,
+            recovery=self._docker_recovery,
+        )
 
         return is_healthy
 
@@ -797,12 +860,11 @@ class StartupResilience:
             return False
 
         is_healthy = await self._ollama_probe.check(force=force)
-
-        # Start recovery if unhealthy and not already recovering
-        if not is_healthy and self._ollama_recovery:
-            if self._ollama_recovery.state == RecoveryState.IDLE:
-                self.logger.info("[Resilience] Ollama unhealthy, starting background recovery...")
-                await self._ollama_recovery.start()
+        await self._activate_recovery_if_needed(
+            service="ollama",
+            is_healthy=is_healthy,
+            recovery=self._ollama_recovery,
+        )
 
         return is_healthy
 
@@ -823,12 +885,11 @@ class StartupResilience:
             return False
 
         is_healthy = await self._invincible_node_probe.check(force=force)
-
-        # Start recovery if unhealthy and not already recovering
-        if not is_healthy and self._invincible_node_recovery:
-            if self._invincible_node_recovery.state == RecoveryState.IDLE:
-                self.logger.info("[Resilience] Invincible Node unhealthy, starting background recovery...")
-                await self._invincible_node_recovery.start()
+        await self._activate_recovery_if_needed(
+            service="invincible node",
+            is_healthy=is_healthy,
+            recovery=self._invincible_node_recovery,
+        )
 
         return is_healthy
 
@@ -851,6 +912,8 @@ class StartupResilience:
         Speeds up all background recoveries by waking them early
         and reducing their next delay.
         """
+        # Allow immediate resume attempts on next health check cycle.
+        self._recovery_pause_deadlines.clear()
         if self._docker_recovery:
             self._docker_recovery.notify_conditions_changed()
         if self._ollama_recovery:
@@ -926,6 +989,7 @@ class StartupResilience:
     async def _on_docker_recovered(self) -> None:
         """Called when Docker is recovered via background recovery."""
         self.logger.info("[Resilience] Docker daemon recovered successfully")
+        self._clear_recovery_pause_deadline("docker")
         # Reset the health probe so next check uses fresh state
         if self._docker_probe:
             self._docker_probe.reset()
@@ -933,6 +997,7 @@ class StartupResilience:
     async def _on_docker_recovery_paused(self) -> None:
         """Called when Docker recovery is paused due to max attempts."""
         self.logger.warning("[Resilience] Docker recovery paused after max attempts")
+        self._set_recovery_pause_deadline("docker", self._docker_recovery)
 
     async def _on_ollama_unhealthy(self) -> None:
         """Called when Ollama becomes unhealthy."""
@@ -945,12 +1010,14 @@ class StartupResilience:
     async def _on_ollama_recovered(self) -> None:
         """Called when Ollama is recovered via background recovery."""
         self.logger.info("[Resilience] Ollama server recovered successfully")
+        self._clear_recovery_pause_deadline("ollama")
         if self._ollama_probe:
             self._ollama_probe.reset()
 
     async def _on_ollama_recovery_paused(self) -> None:
         """Called when Ollama recovery is paused due to max attempts."""
         self.logger.warning("[Resilience] Ollama recovery paused after max attempts")
+        self._set_recovery_pause_deadline("ollama", self._ollama_recovery)
 
     async def _on_invincible_node_unhealthy(self) -> None:
         """
@@ -987,6 +1054,7 @@ class StartupResilience:
         v219.0: Re-propagate hollow client env vars after recovery.
         """
         self.logger.info("[Resilience] Invincible Node (GCP VM) recovered successfully")
+        self._clear_recovery_pause_deadline("invincible node")
         if self._invincible_node_probe:
             self._invincible_node_probe.reset()
         
@@ -1006,6 +1074,7 @@ class StartupResilience:
         v219.0: Clear hollow client since node is not recoverable.
         """
         self.logger.warning("[Resilience] Invincible Node recovery paused after max attempts")
+        self._set_recovery_pause_deadline("invincible node", self._invincible_node_recovery)
         
         # v219.0: Clear hollow client flag since recovery failed
         os.environ.pop("JARVIS_HOLLOW_CLIENT_ACTIVE", None)

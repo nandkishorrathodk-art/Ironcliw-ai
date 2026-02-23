@@ -10,6 +10,7 @@ Tests cover:
 """
 
 import asyncio
+import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -487,6 +488,65 @@ class TestStartupResilience:
         await resilience.stop()
 
     @pytest.mark.asyncio
+    async def test_check_ollama_unhealthy_restarts_after_succeeded_state(self, mock_logger, config):
+        """Unhealthy Ollama should restart recovery even after prior success."""
+        resilience = StartupResilience(logger=mock_logger, config=config)
+        await resilience.start()
+
+        assert resilience._ollama_probe is not None
+        assert resilience._ollama_recovery is not None
+
+        resilience._ollama_probe.check = AsyncMock(return_value=False)
+        resilience._ollama_recovery._state = RecoveryState.SUCCEEDED
+        resilience._ollama_recovery.start = AsyncMock()
+
+        result = await resilience.check_ollama(force=True)
+        assert result is False
+        resilience._ollama_recovery.start.assert_awaited_once()
+
+        await resilience.stop()
+
+    @pytest.mark.asyncio
+    async def test_check_ollama_unhealthy_resumes_after_pause_cooldown(self, mock_logger, config):
+        """Paused recovery should resume once cooldown gate has elapsed."""
+        resilience = StartupResilience(logger=mock_logger, config=config)
+        await resilience.start()
+
+        assert resilience._ollama_probe is not None
+        assert resilience._ollama_recovery is not None
+
+        resilience._ollama_probe.check = AsyncMock(return_value=False)
+        resilience._ollama_recovery._state = RecoveryState.PAUSED
+        resilience._ollama_recovery.resume = AsyncMock()
+        resilience._recovery_pause_deadlines["ollama"] = time.monotonic() - 1.0
+
+        result = await resilience.check_ollama(force=True)
+        assert result is False
+        resilience._ollama_recovery.resume.assert_awaited_once()
+
+        await resilience.stop()
+
+    @pytest.mark.asyncio
+    async def test_check_ollama_unhealthy_does_not_resume_before_cooldown(self, mock_logger, config):
+        """Paused recovery should not resume before cooldown expires."""
+        resilience = StartupResilience(logger=mock_logger, config=config)
+        await resilience.start()
+
+        assert resilience._ollama_probe is not None
+        assert resilience._ollama_recovery is not None
+
+        resilience._ollama_probe.check = AsyncMock(return_value=False)
+        resilience._ollama_recovery._state = RecoveryState.PAUSED
+        resilience._ollama_recovery.resume = AsyncMock()
+        resilience._recovery_pause_deadlines["ollama"] = time.monotonic() + 60.0
+
+        result = await resilience.check_ollama(force=True)
+        assert result is False
+        resilience._ollama_recovery.resume.assert_not_called()
+
+        await resilience.stop()
+
+    @pytest.mark.asyncio
     async def test_configure_invincible_node(self, mock_logger, config, mock_vm_manager):
         """Test configuring Invincible Node."""
         resilience = StartupResilience(logger=mock_logger, config=config)
@@ -556,8 +616,11 @@ class TestStartupResilience:
         resilience = StartupResilience(logger=mock_logger, config=config)
         await resilience.start()
 
+        resilience._recovery_pause_deadlines["ollama"] = time.monotonic() + 30.0
+
         # This should not raise
         resilience.notify_conditions_changed()
+        assert resilience._recovery_pause_deadlines == {}
 
         await resilience.stop()
 
