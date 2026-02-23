@@ -1165,9 +1165,15 @@ class GCPHybridPrimeRouter:
                             self._emergency_offload_hysteresis_armed = False
                             self._clean_unload_fired = False
                             self._clean_unload_verified = False
+                            # v266.2: Trigger post-crisis recovery if model was unloaded
+                            if not self._model_needs_recovery:
+                                self._model_needs_recovery = True
+                                self._recovery_stable_since = 0.0
+                                self._recovery_attempts = 0
                             self.logger.info(
-                                f"[v266.1] RAM dropped to {used_percent:.1f}% — "
-                                f"hysteresis disarmed, escalation reset"
+                                f"[v266.2] RAM dropped to {used_percent:.1f}% — "
+                                f"hysteresis disarmed, escalation reset, "
+                                f"recovery armed"
                             )
                         # else: Still above hysteresis threshold, skip to VM state machine
 
@@ -1210,6 +1216,10 @@ class GCPHybridPrimeRouter:
                     # Active offload — check escalation ladder
                     await self._check_offload_escalation(used_percent, memory_rate_mb_sec)
                     continue
+
+                # v266.2: Post-crisis model recovery check
+                if self._model_needs_recovery and not self._emergency_offload_active:
+                    await self._check_model_recovery(used_percent)
 
                 # v266.0: State-machine-driven VM provisioning
                 spike_detected = memory_rate_mb_sec >= MEMORY_SPIKE_RATE_THRESHOLD_MB
