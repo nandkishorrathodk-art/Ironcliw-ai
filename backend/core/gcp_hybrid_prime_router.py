@@ -1475,12 +1475,12 @@ class GCPHybridPrimeRouter:
             return True
 
     async def _pause_local_llm_processes(self) -> int:
-        """
-        v93.0: Pause local LLM processes via SIGSTOP.
+        """v266.1: Pause local LLM processes via SIGSTOP (last resort only).
 
-        Discovers and pauses:
-        1. Processes from ProcessIsolatedMLLoader
-        2. Known LLM subprocess patterns (ollama, llama.cpp, etc.)
+        Priority order:
+        1. JARVIS-owned tracked PIDs (_local_llm_pids) — always preferred
+        2. ProcessIsolatedMLLoader PIDs — if available
+        3. Pattern-based scan — fallback only when no tracked PIDs found
 
         Returns:
             Number of processes paused
@@ -1490,7 +1490,18 @@ class GCPHybridPrimeRouter:
         try:
             import psutil
 
-            # Try to get processes from ML loader
+            # Priority 1: Use tracked JARVIS-owned PIDs
+            if self._local_llm_pids:
+                self.logger.info(
+                    f"[v266.1] SIGSTOP targeting {len(self._local_llm_pids)} tracked JARVIS PID(s)"
+                )
+                for pid in list(self._local_llm_pids):
+                    if pid not in self._paused_processes and self._pause_process(pid, "tracked_llm"):
+                        paused_count += 1
+                if paused_count > 0:
+                    return paused_count
+
+            # Priority 2: ProcessIsolatedMLLoader PIDs
             if self._ml_loader_ref is None:
                 try:
                     from backend.core.process_isolated_ml_loader import get_ml_loader
@@ -1500,10 +1511,15 @@ class GCPHybridPrimeRouter:
 
             if self._ml_loader_ref and hasattr(self._ml_loader_ref, '_active_processes'):
                 for pid in list(self._ml_loader_ref._active_processes.keys()):
-                    if self._pause_process(pid, "ml_loader"):
+                    if pid not in self._paused_processes and self._pause_process(pid, "ml_loader"):
                         paused_count += 1
+                if paused_count > 0:
+                    return paused_count
 
-            # Scan for known LLM process patterns
+            # Priority 3: Pattern-based scan (fallback only)
+            self.logger.warning(
+                "[v266.1] No tracked PIDs — falling back to pattern-based process scan"
+            )
             llm_patterns = [
                 "ollama", "llama", "llama.cpp", "llamacpp",
                 "text-generation", "vllm", "transformers",
@@ -1515,11 +1531,9 @@ class GCPHybridPrimeRouter:
                     proc_info = proc.info
                     pid = proc_info['pid']
 
-                    # Skip already paused
                     if pid in self._paused_processes:
                         continue
 
-                    # Check process name and cmdline
                     name = (proc_info.get('name') or '').lower()
                     cmdline = ' '.join(proc_info.get('cmdline') or []).lower()
 
@@ -1529,6 +1543,9 @@ class GCPHybridPrimeRouter:
                     )
 
                     if is_llm_process:
+                        self.logger.info(
+                            f"[v266.1] Pattern match: PID {pid} ({name}) — sending SIGSTOP"
+                        )
                         if self._pause_process(pid, name):
                             paused_count += 1
 
@@ -1536,7 +1553,7 @@ class GCPHybridPrimeRouter:
                     continue
 
         except Exception as e:
-            self.logger.error(f"[v93.0] Error pausing LLM processes: {e}")
+            self.logger.error(f"[v266.1] Error pausing LLM processes: {e}")
 
         return paused_count
 
