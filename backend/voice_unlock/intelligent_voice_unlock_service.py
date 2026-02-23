@@ -4616,8 +4616,79 @@ async def _extract_ecapa_robust(audio_bytes: bytes) -> Optional[List[float]]:
     local_ecapa_only = os.environ.get('JARVIS_LOCAL_ECAPA_ONLY', 'true').lower() == 'true'
     cloud_fallback_enabled = os.environ.get('JARVIS_CLOUD_FALLBACK', 'false').lower() == 'true'
 
+    # ========================================================================
+    # v265.4: CPU-PRESSURE-AWARE HYBRID ROUTING
+    # ========================================================================
+    # Under high CPU pressure (>90%), local ECAPA extraction is slow/unreliable
+    # because SpeechBrain + PyTorch compete for compute with startup tasks.
+    # Solution: Dynamically route to Cloud ECAPA (GCP Cloud Run) when local
+    # resources are constrained. This is the hybrid cloud architecture in action:
+    #   - Normal load: Local first (fast, no network latency)
+    #   - CPU pressure: Cloud first (offload compute to GCP)
+    # ========================================================================
+    _cpu_pressure_cloud_first = False
+    try:
+        import psutil as _ecapa_psutil
+        _ecapa_cpu = _ecapa_psutil.cpu_percent(interval=None)
+        if _ecapa_cpu > 90.0:
+            _cpu_pressure_cloud_first = True
+            # Override static config — enable cloud when CPU is saturated
+            local_ecapa_only = False
+            cloud_fallback_enabled = True
+            logger.info(
+                f"[EDGE-ECAPA] v265.4: CPU pressure detected ({_ecapa_cpu:.0f}%) — "
+                "switching to cloud-first ECAPA routing (GCP hybrid offload)"
+            )
+    except Exception:
+        pass
+
     strategies_tried = []
     last_error = None
+
+    # ========================================================================
+    # v265.4: STRATEGY 0 (CPU-PRESSURE ONLY): Cloud ECAPA first
+    # ========================================================================
+    # When CPU > 90%, try cloud BEFORE local strategies. Cloud Run handles
+    # the heavy ECAPA inference on GCP infrastructure, freeing local CPU.
+    # If cloud fails, fall through to local strategies as normal.
+    # ========================================================================
+    if _cpu_pressure_cloud_first:
+        try:
+            logger.info("[EDGE-ECAPA] Strategy 0: Cloud ECAPA (CPU-pressure primary)...")
+            strategies_tried.append("cloud_ecapa_primary")
+
+            from voice_unlock.cloud_ecapa_client import get_cloud_ecapa_client
+            client = await asyncio.wait_for(get_cloud_ecapa_client(), timeout=5.0)
+            if client:
+                embedding = await asyncio.wait_for(
+                    client.extract_embedding(
+                        audio_data=audio_bytes,
+                        sample_rate=16000,
+                        format="float32",
+                        use_cache=True,
+                        use_fast_path=True
+                    ),
+                    timeout=RobustUnlockConfig.ECAPA_EXTRACT_TIMEOUT
+                )
+                if embedding is not None and (
+                    len(embedding) == 192 if hasattr(embedding, '__len__') else False
+                ):
+                    logger.info(
+                        f"[EDGE-ECAPA] ✅ Cloud ECAPA PRIMARY SUCCESS "
+                        f"(CPU offload): {len(embedding)} dims"
+                    )
+                    return embedding.tolist() if hasattr(embedding, 'tolist') else list(embedding)
+                else:
+                    logger.warning("[EDGE-ECAPA] Cloud returned invalid embedding, falling through to local")
+
+        except asyncio.TimeoutError:
+            last_error = "Cloud ECAPA primary timeout"
+            logger.warning(f"[EDGE-ECAPA] ⏱️ {last_error} — falling through to local strategies")
+        except ImportError:
+            logger.debug("[EDGE-ECAPA] Cloud ECAPA client not available")
+        except Exception as e:
+            last_error = str(e)
+            logger.warning(f"[EDGE-ECAPA] Strategy 0 (cloud primary) failed: {e} — trying local")
 
     # ========================================================================
     # STRATEGY 1: Local SpeechBrain with CACHED classifier (PRIMARY in Edge-Native)
@@ -6934,13 +7005,31 @@ async def process_voice_unlock_robust(
 
             return result(True, completion_msg, speaker=verified_speaker, conf=conf)
 
-        res = await asyncio.wait_for(_unlock(), timeout=RobustUnlockConfig.MAX_TOTAL_TIMEOUT)
+        # v265.4: CPU-aware total timeout — extend under pressure.
+        # Under 99.8% CPU, FFmpeg audio decode and local processing are slower.
+        # Even with cloud ECAPA offload, preceding stages need more budget.
+        _total_timeout = RobustUnlockConfig.MAX_TOTAL_TIMEOUT
+        try:
+            import psutil as _robust_psutil
+            _robust_cpu = _robust_psutil.cpu_percent(interval=None)
+            if _robust_cpu > 90.0:
+                _cpu_factor = 1.0 + (_robust_cpu - 90.0) / 10.0 * 2.0
+                _total_timeout *= _cpu_factor
+                logger.info(
+                    f"[ROBUST] v265.4: Total timeout extended "
+                    f"{RobustUnlockConfig.MAX_TOTAL_TIMEOUT:.0f}s → "
+                    f"{_total_timeout:.0f}s (CPU: {_robust_cpu:.0f}%)"
+                )
+        except Exception:
+            pass
+
+        res = await asyncio.wait_for(_unlock(), timeout=_total_timeout)
         logger.info(f"[ROBUST] RESULT: {'SUCCESS' if res['success'] else 'FAILED'} in {res['total_duration_ms']:.0f}ms")
         return res
 
     except asyncio.TimeoutError:
-        logger.error(f"[ROBUST] Total timeout ({RobustUnlockConfig.MAX_TOTAL_TIMEOUT}s)")
-        return result(False, "Voice unlock timed out", err=f"Timeout after {RobustUnlockConfig.MAX_TOTAL_TIMEOUT}s")
+        logger.error(f"[ROBUST] Total timeout exceeded — voice unlock timed out")
+        return result(False, "Voice unlock timed out", err="Total timeout exceeded")
     except Exception as e:
         logger.error(f"[ROBUST] Error: {e}\n{traceback.format_exc()}")
         return result(False, f"Voice unlock error: {e}", err=str(e))

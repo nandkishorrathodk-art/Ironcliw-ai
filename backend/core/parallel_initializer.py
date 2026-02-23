@@ -491,6 +491,7 @@ class ParallelInitializer:
         # Maps component name → asyncio.Task running its initializer.
         # When watchdog marks SKIPPED, it CANCELS the task — no more zombies.
         self._component_tasks: Dict[str, asyncio.Task] = {}
+        self._recovery_tasks: Dict[str, asyncio.Task] = {}
 
         # v3.0: Dependency-failure events for instant cascade propagation.
         # When a component fails/skips, its event is set. Dependents race
@@ -573,13 +574,15 @@ class ParallelInitializer:
         # + background DB verification. Keep at 45s — proxy itself is fast, the
         # verify_db_level_readiness background task has its own lifecycle.
         self._add_component("cloud_sql_proxy", priority=10, stale_threshold=45.0)
-        # Learning DB depends on cloud_sql_proxy for DB-level readiness
-        # v3.0: Increased from 40→60s. Init path: gate wait (15s) + retry (20s) +
-        # SQLite fallback (20s) = 55s worst case. With dependency-failure propagation,
-        # this timeout only fires if the gate is CHECKING the entire time (rare).
-        # The common failure path (Cloud SQL UNAVAILABLE) now cascades instantly via
-        # dep-failure events from cloud_sql_proxy.
-        self._add_component("learning_database", priority=12, stale_threshold=60.0, dependencies=["cloud_sql_proxy"])
+        # Learning DB should still initialize when Cloud SQL is degraded/unavailable
+        # because it has a first-class SQLite fallback path. Keep Cloud SQL as a
+        # soft dependency for context logging, not as a hard startup gate.
+        self._add_component(
+            "learning_database",
+            priority=12,
+            stale_threshold=60.0,
+            soft_dependencies=["cloud_sql_proxy"],
+        )
 
         # Phase 2: ML Infrastructure (parallel, non-blocking)
         # All these can start simultaneously
@@ -1342,6 +1345,19 @@ class ParallelInitializer:
         # The stale threshold is the single source of truth (adaptive or env-configured).
         timeout = comp.stale_threshold_seconds
 
+        # v266.0: Cloud SQL is non-interactive infrastructure with first-class
+        # degraded-mode fallback. Cap blocking startup wait and recover in background.
+        if name == "cloud_sql_proxy":
+            try:
+                _cloudsql_timeout_cap = float(
+                    os.environ.get("JARVIS_CLOUDSQL_STARTUP_BLOCKING_TIMEOUT", "45.0")
+                )
+            except (TypeError, ValueError):
+                _cloudsql_timeout_cap = 45.0
+            if _cloudsql_timeout_cap <= 0:
+                _cloudsql_timeout_cap = 45.0
+            timeout = min(timeout, _cloudsql_timeout_cap)
+
         try:
             initializer = getattr(self, f"_init_{name}", None)
             if initializer:
@@ -1384,6 +1400,8 @@ class ParallelInitializer:
                             f"task cancelled, continuing degraded"
                         )
                         await self._mark_skipped(name, error_msg)
+                        if name == "cloud_sql_proxy":
+                            self._schedule_cloud_sql_timeout_recovery()
                         return
                 except asyncio.CancelledError:
                     # v3.1: Acquire phase lock for atomic check+transition
@@ -1419,6 +1437,8 @@ class ParallelInitializer:
                 logger.warning(f"⚠️ Non-critical component {name} failed: {error_context}")
             async with self._phase_lock:
                 await self._mark_failed(name, error_context)
+            if name == "cloud_sql_proxy":
+                self._schedule_cloud_sql_timeout_recovery()
 
     async def _race_init_vs_deps(
         self,
@@ -1579,6 +1599,170 @@ class ParallelInitializer:
             if task and not task.done():
                 task.cancel()
                 logger.debug(f"[v3.0] Cancelled zombie task for {name}")
+
+    async def _mark_recovered(self, name: str, detail: str) -> None:
+        """
+        Promote a previously skipped/failed component to COMPLETE after
+        asynchronous recovery.
+        """
+        comp = self.components.get(name)
+        if not comp:
+            return
+
+        async with self._phase_lock:
+            previous = comp.phase
+            if previous == InitPhase.COMPLETE:
+                return
+            comp.phase = InitPhase.COMPLETE
+            comp.end_time = time.time()
+            comp.error = None
+            self.app.state.components_ready.add(name)
+            if name in self.app.state.components_failed:
+                self.app.state.components_failed.discard(name)
+
+        logger.info(
+            f"[RECOVERED] {name}: {detail} (was {previous.value})"
+        )
+        _signal_dms_heartbeat(name)
+
+        try:
+            broadcaster = get_startup_broadcaster()
+            await asyncio.wait_for(
+                broadcaster.broadcast_component_complete(
+                    component=name,
+                    message=f"{name.replace('_', ' ').title()} recovered",
+                    duration_ms=None,
+                ),
+                timeout=2.0,
+            )
+        except Exception:
+            pass
+
+    def _schedule_cloud_sql_timeout_recovery(self) -> None:
+        """
+        Schedule background Cloud SQL recovery after startup timeout.
+        Runs once at a time; subsequent calls are no-ops while active.
+        """
+        existing = self._recovery_tasks.get("cloud_sql_proxy")
+        if existing and not existing.done():
+            return
+
+        task = safe_create_task(
+            self._cloud_sql_timeout_recovery_loop(),
+            name="cloudsql-timeout-recovery",
+        )
+        self._recovery_tasks["cloud_sql_proxy"] = task
+        self._tasks.append(task)
+        logger.info(
+            "[Recovery] Scheduled Cloud SQL background recovery after startup timeout"
+        )
+
+    async def _cloud_sql_timeout_recovery_loop(self) -> None:
+        """
+        Retry Cloud SQL initialization in the background after timeout so startup
+        can remain degraded-but-responsive while infrastructure heals.
+        """
+        initial_delay = float(
+            os.environ.get("JARVIS_CLOUDSQL_RECOVERY_INITIAL_DELAY", "5.0")
+        )
+        max_attempts = int(
+            os.environ.get("JARVIS_CLOUDSQL_RECOVERY_ATTEMPTS", "3")
+        )
+        attempt_timeout = float(
+            os.environ.get("JARVIS_CLOUDSQL_RECOVERY_ATTEMPT_TIMEOUT", "120.0")
+        )
+        base_backoff = float(
+            os.environ.get("JARVIS_CLOUDSQL_RECOVERY_BACKOFF", "20.0")
+        )
+        max_backoff = float(
+            os.environ.get("JARVIS_CLOUDSQL_RECOVERY_MAX_BACKOFF", "120.0")
+        )
+
+        try:
+            if initial_delay > 0:
+                await asyncio.sleep(initial_delay)
+
+            for attempt in range(1, max_attempts + 1):
+                if self._get_shutdown_event().is_set():
+                    return
+
+                logger.info(
+                    f"[Recovery] Cloud SQL retry {attempt}/{max_attempts} "
+                    f"(timeout={attempt_timeout:.0f}s)"
+                )
+
+                try:
+                    await asyncio.wait_for(
+                        self._init_cloud_sql_proxy(),
+                        timeout=attempt_timeout,
+                    )
+                except asyncio.TimeoutError:
+                    logger.warning(
+                        f"[Recovery] Cloud SQL retry {attempt}/{max_attempts} "
+                        f"timed out ({attempt_timeout:.0f}s)"
+                    )
+                except asyncio.CancelledError:
+                    raise
+                except Exception as e:
+                    logger.warning(
+                        f"[Recovery] Cloud SQL retry {attempt}/{max_attempts} "
+                        f"failed: {e}"
+                    )
+
+                ready = False
+                failure_reason = None
+                gate_state = "unknown"
+                try:
+                    try:
+                        from intelligence.cloud_sql_connection_manager import (
+                            get_connection_manager,
+                            get_readiness_gate,
+                            ReadinessState,
+                        )
+                    except ImportError:
+                        from backend.intelligence.cloud_sql_connection_manager import (
+                            get_connection_manager,
+                            get_readiness_gate,
+                            ReadinessState,
+                        )
+
+                    conn_mgr = get_connection_manager()
+                    gate = get_readiness_gate()
+                    gate_state = gate.state.value
+                    failure_reason = gate.get_status().get("failure_reason")
+                    ready = bool(conn_mgr.is_proxy_ready()) or (
+                        gate.state == ReadinessState.READY
+                    )
+                except Exception as e:
+                    logger.debug(f"[Recovery] Cloud SQL readiness probe error: {e}")
+
+                if ready:
+                    await self._mark_recovered(
+                        "cloud_sql_proxy",
+                        f"Cloud SQL READY after retry {attempt}/{max_attempts}",
+                    )
+                    return
+
+                if failure_reason == "credentials":
+                    logger.warning(
+                        "[Recovery] Cloud SQL recovery stopped early: credential "
+                        "failure requires operator intervention"
+                    )
+                    return
+
+                if attempt < max_attempts:
+                    backoff = min(base_backoff * (2 ** (attempt - 1)), max_backoff)
+                    logger.info(
+                        f"[Recovery] Cloud SQL still {gate_state}; "
+                        f"next retry in {backoff:.0f}s"
+                    )
+                    await asyncio.sleep(backoff)
+
+            logger.warning(
+                "[Recovery] Cloud SQL recovery exhausted retries; remaining in degraded mode"
+            )
+        finally:
+            self._recovery_tasks.pop("cloud_sql_proxy", None)
 
     def _signal_dependency_failure(self, name: str) -> None:
         """
@@ -2418,21 +2602,52 @@ class ParallelInitializer:
                 # Check gate state to decide whether to raise (trigger cascade)
                 # or proceed (degraded mode).
                 _gate_state = readiness_gate.state
-                if _gate_state == ReadinessState.UNAVAILABLE:
-                    raise RuntimeError(
-                        f"Cloud SQL UNAVAILABLE: {gate_err}"
+                _gate_status = readiness_gate.get_status()
+                _gate_reason = _gate_status.get("failure_reason")
+                _gate_message = _gate_status.get("message")
+
+                if _gate_state == ReadinessState.READY:
+                    conn_mgr.set_proxy_ready(True)
+                    logger.info(
+                        "   Cloud SQL gate converged to READY after transient error "
+                        f"({gate_err}); reason={_gate_reason or 'none'}"
                     )
-                # DEGRADED_SQLITE or other — proceed, dependents check gate
-                logger.info(
-                    f"   Cloud SQL gate: {_gate_state.value} after error "
-                    f"({gate_err}) — proceeding in degraded mode"
-                )
+                elif _gate_state == ReadinessState.UNAVAILABLE:
+                    conn_mgr.set_proxy_ready(False)
+                    raise RuntimeError(
+                        f"Cloud SQL UNAVAILABLE: {gate_err} "
+                        f"(reason={_gate_reason or 'unknown'})"
+                    )
+                elif _gate_state == ReadinessState.DEGRADED_SQLITE:
+                    conn_mgr.set_proxy_ready(False)
+                    logger.info(
+                        "   Cloud SQL gate: degraded_sqlite after error "
+                        f"({gate_err}) — message={_gate_message or 'n/a'}"
+                    )
+                else:
+                    conn_mgr.set_proxy_ready(False)
+                    logger.info(
+                        f"   Cloud SQL gate: {_gate_state.value} after error "
+                        f"({gate_err}) — proceeding in degraded mode"
+                    )
 
             configured_port = proxy_manager.config.get('cloud_sql', {}).get('port', 5432)
-            logger.info(
-                f"   Cloud SQL proxy bootstrap initialized on 127.0.0.1:{configured_port} "
-                f"(authoritative DB verification pending)"
-            )
+            _final_gate_state = readiness_gate.state
+            if _final_gate_state == ReadinessState.READY:
+                logger.info(
+                    f"   Cloud SQL proxy bootstrap complete on 127.0.0.1:{configured_port} "
+                    f"(DB-level readiness verified)"
+                )
+            elif _final_gate_state == ReadinessState.DEGRADED_SQLITE:
+                logger.info(
+                    f"   Cloud SQL bootstrap completed in SQLite fallback mode "
+                    f"(port 127.0.0.1:{configured_port})"
+                )
+            else:
+                logger.info(
+                    f"   Cloud SQL proxy bootstrap initialized on 127.0.0.1:{configured_port} "
+                    f"(authoritative DB verification pending)"
+                )
 
         except ImportError as e:
             # Handle case where cloud_sql_connection_manager doesn't have new APIs yet
