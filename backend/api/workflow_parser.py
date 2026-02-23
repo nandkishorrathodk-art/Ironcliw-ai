@@ -75,6 +75,11 @@ class WorkflowParser:
             r"start\s+(\w+(?:\s+\w+)*)",
             r"run\s+(\w+(?:\s+\w+)*)"
         ],
+        ActionType.NAVIGATE: [
+            r"(?:go|navigate)\s+to\s+(.+)",
+            r"visit\s+(.+)",
+            r"browse\s+to\s+(.+)"
+        ],
         ActionType.SEARCH: [
             r"search\s+(?:for\s+)?['\"]?(.+?)(?:['\"]|\s+on\s+(\w+)|$)",
             r"look\s+(?:up\s+)?(?:for\s+)?['\"]?(.+?)(?:['\"]|$)",
@@ -258,6 +263,10 @@ class WorkflowParser:
                 if len(groups) > 1 and groups[1]:
                     parameters["platform"] = groups[1]
                 target = parameters.get("platform", "web")
+
+        elif action_type == ActionType.NAVIGATE:
+            target = match.group(1).strip() if match.groups() and match.group(1) else ""
+            parameters["destination"] = target
                 
         elif action_type == ActionType.CHECK:
             target = match.group(1) if match.groups() else ""
@@ -291,6 +300,8 @@ class WorkflowParser:
             "meeting": (ActionType.PREPARE, "meeting"),
             "document": (ActionType.CREATE, "document"),
             "file": (ActionType.OPEN_APP, "Finder"),
+            "repo": (ActionType.NAVIGATE, "repository"),
+            "repository": (ActionType.NAVIGATE, "repository"),
             "music": (ActionType.OPEN_APP, "Music"),
             "video": (ActionType.OPEN_APP, "TV"),
             "photo": (ActionType.OPEN_APP, "Photos")

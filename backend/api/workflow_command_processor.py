@@ -3,13 +3,13 @@ JARVIS Workflow Command Processor - Integration Layer
 Processes multi-command workflows through JARVIS voice system
 """
 
+import asyncio
 import logging
 import os
 import re
+import time
 from datetime import datetime
 from typing import Any, Dict, List, Optional
-
-import anthropic
 
 from .jarvis_voice_api import JARVISCommand
 from .workflow_engine import WorkflowExecutionEngine
@@ -50,7 +50,38 @@ class WorkflowCommandProcessor:
         # with fallback chain: LOCAL_PRIME → CLOUD_RUN → CLOUD_CLAUDE
         self._prime_router = None  # Lazy-loaded
         self._use_prime_router = os.getenv("WORKFLOW_USE_PRIME_ROUTER", "true").lower() == "true"
+        self._response_timeout_seconds = self._load_response_timeout_seconds()
+
+        # Legacy field retained for compatibility with older fallback branches.
+        # It is intentionally optional because Prime Router is the preferred path.
+        self.claude_client = None
         logger.info("✅ Workflow processor will route through Prime Router")
+
+    def _load_response_timeout_seconds(self) -> float:
+        """Load bounded response-generation timeout from environment."""
+        try:
+            return max(1.0, float(os.getenv("WORKFLOW_RESPONSE_TIMEOUT_SECONDS", "8.0")))
+        except (TypeError, ValueError):
+            return 8.0
+
+    def _effective_response_timeout(self, deadline_monotonic: Optional[float] = None) -> float:
+        """Compute effective response-generation budget with deadline awareness."""
+        timeout = self._response_timeout_seconds
+        if deadline_monotonic is None:
+            return timeout
+
+        remaining = deadline_monotonic - time.monotonic() - 0.25
+        return max(0.5, min(timeout, remaining))
+
+    async def _run_with_timeout(
+        self, awaitable: Any, timeout_seconds: float, operation_name: str
+    ) -> Any:
+        """Run awaitable with timeout guardrail."""
+        if timeout_seconds <= 0:
+            raise asyncio.TimeoutError(
+                f"{operation_name} aborted due to exhausted response budget"
+            )
+        return await asyncio.wait_for(awaitable, timeout=timeout_seconds)
 
     def is_workflow_command(self, command_text: str) -> bool:
         """Check if command contains multiple actions"""
@@ -130,8 +161,20 @@ class WorkflowCommandProcessor:
             # Execute the workflow
             result = await self.engine.execute_workflow(workflow, user_id, websocket)
 
-            # Generate dynamic response using Claude API
-            response = await self._generate_response_with_claude(workflow, result)
+            # Generate response with strict timeout and guaranteed fallback.
+            response = self._generate_basic_response(workflow, result)
+            try:
+                response = await self._generate_response_with_claude(
+                    workflow,
+                    result,
+                    deadline_monotonic=getattr(command, "deadline", None),
+                )
+            except Exception as response_error:
+                logger.error(
+                    "Workflow response generation failed, using basic fallback: %s",
+                    response_error,
+                    exc_info=True,
+                )
 
             return {
                 "success": result.success_rate > 0.5,
@@ -160,21 +203,31 @@ class WorkflowCommandProcessor:
                 "error": str(e),
             }
 
-    async def _generate_response_with_claude(self, workflow, result) -> str:
+    async def _generate_response_with_claude(
+        self, workflow, result, deadline_monotonic: Optional[float] = None
+    ) -> str:
         """Generate dynamic, contextual JARVIS response using intelligent model selection"""
-
         # Try intelligent model selection first
         if self.use_intelligent_selection:
+            response_timeout = self._effective_response_timeout(deadline_monotonic)
             try:
-                return await self._generate_response_with_intelligent_selection(workflow, result)
+                return await self._run_with_timeout(
+                    self._generate_response_with_intelligent_selection(workflow, result),
+                    response_timeout,
+                    "workflow intelligent response generation",
+                )
+            except asyncio.TimeoutError:
+                logger.warning(
+                    "Intelligent selection timed out after %.2fs, falling back",
+                    response_timeout,
+                )
             except Exception as e:
                 logger.warning(
-                    f"Intelligent selection failed, falling back to direct Claude API: {e}"
+                    f"Intelligent selection failed, falling back to Prime Router/basic response: {e}"
                 )
-                # Continue to direct Claude API below
+                # Continue to Prime Router/basic fallback below
 
-        if not self.claude_client:
-            # Fallback to basic response if Claude not available
+        if not self._use_prime_router:
             return self._generate_basic_response(workflow, result)
 
         # Build context for Claude
@@ -234,12 +287,22 @@ Generate ONLY the response text, nothing else."""
                     from core.prime_router import get_prime_router
                 except ImportError:
                     from backend.core.prime_router import get_prime_router
-                self._prime_router = await get_prime_router()
+                response_timeout = self._effective_response_timeout(deadline_monotonic)
+                self._prime_router = await self._run_with_timeout(
+                    get_prime_router(),
+                    response_timeout,
+                    "Prime Router initialization",
+                )
 
             # Generate via Prime Router (handles LOCAL_PRIME → CLOUD_RUN → CLAUDE fallback)
-            response_obj = await self._prime_router.generate(
-                prompt=prompt,
-                max_tokens=150,
+            response_timeout = self._effective_response_timeout(deadline_monotonic)
+            response_obj = await self._run_with_timeout(
+                self._prime_router.generate(
+                    prompt=prompt,
+                    max_tokens=150,
+                ),
+                response_timeout,
+                "Prime Router workflow response generation",
             )
 
             # Extract text from response
@@ -252,6 +315,9 @@ Generate ONLY the response text, nothing else."""
                 response = response_obj.get('content', response_obj.get('response', '')).strip()
             else:
                 response = str(response_obj).strip()
+
+            if not response:
+                return self._generate_basic_response(workflow, result)
 
             logger.info(f"✨ Generated dynamic JARVIS response via Prime Router: {response}")
             return response
