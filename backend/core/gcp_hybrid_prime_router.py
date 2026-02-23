@@ -764,12 +764,13 @@ class GCPHybridPrimeRouter:
         # v266.1: Emergency offload state — 3-step escalation ladder
         self._emergency_offload_active: bool = False
         self._emergency_offload_started_at: float = 0.0
-        self._offload_lock: Optional[asyncio.Lock] = None  # Lazy init
+        self._pre_unload_percent: float = 0.0  # RAM % at Step 1 trigger (verification baseline)
         self._clean_unload_fired: bool = False  # Step 1 completed
         self._clean_unload_verified: bool = False  # Post-unload verification passed
 
         # SIGSTOP state (last resort only)
         self._sigstop_active: bool = False
+        self._sigstop_started_at: float = 0.0  # When SIGSTOP was actually sent
         self._paused_processes: Dict[int, str] = {}  # pid -> process_name
         self._sigstop_released_at: float = 0.0  # Cooldown tracking for SIGSTOP only
 
@@ -1167,6 +1168,7 @@ class GCPHybridPrimeRouter:
                         )
                         self._emergency_offload_active = True
                         self._emergency_offload_started_at = time.time()
+                        self._pre_unload_percent = used_percent  # Baseline for verification
                         self._clean_unload_fired = True
                         self._clean_unload_verified = False
 
@@ -1374,6 +1376,14 @@ class GCPHybridPrimeRouter:
         slope = (n * sum_t_mb - sum_t * sum_mb) / denominator
         return slope  # MB per second
 
+    def register_llm_pid(self, pid: int) -> None:
+        """Register a JARVIS-owned LLM process PID for emergency offload targeting."""
+        self._local_llm_pids.add(pid)
+
+    def unregister_llm_pid(self, pid: int) -> None:
+        """Unregister a JARVIS-owned LLM process PID."""
+        self._local_llm_pids.discard(pid)
+
     async def _pause_local_llm_processes(self) -> int:
         """v266.1: Pause local LLM processes via SIGSTOP (last resort only).
 
@@ -1506,9 +1516,9 @@ class GCPHybridPrimeRouter:
                 import psutil
                 mem = psutil.virtual_memory()
                 post_unload_percent = mem.percent
-                ram_dropped_gb = (current_used_percent - post_unload_percent) * mem.total / (100 * 1024 ** 3)
+                ram_dropped_gb = (self._pre_unload_percent - post_unload_percent) * mem.total / (100 * 1024 ** 3)
             except Exception:
-                post_unload_percent = current_used_percent
+                post_unload_percent = self._pre_unload_percent
                 ram_dropped_gb = 0.0
 
             if ram_dropped_gb < 0:
@@ -1575,13 +1585,14 @@ class GCPHybridPrimeRouter:
                 f"One-shot SIGSTOP on JARVIS-owned PIDs."
             )
             self._sigstop_active = True
+            self._sigstop_started_at = time.time()
             paused_count = await self._pause_local_llm_processes()
             self.logger.critical(f"[v266.1] SIGSTOP sent to {paused_count} process(es)")
             return
 
         # --- SIGSTOP timeout: terminate if no recovery ---
         if self._sigstop_active:
-            sigstop_elapsed = time.time() - self._emergency_offload_started_at
+            sigstop_elapsed = time.time() - self._sigstop_started_at
             if sigstop_elapsed >= EMERGENCY_SIGSTOP_TIMEOUT_SEC:
                 self.logger.critical(
                     f"[v266.1] SIGSTOP timeout ({sigstop_elapsed:.0f}s) — "
@@ -1628,7 +1639,7 @@ class GCPHybridPrimeRouter:
         if not self._emergency_offload_active:
             return
 
-        self.logger.info(f"[v93.0] Releasing emergency offload (reason: {reason})")
+        self.logger.info(f"[v266.1] Releasing emergency offload (reason: {reason})")
 
         resumed_count = 0
         for pid, name in list(self._paused_processes.items()):
@@ -1638,6 +1649,11 @@ class GCPHybridPrimeRouter:
         self._paused_processes.clear()
         self._emergency_offload_active = False
         self._emergency_offload_started_at = 0.0
+        self._pre_unload_percent = 0.0
+        self._clean_unload_fired = False
+        self._clean_unload_verified = False
+        self._sigstop_active = False
+        self._sigstop_started_at = 0.0
 
         # v266.1: Record release time for SIGSTOP cooldown enforcement
         self._sigstop_released_at = time.time()
