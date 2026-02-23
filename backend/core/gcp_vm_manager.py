@@ -4531,7 +4531,10 @@ class GCPVMManager:
                             0.0,
                         )
             except Exception as e:
-                logger.warning(f"⚠️ Budget check failed (allowing VM): {e}")
+                logger.error(
+                    f"🚫 [CostGuard] Budget check failed — blocking VM creation for safety: {e}"
+                )
+                return (False, f"Budget check error (blocking): {e}", 0.0)
 
         # v229.0: Check concurrent VM limits using REAL GCP instance count
         # Previous bug: only checked tracked VMs (self.managed_vms), but untracked
