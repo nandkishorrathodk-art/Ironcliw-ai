@@ -1141,97 +1141,61 @@ class GCPHybridPrimeRouter:
                             rate_mb_sec=memory_rate_mb_sec,
                         )
 
-                # v192.0: Reset hysteresis and cycle count when RAM drops below safe threshold
-                hysteresis_threshold = EMERGENCY_OFFLOAD_RAM_PERCENT - EMERGENCY_OFFLOAD_HYSTERESIS
-                if self._emergency_offload_hysteresis_armed and used_percent < hysteresis_threshold:
-                    self.logger.info(
-                        f"[v192.0] RAM dropped to {used_percent:.1f}% (below {hysteresis_threshold:.1f}%) - "
-                        f"disarming hysteresis, resetting cycle count from {self._emergency_offload_cycle_count}"
-                    )
-                    self._emergency_offload_hysteresis_armed = False
-                    self._emergency_offload_cycle_count = 0
-
-                # v93.0: Emergency offload check - highest priority
-                # v148.1: Consult enterprise recovery engine for strategy
-                # v192.0: Anti-cycle protection with cooldown, hysteresis, and cycle escalation
-                if used_percent >= EMERGENCY_OFFLOAD_RAM_PERCENT and not self._emergency_offload_active:
-                    # v192.0: Check cooldown period
-                    time_since_release = time.time() - self._emergency_offload_released_at
-                    in_cooldown = (
-                        self._emergency_offload_released_at > 0 and
-                        time_since_release < EMERGENCY_OFFLOAD_COOLDOWN_SEC
-                    )
-
-                    if in_cooldown:
-                        remaining_cooldown = EMERGENCY_OFFLOAD_COOLDOWN_SEC - time_since_release
-                        self.logger.warning(
-                            f"[v192.0] RAM at {used_percent:.1f}% but in cooldown - "
-                            f"{remaining_cooldown:.1f}s remaining before re-trigger allowed"
-                        )
-                        # Don't trigger, but we're not in a healthy state
-                        continue
-
-                    # v192.0: Check hysteresis - if armed, must wait for RAM to drop first
+                # v266.1: Emergency offload — 3-step escalation ladder
+                # Step 1 (85%): Clean model unload via COMPONENT_UNLOAD
+                # Step 2: Post-unload verification + GCP attempt
+                # Step 3 (95%): SIGSTOP as one-shot last resort
+                if not self._emergency_offload_active:
+                    # Check hysteresis: must wait for RAM to drop before re-trigger
                     if self._emergency_offload_hysteresis_armed:
-                        self.logger.warning(
-                            f"[v192.0] RAM at {used_percent:.1f}% but hysteresis armed - "
-                            f"waiting for RAM to drop below {hysteresis_threshold:.1f}% before re-trigger"
-                        )
-                        continue
-
-                    # v192.0: Check cycle count for escalation
-                    if self._emergency_offload_cycle_count >= EMERGENCY_OFFLOAD_MAX_CYCLES:
-                        self.logger.critical(
-                            f"[v192.0] EMERGENCY: RAM at {used_percent:.1f}% - "
-                            f"CYCLE LIMIT REACHED ({self._emergency_offload_cycle_count} cycles). "
-                            f"SIGSTOP is ineffective - escalating to process TERMINATION"
-                        )
-                        # Terminate instead of pause - SIGSTOP isn't freeing memory
-                        await self._terminate_local_llm_processes(
-                            reason=f"cycle_limit_termination_ram_{used_percent:.0f}pct"
-                        )
-                        # Reset cycle tracking after termination
-                        self._emergency_offload_cycle_count = 0
-                        self._emergency_offload_hysteresis_armed = False
-                        continue
-
-                    self.logger.critical(
-                        f"[v93.0] EMERGENCY: RAM at {used_percent:.1f}% - initiating emergency offload "
-                        f"(cycle {self._emergency_offload_cycle_count + 1}/{EMERGENCY_OFFLOAD_MAX_CYCLES})"
-                    )
-
-                    # v148.1: Get recovery strategy from enterprise hooks
-                    recovery_strategy = None
-                    if ENTERPRISE_HOOKS_AVAILABLE and handle_memory_pressure:
-                        try:
-                            trend = "increasing" if memory_rate_mb_sec > 0 else "stable"
-                            recovery_strategy = await handle_memory_pressure(
-                                used_percent,
-                                trend=trend,
-                                slope=memory_rate_mb_sec,
-                            )
+                        hysteresis_threshold = EMERGENCY_UNLOAD_RAM_PERCENT - EMERGENCY_OFFLOAD_HYSTERESIS
+                        if used_percent < hysteresis_threshold:
+                            self._emergency_offload_hysteresis_armed = False
+                            self._clean_unload_fired = False
+                            self._clean_unload_verified = False
                             self.logger.info(
-                                f"[v148.1] Recovery engine suggests: {recovery_strategy.value}"
+                                f"[v266.1] RAM dropped to {used_percent:.1f}% — "
+                                f"hysteresis disarmed, escalation reset"
                             )
-                        except Exception as e:
-                            self.logger.debug(f"[v148.1] Recovery engine error: {e}")
+                        # else: Still above hysteresis threshold, skip to VM state machine
 
-                    # v148.1: Update health status
-                    if ENTERPRISE_HOOKS_AVAILABLE and update_component_health and HealthStatus:
+                    # Step 1: Clean model unload at CRITICAL tier (85%+)
+                    elif used_percent >= EMERGENCY_UNLOAD_RAM_PERCENT and not self._clean_unload_fired:
+                        self.logger.warning(
+                            f"[v266.1] RAM at {used_percent:.1f}% (>={EMERGENCY_UNLOAD_RAM_PERCENT}%) "
+                            f"— firing COMPONENT_UNLOAD for clean model unload"
+                        )
+                        self._emergency_offload_active = True
+                        self._emergency_offload_started_at = time.time()
+                        self._clean_unload_fired = True
+                        self._clean_unload_verified = False
+
+                        # Fire COMPONENT_UNLOAD via MemoryQuantizer
                         try:
-                            update_component_health(
-                                "gcp_hybrid_router",
-                                HealthStatus.DEGRADED,
-                                message=f"Emergency offload: RAM at {used_percent:.1f}%",
+                            from backend.core.memory_quantizer import (
+                                get_memory_quantizer, OptimizationStrategy,
                             )
-                        except Exception:
-                            pass
+                            _mq = await get_memory_quantizer()
+                            if _mq:
+                                await _mq._apply_strategy(OptimizationStrategy.COMPONENT_UNLOAD)
+                                self.logger.info("[v266.1] COMPONENT_UNLOAD fired — waiting for verification")
+                            else:
+                                self.logger.warning("[v266.1] MemoryQuantizer unavailable")
+                        except Exception as e:
+                            self.logger.error(f"[v266.1] COMPONENT_UNLOAD failed: {e}")
 
-                    await self._emergency_offload(
-                        reason=f"critical_ram_{used_percent:.0f}pct",
-                        used_percent=used_percent,
-                        rate_mb_sec=memory_rate_mb_sec,
-                    )
+                        # Signal to other repos
+                        await self._signal_memory_pressure_to_repos(
+                            status="offload_active",
+                            action="unload",
+                            used_percent=used_percent,
+                            rate_mb_sec=memory_rate_mb_sec,
+                        )
+                        continue
+
+                elif self._emergency_offload_active:
+                    # Active offload — check escalation ladder
+                    await self._check_offload_escalation(used_percent, memory_rate_mb_sec)
                     continue
 
                 # v266.0: State-machine-driven VM provisioning
@@ -1313,10 +1277,6 @@ class GCPHybridPrimeRouter:
                 # Check if we should terminate VM (low usage, only in IDLE)
                 if current_state == VMLifecycleState.IDLE and used_percent < GCP_TRIGGER_RAM_PERCENT - 20:
                     await self._check_vm_termination()
-
-                # v93.0: Check if emergency offload should be released
-                if self._emergency_offload_active:
-                    await self._check_emergency_offload_release(used_percent)
 
             except asyncio.CancelledError:
                 # Ensure processes are resumed on shutdown
