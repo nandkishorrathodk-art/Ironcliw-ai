@@ -5396,6 +5396,39 @@ except Exception as e:
 
 
 # ═══════════════════════════════════════════════════════════════
+# WAKE WORD API - Mount at module level to prevent startup-time 404s
+# ═══════════════════════════════════════════════════════════════
+# Frontend probes /api/wake-word/status during activation, so route
+# registration must happen before background initialization begins.
+try:
+    from api.wake_word_api import router as wake_word_router
+
+    _existing_wake_routes = [
+        getattr(r, "path", "")
+        for r in app.routes
+        if hasattr(r, "path") and "/api/wake-word" in getattr(r, "path", "")
+    ]
+    if _existing_wake_routes:
+        logger.info(
+            f"ℹ️  Wake Word API already mounted (module level): {len(_existing_wake_routes)} routes"
+        )
+    else:
+        app.include_router(wake_word_router)
+        _mounted_wake_routes = [
+            getattr(r, "path", "")
+            for r in app.routes
+            if hasattr(r, "path") and "/api/wake-word" in getattr(r, "path", "")
+        ]
+        logger.info(
+            f"✅ Wake Word API mounted at /api/wake-word (module level, routes={len(_mounted_wake_routes)})"
+        )
+except ImportError as e:
+    logger.warning(f"⚠️  Wake Word API not available at module level: {e}")
+except Exception as e:
+    logger.error(f"❌ Failed to mount Wake Word API at module level: {e}")
+
+
+# ═══════════════════════════════════════════════════════════════
 # TRINITY HEALTH API - Monitor JARVIS-Prime and Reactor-Core
 # ═══════════════════════════════════════════════════════════════
 try:
@@ -7398,9 +7431,19 @@ def mount_routers():
     try:
         from api.wake_word_api import router as wake_word_router
 
-        # Router already has prefix="/api/wake-word", don't add it again
-        app.include_router(wake_word_router)
-        logger.info("✅ Wake Word API mounted at /api/wake-word")
+        existing_wake_routes = [
+            getattr(r, "path", "")
+            for r in app.routes
+            if hasattr(r, "path") and "/api/wake-word" in getattr(r, "path", "")
+        ]
+        if existing_wake_routes:
+            logger.info(
+                f"ℹ️  Wake Word API already mounted: {len(existing_wake_routes)} routes"
+            )
+        else:
+            # Router already has prefix="/api/wake-word", don't add it again
+            app.include_router(wake_word_router)
+            logger.info("✅ Wake Word API mounted at /api/wake-word")
 
         # Check if the full service is available
         wake_word = components.get("wake_word", {})
@@ -8711,7 +8754,8 @@ async def _try_async_tts(text):
 
 async def _await_first_tts_success(
     tasks: dict[str, "asyncio.Task"],
-    timeout_seconds: float,
+    timeout_seconds: Optional[float] = None,
+    timeout: Optional[float] = None,
 ):
     """
     Wait for the first non-None TTS result within a global timeout.
@@ -8723,6 +8767,12 @@ async def _await_first_tts_success(
     """
     if not tasks:
         return None
+
+    # Backward-compatible timeout contract: accept both timeout_seconds and timeout.
+    if timeout_seconds is None:
+        timeout_seconds = timeout
+    if timeout_seconds is None:
+        timeout_seconds = 5.0
 
     deadline = time.monotonic() + max(0.0, float(timeout_seconds))
     pending = set(tasks.values())
@@ -8803,7 +8853,7 @@ async def audio_speak_post(request: dict):
     GLOBAL_TTS_TIMEOUT = 5.0
     result = await _await_first_tts_success(
         tasks=tasks,
-        timeout=GLOBAL_TTS_TIMEOUT,
+        timeout_seconds=GLOBAL_TTS_TIMEOUT,
     )
     if result is not None:
         return result
