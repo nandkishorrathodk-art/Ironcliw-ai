@@ -2190,6 +2190,10 @@ class UnifiedModelServing:
             if _mq and hasattr(_mq, 'register_thrash_callback'):
                 _mq.register_thrash_callback(self._handle_thrash_state_change)
                 self.logger.info("[v266.0] Registered thrash detection callback")
+            # v266.0: Register for component unload (GCP-disabled escape valve)
+            if _mq and hasattr(_mq, 'register_unload_callback'):
+                _mq.register_unload_callback(self._handle_component_unload)
+                self.logger.info("[v266.0] Registered component unload callback")
         except Exception as e:
             self.logger.debug(f"[v266.0] Thrash callback registration: {e}")
 
@@ -2273,6 +2277,30 @@ class UnifiedModelServing:
                 )
             except Exception as e:
                 self.logger.warning(f"[v235.1] Model unload error: {e}")
+
+    # ── v266.0: Component Unload (GCP-disabled escape valve) ─────────
+
+    async def _handle_component_unload(self, tier) -> None:
+        """Handle COMPONENT_UNLOAD from MemoryQuantizer.
+
+        Called when memory reaches CRITICAL/EMERGENCY and GCP is unavailable.
+        Unloads the local LLM model to free 4-8GB of RAM.
+        """
+        _local = self._clients.get(ModelProvider.PRIME_LOCAL)
+        if not _local or not isinstance(_local, PrimeLocalClient):
+            return
+        if not getattr(_local, '_model', None):
+            self.logger.info("[ComponentUnload] No local model loaded — nothing to unload")
+            return
+
+        self.logger.warning(
+            f"[ComponentUnload] Memory tier {tier} — unloading local LLM model"
+        )
+        try:
+            await self._unload_local_model()
+            self.logger.warning("[ComponentUnload] Local LLM model unloaded successfully")
+        except Exception as e:
+            self.logger.error(f"[ComponentUnload] Unload failed: {e}")
 
     # ── v266.0: Mmap Thrash Cascade Response ─────────────────────────
 
