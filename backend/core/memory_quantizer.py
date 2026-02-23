@@ -412,6 +412,12 @@ class MemoryQuantizer:
         # Component tracking
         self.tracked_components: Set[str] = set()
 
+        # v266.0: Memory reservation system
+        # Allows components to "reserve" RAM in accounting before actually allocating.
+        # Reservations are factored into tier calculations so other components see
+        # accurate available headroom.
+        self._memory_reservations: Dict[str, Tuple[float, str]] = {}
+
         logger.info("Advanced Memory Quantizer initialized")
         logger.info(f"  Config: {self.config}")
         logger.info(f"  UAE: {'✅' if uae_engine else '❌'}")
@@ -455,6 +461,21 @@ class MemoryQuantizer:
         # inactive and purgeable can be freed instantly
         macos_pressure_percent = self._calculate_macos_memory_pressure(mem)
 
+        # v266.0: Factor in memory reservations from other components
+        reserved_gb = self.get_total_reserved_gb()
+        if reserved_gb > 0:
+            reserved_bytes = reserved_gb * 1024 * 1024 * 1024
+            # Recalculate pressure including reservations as "used"
+            wired = getattr(mem, 'wired', 0)
+            active = getattr(mem, 'active', 0)
+            compressed = getattr(mem, 'compressed', 0) if hasattr(mem, 'compressed') else 0
+            effective_used = (wired + active + compressed) + reserved_bytes
+            macos_pressure_percent = min(100.0, (effective_used / mem.total) * 100)
+            logger.debug(
+                f"[MemReserve] Adjusted pressure: {macos_pressure_percent:.1f}% "
+                f"(+{reserved_gb:.2f}GB reserved)"
+            )
+
         # Calculate tier based on macOS kernel pressure, not psutil percent
         tier = self._calculate_tier_macos(pressure, macos_pressure_percent, swap)
 
@@ -476,7 +497,8 @@ class MemoryQuantizer:
                 'wired_gb': getattr(mem, 'wired', 0) / (1024 ** 3),
                 'active_gb': getattr(mem, 'active', 0) / (1024 ** 3),
                 'inactive_gb': getattr(mem, 'inactive', 0) / (1024 ** 3),
-                'compressed_gb': getattr(mem, 'compressed', 0) / (1024 ** 3) if hasattr(mem, 'compressed') else 0
+                'compressed_gb': getattr(mem, 'compressed', 0) / (1024 ** 3) if hasattr(mem, 'compressed') else 0,
+                'reserved_gb': reserved_gb
             }
         )
 
@@ -509,6 +531,21 @@ class MemoryQuantizer:
         # inactive and purgeable can be freed instantly
         macos_pressure_percent = self._calculate_macos_memory_pressure(mem)
 
+        # v266.0: Factor in memory reservations from other components
+        reserved_gb = self.get_total_reserved_gb()
+        if reserved_gb > 0:
+            reserved_bytes = reserved_gb * 1024 * 1024 * 1024
+            # Recalculate pressure including reservations as "used"
+            wired = getattr(mem, 'wired', 0)
+            active = getattr(mem, 'active', 0)
+            compressed = getattr(mem, 'compressed', 0) if hasattr(mem, 'compressed') else 0
+            effective_used = (wired + active + compressed) + reserved_bytes
+            macos_pressure_percent = min(100.0, (effective_used / mem.total) * 100)
+            logger.debug(
+                f"[MemReserve] Adjusted pressure: {macos_pressure_percent:.1f}% "
+                f"(+{reserved_gb:.2f}GB reserved)"
+            )
+
         # Calculate tier based on macOS kernel pressure, not psutil percent
         tier = self._calculate_tier_macos(pressure, macos_pressure_percent, swap)
 
@@ -530,7 +567,8 @@ class MemoryQuantizer:
                 'wired_gb': getattr(mem, 'wired', 0) / (1024 ** 3),
                 'active_gb': getattr(mem, 'active', 0) / (1024 ** 3),
                 'inactive_gb': getattr(mem, 'inactive', 0) / (1024 ** 3),
-                'compressed_gb': getattr(mem, 'compressed', 0) / (1024 ** 3) if hasattr(mem, 'compressed') else 0
+                'compressed_gb': getattr(mem, 'compressed', 0) / (1024 ** 3) if hasattr(mem, 'compressed') else 0,
+                'reserved_gb': reserved_gb
             }
         )
 
@@ -989,6 +1027,63 @@ class MemoryQuantizer:
     def track_component(self, component_name: str):
         """Track memory usage for a component"""
         self.tracked_components.add(component_name)
+
+    # ========================================================================
+    # v266.0: Memory Reservation System
+    # ========================================================================
+
+    def reserve_memory(self, gb: float, component: str) -> str:
+        """
+        Reserve memory in accounting. Returns reservation ID.
+
+        Components call this BEFORE allocating large blocks (e.g., model loading).
+        The reservation is factored into pressure calculations so other components
+        see accurate available headroom. Call release_reservation() after the
+        actual allocation completes (success or failure).
+
+        Args:
+            gb: Amount of memory to reserve in gigabytes.
+            component: Name of the reserving component (for logging/debugging).
+
+        Returns:
+            Reservation ID string to pass to release_reservation().
+        """
+        import uuid
+        reservation_id = f"res_{component}_{uuid.uuid4().hex[:8]}"
+        self._memory_reservations[reservation_id] = (gb, component)
+        logger.info(
+            f"[MemReserve] Reserved {gb:.2f}GB for {component} (id={reservation_id})"
+        )
+        return reservation_id
+
+    def release_reservation(self, reservation_id: str) -> None:
+        """
+        Release a memory reservation.
+
+        Call this after the reserved memory has been physically allocated
+        (the OS now tracks it in wired/active) or if the allocation failed.
+
+        Args:
+            reservation_id: The ID returned by reserve_memory().
+        """
+        if reservation_id in self._memory_reservations:
+            gb, component = self._memory_reservations.pop(reservation_id)
+            logger.info(
+                f"[MemReserve] Released {gb:.2f}GB from {component} (id={reservation_id})"
+            )
+
+    def get_total_reserved_gb(self) -> float:
+        """Get total reserved memory in GB across all active reservations."""
+        return sum(gb for gb, _ in self._memory_reservations.values())
+
+    def get_reservations(self) -> Dict[str, Tuple[float, str]]:
+        """
+        Get all active reservations.
+
+        Returns:
+            Dict mapping reservation_id -> (gb, component).
+        """
+        return dict(self._memory_reservations)
 
     # ========================================================================
     # UAE/SAI Integration
