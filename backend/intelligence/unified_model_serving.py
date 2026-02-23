@@ -774,14 +774,58 @@ class PrimeLocalClient(ModelClient):
                             f"(tier: {_tier.value if _tier else 'unknown'})"
                         )
 
-                self._model = Llama(
-                    model_path=str(model_path),
-                    n_ctx=_ctx,
-                    n_threads=os.cpu_count() or 4,
-                    n_gpu_layers=_n_gpu,
-                    use_mmap=_use_mmap,
-                    verbose=False,
-                )
+                # v266.0: Reserve memory in MemoryQuantizer accounting.
+                # This prevents other startup phases from consuming headroom
+                # between our RAM check and the actual Llama() allocation.
+                _reservation_id = None
+                _reservation_mq = None
+                try:
+                    from backend.core.memory_quantizer import get_memory_quantizer as _get_mq_reserve
+                    _reservation_mq = await _get_mq_reserve()
+                    if _reservation_mq and hasattr(_reservation_mq, 'reserve_memory'):
+                        _reserve_gb = _effective_size_gb + _kv_cache_gb + _headroom_gb
+                        _reservation_id = _reservation_mq.reserve_memory(
+                            _reserve_gb, "unified_model_serving"
+                        )
+                        self.logger.info(
+                            f"[v266.0] Reserved {_reserve_gb:.2f}GB in MemoryQuantizer "
+                            f"(id={_reservation_id})"
+                        )
+                except Exception as e:
+                    self.logger.debug(f"[v266.0] Memory reservation failed (non-fatal): {e}")
+
+                try:
+                    self._model = Llama(
+                        model_path=str(model_path),
+                        n_ctx=_ctx,
+                        n_threads=os.cpu_count() or 4,
+                        n_gpu_layers=_n_gpu,
+                        use_mmap=_use_mmap,
+                        verbose=False,
+                    )
+                except Exception:
+                    # v266.0: Release reservation on Llama() failure
+                    if _reservation_id and _reservation_mq:
+                        try:
+                            _reservation_mq.release_reservation(_reservation_id)
+                            self.logger.debug(
+                                f"[v266.0] Released reservation {_reservation_id} "
+                                f"(Llama constructor failed)"
+                            )
+                        except Exception:
+                            pass
+                    raise  # re-raise to outer except handlers
+
+                # v266.0: Release reservation — model itself now holds the RAM
+                if _reservation_id and _reservation_mq:
+                    try:
+                        _reservation_mq.release_reservation(_reservation_id)
+                        self.logger.debug(
+                            f"[v266.0] Released reservation {_reservation_id} "
+                            f"(model loaded successfully)"
+                        )
+                    except Exception:
+                        pass
 
                 # v235.1: Post-load memory validation (Fix C2)
                 try:
