@@ -7343,6 +7343,23 @@ class GCPVMManager:
         if not is_valid:
             return False, None, f"CONFIG_INVALID: {validation_error}"
 
+        # v266.0: Budget gate — check cost before creating or starting VMs
+        # For STOPPED VMs (fast restart), use a lenient check since starting
+        # costs near-zero. For new CREATE operations, enforce full budget.
+        if self.cost_tracker and hasattr(self.cost_tracker, 'can_create_vm'):
+            try:
+                allowed, reason, details = await self.cost_tracker.can_create_vm()
+                if not allowed:
+                    logger.warning(
+                        f"🚫 [InvincibleNode] ensure_static_vm_ready blocked by budget: {reason}"
+                    )
+                    return (False, None, f"BUDGET_EXCEEDED: {reason}")
+            except Exception as e:
+                logger.error(
+                    f"🚫 [InvincibleNode] Budget check failed — blocking for safety: {e}"
+                )
+                return (False, None, f"BUDGET_CHECK_ERROR: {e}")
+
         # Use lock to prevent concurrent start/create operations
         async with self._vm_lock:
             # Step 1: Get static IP address (v210.0: auto-create if missing)
