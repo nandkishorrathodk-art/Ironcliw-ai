@@ -60551,6 +60551,7 @@ class JarvisSystemKernel:
 
         # Enterprise status tracking
         self._enterprise_status: Dict[str, Any] = {}
+        self._enterprise_background_services: Dict[str, asyncio.Task] = {}
 
         # v182.0: Dynamic component status tracking for accurate progress broadcasting
         # This tracks the REAL status of each component for the loading page
@@ -65301,7 +65302,9 @@ class JarvisSystemKernel:
                         "intelligence": {"status": "complete"},
                         "two_tier": {"status": "complete"},
                         "trinity": {"status": "complete"},
-                        "enterprise": {"status": "complete"},
+                        "enterprise": {"status": self._component_status.get(
+                            "enterprise", {}
+                        ).get("status", "pending")},
                         "ghost_display": {"status": "running"},
                         "agi_os": {"status": "pending"},
                         "frontend": {"status": "pending"},
@@ -65429,7 +65432,9 @@ class JarvisSystemKernel:
                         "intelligence": {"status": "complete"},
                         "two_tier": {"status": "complete"},
                         "trinity": {"status": "complete"},
-                        "enterprise": {"status": "complete"},
+                        "enterprise": {"status": self._component_status.get(
+                            "enterprise", {}
+                        ).get("status", "pending")},
                         "ghost_display": {"status": self._component_status.get(
                             "ghost_display", {}
                         ).get("status", "pending")},
@@ -65583,7 +65588,9 @@ class JarvisSystemKernel:
                         "intelligence": {"status": "complete"},
                         "two_tier": {"status": "complete"},
                         "trinity": {"status": "complete"},
-                        "enterprise": {"status": "complete"},
+                        "enterprise": {"status": self._component_status.get(
+                            "enterprise", {}
+                        ).get("status", "pending")},
                         "ghost_display": {"status": "complete"},
                         "agi_os": {"status": _agi_os_status},
                         "visual_pipeline": {"status": "running"},
@@ -65663,7 +65670,9 @@ class JarvisSystemKernel:
                         "intelligence": {"status": "complete"},
                         "two_tier": {"status": "complete"},
                         "trinity": {"status": "complete"},
-                        "enterprise": {"status": "complete"},
+                        "enterprise": {"status": self._component_status.get(
+                            "enterprise", {}
+                        ).get("status", "pending")},
                         "agi_os": {"status": "complete"},
                         "ghost_display": {"status": self._component_status.get(
                             "ghost_display", {}
@@ -65759,7 +65768,9 @@ class JarvisSystemKernel:
                         "backend": {"status": "complete"},
                         "intelligence": {"status": "complete"},
                         "trinity": {"status": "complete"},
-                        "enterprise": {"status": "complete"},
+                        "enterprise": {"status": self._component_status.get(
+                            "enterprise", {}
+                        ).get("status", "pending")},
                         "ghost_display": {"status": self._component_status.get(
                             "ghost_display", {}
                         ).get("status", "complete")},
@@ -73047,52 +73058,231 @@ class JarvisSystemKernel:
             except Exception as e:
                 self.logger.debug(f"[Trinity-Watchdog] Error in watchdog loop: {e}")
 
+    def _reconcile_enterprise_component_status(self) -> None:
+        """Recompute high-level enterprise phase status from per-service results."""
+        statuses = self._enterprise_status or {}
+        if not statuses:
+            return
+
+        successful = [
+            name for name, status in statuses.items()
+            if isinstance(status, dict) and (
+                status.get("initialized")
+                or status.get("enabled")
+                or status.get("running")
+            )
+        ]
+        timed_out_pending = [
+            name for name, status in statuses.items()
+            if isinstance(status, dict)
+            and status.get("timed_out")
+            and status.get("background_continuation")
+        ]
+        timed_out_terminal = [
+            name for name, status in statuses.items()
+            if isinstance(status, dict)
+            and status.get("timed_out")
+            and not status.get("background_continuation")
+        ]
+        failed = [
+            name for name, status in statuses.items()
+            if isinstance(status, dict)
+            and (status.get("error") or status.get("exception"))
+            and not status.get("timed_out")
+        ]
+
+        total = len(statuses)
+        if timed_out_pending:
+            self._update_component_status(
+                "enterprise",
+                "running",
+                (
+                    f"Enterprise warmup: {len(successful)}/{total} ready, "
+                    f"{len(timed_out_pending)} continuing in background"
+                ),
+            )
+        elif timed_out_terminal or failed:
+            self._update_component_status(
+                "enterprise",
+                "degraded",
+                (
+                    f"Enterprise degraded: {len(successful)}/{total} ready, "
+                    f"{len(timed_out_terminal)} timed out, {len(failed)} failed"
+                ),
+            )
+        else:
+            self._update_component_status(
+                "enterprise",
+                "complete",
+                f"Enterprise: {len(successful)}/{total} active",
+            )
+
+    def _track_enterprise_service_continuation(
+        self,
+        service_key: str,
+        display_name: str,
+        task: "asyncio.Task[Any]",
+        start_time: float,
+    ) -> None:
+        """
+        Track a timed-out enterprise initializer that continues in background.
+
+        Root fix:
+        Zone 6 timeout should bound phase latency, not force-cancel services that
+        are still making progress. This keeps startup responsive while allowing
+        eventual convergence to READY.
+        """
+        self._enterprise_background_services[service_key] = task
+        if task not in self._background_tasks:
+            self._background_tasks.append(task)
+
+        self.logger.info(
+            f"[Zone6/{display_name}] ⏳ Continuing initialization in background after timeout"
+        )
+
+        def _on_done(done_task: "asyncio.Task[Any]") -> None:
+            async def _finalize() -> None:
+                self._enterprise_background_services.pop(service_key, None)
+                elapsed_ms = (time.time() - start_time) * 1000
+
+                try:
+                    raw_result = done_task.result()
+                except asyncio.CancelledError:
+                    if not self._shutdown_event.is_set():
+                        self.logger.warning(
+                            f"[Zone6/{display_name}] Background continuation cancelled"
+                        )
+                    status: Dict[str, Any] = {
+                        "cancelled": True,
+                        "elapsed_ms": elapsed_ms,
+                        "background_continuation": False,
+                    }
+                except Exception as exc:
+                    self.logger.warning(
+                        f"[Zone6/{display_name}] Background continuation failed: "
+                        f"{type(exc).__name__}: {exc}"
+                    )
+                    status = {
+                        "error": str(exc),
+                        "exception": True,
+                        "elapsed_ms": elapsed_ms,
+                        "background_continuation": False,
+                    }
+                else:
+                    status = dict(raw_result) if isinstance(raw_result, dict) else {
+                        "value": str(raw_result)
+                    }
+                    status["elapsed_ms"] = elapsed_ms
+                    status["completed_after_timeout"] = True
+                    status["background_continuation"] = False
+                    status.pop("timed_out", None)
+
+                    if status.get("initialized") or status.get("enabled") or status.get("running"):
+                        self.logger.info(
+                            f"[Zone6/{display_name}] ✓ Ready (background completion, {elapsed_ms:.0f}ms)"
+                        )
+                    elif status.get("error"):
+                        self.logger.warning(
+                            f"[Zone6/{display_name}] ⚠ Background completion error: "
+                            f"{status.get('error', 'unknown')}"
+                        )
+                    else:
+                        self.logger.info(
+                            f"[Zone6/{display_name}] ○ Background completion (no-op/disabled)"
+                        )
+
+                self._enterprise_status[service_key] = status
+                self._reconcile_enterprise_component_status()
+
+            try:
+                loop = asyncio.get_running_loop()
+                loop.create_task(_finalize())
+            except RuntimeError:
+                # Event loop already closed during shutdown.
+                pass
+
+        task.add_done_callback(_on_done)
+
     async def _init_enterprise_service_with_timeout(
         self,
         name: str,
         coro: Coroutine[Any, Any, Dict[str, Any]],
         timeout_seconds: float = 30.0,
+        service_key: Optional[str] = None,
+        continue_on_timeout: bool = True,
     ) -> Dict[str, Any]:
         """
         Initialize an enterprise service with timeout protection.
 
-        This prevents any single service from blocking the entire startup
-        indefinitely. If a service times out, we log a warning and return
-        a failure result, allowing other services to continue.
+        This bounds phase latency while optionally allowing timed-out services
+        to continue in background until they converge.
 
         Args:
             name: Human-readable service name for logging
             coro: The async initialization coroutine
-            timeout_seconds: Maximum time to wait (default: 30s)
+            timeout_seconds: Maximum foreground wait budget
+            service_key: Internal service key for status tracking
+            continue_on_timeout: If True, do not cancel timed-out work
 
         Returns:
             Dict with service initialization results or timeout error
         """
         self.logger.info(f"[Zone6/{name}] Initializing (timeout: {timeout_seconds}s)...")
         start_time = time.time()
+        task_name = f"zone6-{(service_key or name).lower().replace(' ', '-')}"
+        service_task: "asyncio.Task[Any]" = asyncio.create_task(coro, name=task_name)
 
         try:
-            result = await asyncio.wait_for(coro, timeout=timeout_seconds)
+            result = await asyncio.wait_for(
+                asyncio.shield(service_task),
+                timeout=timeout_seconds,
+            )
             elapsed = (time.time() - start_time) * 1000
             self.logger.info(f"[Zone6/{name}] Completed in {elapsed:.0f}ms")
             return result
 
         except asyncio.TimeoutError:
             elapsed = (time.time() - start_time) * 1000
-            self.logger.warning(
-                f"[Zone6/{name}] ⏱️ TIMEOUT after {timeout_seconds}s - skipping"
-            )
+            if continue_on_timeout:
+                if service_key:
+                    self._track_enterprise_service_continuation(
+                        service_key=service_key,
+                        display_name=name,
+                        task=service_task,
+                        start_time=start_time,
+                    )
+                else:
+                    if service_task not in self._background_tasks:
+                        self._background_tasks.append(service_task)
+                self.logger.warning(
+                    f"[Zone6/{name}] ⏱️ TIMEOUT after {timeout_seconds}s - "
+                    f"continuing in background"
+                )
+            else:
+                if not service_task.done():
+                    service_task.cancel()
+                    await asyncio.gather(service_task, return_exceptions=True)
+                self.logger.warning(
+                    f"[Zone6/{name}] ⏱️ TIMEOUT after {timeout_seconds}s - cancelled"
+                )
             return {
                 "error": f"Timeout after {timeout_seconds}s",
                 "timed_out": True,
                 "elapsed_ms": elapsed,
+                "background_continuation": bool(continue_on_timeout),
             }
 
         except asyncio.CancelledError:
+            if not service_task.done():
+                service_task.cancel()
+                await asyncio.gather(service_task, return_exceptions=True)
             self.logger.warning(f"[Zone6/{name}] Cancelled")
             raise  # Re-raise cancellation
 
         except Exception as e:
+            if not service_task.done():
+                service_task.cancel()
+                await asyncio.gather(service_task, return_exceptions=True)
             elapsed = (time.time() - start_time) * 1000
             self.logger.warning(f"[Zone6/{name}] Failed: {e}")
             return {
@@ -73104,21 +73294,22 @@ class JarvisSystemKernel:
         """
         Phase 6: Initialize enterprise services (Zone 6.4).
 
-        Initializes in parallel WITH INDIVIDUAL TIMEOUTS:
-        - Cloud SQL proxy for database connections (30s timeout)
-        - Voice biometric authentication system (30s timeout)
-        - Semantic voice cache (ChromaDB) (30s timeout)
-        - Infrastructure orchestrator for GCP resources (30s timeout)
+        Initializes enterprise services in parallel with bounded foreground
+        waits and optional background continuation for slow components.
 
-        CRITICAL FIX: Each service now has its own timeout to prevent any
-        single service from blocking the entire startup indefinitely.
-
-        All services are optional - failures don't stop startup.
+        Root fix:
+        Timeout now limits startup latency, not service correctness. Timed-out
+        services can continue in background and reconcile status when ready.
         """
         with self.logger.section_start(LogSection.BOOT, "Zone 6.4 | Phase 6: Enterprise Services"):
-            # Configurable timeout via JARVIS_SERVICE_TIMEOUT env var (default: 30s)
-            SERVICE_TIMEOUT = float(os.getenv("JARVIS_SERVICE_TIMEOUT", "30.0"))
-            self.logger.info(f"[Zone6] Initializing 5 enterprise services (parallel, {SERVICE_TIMEOUT}s timeout each)...")
+            service_timeout = max(5.0, _get_env_float("JARVIS_SERVICE_TIMEOUT", 30.0))
+            continue_on_timeout = os.getenv(
+                "JARVIS_ZONE6_CONTINUE_ON_TIMEOUT", "true"
+            ).lower() in ("1", "true", "yes", "on")
+            self.logger.info(
+                f"[Zone6] Initializing 5 enterprise services "
+                f"(parallel, base timeout={service_timeout:.1f}s)"
+            )
             self._update_component_status("enterprise", "running", "Initializing enterprise services")
 
             # Service definitions with display names
@@ -73133,15 +73324,34 @@ class JarvisSystemKernel:
             # Log service list
             self.logger.info("[Zone6] Services: " + ", ".join(s[0] for s in services))
 
+            # Compute per-service adaptive timeouts with env overrides.
+            service_timeouts: Dict[str, float] = {}
+            for display_name, internal_name, _ in services:
+                env_key = f"JARVIS_SERVICE_TIMEOUT_{internal_name.upper()}"
+                requested = max(5.0, _get_env_float(env_key, service_timeout))
+                adaptive = await self._get_adaptive_timeout(requested)
+                service_timeouts[internal_name] = max(5.0, adaptive)
+
+            self.logger.info(
+                "[Zone6] Timeout budget: " + ", ".join(
+                    f"{display_name}={service_timeouts[internal_name]:.1f}s"
+                    for display_name, internal_name, _ in services
+                )
+            )
+
             # v236.3: Track per-service completion for DMS progress updates.
             # Without this, 5 parallel services with 30s timeouts cause a 60s
             # gap with no progress → DMS stall warning fires.
             _completed_count = 0
 
-            async def _tracked_service(display_name, coro, timeout):
+            async def _tracked_service(display_name, internal_name, coro, timeout):
                 nonlocal _completed_count
                 result = await self._init_enterprise_service_with_timeout(
-                    display_name, coro, timeout
+                    display_name,
+                    coro,
+                    timeout,
+                    service_key=internal_name,
+                    continue_on_timeout=continue_on_timeout,
                 )
                 _completed_count += 1
                 if self._startup_watchdog:
@@ -73151,8 +73361,13 @@ class JarvisSystemKernel:
                 return result
 
             coros = [
-                _tracked_service(display_name, init_func(), SERVICE_TIMEOUT)
-                for display_name, _, init_func in services
+                _tracked_service(
+                    display_name,
+                    internal_name,
+                    init_func(),
+                    service_timeouts[internal_name],
+                )
+                for display_name, internal_name, init_func in services
             ]
 
             # Run all service initializations in parallel with timeouts
@@ -73166,7 +73381,12 @@ class JarvisSystemKernel:
                     init_status[internal_name] = {"error": str(result), "exception": True}
                 elif isinstance(result, dict):
                     if result.get("timed_out"):
-                        self.logger.warning(f"[Zone6/{display_name}] ⏱️ Timed out")
+                        if result.get("background_continuation"):
+                            self.logger.warning(
+                                f"[Zone6/{display_name}] ⏱️ Await timeout — continuing in background"
+                            )
+                        else:
+                            self.logger.warning(f"[Zone6/{display_name}] ⏱️ Timed out")
                     elif result.get("initialized") or result.get("enabled") or result.get("running"):
                         self.logger.info(f"[Zone6/{display_name}] ✓ Ready")
                     elif result.get("error"):
@@ -73191,6 +73411,18 @@ class JarvisSystemKernel:
                 name for name, status in init_status.items()
                 if isinstance(status, dict) and status.get("timed_out")
             ]
+            timed_out_background = [
+                name for name, status in init_status.items()
+                if isinstance(status, dict)
+                and status.get("timed_out")
+                and status.get("background_continuation")
+            ]
+            timed_out_terminal = [
+                name for name, status in init_status.items()
+                if isinstance(status, dict)
+                and status.get("timed_out")
+                and not status.get("background_continuation")
+            ]
             failed = [
                 name for name, status in init_status.items()
                 if isinstance(status, dict) and (
@@ -73199,14 +73431,20 @@ class JarvisSystemKernel:
             ]
 
             # Log summary
-            if timed_out:
-                self.logger.warning(f"[Zone6] ⏱️ Timed out: {', '.join(timed_out)}")
+            if timed_out_background:
+                self.logger.warning(
+                    f"[Zone6] ⏱️ Await timeout (background continuation): "
+                    f"{', '.join(timed_out_background)}"
+                )
+            if timed_out_terminal:
+                self.logger.warning(f"[Zone6] ⏱️ Timed out: {', '.join(timed_out_terminal)}")
             if failed:
                 self.logger.warning(f"[Zone6] ⚠ Failed: {', '.join(failed)}")
 
             self.logger.success(
                 f"[Zone6] Enterprise services complete: {len(successful)}/{len(services)} active, "
-                f"{len(timed_out)} timed out, {len(failed)} failed"
+                f"{len(timed_out)} timed out, {len(failed)} failed, "
+                f"{len(timed_out_background)} continuing in background"
             )
 
             # Store results for later reference
@@ -73219,7 +73457,7 @@ class JarvisSystemKernel:
                              init_status.get("voice_biometrics", {}).get("initialized", False)
                 self._readiness_manager.mark_component_ready("voice_biometrics", voice_ready)
 
-            self._update_component_status("enterprise", "complete", f"Enterprise: {len(successful)}/{len(services)} active")
+            self._reconcile_enterprise_component_status()
 
             # v238.0: Populate ComponentRegistry with canonical component definitions
             # This MUST happen before health contracts — the aggregator needs components
@@ -79180,8 +79418,17 @@ class JarvisSystemKernel:
                                 ReadinessState,
                             )
 
-                        service_timeout = float(os.getenv("JARVIS_SERVICE_TIMEOUT", "30.0"))
-                        configured_timeout = float(os.getenv("CLOUDSQL_ENSURE_READY_TIMEOUT", "60.0"))
+                        service_timeout = max(
+                            5.0,
+                            _get_env_float(
+                                "JARVIS_SERVICE_TIMEOUT_CLOUD_SQL",
+                                _get_env_float("JARVIS_SERVICE_TIMEOUT", 30.0),
+                            ),
+                        )
+                        configured_timeout = max(
+                            8.0,
+                            _get_env_float("CLOUDSQL_ENSURE_READY_TIMEOUT", 60.0),
+                        )
                         gate_timeout = min(configured_timeout, max(8.0, service_timeout - 2.0))
 
                         gate = get_readiness_gate()
