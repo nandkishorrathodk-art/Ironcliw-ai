@@ -66891,6 +66891,20 @@ class JarvisSystemKernel:
                 except Exception as _ssr_e:
                     self.logger.warning(f"[Kernel] Phase 1 SSR activation error: {_ssr_e}")
 
+            # v266.0: Start MemoryQuantizer monitoring early
+            # This gives Phases 2-3 pagein baselines and tier tracking.
+            # The monitor is lightweight (one vm_stat + one psutil every 1-10s).
+            try:
+                from backend.core.memory_quantizer import get_memory_quantizer
+                _mq = await asyncio.wait_for(get_memory_quantizer(), timeout=5.0)
+                if _mq and not _mq.monitoring:
+                    await _mq.start_monitoring()
+                    self.logger.info("[v266.0] MemoryQuantizer monitoring started (Phase 1)")
+            except asyncio.TimeoutError:
+                self.logger.debug("[v266.0] MemoryQuantizer init timeout (non-fatal)")
+            except Exception as e:
+                self.logger.debug(f"[v266.0] Early monitoring start: {e}")
+
             return True
 
     async def _phase_resources(self) -> bool:
