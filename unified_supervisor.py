@@ -64549,6 +64549,15 @@ class JarvisSystemKernel:
             # =====================================================================
             # v265.0: Add timeout — previously bare await could hang indefinitely
             _agent_runtime_timeout = _get_env_float("JARVIS_AGENT_RUNTIME_TIMEOUT", 30.0)
+            # v265.4: CPU-aware timeout — extend under pressure
+            try:
+                import psutil as _art_psutil
+                _art_cpu = _art_psutil.cpu_percent(interval=None)
+                if _art_cpu > 90.0:
+                    _art_factor = 1.0 + (_art_cpu - 90.0) / 10.0 * 2.0
+                    _agent_runtime_timeout *= _art_factor
+            except Exception:
+                pass
             try:
                 await asyncio.wait_for(
                     self._start_agent_runtime(),
@@ -64664,6 +64673,19 @@ class JarvisSystemKernel:
             # burning 80s on components that will cascade-fail.
             if _ssm: await _ssm.start_component("two_tier_security")
             _two_tier_init_timeout = _get_env_float("JARVIS_TWO_TIER_INIT_TIMEOUT", 80.0)
+            # v265.4: CPU-aware outer timeout — extend under pressure
+            try:
+                import psutil as _tt_psutil
+                _tt_cpu = _tt_psutil.cpu_percent(interval=None)
+                if _tt_cpu > 90.0:
+                    _tt_cpu_factor = 1.0 + (_tt_cpu - 90.0) / 10.0 * 2.0
+                    _two_tier_init_timeout *= _tt_cpu_factor
+                    self.logger.info(
+                        f"[TwoTier] v265.4: Outer timeout extended "
+                        f"80s → {_two_tier_init_timeout:.0f}s (CPU: {_tt_cpu:.0f}%)"
+                    )
+            except Exception:
+                pass
             _infra_degraded = False
             try:
                 from intelligence.cloud_sql_connection_manager import (
@@ -68389,6 +68411,15 @@ class JarvisSystemKernel:
                         )
 
                         _cross_repo_timeout = float(os.environ.get("JARVIS_CROSS_REPO_INIT_TIMEOUT", "30.0"))
+                        # v265.4: CPU-aware timeout — extend under pressure
+                        try:
+                            import psutil as _cr_psutil
+                            _cr_cpu = _cr_psutil.cpu_percent(interval=None)
+                            if _cr_cpu > 90.0:
+                                _cr_factor = 1.0 + (_cr_cpu - 90.0) / 10.0 * 2.0
+                                _cross_repo_timeout *= _cr_factor
+                        except Exception:
+                            pass
                         self._cross_repo_initialized = await asyncio.wait_for(
                             initialize_cross_repo_state(),
                             timeout=_cross_repo_timeout,
@@ -68510,6 +68541,51 @@ class JarvisSystemKernel:
                     self._update_component_status("two_tier", "cancelled", "Shutdown during init")
                     return False
 
+                # v265.4: Infra-degraded pre-check — skip runner when infrastructure
+                # is known dead. The runner initializes 19 components SEQUENTIALLY
+                # (each with 10s timeout). Under CPU pressure with degraded infra,
+                # 6-7 failing components burn 60-70s of sequential timeouts on
+                # operations that will all fail anyway. Fast-path exit here prevents
+                # that waste and lets startup proceed faster.
+                _runner_skip = False
+                try:
+                    _runner_pi = getattr(self, "app", None)
+                    _runner_pi = getattr(_runner_pi, "state", None) if _runner_pi else None
+                    _runner_pi = getattr(
+                        _runner_pi, "parallel_initializer", None
+                    ) if _runner_pi else None
+                    if _runner_pi:
+                        _runner_failed = sum(
+                            1 for c in _runner_pi.components.values()
+                            if c.phase.value in ("failed", "skipped")
+                        )
+                        if _runner_failed >= 3:
+                            _runner_skip = True
+                            self.logger.info(
+                                f"[Integration] v265.4: Skipping AgenticTaskRunner — "
+                                f"{_runner_failed} infra components failed/skipped, "
+                                "runner's 19 sequential component inits would cascade-fail"
+                            )
+                except Exception:
+                    pass
+                if not _runner_skip:
+                    # Also check Cloud SQL gate directly
+                    try:
+                        from intelligence.cloud_sql_connection_manager import (
+                            get_readiness_gate as _runner_gate_fn,
+                            ReadinessState as _runnerRS,
+                        )
+                        _runner_gate = _runner_gate_fn()
+                        if _runner_gate.state == _runnerRS.UNAVAILABLE:
+                            _runner_skip = True
+                            self.logger.info(
+                                "[Integration] v265.4: Skipping AgenticTaskRunner — "
+                                "Cloud SQL UNAVAILABLE, runner DB-dependent components "
+                                "would timeout sequentially"
+                            )
+                    except (ImportError, Exception):
+                        pass
+
                 await self._broadcast_progress(60, "integration_runner", "Creating AgenticTaskRunner...")
 
                 try:
@@ -68525,7 +68601,13 @@ class JarvisSystemKernel:
                     # Get or create the agentic runner instance
                     self._agentic_runner = get_agentic_runner()
 
-                    if self._agentic_runner is None:
+                    if self._agentic_runner is None and _runner_skip:
+                        # v265.4: Infra degraded — skip expensive sequential init
+                        self.logger.info(
+                            "[Integration] AgenticTaskRunner deferred — "
+                            "will retry when infrastructure recovers"
+                        )
+                    elif self._agentic_runner is None:
                         self.logger.info("[Integration] AgenticTaskRunner not found, auto-creating...")
 
                         # Create TTS callback for runner
@@ -68540,13 +68622,28 @@ class JarvisSystemKernel:
                         try:
                             from core.agentic_task_runner import create_agentic_runner
 
+                            # v265.4: CPU-aware runner timeout — extend under pressure
+                            _runner_base_timeout = _get_env_float("JARVIS_AGENTIC_RUNNER_TIMEOUT", 60.0)
+                            try:
+                                import psutil as _runner_psutil
+                                _runner_cpu = _runner_psutil.cpu_percent(interval=None)
+                                if _runner_cpu > 90.0:
+                                    _runner_cpu_factor = 1.0 + (_runner_cpu - 90.0) / 10.0 * 2.0
+                                    _runner_base_timeout *= _runner_cpu_factor
+                                    self.logger.info(
+                                        f"[Integration] v265.4: Runner timeout extended "
+                                        f"{60.0:.0f}s → {_runner_base_timeout:.0f}s (CPU: {_runner_cpu:.0f}%)"
+                                    )
+                            except Exception:
+                                pass
+
                             self._agentic_runner = await asyncio.wait_for(
                                 create_agentic_runner(
                                     config=None,
                                     tts_callback=runner_tts if self.config.voice_enabled else None,
                                     watchdog=self._agentic_watchdog,
                                 ),
-                                timeout=_get_env_float("JARVIS_AGENTIC_RUNNER_TIMEOUT", 60.0),
+                                timeout=_runner_base_timeout,
                             )
 
                             if self._agentic_runner:
