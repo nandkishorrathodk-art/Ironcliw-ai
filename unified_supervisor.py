@@ -67564,6 +67564,27 @@ class JarvisSystemKernel:
         try:
             # Start process
             env = os.environ.copy()
+            project_root = Path(__file__).resolve().parent
+            backend_dir = project_root / "backend"
+
+            # Keep backend imports deterministic across uvicorn launch contexts.
+            pythonpath_parts = [str(project_root), str(backend_dir)]
+            existing_pythonpath = env.get("PYTHONPATH", "")
+            if existing_pythonpath:
+                pythonpath_parts.extend(
+                    part for part in existing_pythonpath.split(os.pathsep) if part
+                )
+
+            deduped_pythonpath: list[str] = []
+            seen_paths: set[str] = set()
+            for part in pythonpath_parts:
+                normalized = os.path.abspath(part)
+                if normalized in seen_paths:
+                    continue
+                seen_paths.add(normalized)
+                deduped_pythonpath.append(part)
+
+            env["PYTHONPATH"] = os.pathsep.join(deduped_pythonpath)
             env["JARVIS_BACKEND_PORT"] = str(self.config.backend_port)
             env["JARVIS_KERNEL_PID"] = str(os.getpid())
 
@@ -67573,6 +67594,7 @@ class JarvisSystemKernel:
                 "backend.main:app",
                 "--host", self.config.backend_host,
                 "--port", str(self.config.backend_port),
+                cwd=str(project_root),
                 env=env,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,

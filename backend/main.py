@@ -232,6 +232,25 @@ import multiprocessing
 import os
 import sys
 
+# Ensure both package-style (backend.*) and legacy top-level (api.*, core.*)
+# imports resolve regardless of launch context (repo root, backend dir, uvicorn).
+def _bootstrap_import_paths() -> None:
+    from pathlib import Path as _Path
+
+    backend_dir = _Path(__file__).resolve().parent
+    project_root = backend_dir.parent
+
+    normalized = {os.path.abspath(p) for p in sys.path if p}
+    desired_order = [str(backend_dir), str(project_root)]
+
+    for path in reversed(desired_order):
+        if os.path.abspath(path) not in normalized:
+            sys.path.insert(0, path)
+            normalized.add(os.path.abspath(path))
+
+
+_bootstrap_import_paths()
+
 # v128.0: FIRST - Suppress resource_tracker semaphore warnings
 # This MUST be set BEFORE any multiprocessing imports/usage
 # The resource_tracker runs as a separate process and inherits PYTHONWARNINGS
