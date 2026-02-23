@@ -74,6 +74,8 @@ API Endpoints:
     GET  /api/supervisor/health       - Supervisor health status
     GET  /api/supervisor/heartbeat    - Heartbeat for keep-alive
     GET  /api/supervisor/status       - Full supervisor status
+    POST /api/supervisor/recover      - Trigger supervisor recovery
+    GET  /api/supervisor/recover/status - Recovery controller status
     GET  /api/health/unified          - Cross-repo unified health
     GET  /api/progress                - Current progress state
     GET  /api/progress/eta            - ETA prediction
@@ -101,6 +103,7 @@ import math
 import os
 import signal
 import statistics
+import subprocess
 import sys
 import threading
 import time
@@ -1087,6 +1090,22 @@ class LoadingServer:
         self._hub_connect_task: Optional[asyncio.Task] = None
         self._loop: Optional[asyncio.AbstractEventLoop] = None
         self._active_request_tasks: Set[asyncio.Task] = set()
+        self._recovery_lock = asyncio.Lock()
+        self._recovery_process: Optional[subprocess.Popen] = None
+        self._recovery_last_attempt_at: float = 0.0
+        self._recovery_last_attempt_id: Optional[str] = None
+        self._recovery_last_result: Dict[str, Any] = {}
+        self._recovery_cooldown_seconds: float = max(
+            0.0,
+            float(os.getenv("JARVIS_RECOVERY_COOLDOWN_SECONDS", "15.0")),
+        )
+        self._recovery_python_executable: str = (
+            os.getenv("JARVIS_RECOVERY_PYTHON") or sys.executable or "python3"
+        )
+        self._recovery_project_root: Path = self._discover_recovery_project_root()
+        self._recovery_supervisor_script: Path = (
+            self._recovery_project_root / "unified_supervisor.py"
+        )
 
         # v183.0: Supervisor heartbeat tracking
         self._last_supervisor_update: float = time.time()
@@ -1441,6 +1460,13 @@ class LoadingServer:
 
         elif path == "/api/supervisor/status":
             return self._json_response(self._get_full_status())
+
+        elif path == "/api/supervisor/recover" and method == "POST":
+            return await self._handle_supervisor_recover(body)
+
+        elif path == "/api/supervisor/recover/status":
+            status = await self._get_supervisor_recovery_status()
+            return self._json_response(status)
 
         elif path == "/api/health/unified":
             health = await self._health_aggregator.get_unified_health()

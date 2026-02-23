@@ -200,6 +200,9 @@ class AGIOSCoordinator:
 
         # Component status
         self._component_status: Dict[str, ComponentStatus] = {}
+        # Phase status is tracked separately from runtime components.
+        # Phase failures are startup diagnostics, not live component health.
+        self._phase_status: Dict[str, ComponentStatus] = {}
 
         # Configuration
         self._config = {
@@ -274,6 +277,8 @@ class AGIOSCoordinator:
 
         self._state = AGIOSState.INITIALIZING
         self._started_at = datetime.now()
+        self._component_status.clear()
+        self._phase_status.clear()
         # v255.0: Store memory mode for use by component and neural mesh guards
         self._memory_mode = memory_mode or os.getenv("JARVIS_STARTUP_MEMORY_MODE", "local_full")
         logger.info("Starting AGI OS... (memory_mode=%s)", self._memory_mode)
@@ -422,6 +427,11 @@ class AGIOSCoordinator:
                     timeout_seconds=timeout_seconds,
                 )
                 elapsed = time.monotonic() - started
+                self._phase_status[f"phase_{step_key}"] = ComponentStatus(
+                    name=f"phase_{step_key}",
+                    available=True,
+                    healthy=True,
+                )
                 await _report(step_key, f"{success_detail} ({elapsed:.1f}s)")
                 return True
             except asyncio.TimeoutError as e:
@@ -430,7 +440,7 @@ class AGIOSCoordinator:
                     step_key,
                     timeout_seconds,
                 )
-                self._component_status[f"phase_{step_key}"] = ComponentStatus(
+                self._phase_status[f"phase_{step_key}"] = ComponentStatus(
                     name=f"phase_{step_key}",
                     available=False,
                     healthy=False,
@@ -445,7 +455,7 @@ class AGIOSCoordinator:
                 return False
             except Exception as e:
                 logger.warning("AGI OS phase '%s' failed: %s", step_key, e)
-                self._component_status[f"phase_{step_key}"] = ComponentStatus(
+                self._phase_status[f"phase_{step_key}"] = ComponentStatus(
                     name=f"phase_{step_key}",
                     available=False,
                     healthy=False,
@@ -1988,12 +1998,19 @@ class AGIOSCoordinator:
         (2) Added diagnostic logging of WHICH components are unavailable.
         (3) Added 'approval' to core check (always-required, was missing).
         """
+        # Runtime health must only consider actual components.
+        # Exclude historical phase markers if any exist in component status.
+        runtime_components = [
+            s for s in self._component_status.values()
+            if not str(s.name).startswith("phase_")
+        ]
+
         # v258.2: Partition components into active vs intentionally skipped.
         # Skipped components (error starts with "Skipped:") are excluded from
         # the health calculation — they were never expected to be available.
         _skipped = []
         _active = []
-        for s in self._component_status.values():
+        for s in runtime_components:
             if not s.available and s.error and str(s.error).startswith("Skipped:"):
                 _skipped.append(s)
             else:
@@ -2356,6 +2373,14 @@ class AGIOSCoordinator:
                     'error': status.error,
                 }
                 for name, status in self._component_status.items()
+            },
+            'phases': {
+                name: {
+                    'available': status.available,
+                    'healthy': status.healthy,
+                    'error': status.error,
+                }
+                for name, status in self._phase_status.items()
             },
             'stats': self._stats.copy(),
             'config': self._config.copy(),
