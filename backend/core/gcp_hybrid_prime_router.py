@@ -2919,21 +2919,28 @@ class GCPHybridPrimeRouter:
                 timeout_ms=self._get_timeout_for_tier(force_tier),
             )
 
-        # v266.0: If local model is being swapped (thrash cascade), use cloud
+        # v266.0: If local model is being swapped (thrash cascade), use cloud.
+        # _model_swapping lives on PrimeLocalClient, not UnifiedModelServing.
         try:
-            from backend.intelligence import unified_model_serving as _ums_mod
-            _ms_instance = _ums_mod._model_serving
-            if _ms_instance and getattr(_ms_instance, '_model_swapping', False):
-                self.logger.info(
-                    "[v266.0] Local model swapping (thrash cascade) — routing to cloud"
+            from backend.intelligence.unified_model_serving import (
+                _model_serving as _ums_singleton,
+                ModelProvider as _UMSProvider,
+            )
+            if _ums_singleton:
+                _local_client = getattr(_ums_singleton, '_clients', {}).get(
+                    _UMSProvider.PRIME_LOCAL
                 )
-                return RoutingDecision(
-                    tier=RoutingTier.CLOUD_CLAUDE,
-                    reason=RoutingReason.CAPABILITY_REQUIRED,
-                    timeout_ms=CLOUD_API_TIMEOUT_MS,
-                    metadata={"model_swapping": True},
-                )
-        except ImportError:
+                if _local_client and getattr(_local_client, '_model_swapping', False):
+                    self.logger.info(
+                        "[v266.0] Local model swapping (thrash cascade) — routing to cloud"
+                    )
+                    return RoutingDecision(
+                        tier=RoutingTier.CLOUD_CLAUDE,
+                        reason=RoutingReason.CAPABILITY_REQUIRED,
+                        timeout_ms=CLOUD_API_TIMEOUT_MS,
+                        metadata={"model_swapping": True},
+                    )
+        except (ImportError, AttributeError):
             pass
 
         # Step 1: Check unified budget

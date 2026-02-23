@@ -2358,10 +2358,17 @@ class UnifiedModelServing:
             _local._model_swapping = False
 
     async def _trigger_gcp_offload_from_thrash(self) -> None:
-        """Signal GCP router to enter VM provisioning for thrash recovery."""
+        """Signal GCP router to enter VM provisioning for thrash recovery.
+
+        Sets _model_swapping=True for the duration of the provisioning call,
+        then resets it. The caller (_downgrade_model_one_tier) manages the
+        flag independently via its own try/finally.
+        """
         _local = self._clients.get(ModelProvider.PRIME_LOCAL)
-        if _local and isinstance(_local, PrimeLocalClient):
+        _owns_flag = False
+        if _local and isinstance(_local, PrimeLocalClient) and not _local._model_swapping:
             _local._model_swapping = True
+            _owns_flag = True
         try:
             from backend.core.gcp_hybrid_prime_router import (
                 get_gcp_hybrid_prime_router,
@@ -2381,6 +2388,10 @@ class UnifiedModelServing:
             self.logger.debug("[ThrashCascade] GCP router not available")
         except Exception as e:
             self.logger.error(f"[ThrashCascade] GCP offload trigger failed: {e}")
+        finally:
+            # Reset flag if we own it (not owned by _downgrade_model_one_tier)
+            if _owns_flag and _local and isinstance(_local, PrimeLocalClient):
+                _local._model_swapping = False
 
     # ── End v266.0 Thrash Cascade ────────────────────────────────────
 
