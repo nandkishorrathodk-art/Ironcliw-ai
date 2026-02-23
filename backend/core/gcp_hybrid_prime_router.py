@@ -782,6 +782,12 @@ class GCPHybridPrimeRouter:
         # Hysteresis (applies to all emergency actions)
         self._emergency_offload_hysteresis_armed: bool = False
 
+        # v266.2: Post-crisis recovery state
+        self._model_needs_recovery: bool = False
+        self._recovery_stable_since: float = 0.0  # When RAM first dropped below recovery threshold
+        self._recovery_attempts: int = 0
+        self._recovery_in_progress: bool = False  # Prevents concurrent reload attempts
+
         # Process tracking for emergency offload
         self._ml_loader_ref = None  # Reference to ProcessIsolatedMLLoader
         self._local_llm_pids: Set[int] = set()  # PIDs of local LLM processes to pause
