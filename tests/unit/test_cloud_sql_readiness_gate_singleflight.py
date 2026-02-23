@@ -126,3 +126,126 @@ async def test_ensure_proxy_ready_returns_shutdown_result_when_cancelled(monkeyp
     assert result.state == ReadinessState.UNAVAILABLE
     assert result.failure_reason == "shutdown"
     assert gate._ensure_proxy_ready_future is None
+
+
+@pytest.mark.asyncio
+async def test_runtime_failure_hysteresis_preserves_ready_before_threshold(monkeypatch):
+    monkeypatch.setenv("JARVIS_RUNTIME_FAILURE_THRESHOLD", "2")
+    monkeypatch.setenv("JARVIS_RUNTIME_NETWORK_FAILURE_THRESHOLD", "3")
+    gate = ProxyReadinessGate()
+    gate._state = ReadinessState.READY
+
+    state_transitions = []
+
+    async def fake_set_state(self, new_state, failure_reason, message):
+        state_transitions.append((new_state, failure_reason, message))
+        self._state = new_state
+        self._failure_reason = failure_reason
+        self._failure_message = message
+
+    monkeypatch.setattr(
+        gate,
+        "_set_state",
+        types.MethodType(fake_set_state, gate),
+    )
+
+    await gate._handle_runtime_failure_transition(
+        reason="network",
+        message="Periodic health check failed",
+        source="periodic_recheck",
+    )
+    assert gate.state == ReadinessState.READY
+    assert gate._runtime_failure_streak == 1
+    assert not state_transitions
+
+    await gate._handle_runtime_failure_transition(
+        reason="network",
+        message="Periodic health check failed",
+        source="periodic_recheck",
+    )
+    assert gate.state == ReadinessState.READY
+    assert gate._runtime_failure_streak == 2
+    assert not state_transitions
+
+    await gate._handle_runtime_failure_transition(
+        reason="network",
+        message="Periodic health check failed",
+        source="periodic_recheck",
+    )
+    assert gate.state == ReadinessState.UNAVAILABLE
+    assert len(state_transitions) == 1
+    assert state_transitions[0][0] == ReadinessState.UNAVAILABLE
+
+
+@pytest.mark.asyncio
+async def test_runtime_failure_streak_resets_after_success(monkeypatch):
+    monkeypatch.setenv("JARVIS_RUNTIME_FAILURE_THRESHOLD", "3")
+    gate = ProxyReadinessGate()
+    gate._state = ReadinessState.READY
+
+    async def fake_set_state(self, new_state, failure_reason, message):
+        self._state = new_state
+        self._failure_reason = failure_reason
+        self._failure_message = message
+
+    monkeypatch.setattr(
+        gate,
+        "_set_state",
+        types.MethodType(fake_set_state, gate),
+    )
+
+    await gate._handle_runtime_failure_transition(
+        reason="proxy",
+        message="Connection failed during operation",
+        source="trigger_recheck",
+    )
+    await gate._handle_runtime_failure_transition(
+        reason="proxy",
+        message="Connection failed during operation",
+        source="trigger_recheck",
+    )
+    assert gate._runtime_failure_streak == 2
+    assert gate.state == ReadinessState.READY
+
+    gate._record_runtime_success()
+    assert gate._runtime_failure_streak == 0
+
+    await gate._handle_runtime_failure_transition(
+        reason="proxy",
+        message="Connection failed during operation",
+        source="trigger_recheck",
+    )
+    assert gate._runtime_failure_streak == 1
+    assert gate.state == ReadinessState.READY
+
+
+@pytest.mark.asyncio
+async def test_runtime_credentials_failure_is_fail_fast(monkeypatch):
+    monkeypatch.setenv("JARVIS_RUNTIME_FAILURE_THRESHOLD", "10")
+    monkeypatch.setenv("JARVIS_RUNTIME_NETWORK_FAILURE_THRESHOLD", "10")
+    gate = ProxyReadinessGate()
+    gate._state = ReadinessState.READY
+
+    state_transitions = []
+
+    async def fake_set_state(self, new_state, failure_reason, message):
+        state_transitions.append((new_state, failure_reason, message))
+        self._state = new_state
+        self._failure_reason = failure_reason
+        self._failure_message = message
+
+    monkeypatch.setattr(
+        gate,
+        "_set_state",
+        types.MethodType(fake_set_state, gate),
+    )
+
+    await gate._handle_runtime_failure_transition(
+        reason="credentials",
+        message="Authentication failed",
+        source="trigger_recheck",
+    )
+
+    assert gate.state == ReadinessState.UNAVAILABLE
+    assert gate._runtime_failure_streak == 1
+    assert len(state_transitions) == 1

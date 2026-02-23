@@ -2224,6 +2224,24 @@ class ProxyReadinessGate:
         self._startup_grace_period = float(os.getenv("CLOUDSQL_STARTUP_GRACE_PERIOD", "60.0"))
         self._last_registry_state: Optional[bool] = None  # Track last signaled state to avoid spam
 
+        # v267.0: Runtime readiness hysteresis for periodic/operational checks.
+        # Startup readiness remains strict, but runtime checks require
+        # consecutive failures before transitioning READY -> UNAVAILABLE.
+        self._runtime_failure_streak = 0
+        self._runtime_failure_threshold = max(
+            1,
+            int(_get_env_float_safe("JARVIS_RUNTIME_FAILURE_THRESHOLD", float(self._consecutive_failure_threshold))),
+        )
+        self._runtime_network_failure_threshold = max(
+            self._runtime_failure_threshold,
+            int(
+                _get_env_float_safe(
+                    "JARVIS_RUNTIME_NETWORK_FAILURE_THRESHOLD",
+                    float(self._runtime_failure_threshold + 2),
+                )
+            ),
+        )
+
         self._initialized = True
         logger.info("🔐 ProxyReadinessGate v1.0 initialized")
 
@@ -2663,6 +2681,7 @@ class ProxyReadinessGate:
 
         # Manage events based on new state
         if new_state == ReadinessState.READY:
+            self._record_runtime_success()
             # Set all ready events
             for event in self._ready_events.values():
                 event.set()
@@ -2695,6 +2714,69 @@ class ProxyReadinessGate:
 
         # Notify subscribers (Edge Case #8, #23)
         await self._notify_subscribers(new_state)
+
+    def _record_runtime_success(self) -> None:
+        """Reset runtime failure hysteresis after a successful DB-level check."""
+        if self._runtime_failure_streak > 0:
+            logger.info(
+                "[ReadinessGate v267.0] Runtime health recovered, resetting failure streak "
+                f"from {self._runtime_failure_streak} to 0"
+            )
+        self._runtime_failure_streak = 0
+
+    def _runtime_failure_budget_for_reason(self, reason: Optional[str]) -> int:
+        """
+        Return consecutive-failure threshold before runtime UNAVAILABLE transition.
+
+        Runtime checks are more tolerant for transport/network noise, while
+        deterministic hard failures remain immediate.
+        """
+        if reason in {"credentials", "config", "asyncpg_unavailable", "shutdown"}:
+            return 1
+        if reason == "network":
+            return self._runtime_network_failure_threshold
+        return self._runtime_failure_threshold
+
+    async def _handle_runtime_failure_transition(
+        self,
+        reason: Optional[str],
+        message: str,
+        source: str,
+    ) -> None:
+        """
+        Apply runtime hysteresis before transitioning to UNAVAILABLE.
+
+        This prevents transient periodic probe failures from immediately
+        collapsing readiness while preserving strict handling for hard failures.
+        """
+        threshold = self._runtime_failure_budget_for_reason(reason)
+
+        # Threshold 1 means fail-fast by policy.
+        if threshold <= 1:
+            self._runtime_failure_streak = 1
+            await self._set_state(ReadinessState.UNAVAILABLE, reason, message)
+            return
+
+        self._runtime_failure_streak += 1
+        if self._runtime_failure_streak < threshold:
+            # Preserve READY to avoid state flapping during transient outages.
+            self._state = ReadinessState.READY
+            self._failure_reason = reason
+            self._failure_message = (
+                f"Transient runtime failure ({self._runtime_failure_streak}/{threshold}) "
+                f"from {source}: {message}"
+            )
+            logger.warning(
+                "[ReadinessGate v267.0] Runtime check failed (%s) from %s; "
+                "preserving READY (%d/%d before UNAVAILABLE)",
+                reason,
+                source,
+                self._runtime_failure_streak,
+                threshold,
+            )
+            return
+
+        await self._set_state(ReadinessState.UNAVAILABLE, reason, message)
 
     # -------------------------------------------------------------------------
     # Invalidation & Re-check (Edge Cases #3, #18, #19, #20)
@@ -2757,6 +2839,9 @@ class ProxyReadinessGate:
             success, reason = await self._check_db_level()
 
             if success:
+                self._failure_reason = None
+                self._failure_message = "DB-level verification successful"
+                self._record_runtime_success()
                 self._state = ReadinessState.READY
                 return
 
@@ -2771,14 +2856,17 @@ class ProxyReadinessGate:
                 await asyncio.sleep(_retry_delay * (_retry + 1))
                 success, reason = await self._check_db_level()
                 if success:
+                    self._failure_reason = None
+                    self._failure_message = "DB-level verification successful"
+                    self._record_runtime_success()
                     self._state = ReadinessState.READY
                     return
 
             # All retries exhausted
-            await self._set_state(
-                ReadinessState.UNAVAILABLE,
-                reason,
-                "Connection failed during operation"
+            await self._handle_runtime_failure_transition(
+                reason=reason,
+                message="Connection failed during operation",
+                source="trigger_recheck",
             )
 
     async def notify_proxy_recovery(self) -> bool:
@@ -2922,11 +3010,13 @@ class ProxyReadinessGate:
                                     if success:
                                         break
                                 if not success:
-                                    await self._set_state(
-                                        ReadinessState.UNAVAILABLE,
-                                        reason,
-                                        "Periodic health check failed"
+                                    await self._handle_runtime_failure_transition(
+                                        reason=reason,
+                                        message="Periodic health check failed",
+                                        source="periodic_recheck",
                                     )
+                            else:
+                                self._record_runtime_success()
 
             except asyncio.CancelledError:
                 logger.debug("[ReadinessGate v260.4] Periodic recheck loop cancelled")
