@@ -65081,11 +65081,24 @@ class JarvisSystemKernel:
             # Step 5: Store for use by _phase_trinity() to ensure consistency
             self._effective_trinity_timeout = effective_trinity_timeout
 
-            # Step 6: Set DMS operational timeout
+            # Step 6: Derive a single authoritative Trinity budget model.
+            # This removes timeout drift between:
+            #   - progress-aware startup wrapper (can extend to 2x base),
+            #   - DMS operational timeout,
+            #   - phase outer guard.
+            trinity_progress_aware_cap = min(
+                TRINITY_MAX_EXTENDED_TIMEOUT, effective_trinity_timeout * 2
+            )
+            trinity_outer_buffer = _get_env_float("JARVIS_TRINITY_OUTER_BUFFER", 180.0)
+            effective_trinity_outer_timeout = trinity_progress_aware_cap + trinity_outer_buffer
+            self._effective_trinity_progress_cap = trinity_progress_aware_cap
+            self._effective_trinity_outer_timeout = effective_trinity_outer_timeout
+
+            # Step 7: Set DMS operational timeout
             # v222.0: DMS timeout must account for progress-aware deadline extensions
             # The progress-aware wrapper can extend up to TRINITY_MAX_EXTENDED_TIMEOUT,
             # so DMS must allow at least that much time plus buffer
-            max_possible_extended = min(TRINITY_MAX_EXTENDED_TIMEOUT, effective_trinity_timeout * 2)
+            max_possible_extended = trinity_progress_aware_cap
             dms_trinity_timeout = max_possible_extended + 120.0  # Extra buffer for DMS
             if self._startup_watchdog:
                 self._startup_watchdog.update_phase("trinity", 65, operational_timeout=dms_trinity_timeout)
@@ -65093,6 +65106,11 @@ class JarvisSystemKernel:
                     f"[Trinity] v222.0 DMS timeout set to {dms_trinity_timeout:.0f}s "
                     f"(max extended={max_possible_extended:.0f}s + 120s buffer)"
                 )
+            self.logger.info(
+                f"[Trinity] Unified budgets: base={effective_trinity_timeout:.0f}s, "
+                f"progress_cap={trinity_progress_aware_cap:.0f}s, "
+                f"outer={effective_trinity_outer_timeout:.0f}s"
+            )
             if self.config.trinity_enabled:
                 # v258.2: Wrap narrator calls in timeouts — previously unbounded awaits
                 # that could block indefinitely if TTS engine hangs, preventing
@@ -65141,7 +65159,11 @@ class JarvisSystemKernel:
                 # GCP mode, hollow client, etc.) plus a generous buffer since the internal
                 # Trinity budget + heartbeat handle normal operation — this outer guard
                 # is a defense-in-depth last resort.
-                _trinity_outer_timeout = effective_trinity_timeout + 60.0
+                _trinity_outer_timeout = getattr(
+                    self,
+                    "_effective_trinity_outer_timeout",
+                    effective_trinity_timeout + 60.0,
+                )
                 try:
                     await asyncio.wait_for(
                         self._phase_trinity(),
@@ -70788,6 +70810,7 @@ class JarvisSystemKernel:
         start_coro,
         base_timeout: float,
         integrator_name: str = "Trinity",
+        hard_cap_timeout: Optional[float] = None,
     ) -> Tuple[Dict[str, bool], bool, Optional[str]]:
         """
         v222.0: Progress-aware wrapper for Trinity component startup.
@@ -70824,6 +70847,10 @@ class JarvisSystemKernel:
         poll_interval = TRINITY_PROGRESS_POLL_INTERVAL
         extension_buffer = TRINITY_PROGRESS_EXTENSION_BUFFER
         max_timeout = min(TRINITY_MAX_EXTENDED_TIMEOUT, base_timeout * 2)  # At most 2x base
+        if hard_cap_timeout is not None:
+            hard_cap_timeout = max(10.0, float(hard_cap_timeout))
+            max_timeout = min(max_timeout, hard_cap_timeout)
+        base_timeout = min(base_timeout, max_timeout)
         stall_threshold = TRINITY_PROGRESS_STALL_THRESHOLD
         
         # State tracking
@@ -70875,6 +70902,10 @@ class JarvisSystemKernel:
             f"[{integrator_name}] v222.0 Progress-aware startup: "
             f"base={base_timeout:.0f}s, max={max_timeout:.0f}s, poll={poll_interval:.0f}s"
         )
+        if hard_cap_timeout is not None:
+            self.logger.info(
+                f"[{integrator_name}] Phase hard-cap applied: {hard_cap_timeout:.0f}s"
+            )
         self.logger.info(
             f"[{integrator_name}] v232.0: Stall budget: {_budget_init_reason}"
         )
@@ -71549,6 +71580,51 @@ class JarvisSystemKernel:
         """
         self._state = KernelState.STARTING_TRINITY
 
+        # v266.0: Single authoritative Trinity phase deadline.
+        # All sub-waits in this phase are capped by remaining budget so we do not
+        # hit an unrelated outer timeout while inner operations still expect time.
+        _phase_loop = asyncio.get_running_loop()
+        _phase_start = _phase_loop.time()
+        _phase_timeout_budget = float(
+            getattr(
+                self,
+                "_effective_trinity_outer_timeout",
+                getattr(self, "_effective_trinity_timeout", DEFAULT_TRINITY_TIMEOUT) + 60.0,
+            )
+        )
+        _phase_deadline = _phase_start + max(30.0, _phase_timeout_budget)
+        _startup_reserve_budget = _get_env_float("JARVIS_TRINITY_STARTUP_RESERVE", 120.0)
+
+        def _remaining_phase_budget(*, reserve: float = 0.0) -> float:
+            return max(0.0, _phase_deadline - _phase_loop.time() - max(0.0, reserve))
+
+        def _cap_phase_timeout(
+            requested: float,
+            *,
+            minimum: float = 5.0,
+            reserve: float = 0.0,
+            context: str = "trinity",
+        ) -> float:
+            remaining = _remaining_phase_budget(reserve=reserve)
+            if remaining <= 0:
+                raise TimeoutError(
+                    f"Trinity phase budget exhausted before {context} "
+                    f"(phase_budget={_phase_timeout_budget:.0f}s)"
+                )
+            capped = min(float(requested), remaining)
+            if capped < minimum:
+                raise TimeoutError(
+                    f"Insufficient Trinity phase budget for {context}: "
+                    f"{remaining:.1f}s remaining (<{minimum:.1f}s minimum)"
+                )
+            if capped < requested:
+                self.logger.info(
+                    f"[Trinity] Budget cap: {context} timeout "
+                    f"{requested:.0f}s -> {capped:.0f}s "
+                    f"(remaining={remaining:.0f}s, reserve={reserve:.0f}s)"
+                )
+            return capped
+
         # v188.0: Background heartbeat task to prevent DMS stall detection
         # Long operations like cross-repo orchestration can take 60+ seconds
         # This task sends heartbeats every 5 seconds to keep DMS alive
@@ -71701,11 +71777,21 @@ class JarvisSystemKernel:
                 # This ensures Trinity gets at least its configured time, but also
                 # benefits from the additive timeout when GCP consumed less time.
                 trinity_budget = max(_configured_trinity_budget, _remaining_budget)
+                trinity_budget = _cap_phase_timeout(
+                    trinity_budget,
+                    minimum=30.0,
+                    reserve=_startup_reserve_budget,
+                    context="TrinityIntegrator initialization",
+                )
                 self.logger.info(
                     f"[Trinity] Budget: {trinity_budget:.0f}s "
                     f"(configured={_configured_trinity_budget:.0f}s, "
                     f"remaining_from_cap={_remaining_budget:.0f}s, "
                     f"elapsed_so_far={_elapsed_so_far:.0f}s)"
+                )
+                self.logger.info(
+                    f"[Trinity] Phase deadline: {(_phase_deadline - _phase_start):.0f}s total "
+                    f"(reserve={_startup_reserve_budget:.0f}s)"
                 )
 
                 # Initialize results and trinity_integrator outside context for cleanup
@@ -71881,6 +71967,14 @@ class JarvisSystemKernel:
                                         "JARVIS_GOLDEN_WAIT_MAX",
                                         "300" if _local_is_hedge else "600"
                                     ))
+                                    # Keep golden wait inside the remaining Trinity phase budget.
+                                    _gw_phase_cap = _remaining_phase_budget(reserve=_startup_reserve_budget)
+                                    if _gw_phase_cap <= 0:
+                                        raise TimeoutError(
+                                            "Trinity phase budget exhausted before golden image wait"
+                                        )
+                                    _gw_base_wait = min(_gw_base_wait, _gw_phase_cap)
+                                    _gw_max_wait = min(_gw_max_wait, _gw_phase_cap)
                                     _gw_poll_interval = 5.0
                                     _gw_stall_threshold = float(os.environ.get(
                                         "JARVIS_GOLDEN_STALL_THRESHOLD", "60"
@@ -71920,7 +72014,10 @@ class JarvisSystemKernel:
                                     _golden_wait_start = time.time()
                                     _last_gcp_status = ""
 
-                                    while time.time() - _golden_wait_start < _gw_effective_wait:
+                                    while (
+                                        time.time() - _golden_wait_start < _gw_effective_wait
+                                        and _remaining_phase_budget(reserve=_startup_reserve_budget) > 0
+                                    ):
                                         await asyncio.sleep(_gw_poll_interval)
                                         invincible_ready = getattr(self, '_invincible_node_ready', False)
                                         invincible_ip = getattr(self, '_invincible_node_ip', None)
@@ -72100,8 +72197,13 @@ class JarvisSystemKernel:
                                                     _gw_effective_wait,
                                                     _wait_elapsed + _gw_stall_threshold + 180,
                                                 )
+                                                _phase_wait_remaining = _remaining_phase_budget(
+                                                    reserve=_startup_reserve_budget
+                                                )
                                                 _gw_effective_wait = min(
-                                                    _gw_effective_wait, _gw_max_wait + 600
+                                                    _gw_effective_wait,
+                                                    _gw_max_wait + 600,
+                                                    _wait_elapsed + _phase_wait_remaining,
                                                 )
                                                 continue  # Re-enter wait loop for next stall-triggered retry
 
@@ -72138,9 +72240,17 @@ class JarvisSystemKernel:
                                                         f"skipping standard GCP (local will finish first)"
                                                     )
                                                 else:
-                                                    _standard_timeout = float(os.environ.get(
-                                                        "JARVIS_GCP_STANDARD_FALLBACK_TIMEOUT", "900"
-                                                    ))
+                                                    _standard_timeout = _cap_phase_timeout(
+                                                        float(
+                                                            os.environ.get(
+                                                                "JARVIS_GCP_STANDARD_FALLBACK_TIMEOUT",
+                                                                "900",
+                                                            )
+                                                        ),
+                                                        minimum=30.0,
+                                                        reserve=_startup_reserve_budget,
+                                                        context="standard GCP fallback (stall path)",
+                                                    )
                                                     self.logger.info(
                                                         f"[Trinity] ☁️ Attempting standard GCP image as fallback "
                                                         f"(timeout={_standard_timeout:.0f}s)..."
@@ -72326,7 +72436,13 @@ class JarvisSystemKernel:
                                                 _gw_max_wait - _wait_elapsed
                                             )
                                             if _gw_extension > 10:
-                                                _gw_effective_wait += _gw_extension
+                                                _phase_wait_remaining = _remaining_phase_budget(
+                                                    reserve=_startup_reserve_budget
+                                                )
+                                                _gw_effective_wait = min(
+                                                    _gw_effective_wait + _gw_extension,
+                                                    _wait_elapsed + _phase_wait_remaining,
+                                                )
                                                 _gw_extensions += 1
                                                 self.logger.info(
                                                     f"[Trinity] 🔄 Golden wait EXTENDED by {_gw_extension:.0f}s "
@@ -72388,9 +72504,17 @@ class JarvisSystemKernel:
                                                     f"skipping standard GCP (local will finish first)"
                                                 )
                                             else:
-                                                _std_fb_timeout = float(os.environ.get(
-                                                    "JARVIS_GCP_STANDARD_FALLBACK_TIMEOUT", "900"
-                                                ))
+                                                _std_fb_timeout = _cap_phase_timeout(
+                                                    float(
+                                                        os.environ.get(
+                                                            "JARVIS_GCP_STANDARD_FALLBACK_TIMEOUT",
+                                                            "900",
+                                                        )
+                                                    ),
+                                                    minimum=30.0,
+                                                    reserve=_startup_reserve_budget,
+                                                    context="standard GCP fallback (timeout path)",
+                                                )
                                                 self.logger.info(
                                                     f"[Trinity] ☁️ Attempting standard GCP image as fallback "
                                                     f"(timeout={_std_fb_timeout:.0f}s)..."
@@ -72555,13 +72679,23 @@ class JarvisSystemKernel:
 
                                 # v222.0: Use progress-aware wrapper instead of fixed timeout
                                 # This enables dynamic deadline extension when Prime model loading shows progress
-                                results, _trinity_timed_out, _timeout_context = await self._await_trinity_with_progress_awareness(
-                                    start_coro=trinity_integrator.start_components(
-                                        invincible_node_ready=invincible_ready,
-                                    ),
-                                    base_timeout=trinity_timeout,
-                                    integrator_name="Trinity/ProcessOrchestrator",
-                                )
+                                _remaining_startup_budget = _remaining_phase_budget()
+                                if _remaining_startup_budget <= 0:
+                                    results = {}
+                                    _trinity_timed_out = True
+                                    _timeout_context = (
+                                        "Trinity phase budget exhausted before component startup "
+                                        "(ProcessOrchestrator path)"
+                                    )
+                                else:
+                                    results, _trinity_timed_out, _timeout_context = await self._await_trinity_with_progress_awareness(
+                                        start_coro=trinity_integrator.start_components(
+                                            invincible_node_ready=invincible_ready,
+                                        ),
+                                        base_timeout=min(trinity_timeout, _remaining_startup_budget),
+                                        integrator_name="Trinity/ProcessOrchestrator",
+                                        hard_cap_timeout=_remaining_startup_budget,
+                                    )
                                 
                                 if _trinity_timed_out:
                                     _trinity_startup_error = True
@@ -72757,13 +72891,23 @@ class JarvisSystemKernel:
                     # This enables dynamic deadline extension when Prime model loading shows progress
                     _legacy_timed_out = False
                     _legacy_timeout_context = None
-                    results, _legacy_timed_out, _legacy_timeout_context = await self._await_trinity_with_progress_awareness(
-                        start_coro=self._trinity.start_components(
-                            invincible_node_ready=invincible_ready,
-                        ),
-                        base_timeout=trinity_timeout,
-                        integrator_name="Trinity/Legacy",
-                    )
+                    _legacy_remaining_budget = _remaining_phase_budget()
+                    if _legacy_remaining_budget <= 0:
+                        results = {}
+                        _legacy_timed_out = True
+                        _legacy_timeout_context = (
+                            "Trinity phase budget exhausted before component startup "
+                            "(legacy path)"
+                        )
+                    else:
+                        results, _legacy_timed_out, _legacy_timeout_context = await self._await_trinity_with_progress_awareness(
+                            start_coro=self._trinity.start_components(
+                                invincible_node_ready=invincible_ready,
+                            ),
+                            base_timeout=min(trinity_timeout, _legacy_remaining_budget),
+                            integrator_name="Trinity/Legacy",
+                            hard_cap_timeout=_legacy_remaining_budget,
+                        )
                     
                     if _legacy_timed_out:
                         _trinity_startup_timed_out = True  # v222.0: Track for result handling
