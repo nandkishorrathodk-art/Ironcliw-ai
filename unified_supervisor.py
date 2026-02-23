@@ -61102,6 +61102,11 @@ class JarvisSystemKernel:
         # - Ollama LLM server
         # - Invincible Node (GCP VM)
         self._startup_resilience: Optional["StartupResilience"] = None
+        self._resilience_recovery_task: Optional[asyncio.Task] = None  # v265.5
+
+        # v265.5: Background recovery tasks for degraded components
+        self._dms_recovery_task: Optional[asyncio.Task] = None
+        self._model_serving_recovery_task: Optional[asyncio.Task] = None
 
         # v266.0: Split heartbeat ownership to avoid task-handle aliasing
         # between startup progress and loading-server transport heartbeats.
@@ -63812,6 +63817,11 @@ class JarvisSystemKernel:
                     "[Kernel] Startup aborted: JARVIS_REQUIRE_STARTUP_WATCHDOG=true"
                 )
                 return 1
+            # v265.5: Schedule background DMS recovery — system must not run
+            # without stall protection for an entire session.  A transient
+            # timeout during pre-phase (CPU spike, import contention) should
+            # NOT permanently disable the Dead Man's Switch.
+            self._schedule_dms_recovery(_dms_error_detail)
 
         # v3.2: Wire DMS ↔ parallel_initializer coordination
         # parallel_init heartbeats component completions to DMS, and DMS defers
@@ -66871,6 +66881,11 @@ class JarvisSystemKernel:
                     self.logger.info("[Kernel] Startup resilience coordinator initialized")
                 except Exception as e:
                     self.logger.warning(f"[Kernel] Failed to initialize startup resilience: {e}")
+                    self._startup_resilience = None
+                    # v265.5: Schedule deferred recovery — losing the resilience
+                    # coordinator means NO background health monitoring for
+                    # Docker/Ollama for the entire session. Schedule a retry.
+                    self._schedule_resilience_recovery(str(e))
 
             # =====================================================================
             # v188.0: RESOURCE PROGRESS CALLBACK
@@ -67729,7 +67744,18 @@ class JarvisSystemKernel:
             # Each probe has a hard 4s deadline enforced inside _select_ecapa_backend.
             # All probes run concurrently so gather completes in ~4s. The extra 2s
             # covers Python overhead, aiohttp session setup, and env var reads.
-            _ecapa_outer_timeout = float(os.environ.get("ECAPA_PROBE_DEADLINE", "4")) + 2.0
+            _ecapa_probe_base = float(os.environ.get("ECAPA_PROBE_DEADLINE", "4"))
+            _ecapa_outer_timeout = _ecapa_probe_base + 2.0
+            # v265.5: CPU-aware timeout — ECAPA probes (Docker HTTP, Cloud Run
+            # HTTP, local SpeechBrain import) all slow under CPU pressure.
+            try:
+                import psutil as _ecapa_phase2_psutil
+                _ecapa_phase2_cpu = _ecapa_phase2_psutil.cpu_percent(interval=None)
+                if _ecapa_phase2_cpu > 90.0:
+                    _ecapa_cpu_factor = 1.0 + (_ecapa_phase2_cpu - 90.0) / 10.0 * 2.0
+                    _ecapa_outer_timeout *= _ecapa_cpu_factor
+            except Exception:
+                pass
             try:
                 ecapa_result = await asyncio.wait_for(
                     self._select_ecapa_backend(), timeout=_ecapa_outer_timeout
@@ -67738,13 +67764,25 @@ class JarvisSystemKernel:
                     self.logger.info(
                         f"[Kernel] ECAPA backend: {ecapa_result['selected_backend']}"
                     )
+                    self._update_component_status(
+                        "ecapa_backend", "running",
+                        f"ECAPA: {ecapa_result['selected_backend']}",
+                    )
             except asyncio.TimeoutError:
                 self.logger.warning(
                     f"[Kernel] ECAPA backend selection timed out ({_ecapa_outer_timeout:.0f}s) "
                     f"— continuing without voice biometrics on startup"
                 )
+                self._update_component_status(
+                    "ecapa_backend", "degraded",
+                    f"ECAPA probe timed out ({_ecapa_outer_timeout:.0f}s)",
+                )
             except Exception as ecapa_err:
                 self.logger.debug(f"[Kernel] ECAPA backend selection skipped: {ecapa_err}")
+                self._update_component_status(
+                    "ecapa_backend", "degraded",
+                    f"ECAPA probe error: {ecapa_err}",
+                )
 
             # v180.0: Diagnostic checkpoint
             if DIAGNOSTICS_AVAILABLE and log_startup_checkpoint:
@@ -68704,8 +68742,18 @@ class JarvisSystemKernel:
                         PRIME_MODELS_DIR,
                         ModelProvider,
                     )
+                    # v265.5: CPU-aware timeout + env var override
+                    _ms_timeout = _get_env_float("JARVIS_MODEL_SERVING_INIT_TIMEOUT", 30.0)
+                    try:
+                        import psutil as _ms_psutil
+                        _ms_cpu = _ms_psutil.cpu_percent(interval=None)
+                        if _ms_cpu > 90.0:
+                            _ms_factor = 1.0 + (_ms_cpu - 90.0) / 10.0 * 2.0
+                            _ms_timeout *= _ms_factor
+                    except Exception:
+                        pass
                     self._model_serving = await asyncio.wait_for(
-                        get_model_serving(), timeout=30.0,
+                        get_model_serving(), timeout=_ms_timeout,
                     )
                     _ms_providers = list(self._model_serving._clients.keys())
                     self.logger.info(
@@ -68806,15 +68854,19 @@ class JarvisSystemKernel:
                 except asyncio.TimeoutError:
                     self.logger.warning(
                         "[Kernel] v234.0: UnifiedModelServing init timed out "
-                        "(30s) — inference routing unavailable"
+                        f"({_ms_timeout:.0f}s) — inference routing unavailable"
                     )
                     self._model_serving = None
+                    # v265.5: Schedule background recovery
+                    self._schedule_model_serving_recovery("init_timeout")
                 except Exception as e:
                     self.logger.warning(
                         f"[Kernel] v234.0: UnifiedModelServing init failed "
                         f"(non-fatal): {e}"
                     )
                     self._model_serving = None
+                    # v265.5: Schedule background recovery
+                    self._schedule_model_serving_recovery(str(e))
 
                 if ready_count > 0:
                     self._update_component_status("intelligence", "complete", f"Intelligence ready: {ready_count}/{len(results)} initialized")
@@ -71374,6 +71426,20 @@ class JarvisSystemKernel:
                 break
             attempts += 1
 
+            # v265.5: CPU-aware timeout + interval scaling — audio device
+            # init and stream open are blocking I/O that slows under load.
+            _effective_timeout = start_timeout
+            _effective_interval = retry_interval
+            try:
+                import psutil as _ab_psutil
+                _ab_cpu = _ab_psutil.cpu_percent(interval=None)
+                if _ab_cpu > 90.0:
+                    _ab_factor = 1.0 + (_ab_cpu - 90.0) / 10.0 * 2.0
+                    _effective_timeout *= _ab_factor
+                    _effective_interval *= _ab_factor
+            except Exception:
+                pass
+
             try:
                 if self._audio_bus is not None and getattr(self._audio_bus, "is_running", False):
                     self._ensure_audio_health_monitor()
@@ -71385,7 +71451,7 @@ class JarvisSystemKernel:
                     from backend.audio.audio_bus import AudioBus
                     self._audio_bus = AudioBus()
 
-                await asyncio.wait_for(self._audio_bus.start(), timeout=start_timeout)
+                await asyncio.wait_for(self._audio_bus.start(), timeout=_effective_timeout)
                 self._component_status["audio_infrastructure"] = {
                     "status": "running",
                     "message": f"AudioBus recovered (attempt {attempts})",
@@ -71413,7 +71479,7 @@ class JarvisSystemKernel:
                     recovery_err,
                 )
                 try:
-                    await asyncio.sleep(retry_interval)
+                    await asyncio.sleep(_effective_interval)
                 except asyncio.CancelledError:
                     return
 
@@ -71446,12 +71512,25 @@ class JarvisSystemKernel:
             _wire_start = time.time()
             from backend.audio.audio_pipeline_bootstrap import wire_conversation_pipeline
 
+            # v265.5: CPU-aware timeouts for speech state + pipeline wiring
+            _speech_state_timeout = _get_env_float("JARVIS_SPEECH_STATE_TIMEOUT", 10.0)
+            _pipeline_wire_timeout = _get_env_float("JARVIS_PIPELINE_WIRE_TIMEOUT", 30.0)
+            try:
+                import psutil as _ap_psutil
+                _ap_cpu = _ap_psutil.cpu_percent(interval=None)
+                if _ap_cpu > 90.0:
+                    _ap_factor = 1.0 + (_ap_cpu - 90.0) / 10.0 * 2.0
+                    _speech_state_timeout *= _ap_factor
+                    _pipeline_wire_timeout *= _ap_factor
+            except Exception:
+                pass
+
             _speech_state = None
             try:
                 from backend.core.unified_speech_state import get_speech_state_manager
                 _speech_state = await asyncio.wait_for(
                     get_speech_state_manager(),
-                    timeout=10.0,
+                    timeout=_speech_state_timeout,
                 )
             except (asyncio.TimeoutError, Exception):
                 pass
@@ -71462,7 +71541,7 @@ class JarvisSystemKernel:
                     llm_client=self._model_serving,
                     speech_state=_speech_state,
                 ),
-                timeout=30.0,
+                timeout=_pipeline_wire_timeout,
             )
 
             self._conversation_pipeline = self._audio_pipeline_handle.conversation_pipeline
