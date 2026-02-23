@@ -71615,90 +71615,6 @@ class JarvisSystemKernel:
             attempts,
         )
 
-    # =========================================================================
-    # v265.5: STARTUP RESILIENCE COORDINATOR BACKGROUND RECOVERY
-    # =========================================================================
-    # If StartupResilience init fails, Docker/Ollama health checks and
-    # background auto-recovery are completely lost for the session.
-    # This recovery loop retries after a delay so that late-starting
-    # dependencies (e.g. Docker daemon) can be monitored.
-    # =========================================================================
-
-    def _schedule_resilience_recovery(self, reason: str) -> None:
-        """Schedule bounded background recovery for StartupResilience."""
-        if self._resilience_recovery_task is not None and not self._resilience_recovery_task.done():
-            return
-        self._resilience_recovery_task = create_safe_task(
-            self._resilience_recovery_loop(reason),
-            name="resilience-recovery",
-        )
-        self._background_tasks.append(self._resilience_recovery_task)
-
-    async def _resilience_recovery_loop(self, initial_reason: str) -> None:
-        """
-        Recover StartupResilience coordinator after init failure.
-
-        Retries with exponential backoff. Once recovered, Docker/Ollama
-        health monitoring and background auto-recovery become available.
-        """
-        _initial_delay = _get_env_float("JARVIS_RESILIENCE_RECOVERY_DELAY", 15.0)
-        _max_attempts = _get_env_int("JARVIS_RESILIENCE_RECOVERY_MAX_ATTEMPTS", 5)
-        _base_interval = _get_env_float("JARVIS_RESILIENCE_RECOVERY_INTERVAL", 30.0)
-
-        try:
-            await asyncio.sleep(_initial_delay)
-        except asyncio.CancelledError:
-            return
-
-        attempts = 0
-        while not self._shutdown_event.is_set():
-            if _max_attempts > 0 and attempts >= _max_attempts:
-                break
-            attempts += 1
-
-            try:
-                if self._startup_resilience is not None:
-                    self.logger.info(
-                        "[Resilience-Recovery] Coordinator already active — exiting"
-                    )
-                    return
-
-                _candidate = StartupResilience(logger=self.logger)
-                await _candidate.start()
-                self._startup_resilience = _candidate
-                self.logger.info(
-                    "[Resilience-Recovery] Coordinator recovered after '%s' "
-                    "(attempt %d) — Docker/Ollama monitoring now active",
-                    initial_reason,
-                    attempts,
-                )
-                self._update_component_status(
-                    "startup_resilience",
-                    "running",
-                    f"Resilience coordinator recovered (attempt {attempts})",
-                )
-                return
-            except asyncio.CancelledError:
-                raise
-            except Exception as _res_err:
-                self.logger.warning(
-                    "[Resilience-Recovery] Attempt %d/%d failed: %s",
-                    attempts,
-                    _max_attempts,
-                    _res_err,
-                )
-                # Exponential backoff capped at 2 minutes
-                _sleep = min(_base_interval * (1.5 ** (attempts - 1)), 120.0)
-                try:
-                    await asyncio.sleep(_sleep)
-                except asyncio.CancelledError:
-                    return
-
-        self.logger.warning(
-            "[Resilience-Recovery] Exhausted %d attempts — no Docker/Ollama monitoring",
-            attempts,
-        )
-
     async def _attempt_wire_audio_pipeline(self, context: str = "startup") -> bool:
         """
         Wire the conversation pipeline when AudioBus and model serving are available.
@@ -78899,17 +78815,6 @@ class JarvisSystemKernel:
                 except (asyncio.CancelledError, asyncio.TimeoutError, Exception):
                     pass
                 self._audio_health_task = None
-
-            # v265.5: Cancel DMS and Resilience recovery tasks
-            for _recov_attr in ("_dms_recovery_task", "_resilience_recovery_task"):
-                _recov_task = getattr(self, _recov_attr, None)
-                if _recov_task is not None:
-                    _recov_task.cancel()
-                    try:
-                        await asyncio.wait_for(_recov_task, timeout=2.0)
-                    except (asyncio.CancelledError, asyncio.TimeoutError, Exception):
-                        pass
-                    setattr(self, _recov_attr, None)
 
             # 2. Bootstrap shutdown (handles ModeDispatcher, Pipeline, STT, BargeIn)
             if self._audio_infrastructure_initialized and self._audio_pipeline_handle is not None:
