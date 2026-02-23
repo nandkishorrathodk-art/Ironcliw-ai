@@ -706,17 +706,23 @@ class PrimeLocalClient(ModelClient):
                 # Bumped from 0.75-1.5GB to 1.5-2.5GB to account for frontend
                 # (500MB-1.2GB) and Docker (200-500MB) consuming headroom post-load.
                 # Env-var overrides for tuning without code changes.
-                _headroom_gb = float(os.getenv("JARVIS_MODEL_HEADROOM_NORMAL", "2.0"))
+                def _headroom_env(name: str, default: float) -> float:
+                    try:
+                        return float(os.getenv(name, str(default)))
+                    except (ValueError, TypeError):
+                        return default
+
+                _headroom_gb = _headroom_env("JARVIS_MODEL_HEADROOM_NORMAL", 2.0)
                 _tier = None
                 try:
                     from backend.core.memory_quantizer import MemoryTier
                     _tier = _metrics.tier if '_metrics' in dir() and _metrics else None
                     if _tier in (MemoryTier.ABUNDANT, MemoryTier.OPTIMAL):
-                        _headroom_gb = float(os.getenv("JARVIS_MODEL_HEADROOM_RELAXED", "1.5"))
+                        _headroom_gb = _headroom_env("JARVIS_MODEL_HEADROOM_RELAXED", 1.5)
                     elif _tier == MemoryTier.ELEVATED:
-                        _headroom_gb = float(os.getenv("JARVIS_MODEL_HEADROOM_NORMAL", "2.0"))
+                        _headroom_gb = _headroom_env("JARVIS_MODEL_HEADROOM_NORMAL", 2.0)
                     elif _tier == MemoryTier.CONSTRAINED:
-                        _headroom_gb = float(os.getenv("JARVIS_MODEL_HEADROOM_TIGHT", "2.5"))
+                        _headroom_gb = _headroom_env("JARVIS_MODEL_HEADROOM_TIGHT", 2.5)
                     elif _tier in (MemoryTier.CRITICAL, MemoryTier.EMERGENCY):
                         self.logger.warning(
                             f"[v235.1] Memory tier {_tier.value} — refusing to load model "
@@ -2195,7 +2201,7 @@ class UnifiedModelServing:
                 _mq.register_unload_callback(self._handle_component_unload)
                 self.logger.info("[v266.0] Registered component unload callback")
         except Exception as e:
-            self.logger.debug(f"[v266.0] Thrash callback registration: {e}")
+            self.logger.debug(f"[v266.0] Memory callback registration: {e}")
 
     async def _start_memory_monitor(self) -> None:
         """v235.1: Background monitor that unloads local model under memory pressure (Fix C4)."""
@@ -2286,6 +2292,16 @@ class UnifiedModelServing:
         Called when memory reaches CRITICAL/EMERGENCY and GCP is unavailable.
         Unloads the local LLM model to free 4-8GB of RAM.
         """
+        if getattr(self, '_unload_in_progress', False):
+            return
+        self._unload_in_progress = True
+        try:
+            return await self._handle_component_unload_inner(tier)
+        finally:
+            self._unload_in_progress = False
+
+    async def _handle_component_unload_inner(self, tier) -> None:
+        """Inner implementation of component unload (guarded by reentrancy flag)."""
         _local = self._clients.get(ModelProvider.PRIME_LOCAL)
         if not _local or not isinstance(_local, PrimeLocalClient):
             return
