@@ -2919,6 +2919,23 @@ class GCPHybridPrimeRouter:
                 timeout_ms=self._get_timeout_for_tier(force_tier),
             )
 
+        # v266.0: If local model is being swapped (thrash cascade), use cloud
+        try:
+            from backend.intelligence import unified_model_serving as _ums_mod
+            _ms_instance = _ums_mod._model_serving
+            if _ms_instance and getattr(_ms_instance, '_model_swapping', False):
+                self.logger.info(
+                    "[v266.0] Local model swapping (thrash cascade) — routing to cloud"
+                )
+                return RoutingDecision(
+                    tier=RoutingTier.CLOUD_CLAUDE,
+                    reason=RoutingReason.CAPABILITY_REQUIRED,
+                    timeout_ms=CLOUD_API_TIMEOUT_MS,
+                    metadata={"model_swapping": True},
+                )
+        except ImportError:
+            pass
+
         # Step 1: Check unified budget
         budget_decision = await self._check_budget(estimated_tokens)
         if budget_decision:
