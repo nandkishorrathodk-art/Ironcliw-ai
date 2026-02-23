@@ -62155,6 +62155,17 @@ class JarvisSystemKernel:
             except Exception as e:
                 self.logger.debug(f"[Kernel] Startup resilience cleanup error: {e}")
 
+        # v265.5: Cancel DMS, Resilience, and ModelServing recovery tasks
+        for _recov_attr in ("_dms_recovery_task", "_resilience_recovery_task", "_model_serving_recovery_task"):
+            _recov_task = getattr(self, _recov_attr, None)
+            if _recov_task is not None:
+                _recov_task.cancel()
+                try:
+                    await asyncio.wait_for(_recov_task, timeout=2.0)
+                except (asyncio.CancelledError, asyncio.TimeoutError, Exception):
+                    pass
+                setattr(self, _recov_attr, None)
+
         # v237.0/v251.0: Stop AGI OS + Neural Mesh + agents (prevents dangling tasks)
         agi_stop_timeout = max(1.0, _get_env_float("JARVIS_AGI_OS_STOP_TIMEOUT", 45.0))
         try:
@@ -79890,6 +79901,12 @@ class JarvisSystemKernel:
                             self.logger.info(
                                 f"[ECAPA] Background re-probe found {_selected} after "
                                 f"{elapsed + _reprobe_interval:.0f}s — voice biometrics now active"
+                            )
+                            # v265.5: Update component status on recovery
+                            self._update_component_status(
+                                "ecapa_backend",
+                                "running",
+                                f"ECAPA: {_selected} (recovered via re-probe)",
                             )
                             return
                 except asyncio.CancelledError:
