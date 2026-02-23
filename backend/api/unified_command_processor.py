@@ -2206,13 +2206,21 @@ class UnifiedCommandProcessor:
         self, command_text: str, response: Any,
         deadline: Optional[float] = None,
     ) -> Dict[str, Any]:
-        """Route workspace commands to the registered GoogleWorkspaceAgent singleton.
+        """Route workspace commands to GoogleWorkspaceAgent with direct action dispatch.
 
-        v242.1: Uses Neural Mesh agent registry singleton if available,
-        falls back to lazy singleton to avoid expensive re-initialization.
+        v266.0: Cures 3 root diseases:
+        - Disease 1: Reads response.suggested_actions[0] for direct routing
+          instead of forcing agent to re-classify via keyword waterfall.
+        - Disease 3: Lazy singleton calls on_initialize() for proper lifecycle.
+        - Disease 5: Wraps execute_task() in asyncio.wait_for() for deadline
+          enforcement, preventing zombie API calls.
+
+        Falls back to 'handle_workspace_query' (keyword detector) when
+        suggested_actions is empty (brain vacuum, old J-Prime, etc).
         """
+        import time as _time
+
         if deadline:
-            import time as _time
             _remaining = deadline - _time.monotonic()
             if _remaining <= 0:
                 return {"success": False, "response": "Request timed out",
@@ -2226,13 +2234,18 @@ class UnifiedCommandProcessor:
                 agent = coordinator.get_agent("google_workspace_agent")
 
             if agent is None:
-                # Lazy singleton fallback (avoids re-constructing expensive OAuth clients)
+                # Lazy singleton fallback — Disease 3 cure: call on_initialize().
+                # The lazy singleton intentionally lacks a message bus.
+                # on_initialize() checks `if self.message_bus:` before subscribing,
+                # so this is safe. The agent operates in standalone mode (no mesh).
                 if not hasattr(self, '_workspace_agent_singleton'):
                     try:
                         from neural_mesh.agents.google_workspace_agent import GoogleWorkspaceAgent
-                        self._workspace_agent_singleton = GoogleWorkspaceAgent()
-                    except ImportError:
-                        logger.warning("[v242] GoogleWorkspaceAgent not available")
+                        _agent = GoogleWorkspaceAgent()
+                        await _agent.on_initialize()
+                        self._workspace_agent_singleton = _agent
+                    except Exception:
+                        logger.warning("[v266] GoogleWorkspaceAgent initialization failed", exc_info=True)
                         self._workspace_agent_singleton = None
                 agent = self._workspace_agent_singleton
 
@@ -2240,33 +2253,64 @@ class UnifiedCommandProcessor:
                 # No workspace agent available — return J-Prime's text response
                 return {
                     "success": True,
-                    "response": response.content or "Workspace features are not currently available.",
+                    "response": getattr(response, 'content', None) or "Workspace features are not currently available.",
                     "command_type": "WORKSPACE",
-                    "source": response.source,
+                    "source": getattr(response, 'source', 'unknown'),
                 }
 
-            result = await agent.execute_task({
-                "action": "handle_workspace_query",
-                "query": command_text,
-            })
-            summary = self._summarize_workspace_result(
-                result if isinstance(result, dict) else {"response": str(result)},
-                getattr(response, 'intent', 'workspace'),
+            # Disease 1 cure: read suggested_actions from J-Prime classification.
+            # Validate against agent's capabilities (single source of truth — Gap 4).
+            workspace_action = "handle_workspace_query"  # fallback to keyword detector
+            if hasattr(response, 'suggested_actions') and response.suggested_actions:
+                candidate = response.suggested_actions[0]
+                agent_capabilities = getattr(agent, 'capabilities', set())
+                if candidate in agent_capabilities:
+                    workspace_action = candidate
+                else:
+                    logger.debug(
+                        f"[v266] suggested_action '{candidate}' not in agent capabilities, "
+                        f"falling back to handle_workspace_query"
+                    )
+
+            # Disease 5 cure: enforce deadline via asyncio.wait_for() at UCP level.
+            # This cancels the coroutine on timeout, preventing zombie API calls.
+            remaining = (deadline - _time.monotonic()) if deadline else 30.0
+            timeout = max(remaining, 1.0)
+
+            result = await asyncio.wait_for(
+                agent.execute_task({
+                    "action": workspace_action,
+                    "query": command_text,
+                }),
+                timeout=timeout,
             )
+
+            # Disease 2 cure: key summarizer off the executed action, not J-Prime's intent.
+            result_dict = result if isinstance(result, dict) else {"response": str(result)}
+            workspace_intent = result_dict.get("workspace_action") or workspace_action
+            summary = self._summarize_workspace_result(result_dict, workspace_intent)
             return {
                 "success": True,
                 "response": summary,
                 "command_type": "WORKSPACE",
-                "source": response.source,
+                "source": getattr(response, 'source', 'unknown'),
+            }
+        except asyncio.TimeoutError:
+            logger.warning("[v266] Workspace action timed out after deadline")
+            return {
+                "success": False,
+                "response": "Workspace request timed out. Please try again.",
+                "command_type": "WORKSPACE",
+                "error": "deadline_exceeded",
             }
         except Exception as e:
-            logger.error(f"[v242] Workspace action failed: {e}", exc_info=True)
+            logger.error(f"[v266] Workspace action failed: {e}", exc_info=True)
             # Fallback: return J-Prime's text response
             return {
                 "success": True,
-                "response": response.content or "I couldn't complete that workspace action.",
+                "response": getattr(response, 'content', None) or "I couldn't complete that workspace action.",
                 "command_type": "WORKSPACE",
-                "source": response.source,
+                "source": getattr(response, 'source', 'unknown'),
             }
 
     async def _handle_vision_action(
