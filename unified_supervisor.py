@@ -61102,10 +61102,6 @@ class JarvisSystemKernel:
         # - Ollama LLM server
         # - Invincible Node (GCP VM)
         self._startup_resilience: Optional["StartupResilience"] = None
-        self._resilience_recovery_task: Optional[asyncio.Task] = None
-
-        # v265.5: DMS recovery task — background retry when DMS init fails
-        self._dms_recovery_task: Optional[asyncio.Task] = None
 
         # v266.0: Split heartbeat ownership to avoid task-handle aliasing
         # between startup progress and loading-server transport heartbeats.
@@ -63816,11 +63812,6 @@ class JarvisSystemKernel:
                     "[Kernel] Startup aborted: JARVIS_REQUIRE_STARTUP_WATCHDOG=true"
                 )
                 return 1
-            # v265.5: Schedule background DMS recovery — system must not run
-            # without stall protection for an entire session.  A transient
-            # timeout during pre-phase (CPU spike, import contention) should
-            # NOT permanently disable the Dead Man's Switch.
-            self._schedule_dms_recovery(_dms_error_detail)
 
         # v3.2: Wire DMS ↔ parallel_initializer coordination
         # parallel_init heartbeats component completions to DMS, and DMS defers
@@ -66880,11 +66871,6 @@ class JarvisSystemKernel:
                     self.logger.info("[Kernel] Startup resilience coordinator initialized")
                 except Exception as e:
                     self.logger.warning(f"[Kernel] Failed to initialize startup resilience: {e}")
-                    self._startup_resilience = None
-                    # v265.5: Schedule deferred recovery — losing the resilience
-                    # coordinator means NO background health monitoring for
-                    # Docker/Ollama for the entire session. Schedule a retry.
-                    self._schedule_resilience_recovery(str(e))
 
             # =====================================================================
             # v188.0: RESOURCE PROGRESS CALLBACK
@@ -67743,22 +67729,7 @@ class JarvisSystemKernel:
             # Each probe has a hard 4s deadline enforced inside _select_ecapa_backend.
             # All probes run concurrently so gather completes in ~4s. The extra 2s
             # covers Python overhead, aiohttp session setup, and env var reads.
-            # v265.5: CPU-aware timeout extension — under 99.8% CPU, 6s is too tight
-            # for even the thread-executor-based probes.  Scale with CPU pressure.
-            _ecapa_probe_base = float(os.environ.get("ECAPA_PROBE_DEADLINE", "4"))
-            _ecapa_outer_timeout = _ecapa_probe_base + 2.0
-            try:
-                import psutil as _ecapa_phase2_psutil
-                _ecapa_phase2_cpu = _ecapa_phase2_psutil.cpu_percent(interval=None)
-                if _ecapa_phase2_cpu > 90.0:
-                    _ecapa_cpu_factor = 1.0 + (_ecapa_phase2_cpu - 90.0) / 10.0 * 2.0
-                    _ecapa_outer_timeout *= _ecapa_cpu_factor
-                    self.logger.debug(
-                        f"[Kernel] ECAPA outer timeout scaled to {_ecapa_outer_timeout:.1f}s "
-                        f"(CPU: {_ecapa_phase2_cpu:.0f}%%)"
-                    )
-            except Exception:
-                pass
+            _ecapa_outer_timeout = float(os.environ.get("ECAPA_PROBE_DEADLINE", "4")) + 2.0
             try:
                 ecapa_result = await asyncio.wait_for(
                     self._select_ecapa_backend(), timeout=_ecapa_outer_timeout
@@ -67767,29 +67738,13 @@ class JarvisSystemKernel:
                     self.logger.info(
                         f"[Kernel] ECAPA backend: {ecapa_result['selected_backend']}"
                     )
-                    # v265.5: Update component status so voice unlock knows ECAPA is live
-                    self._update_component_status(
-                        "ecapa_backend",
-                        "running",
-                        f"ECAPA: {ecapa_result['selected_backend']}",
-                    )
             except asyncio.TimeoutError:
                 self.logger.warning(
                     f"[Kernel] ECAPA backend selection timed out ({_ecapa_outer_timeout:.0f}s) "
                     f"— continuing without voice biometrics on startup"
                 )
-                self._update_component_status(
-                    "ecapa_backend",
-                    "degraded",
-                    f"ECAPA: timed out ({_ecapa_outer_timeout:.0f}s) — background re-probe active",
-                )
             except Exception as ecapa_err:
                 self.logger.debug(f"[Kernel] ECAPA backend selection skipped: {ecapa_err}")
-                self._update_component_status(
-                    "ecapa_backend",
-                    "degraded",
-                    f"ECAPA: {ecapa_err}",
-                )
 
             # v180.0: Diagnostic checkpoint
             if DIAGNOSTICS_AVAILABLE and log_startup_checkpoint:
@@ -71391,22 +71346,6 @@ class JarvisSystemKernel:
                 break
             attempts += 1
 
-            # v265.5: CPU-aware timeout + interval scaling.
-            # Under sustained CPU pressure, fixed 12s timeout fails every
-            # attempt, exhausting all 12 retries uselessly.  Scale both
-            # timeout and interval so recovery waits for pressure to subside.
-            _effective_timeout = start_timeout
-            _effective_interval = retry_interval
-            try:
-                import psutil as _ab_psutil
-                _ab_cpu = _ab_psutil.cpu_percent(interval=None)
-                if _ab_cpu > 90.0:
-                    _ab_factor = 1.0 + (_ab_cpu - 90.0) / 10.0 * 2.0
-                    _effective_timeout *= _ab_factor
-                    _effective_interval *= _ab_factor
-            except Exception:
-                pass
-
             try:
                 if self._audio_bus is not None and getattr(self._audio_bus, "is_running", False):
                     self._ensure_audio_health_monitor()
@@ -71418,7 +71357,7 @@ class JarvisSystemKernel:
                     from backend.audio.audio_bus import AudioBus
                     self._audio_bus = AudioBus()
 
-                await asyncio.wait_for(self._audio_bus.start(), timeout=_effective_timeout)
+                await asyncio.wait_for(self._audio_bus.start(), timeout=start_timeout)
                 self._component_status["audio_infrastructure"] = {
                     "status": "running",
                     "message": f"AudioBus recovered (attempt {attempts})",
@@ -71446,7 +71385,7 @@ class JarvisSystemKernel:
                     recovery_err,
                 )
                 try:
-                    await asyncio.sleep(_effective_interval)
+                    await asyncio.sleep(retry_interval)
                 except asyncio.CancelledError:
                     return
 
@@ -71457,163 +71396,6 @@ class JarvisSystemKernel:
                 f"(reason={initial_reason})"
             ),
         }
-
-    # =========================================================================
-    # v265.5: DEAD MAN'S SWITCH BACKGROUND RECOVERY
-    # =========================================================================
-    # The DMS is the stall-protection mechanism for ALL startup phases.
-    # If its own init fails (e.g. transient CPU spike during pre-phase),
-    # the system runs without ANY stall protection for the entire session.
-    # This recovery loop retries DMS initialization after CPU pressure
-    # subsides, using exponential backoff with CPU-awareness.
-    # =========================================================================
-
-    def _schedule_dms_recovery(self, reason: str) -> None:
-        """Schedule bounded background recovery for Dead Man's Switch."""
-        if self._dms_recovery_task is not None and not self._dms_recovery_task.done():
-            return
-        self._dms_recovery_task = create_safe_task(
-            self._dms_recovery_loop(reason),
-            name="dms-recovery",
-        )
-        self._background_tasks.append(self._dms_recovery_task)
-
-    async def _dms_recovery_loop(self, initial_reason: str) -> None:
-        """
-        Recover DMS after init failure without requiring full restart.
-
-        Uses CPU-aware backoff: waits for CPU to drop below 90% before
-        retrying, since DMS init failure is usually caused by CPU
-        contention during pre-phase.
-        """
-        _initial_delay = _get_env_float("JARVIS_DMS_RECOVERY_INITIAL_DELAY", 10.0)
-        _max_attempts = _get_env_int("JARVIS_DMS_RECOVERY_MAX_ATTEMPTS", 6)
-        _base_interval = _get_env_float("JARVIS_DMS_RECOVERY_INTERVAL", 15.0)
-        _start_timeout = _get_env_float("JARVIS_DMS_RECOVERY_TIMEOUT", 15.0)
-
-        try:
-            await asyncio.sleep(_initial_delay)
-        except asyncio.CancelledError:
-            return
-
-        attempts = 0
-        while not self._shutdown_event.is_set():
-            if _max_attempts > 0 and attempts >= _max_attempts:
-                break
-            attempts += 1
-
-            # v265.5: CPU-aware backoff — wait for pressure to subside
-            _interval = _base_interval
-            _timeout = _start_timeout
-            try:
-                import psutil as _dms_psutil
-                _cpu = _dms_psutil.cpu_percent(interval=None)
-                if _cpu > 90.0:
-                    # Under heavy CPU, extend interval and timeout
-                    _factor = 1.0 + (_cpu - 90.0) / 10.0 * 2.0
-                    _interval *= _factor
-                    _timeout *= _factor
-                    self.logger.debug(
-                        f"[DMS-Recovery] CPU at {_cpu:.0f}%% — extending interval "
-                        f"to {_interval:.0f}s, timeout to {_timeout:.0f}s"
-                    )
-            except Exception:
-                pass
-
-            try:
-                # Check if DMS was already recovered (e.g. by another code path)
-                if self._startup_watchdog is not None:
-                    self.logger.info(
-                        "[DMS-Recovery] DMS already active — recovery loop exiting"
-                    )
-                    return
-
-                _candidate = StartupWatchdog(
-                    logger=self.logger,
-                    diagnostic_callback=self._dms_diagnostic_callback,
-                    restart_callback=self._dms_restart_callback,
-                    rollback_callback=self._dms_rollback_callback,
-                )
-                await asyncio.wait_for(_candidate.start(), timeout=_timeout)
-
-                if not _candidate.enabled:
-                    self.logger.debug(
-                        "[DMS-Recovery] Watchdog started but disabled via config"
-                    )
-                    continue
-
-                self._startup_watchdog = _candidate
-                self._update_component_status(
-                    "startup_watchdog",
-                    "running",
-                    f"Dead Man's Switch recovered (attempt {attempts})",
-                )
-                self.logger.info(
-                    "[DMS-Recovery] Dead Man's Switch recovered after '%s' "
-                    "(attempt %d) — stall protection now active",
-                    initial_reason,
-                    attempts,
-                )
-
-                # Wire DMS ↔ parallel_initializer if still active
-                try:
-                    from core.parallel_initializer import set_dms_heartbeat_callback
-                    set_dms_heartbeat_callback(
-                        heartbeat_fn=self._startup_watchdog.notify_parallel_init_heartbeat,
-                        active_fn=self._startup_watchdog.notify_parallel_init_active,
-                    )
-                except (ImportError, Exception):
-                    pass
-
-                # Set execution mode based on current GCP state
-                _golden = os.getenv("JARVIS_GCP_USE_GOLDEN_IMAGE", "false").lower() == "true"
-                _gcp_on = getattr(self.config, "invincible_node_enabled", False)
-                if _golden and _gcp_on:
-                    self._startup_watchdog.notify_mode_change("gcp_golden")
-                elif _gcp_on:
-                    self._startup_watchdog.notify_mode_change("gcp_standard")
-                else:
-                    self._startup_watchdog.notify_mode_change("local_prime")
-
-                # Notify DMS of current phase if startup is still running
-                # so it picks up monitoring from where we are
-                if hasattr(self, "_current_startup_phase") and self._current_startup_phase:
-                    try:
-                        self._startup_watchdog.notify_phase_start(
-                            self._current_startup_phase
-                        )
-                    except Exception:
-                        pass
-
-                return
-            except asyncio.CancelledError:
-                raise
-            except Exception as _dms_err:
-                self._update_component_status(
-                    "startup_watchdog",
-                    "degraded",
-                    f"DMS recovery attempt {attempts} failed: {_dms_err}",
-                )
-                self.logger.warning(
-                    "[DMS-Recovery] Attempt %d/%d failed: %s",
-                    attempts,
-                    _max_attempts,
-                    _dms_err,
-                )
-                try:
-                    await asyncio.sleep(_interval)
-                except asyncio.CancelledError:
-                    return
-
-        self._update_component_status(
-            "startup_watchdog",
-            "degraded",
-            f"DMS recovery exhausted after {attempts} attempts (reason={initial_reason})",
-        )
-        self.logger.error(
-            "[DMS-Recovery] Exhausted %d attempts — system running WITHOUT stall protection",
-            attempts,
-        )
 
     async def _attempt_wire_audio_pipeline(self, context: str = "startup") -> bool:
         """
@@ -80001,13 +79783,6 @@ class JarvisSystemKernel:
                             self.logger.info(
                                 f"[ECAPA] Background re-probe found {_selected} after "
                                 f"{elapsed + _reprobe_interval:.0f}s — voice biometrics now active"
-                            )
-                            # v265.5: Update component status so downstream consumers
-                            # (voice unlock, dashboard) know ECAPA is now live.
-                            self._update_component_status(
-                                "ecapa_backend",
-                                "running",
-                                f"ECAPA: {_selected} (recovered via re-probe)",
                             )
                             return
                 except asyncio.CancelledError:
