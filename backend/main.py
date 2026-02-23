@@ -8697,32 +8697,83 @@ def _get_diagnostic_recommendation(checks: dict) -> str:
 # Audio endpoints for frontend compatibility - Robust, async, intelligent TTS
 
 
-async def _try_jarvis_api_tts(jarvis_api, request):
-    """v241.0: TTS Strategy 1 — JARVIS Voice API with 4s individual timeout."""
+def _get_tts_timeout_seconds(env_var: str, default: float) -> float:
+    """
+    Parse a positive timeout value from environment with safe fallback.
+
+    Keeps TTS timing policy configurable without hardcoding brittle values.
+    """
+    raw = os.getenv(env_var, "")
+    if not raw:
+        return default
     try:
-        result = await asyncio.wait_for(jarvis_api.speak(request), timeout=4.0)
+        value = float(raw)
+        if value > 0:
+            return value
+    except (TypeError, ValueError):
+        pass
+    logger.warning(
+        f"[TTS] Invalid {env_var}={raw!r}; using default {default:.1f}s"
+    )
+    return default
+
+
+_TTS_JARVIS_TIMEOUT_SECONDS = _get_tts_timeout_seconds(
+    "JARVIS_TTS_JARVIS_TIMEOUT_SECONDS",
+    5.0,
+)
+_TTS_ASYNC_TIMEOUT_SECONDS = _get_tts_timeout_seconds(
+    "JARVIS_TTS_ASYNC_TIMEOUT_SECONDS",
+    7.5,
+)
+_TTS_GLOBAL_TIMEOUT_SECONDS = _get_tts_timeout_seconds(
+    "JARVIS_TTS_GLOBAL_TIMEOUT_SECONDS",
+    8.0,
+)
+# Global timeout must cover the slowest candidate timeout plus small scheduling slack.
+_TTS_GLOBAL_TIMEOUT_SECONDS = max(
+    _TTS_GLOBAL_TIMEOUT_SECONDS,
+    _TTS_JARVIS_TIMEOUT_SECONDS + 0.5,
+    _TTS_ASYNC_TIMEOUT_SECONDS + 0.5,
+)
+
+
+async def _try_jarvis_api_tts(jarvis_api, request):
+    """v241.0: TTS Strategy 1 — JARVIS Voice API."""
+    try:
+        result = await asyncio.wait_for(
+            jarvis_api.speak(request), timeout=_TTS_JARVIS_TIMEOUT_SECONDS
+        )
         # v242.0: Inject X-TTS-Status header into response from jarvis_api.speak()
         if result is not None and hasattr(result, 'headers'):
             result.headers["X-TTS-Status"] = "ok"
             result.headers["Access-Control-Expose-Headers"] = "X-TTS-Status"
         return result
+    except asyncio.TimeoutError:
+        logger.warning(
+            f"[TTS] JARVIS Voice API timed out after {_TTS_JARVIS_TIMEOUT_SECONDS:.1f}s"
+        )
+        return None
     except asyncio.CancelledError:
         logger.debug("[TTS] JARVIS Voice API cancelled (race lost)")
         raise  # Re-raise so asyncio.wait() handles it
     except Exception as e:
-        logger.debug(f"[TTS] JARVIS Voice API failed: {e}")
+        logger.warning(
+            f"[TTS] JARVIS Voice API failed: {type(e).__name__}: {e}"
+        )
         return None
 
 
 async def _try_async_tts(text):
-    """v241.0: TTS Strategy 2 — Async TTS Handler (cached macOS say) with 4.5s timeout."""
+    """v241.0: TTS Strategy 2 — Async TTS Handler (cached macOS say)."""
     _tmp_path = None
     try:
         from api.async_tts_handler import generate_speech_async
         from fastapi.responses import Response
 
         audio_path, content_type = await asyncio.wait_for(
-            generate_speech_async(text, voice="Daniel"), timeout=4.5
+            generate_speech_async(text, voice="Daniel"),
+            timeout=_TTS_ASYNC_TIMEOUT_SECONDS,
         )
         _tmp_path = audio_path
         with open(audio_path, "rb") as f:
@@ -8738,6 +8789,11 @@ async def _try_async_tts(text):
                 "Access-Control-Expose-Headers": "X-TTS-Status",
             },
         )
+    except asyncio.TimeoutError:
+        logger.warning(
+            f"[TTS] Async TTS timed out after {_TTS_ASYNC_TIMEOUT_SECONDS:.1f}s"
+        )
+        return None
     except asyncio.CancelledError:
         # Clean up temp file if subprocess spawned before cancellation
         if _tmp_path:
@@ -8748,7 +8804,9 @@ async def _try_async_tts(text):
         logger.debug("[TTS] Async TTS cancelled (race lost)")
         raise
     except Exception as e:
-        logger.debug(f"[TTS] Async TTS failed: {e}")
+        logger.warning(
+            f"[TTS] Async TTS failed: {type(e).__name__}: {e}"
+        )
         return None
 
 
@@ -8822,7 +8880,7 @@ async def audio_speak_post(request: dict):
     Never returns 503 - always provides audio response.
 
     Strategies 1 (JARVIS Voice API) and 2 (Async TTS Handler) race
-    concurrently with a 5s global ceiling. On failure, returns silent
+    concurrently with a configurable global timeout budget. On failure, returns silent
     audio immediately — frontend falls back to browser speechSynthesis.
     """
     from fastapi.responses import Response
@@ -8849,11 +8907,10 @@ async def audio_speak_post(request: dict):
         logger.warning("[TTS] No TTS strategies available, returning silent audio")
         return _generate_silent_audio_response()
 
-    # Race strategies by first SUCCESS with a 5s global timeout.
-    GLOBAL_TTS_TIMEOUT = 5.0
+    # Race strategies by first SUCCESS with a global timeout budget.
     result = await _await_first_tts_success(
         tasks=tasks,
-        timeout_seconds=GLOBAL_TTS_TIMEOUT,
+        timeout_seconds=_TTS_GLOBAL_TIMEOUT_SECONDS,
     )
     if result is not None:
         return result
