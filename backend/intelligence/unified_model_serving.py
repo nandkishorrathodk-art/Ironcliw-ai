@@ -702,18 +702,21 @@ class PrimeLocalClient(ModelClient):
                     else _model_size_gb
                 )
 
-                # v235.1: Dynamic headroom based on memory pressure tier (Fix C1)
-                _headroom_gb = 1.0  # default
+                # v266.0: Dynamic headroom based on memory pressure tier
+                # Bumped from 0.75-1.5GB to 1.5-2.5GB to account for frontend
+                # (500MB-1.2GB) and Docker (200-500MB) consuming headroom post-load.
+                # Env-var overrides for tuning without code changes.
+                _headroom_gb = float(os.getenv("JARVIS_MODEL_HEADROOM_NORMAL", "2.0"))
                 _tier = None
                 try:
                     from backend.core.memory_quantizer import MemoryTier
                     _tier = _metrics.tier if '_metrics' in dir() and _metrics else None
                     if _tier in (MemoryTier.ABUNDANT, MemoryTier.OPTIMAL):
-                        _headroom_gb = 0.75
+                        _headroom_gb = float(os.getenv("JARVIS_MODEL_HEADROOM_RELAXED", "1.5"))
                     elif _tier == MemoryTier.ELEVATED:
-                        _headroom_gb = 1.0
+                        _headroom_gb = float(os.getenv("JARVIS_MODEL_HEADROOM_NORMAL", "2.0"))
                     elif _tier == MemoryTier.CONSTRAINED:
-                        _headroom_gb = 1.5
+                        _headroom_gb = float(os.getenv("JARVIS_MODEL_HEADROOM_TIGHT", "2.5"))
                     elif _tier in (MemoryTier.CRITICAL, MemoryTier.EMERGENCY):
                         self.logger.warning(
                             f"[v235.1] Memory tier {_tier.value} — refusing to load model "
