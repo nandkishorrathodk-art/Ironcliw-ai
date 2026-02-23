@@ -8690,6 +8690,62 @@ async def _try_async_tts(text):
         return None
 
 
+async def _await_first_tts_success(
+    tasks: dict[str, "asyncio.Task"],
+    timeout_seconds: float,
+):
+    """
+    Wait for the first non-None TTS result within a global timeout.
+
+    Root-cause fix:
+    FIRST_COMPLETED alone is incorrect for multi-strategy races because a fast
+    failure can arrive before a slower success. This helper keeps waiting until
+    we either get a successful result or exhaust all candidates/timeout.
+    """
+    if not tasks:
+        return None
+
+    deadline = time.monotonic() + max(0.0, float(timeout_seconds))
+    pending = set(tasks.values())
+
+    try:
+        while pending:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+
+            done, pending = await asyncio.wait(
+                pending,
+                timeout=remaining,
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+
+            if not done:
+                break
+
+            for task in done:
+                try:
+                    result = task.result()
+                except asyncio.CancelledError:
+                    continue
+                except Exception:
+                    continue
+
+                if result is not None:
+                    for other in pending:
+                        other.cancel()
+                    if pending:
+                        await asyncio.gather(*pending, return_exceptions=True)
+                    return result
+    finally:
+        for task in pending:
+            task.cancel()
+        if pending:
+            await asyncio.gather(*pending, return_exceptions=True)
+
+    return None
+
+
 @app.post("/audio/speak")
 async def audio_speak_post(request: dict):
     """
@@ -8724,26 +8780,14 @@ async def audio_speak_post(request: dict):
         logger.warning("[TTS] No TTS strategies available, returning silent audio")
         return _generate_silent_audio_response()
 
-    # Race all strategies with 5s global timeout
+    # Race strategies by first SUCCESS with a 5s global timeout.
     GLOBAL_TTS_TIMEOUT = 5.0
-    done, pending = await asyncio.wait(
-        tasks.values(),
+    result = await _await_first_tts_success(
+        tasks=tasks,
         timeout=GLOBAL_TTS_TIMEOUT,
-        return_when=asyncio.FIRST_COMPLETED,
     )
-
-    # Cancel any still-running tasks
-    for task in pending:
-        task.cancel()
-
-    # Return first successful result
-    for task in done:
-        try:
-            result = task.result()
-            if result is not None:
-                return result
-        except Exception:
-            continue
+    if result is not None:
+        return result
 
     # All failed or timed out — return silent audio.
     # Frontend will use browser speechSynthesis as final fallback.

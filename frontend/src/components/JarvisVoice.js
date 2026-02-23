@@ -5857,15 +5857,9 @@ const JarvisVoice = () => {
       } else {
         console.error('[JARVIS Audio] POST: Failed:', postError);
       }
-      setIsJarvisSpeaking(false);
-      isSpeakingRef.current = false;
-      fetchingAudioRef.current = false;
-      stopSpeechWatchdog();
-      // 🔇 SELF-VOICE SUPPRESSION: Record when speaking ended (even on error)
-      recordSpeakingEnded();
-      resumeRecognitionAfterSpeech();
-      // Process next in queue even after error
-      setTimeout(() => processNextInSpeechQueue(), 200);
+      // Re-throw so the caller can execute the unified browser-TTS fallback path.
+      // Swallowing here caused silent failures with no audible fallback.
+      throw postError;
     }
   };
 
@@ -6201,85 +6195,11 @@ const JarvisVoice = () => {
       pauseRecognitionForSpeech(sanitizedText);
       recordSpokenText(sanitizedText);
 
-      // Use backend TTS endpoint for consistent voice quality
-      // Use POST for any text with special characters or newlines to avoid URL encoding issues
-      const hasSpecialChars = /[^\w\s.,!?-]/.test(sanitizedText);
-      const usePost = sanitizedText.length > 500 || sanitizedText.includes('\n') || hasSpecialChars;
-      console.log('[JARVIS Audio] Text length:', text.length);
-      console.log('[JARVIS Audio] Using POST method:', usePost);
-
-      if (!usePost) {
-        // Short text: Use GET method with URL
-        const apiUrl = API_URL || configService.getApiUrl() || inferUrls().API_BASE_URL;
-        const audioUrl = `${apiUrl}/audio/speak/${encodeURIComponent(sanitizedText)}`;
-        console.log('[JARVIS Audio] Using GET method:', audioUrl);
-
-        const audio = new Audio();
-
-        // Set up all event handlers before setting src
-        audio.onloadstart = () => {
-          console.log('[JARVIS Audio] Loading started');
-        };
-
-        audio.oncanplaythrough = () => {
-          console.log('[JARVIS Audio] Can play through');
-        };
-
-        audio.onplay = () => {
-          console.log('[JARVIS Audio] GET method playback started');
-          // v241.0: NOW set speaking state (audio is actually playing)
-          clearTimeout(fetchTimeoutRef.current);
-          fetchingAudioRef.current = false;
-          setIsJarvisSpeaking(true);
-          isSpeakingRef.current = true;
-          // Call the callback when audio ACTUALLY starts playing (perfect sync!)
-          if (onStartCallback && typeof onStartCallback === 'function') {
-            console.log('[JARVIS Audio] Calling start callback - text will appear NOW');
-            onStartCallback();
-          }
-        };
-
-        audio.onended = () => {
-          console.log('[JARVIS Audio] GET method playback completed');
-          setIsJarvisSpeaking(false);
-          isSpeakingRef.current = false;
-          fetchingAudioRef.current = false;
-          stopSpeechWatchdog();
-          // 🔇 SELF-VOICE SUPPRESSION: Record when speaking ended
-          recordSpeakingEnded();
-          resumeRecognitionAfterSpeech();
-          // Process next in queue after a small delay
-          setTimeout(() => processNextInSpeechQueue(), 200);
-        };
-
-        audio.onerror = async (e) => {
-          console.error('[JARVIS Audio] GET audio error:', e);
-          clearTimeout(fetchTimeoutRef.current);
-          if (audio.error) {
-            console.error('[JARVIS Audio] Error details:', {
-              code: audio.error.code,
-              message: audio.error.message
-            });
-          }
-          console.log('[JARVIS Audio] Falling back to POST method');
-          // Fallback to POST method with callback
-          await playAudioUsingPost(sanitizedText, onStartCallback);
-        };
-
-        // Set source and properties
-        audio.src = audioUrl;
-        audio.volume = 1.0;
-        audio.crossOrigin = 'anonymous';  // Enable CORS
-
-        // Try to play
-        console.log('[JARVIS Audio] Attempting to play audio...');
-        await audio.play();
-        console.log('[JARVIS Audio] Play promise resolved');
-      } else {
-        // Long text: Use POST method directly with callback
-        console.log('[JARVIS Audio] Using POST method for long text');
-        await playAudioUsingPost(sanitizedText, onStartCallback);
-      }
+      // Deterministic TTS path: always use POST so we can inspect
+      // X-TTS-Status and trigger browser fallback on silent backend responses.
+      // GET/audio-tag path hides headers and can fail silently.
+      console.log('[JARVIS Audio] Using POST method (header-aware path)');
+      await playAudioUsingPost(sanitizedText, onStartCallback);
     } catch (error) {
       console.error('[JARVIS Audio] Playback failed:', error);
       console.error('[JARVIS Audio] Error details:', {
