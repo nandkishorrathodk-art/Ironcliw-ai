@@ -68258,13 +68258,21 @@ class JarvisSystemKernel:
             
             await asyncio.sleep(0.5)  # Check more frequently for WebSocket
         
-        # Timeout waiting for WebSocket - still return True if HTTP was ready
-        # This provides graceful degradation - voice may not work but other features will
-        self.logger.warning(
-            "[Kernel] ⚠ WebSocket readiness timeout - backend ready but WebSocket may be delayed. "
-            "Voice commands may fail initially."
+        # Timeout waiting for WebSocket readiness.
+        # Default is strict readiness (fail startup) to avoid false-positive
+        # healthy states where HTTP works but core interactive channels do not.
+        allow_degraded = _get_env_bool("JARVIS_BACKEND_ALLOW_WS_DEGRADED", False)
+        if allow_degraded:
+            self.logger.warning(
+                "[Kernel] ⚠ WebSocket readiness timeout - allowing degraded startup "
+                "because JARVIS_BACKEND_ALLOW_WS_DEGRADED=true"
+            )
+            return True
+
+        self.logger.error(
+            "[Kernel] WebSocket readiness timeout - backend not operationally ready"
         )
-        return True  # Allow startup to continue with degraded WebSocket
+        return False
 
     # =========================================================================
     # UNIFIED AGENT RUNTIME — Persistent Outer-Loop Goal Pursuit
