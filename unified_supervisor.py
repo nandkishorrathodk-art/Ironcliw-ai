@@ -61264,9 +61264,13 @@ class JarvisSystemKernel:
                     
                     # Try to relaunch Chrome to a safe URL
                     # Note: This now uses StabilizedChromeLauncher internally (v197.4)
-                    result = await chrome_manager.ensure_single_incognito_window(
-                        "about:blank",  # Safe URL to test recovery
-                        force_new=True,
+                    # v265.3: Timeout guard for AppleScript hang
+                    result = await asyncio.wait_for(
+                        chrome_manager.ensure_single_incognito_window(
+                            "about:blank",  # Safe URL to test recovery
+                            force_new=True,
+                        ),
+                        timeout=30.0,
                     )
                     
                     if result.get("success"):
@@ -65483,9 +65487,49 @@ class JarvisSystemKernel:
             _t0_fe = time.time()
             self._emit_event(SupervisorEventType.PHASE_START, "Phase: Frontend Transition", phase="frontend", correlation_id=_cid_fe)
 
+            # v265.3: Outer timeout for Frontend phase — this was the ONLY
+            # post-Trinity phase without asyncio.wait_for(). Inside this method:
+            # warmup check (120s), frontend start (120s), Trinity wait (30s),
+            # Chrome redirect (potentially indefinite via AppleScript),
+            # loading server stop (~44s). Practical ceiling: 180s.
+            _fe_outer_timeout = _get_env_float(
+                "JARVIS_FRONTEND_PHASE_TIMEOUT", 180.0
+            )
+            if self._startup_watchdog:
+                self._startup_watchdog.register_phase_timeout(
+                    "frontend", _fe_outer_timeout
+                )
+
             if _ssm: await _ssm.start_component("frontend")
-            await self._phase_frontend_transition()
-            if _ssm: await _ssm.complete_component("frontend")
+            _fe_ok = True
+            try:
+                await asyncio.wait_for(
+                    self._phase_frontend_transition(),
+                    timeout=_fe_outer_timeout,
+                )
+            except asyncio.TimeoutError:
+                self.logger.error(
+                    f"[Kernel] v265.3: _phase_frontend_transition() OUTER "
+                    f"timeout after {_fe_outer_timeout:.0f}s"
+                )
+                _fe_ok = False
+                self._update_component_status(
+                    "frontend", "error",
+                    f"Outer timeout ({_fe_outer_timeout:.0f}s)",
+                )
+            except asyncio.CancelledError:
+                self.logger.error(
+                    "[Kernel] v265.3: _phase_frontend_transition() cancelled"
+                )
+                _fe_ok = False
+                raise
+            if _ssm:
+                if _fe_ok:
+                    await _ssm.complete_component("frontend")
+                else:
+                    await _ssm.complete_component(
+                        "frontend", error="Init failed or timed out"
+                    )
 
             self._emit_event(
                 SupervisorEventType.PHASE_END, "Phase: Frontend Transition complete",
@@ -72854,7 +72898,12 @@ class JarvisSystemKernel:
                 try:
                     _reg = get_component_registry()
                     _aggregator = get_health_aggregator(_reg)
-                    _system_health = await _aggregator.collect_all()
+                    # v265.3: collect_all() had no timeout — if any health
+                    # check blocks (e.g., network call in a provider), the
+                    # entire enterprise phase stalls.
+                    _system_health = await asyncio.wait_for(
+                        _aggregator.collect_all(), timeout=15.0
+                    )
                     _overall = _system_health.overall
 
                     # v3.2: Classify component statuses for startup-aware logging
@@ -73992,7 +74041,21 @@ class JarvisSystemKernel:
                     # Open Chrome Incognito (clean slate - single window)
                     if sys.platform == "darwin":  # macOS
                         chrome_manager = get_chrome_manager()
-                        result = await chrome_manager.ensure_single_incognito_window(loading_url_with_params)
+                        # v265.3: AppleScript can hang if Chrome unresponsive
+                        _chrome_load_timeout = float(os.environ.get(
+                            "JARVIS_CHROME_REDIRECT_TIMEOUT", "30.0"
+                        ))
+                        try:
+                            result = await asyncio.wait_for(
+                                chrome_manager.ensure_single_incognito_window(loading_url_with_params),
+                                timeout=_chrome_load_timeout,
+                            )
+                        except asyncio.TimeoutError:
+                            self.logger.warning(
+                                f"[Kernel] v265.3: Chrome loading page open timed out "
+                                f"after {_chrome_load_timeout:.0f}s"
+                            )
+                            result = {"success": False, "error": "timeout"}
                         if result.get("success"):
                             action = result.get("action", "unknown")
                             self.logger.success(f"[Kernel] Chrome Incognito opened ({action})")
@@ -74197,7 +74260,22 @@ class JarvisSystemKernel:
                 else:
                     if sys.platform == "darwin":  # macOS
                         chrome_manager = get_chrome_manager()
-                        result = await chrome_manager.ensure_single_incognito_window(frontend_url)
+                        # v265.3: AppleScript calls can hang indefinitely
+                        # if Chrome is unresponsive or a system dialog blocks.
+                        _chrome_timeout = float(os.environ.get(
+                            "JARVIS_CHROME_REDIRECT_TIMEOUT", "30.0"
+                        ))
+                        try:
+                            result = await asyncio.wait_for(
+                                chrome_manager.ensure_single_incognito_window(frontend_url),
+                                timeout=_chrome_timeout,
+                            )
+                        except asyncio.TimeoutError:
+                            self.logger.warning(
+                                f"[Kernel] v265.3: Chrome redirect timed out "
+                                f"after {_chrome_timeout:.0f}s (AppleScript hang?)"
+                            )
+                            result = {"success": False, "error": "timeout"}
                         if result.get("success"):
                             action = result.get("action", "unknown")
                             self.logger.success(f"[Kernel] Chrome redirected ({action}) → {frontend_url}")
@@ -74749,7 +74827,16 @@ class JarvisSystemKernel:
 
             # Force kill as last resort
             self._loading_server_process.kill()
-            await self._loading_server_process.wait()
+            # v265.3: Bare .wait() after .kill() had no timeout — if process
+            # becomes a zombie, this hangs forever.
+            try:
+                await asyncio.wait_for(
+                    self._loading_server_process.wait(), timeout=5.0
+                )
+            except asyncio.TimeoutError:
+                self.logger.warning(
+                    "[LoadingServer] Process did not exit after SIGKILL + 5s"
+                )
             self.logger.warning("[LoadingServer] Force killed (timeout)")
 
         except ProcessLookupError:
