@@ -625,6 +625,143 @@ T = TypeVar('T')
 ConfigT = TypeVar('ConfigT', bound='SystemKernelConfig')
 
 # =============================================================================
+# v265.7: IMPORT GUARD — Observable failure paths + deferred retry
+# =============================================================================
+# Root cause: 36 try/except ImportError blocks silently set *_AVAILABLE = False
+# with zero logging, zero retry, and zero observability. A transient failure
+# at startup permanently disables features with no way to diagnose.
+#
+# Fix:
+#   1. Warning-level logging on every import failure (observable)
+#   2. _FAILED_IMPORTS registry for startup audit (auditable)
+#   3. _retry_critical_imports() for deferred recovery (self-healing)
+#   4. Severity classification: CRITICAL > HIGH > MODERATE > LOW
+# =============================================================================
+
+import importlib as _importlib
+
+_FAILED_IMPORTS: Dict[str, Dict[str, Any]] = {}
+_GUARDED_IMPORT_COUNT = 36  # Total guarded import blocks
+
+
+def _record_import_failure(
+    flag_name: str,
+    module_path: str,
+    error: Exception,
+    severity: str = "MODERATE",
+    symbols: Any = None,
+    alias: Optional[str] = None,
+) -> None:
+    """Record a failed import for audit and potential retry.
+
+    Args:
+        flag_name: The *_AVAILABLE flag (e.g., "AIOHTTP_AVAILABLE")
+        module_path: Primary dotted module path
+        error: The ImportError exception
+        severity: CRITICAL, HIGH, MODERATE, LOW
+        symbols: List[str] (names kept) or Dict[str, str] (attr → alias) for retry
+        alias: For 'import X as Y', the global alias name for retry
+    """
+    if isinstance(symbols, (list, tuple)):
+        symbols = {s: s for s in symbols}
+    _FAILED_IMPORTS[flag_name] = {
+        "module": module_path,
+        "error": str(error),
+        "severity": severity,
+        "symbols": symbols,
+        "alias": alias,
+    }
+    logging.warning(
+        "[ImportGuard] %s unavailable — import %s failed: %s",
+        flag_name, module_path, error,
+    )
+
+
+def _log_import_audit() -> None:
+    """Log startup audit summary of all import statuses."""
+    if not _FAILED_IMPORTS:
+        logging.info(
+            "[ImportAudit] All %d guarded imports loaded successfully",
+            _GUARDED_IMPORT_COUNT,
+        )
+        return
+    by_severity: Dict[str, List[str]] = {}
+    for flag_name, info in _FAILED_IMPORTS.items():
+        sev = info.get("severity", "MODERATE")
+        by_severity.setdefault(sev, []).append(flag_name)
+    total = len(_FAILED_IMPORTS)
+    parts = []
+    for sev in ("CRITICAL", "HIGH", "MODERATE", "LOW"):
+        flags = by_severity.get(sev, [])
+        if flags:
+            parts.append(f"  {sev}: {', '.join(flags)}")
+    logging.warning(
+        "[ImportAudit] %d of %d guarded imports FAILED:\n%s",
+        total, _GUARDED_IMPORT_COUNT, "\n".join(parts),
+    )
+
+
+async def _retry_critical_imports(
+    max_retries: int = 2,
+    delay: float = 3.0,
+) -> int:
+    """Retry CRITICAL and HIGH severity failed imports with exponential backoff.
+
+    Only retries imports that recorded symbols or alias metadata (i.e., single-module
+    imports that can be replayed via importlib). Multi-module imports and those with
+    inline fallbacks are skipped.
+
+    Returns:
+        Number of successfully recovered imports.
+    """
+    recovered = 0
+    g = globals()
+    retryable = {
+        k: v for k, v in _FAILED_IMPORTS.items()
+        if v["severity"] in ("CRITICAL", "HIGH")
+        and (v.get("symbols") is not None or v.get("alias") is not None)
+    }
+    if not retryable:
+        return 0
+    logging.info("[ImportRetry] Retrying %d critical/high imports...", len(retryable))
+    for flag_name, info in list(retryable.items()):
+        success = False
+        for attempt in range(max_retries):
+            try:
+                mod = _importlib.import_module(info["module"])
+                if info.get("symbols"):
+                    for attr_name, global_name in info["symbols"].items():
+                        g[global_name] = getattr(mod, attr_name)
+                elif info.get("alias"):
+                    g[info["alias"]] = mod
+                else:
+                    g[info["module"].rsplit(".", 1)[-1]] = mod
+                g[flag_name] = True
+                del _FAILED_IMPORTS[flag_name]
+                recovered += 1
+                success = True
+                logging.info(
+                    "[ImportRetry] %s recovered on attempt %d/%d",
+                    flag_name, attempt + 1, max_retries,
+                )
+                break
+            except (ImportError, AttributeError) as e:
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(delay * (2 ** attempt))
+        if not success:
+            logging.warning(
+                "[ImportRetry] %s still unavailable after %d retries",
+                flag_name, max_retries,
+            )
+    if recovered:
+        logging.info(
+            "[ImportRetry] Recovered %d/%d critical imports",
+            recovered, len(retryable),
+        )
+    return recovered
+
+
+# =============================================================================
 # THIRD-PARTY IMPORTS (with graceful fallbacks)
 # =============================================================================
 
@@ -632,48 +769,54 @@ ConfigT = TypeVar('ConfigT', bound='SystemKernelConfig')
 try:
     import aiohttp
     AIOHTTP_AVAILABLE = True
-except ImportError:
+except ImportError as _ie:
     AIOHTTP_AVAILABLE = False
+    _record_import_failure("AIOHTTP_AVAILABLE", "aiohttp", _ie, "CRITICAL", alias="aiohttp")
     aiohttp = None
 
 # aiofiles - async file I/O
 try:
     import aiofiles
     AIOFILES_AVAILABLE = True
-except ImportError:
+except ImportError as _ie:
     AIOFILES_AVAILABLE = False
+    _record_import_failure("AIOFILES_AVAILABLE", "aiofiles", _ie, "MODERATE", alias="aiofiles")
     aiofiles = None
 
 # psutil - process utilities
 try:
     import psutil
     PSUTIL_AVAILABLE = True
-except ImportError:
+except ImportError as _ie:
     PSUTIL_AVAILABLE = False
+    _record_import_failure("PSUTIL_AVAILABLE", "psutil", _ie, "HIGH", alias="psutil")
     psutil = None
 
 # uvicorn - ASGI server
 try:
     import uvicorn
     UVICORN_AVAILABLE = True
-except ImportError:
+except ImportError as _ie:
     UVICORN_AVAILABLE = False
+    _record_import_failure("UVICORN_AVAILABLE", "uvicorn", _ie, "CRITICAL", alias="uvicorn")
     uvicorn = None
 
 # dotenv - environment loading
 try:
     from dotenv import load_dotenv
     DOTENV_AVAILABLE = True
-except ImportError:
+except ImportError as _ie:
     DOTENV_AVAILABLE = False
+    _record_import_failure("DOTENV_AVAILABLE", "dotenv", _ie, "MODERATE", symbols=["load_dotenv"])
     load_dotenv = None
 
 # numpy - numerical operations
 try:
     import numpy as np
     NUMPY_AVAILABLE = True
-except ImportError:
+except ImportError as _ie:
     NUMPY_AVAILABLE = False
+    _record_import_failure("NUMPY_AVAILABLE", "numpy", _ie, "MODERATE", alias="np")
     np = None
 
 # v186.0: rich - enhanced CLI experience
@@ -765,8 +908,9 @@ try:
     JARVIS_RICH_THEME = RichTheme(JARVIS_THEME_STYLES)
     _rich_console = Console(theme=JARVIS_RICH_THEME, highlight=False)
 
-except ImportError:
+except ImportError as _ie:
     RICH_AVAILABLE = False
+    _record_import_failure("RICH_AVAILABLE", "rich", _ie, "LOW")
     Console = None
     Progress = None
     Panel = None
@@ -941,8 +1085,9 @@ _CAPABILITY_EMOJI = {
 try:
     from backend.core.service_registry import get_service_registry, ServiceRegistry
     SERVICE_REGISTRY_AVAILABLE = True
-except ImportError:
+except ImportError as _ie:
     SERVICE_REGISTRY_AVAILABLE = False
+    _record_import_failure("SERVICE_REGISTRY_AVAILABLE", "backend.core.service_registry", _ie, "HIGH", symbols=["get_service_registry", "ServiceRegistry"])
     get_service_registry = None
     ServiceRegistry = None
 
@@ -950,8 +1095,9 @@ except ImportError:
 try:
     from backend.core.resilience.graceful_shutdown import cleanup_orphaned_semaphores
     SEMAPHORE_CLEANUP_AVAILABLE = True
-except ImportError:
+except ImportError as _ie:
     SEMAPHORE_CLEANUP_AVAILABLE = False
+    _record_import_failure("SEMAPHORE_CLEANUP_AVAILABLE", "backend.core.resilience.graceful_shutdown", _ie, "HIGH", symbols=["cleanup_orphaned_semaphores"])
     cleanup_orphaned_semaphores = None
 
 # Supervisor Singleton - stale lock cleanup with cross-repo support
@@ -961,8 +1107,9 @@ try:
         cleanup_stale_locks_sync,
     )
     LOCK_CLEANUP_AVAILABLE = True
-except ImportError:
+except ImportError as _ie:
     LOCK_CLEANUP_AVAILABLE = False
+    _record_import_failure("LOCK_CLEANUP_AVAILABLE", "backend.core.supervisor_singleton", _ie, "HIGH", symbols={"cleanup_stale_locks": "backend_cleanup_stale_locks", "cleanup_stale_locks_sync": "cleanup_stale_locks_sync"})
     backend_cleanup_stale_locks = None
     cleanup_stale_locks_sync = None
 
@@ -975,8 +1122,9 @@ try:
         capture_system_state,
     )
     DIAGNOSTICS_AVAILABLE = True
-except ImportError:
+except ImportError as _ie:
     DIAGNOSTICS_AVAILABLE = False
+    _record_import_failure("DIAGNOSTICS_AVAILABLE", "backend.core.shutdown_diagnostics", _ie, "CRITICAL", symbols=["ShutdownDiagnostics", "log_shutdown_trigger", "log_startup_checkpoint", "capture_system_state"])
     ShutdownDiagnostics = None
     log_shutdown_trigger = None
     log_startup_checkpoint = None
@@ -989,8 +1137,9 @@ try:
         prevent_multiple_jarvis_instances,
     )
     PROCESS_CLEANUP_MANAGER_AVAILABLE = True
-except ImportError:
+except ImportError as _ie:
     PROCESS_CLEANUP_MANAGER_AVAILABLE = False
+    _record_import_failure("PROCESS_CLEANUP_MANAGER_AVAILABLE", "backend.process_cleanup_manager", _ie, "HIGH", symbols=["ProcessCleanupManager", "prevent_multiple_jarvis_instances"])
     ProcessCleanupManager = None
     prevent_multiple_jarvis_instances = None
 
@@ -1002,8 +1151,9 @@ try:
         set_cli_only_mode,
     )
     GRACEFUL_SHUTDOWN_AVAILABLE = True
-except ImportError:
+except ImportError as _ie:
     GRACEFUL_SHUTDOWN_AVAILABLE = False
+    _record_import_failure("GRACEFUL_SHUTDOWN_AVAILABLE", "backend.core.resilience.graceful_shutdown", _ie, "HIGH", symbols=["cleanup_orphaned_semaphores", "set_cli_only_mode"])
     cleanup_orphaned_semaphores = None
     set_cli_only_mode = lambda *args: None  # No-op fallback
 
@@ -1011,8 +1161,9 @@ except ImportError:
 try:
     from backend.core.resilience.startup import StartupResilience
     STARTUP_RESILIENCE_AVAILABLE = True
-except ImportError:
+except ImportError as _ie:
     STARTUP_RESILIENCE_AVAILABLE = False
+    _record_import_failure("STARTUP_RESILIENCE_AVAILABLE", "backend.core.resilience.startup", _ie, "CRITICAL", symbols=["StartupResilience"])
     StartupResilience = None  # type: ignore
 
 # v208.0: Unified Readiness Configuration - Status display and dashboard mappings
@@ -1024,8 +1175,9 @@ try:
         get_readiness_config,
     )
     READINESS_CONFIG_AVAILABLE = True
-except ImportError:
+except ImportError as _ie:
     READINESS_CONFIG_AVAILABLE = False
+    _record_import_failure("READINESS_CONFIG_AVAILABLE", "backend.core.readiness_config", _ie, "MODERATE", symbols=["DASHBOARD_STATUS_MAP", "STATUS_DISPLAY_MAP", "get_readiness_config"])
     get_readiness_config = None  # type: ignore
     # Fallback mappings if readiness_config is unavailable
     STATUS_DISPLAY_MAP = {
@@ -1043,8 +1195,9 @@ except ImportError:
 try:
     from backend.core.readiness_predicate import ReadinessPredicate, ReadinessResult
     READINESS_PREDICATE_AVAILABLE = True
-except ImportError:
+except ImportError as _ie:
     READINESS_PREDICATE_AVAILABLE = False
+    _record_import_failure("READINESS_PREDICATE_AVAILABLE", "backend.core.readiness_predicate", _ie, "MODERATE", symbols=["ReadinessPredicate", "ReadinessResult"])
     ReadinessPredicate = None  # type: ignore
     ReadinessResult = None  # type: ignore
 
@@ -1058,8 +1211,9 @@ try:
         StartupLockError,
     )
     CROSS_REPO_ORCHESTRATOR_AVAILABLE = True
-except ImportError:
+except ImportError as _ie:
     CROSS_REPO_ORCHESTRATOR_AVAILABLE = False
+    _record_import_failure("CROSS_REPO_ORCHESTRATOR_AVAILABLE", "backend.supervisor.cross_repo_startup_orchestrator", _ie, "CRITICAL", symbols=["initialize_cross_repo_orchestration", "get_active_rescue_env_vars", "ProcessOrchestrator", "StartupLockError"])
     initialize_cross_repo_orchestration = None
     get_active_rescue_env_vars = None
     ProcessOrchestrator = None
@@ -1072,8 +1226,9 @@ try:
         cleanup_orphaned_semaphores_on_startup,
     )
     SHUTDOWN_HOOK_AVAILABLE = True
-except ImportError:
+except ImportError as _ie:
     SHUTDOWN_HOOK_AVAILABLE = False
+    _record_import_failure("SHUTDOWN_HOOK_AVAILABLE", "backend.scripts.shutdown_hook", _ie, "HIGH", symbols={"register_handlers": "register_shutdown_handlers", "cleanup_orphaned_semaphores_on_startup": "cleanup_orphaned_semaphores_on_startup"})
     register_shutdown_handlers = None
     cleanup_orphaned_semaphores_on_startup = None
 
@@ -1124,6 +1279,7 @@ try:
     _kernel_logger.debug("[ModularKernel] Enterprise kernel modules loaded successfully")
 except ImportError as e:
     MODULAR_KERNEL_AVAILABLE = False
+    _record_import_failure("MODULAR_KERNEL_AVAILABLE", "backend.kernel", e, "MODERATE")
     ModularSystemKernelConfig = None
     ModularStartupMode = None
     ModularHardwareProfile = None
@@ -1182,6 +1338,7 @@ try:
     _orch_logger.debug("[ModularOrchestrator] Enterprise orchestrator modules loaded successfully")
 except ImportError as e:
     MODULAR_ORCHESTRATOR_AVAILABLE = False
+    _record_import_failure("MODULAR_ORCHESTRATOR_AVAILABLE", "backend.orchestrator", e, "MODERATE")
     _modular_get_service_registry = None
     _modular_get_health_coordinator = None
     _modular_start_all_services = None
@@ -1228,6 +1385,7 @@ try:
     _browser_logger.debug("[ModularBrowser] Enterprise browser stability modules loaded successfully")
 except ImportError as e:
     MODULAR_BROWSER_STABILITY_AVAILABLE = False
+    _record_import_failure("MODULAR_BROWSER_STABILITY_AVAILABLE", "backend.core.browser_stability", e, "MODERATE")
     ModularBrowserStabilityManager = None
     ModularStabilizedChromeLauncher = None
     ModularMemoryPressureMonitor = None
@@ -1263,8 +1421,9 @@ try:
         shielded_wait_for,
     )
     ASYNC_SAFETY_AVAILABLE = True
-except ImportError:
+except ImportError as _ie:
     ASYNC_SAFETY_AVAILABLE = False
+    _record_import_failure("ASYNC_SAFETY_AVAILABLE", "backend.core.async_safety", _ie, "CRITICAL")
     AsyncTimeoutConfig = None
     AsyncPersistentCircuitBreaker = None
     AsyncRetryEngine = None
@@ -1394,8 +1553,9 @@ try:
         get_health_aggregator,
     )
     ENTERPRISE_HEALTH_AVAILABLE = True
-except ImportError:
+except ImportError as _ie:
     ENTERPRISE_HEALTH_AVAILABLE = False
+    _record_import_failure("ENTERPRISE_HEALTH_AVAILABLE", "backend.core.health_contracts", _ie, "HIGH", symbols={"SystemHealthAggregator": "SystemHealthAggregator", "HealthStatus": "EnterpriseHealthStatus", "get_health_aggregator": "get_health_aggregator"})
     SystemHealthAggregator = None
     EnterpriseHealthStatus = None
     get_health_aggregator = None
@@ -1411,8 +1571,9 @@ try:
         get_recovery_engine,
     )
     ENTERPRISE_RECOVERY_AVAILABLE = True
-except ImportError:
+except ImportError as _ie:
     ENTERPRISE_RECOVERY_AVAILABLE = False
+    _record_import_failure("ENTERPRISE_RECOVERY_AVAILABLE", "backend.core.recovery_engine", _ie, "HIGH", symbols=["RecoveryEngine", "RecoveryPhase", "RecoveryStrategy", "RecoveryAction", "ErrorClassifier", "get_recovery_engine"])
     RecoveryEngine = None
     RecoveryPhase = None
     RecoveryStrategy = None
@@ -1427,8 +1588,9 @@ try:
         get_capability_router,
     )
     ENTERPRISE_CAPABILITY_AVAILABLE = True
-except ImportError:
+except ImportError as _ie:
     ENTERPRISE_CAPABILITY_AVAILABLE = False
+    _record_import_failure("ENTERPRISE_CAPABILITY_AVAILABLE", "backend.core.capability_router", _ie, "MODERATE", symbols=["CapabilityRouter", "get_capability_router"])
     CapabilityRouter = None
     get_capability_router = None
 
@@ -1439,8 +1601,9 @@ try:
         ComponentStatus as EnterpriseComponentStatus,
     )
     ENTERPRISE_REGISTRY_AVAILABLE = True
-except ImportError:
+except ImportError as _ie:
     ENTERPRISE_REGISTRY_AVAILABLE = False
+    _record_import_failure("ENTERPRISE_REGISTRY_AVAILABLE", "backend.core.component_registry", _ie, "MODERATE", symbols={"get_component_registry": "get_component_registry", "ComponentStatus": "EnterpriseComponentStatus"})
     get_component_registry = None
     EnterpriseComponentStatus = None
 
@@ -1448,8 +1611,9 @@ except ImportError:
 try:
     from backend.core.default_components import register_default_components
     ENTERPRISE_DEFAULTS_AVAILABLE = True
-except ImportError:
+except ImportError as _ie:
     ENTERPRISE_DEFAULTS_AVAILABLE = False
+    _record_import_failure("ENTERPRISE_DEFAULTS_AVAILABLE", "backend.core.default_components", _ie, "MODERATE", symbols=["register_default_components"])
     register_default_components = None
 
 # =============================================================================
@@ -1513,8 +1677,9 @@ try:
         async_check_unix_socket,
     )
     ASYNC_STARTUP_UTILS_AVAILABLE = True
-except ImportError:
+except ImportError as _ie:
     ASYNC_STARTUP_UTILS_AVAILABLE = False
+    _record_import_failure("ASYNC_STARTUP_UTILS_AVAILABLE", "backend.utils.async_startup", _ie, "HIGH", symbols=["async_psutil_wait", "async_process_wait", "async_subprocess_run", "async_check_port", "async_check_unix_socket"])
     async_psutil_wait = None
     async_process_wait = None
     async_subprocess_run = None
@@ -1536,8 +1701,9 @@ try:
         StartupTimeoutCalculator,
     )
     STARTUP_TIMEOUTS_AVAILABLE = True
-except ImportError:
+except ImportError as _ie:
     STARTUP_TIMEOUTS_AVAILABLE = False
+    _record_import_failure("STARTUP_TIMEOUTS_AVAILABLE", "backend.config.startup_timeouts", _ie, "HIGH", symbols=["get_timeouts", "StartupTimeouts", "get_startup_config", "StartupConfig", "StartupTimeoutCalculator"])
     get_timeouts = None
     StartupTimeouts = None
     get_startup_config = None
@@ -1553,8 +1719,9 @@ except ImportError:
 try:
     import backend.config.hardware_enforcer  # noqa: F401 - import triggers enforcement
     HARDWARE_ENFORCER_AVAILABLE = True
-except ImportError:
+except ImportError as _ie:
     HARDWARE_ENFORCER_AVAILABLE = False
+    _record_import_failure("HARDWARE_ENFORCER_AVAILABLE", "backend.config.hardware_enforcer", _ie, "MODERATE")
 
 # =============================================================================
 # v185.0: JARVIS SUPERVISOR LIFECYCLE INTEGRATION
@@ -1581,8 +1748,9 @@ try:
     )
     from backend.core.supervisor.update_engine import UpdateEngine
     JARVIS_SUPERVISOR_AVAILABLE = True
-except ImportError:
+except ImportError as _ie:
     JARVIS_SUPERVISOR_AVAILABLE = False
+    _record_import_failure("JARVIS_SUPERVISOR_AVAILABLE", "backend.core.supervisor", _ie, "HIGH")
     JARVISSupervisor = None
     SupervisorConfig = None
     get_supervisor_config = None
@@ -1650,8 +1818,9 @@ try:
         StartupPhase as BackendStartupPhase,
     )
     STARTUP_NARRATOR_AVAILABLE = True
-except ImportError:
+except ImportError as _ie:
     STARTUP_NARRATOR_AVAILABLE = False
+    _record_import_failure("STARTUP_NARRATOR_AVAILABLE", "backend.core.supervisor.startup_narrator", _ie, "MODERATE", symbols={"IntelligentStartupNarrator": "IntelligentStartupNarrator", "StartupPhase": "BackendStartupPhase"})
     IntelligentStartupNarrator = None
     BackendStartupPhase = None
 
@@ -1662,8 +1831,9 @@ try:
         OrchestratorEvent,
     )
     ORCHESTRATOR_NARRATOR_AVAILABLE = True
-except ImportError:
+except ImportError as _ie:
     ORCHESTRATOR_NARRATOR_AVAILABLE = False
+    _record_import_failure("ORCHESTRATOR_NARRATOR_AVAILABLE", "backend.core.supervisor.orchestrator_narrator_bridge", _ie, "MODERATE", symbols=["emit_orchestrator_event", "OrchestratorEvent"])
     emit_orchestrator_event = None
     OrchestratorEvent = None
 
@@ -1676,8 +1846,9 @@ try:
         narrate_error as _narrate_backend_error,
     )
     BACKEND_NARRATOR_FUNCS_AVAILABLE = True
-except ImportError:
+except ImportError as _ie:
     BACKEND_NARRATOR_FUNCS_AVAILABLE = False
+    _record_import_failure("BACKEND_NARRATOR_FUNCS_AVAILABLE", "backend.core.supervisor.startup_narrator", _ie, "MODERATE", symbols={"get_startup_narrator": "_get_backend_startup_narrator", "narrate_phase": "_narrate_backend_phase", "narrate_complete": "_narrate_backend_complete", "narrate_error": "_narrate_backend_error"})
     _get_backend_startup_narrator = None
     _narrate_backend_phase = None
     _narrate_backend_complete = None
@@ -1687,18 +1858,23 @@ except ImportError:
 try:
     from backend.core.voice_orchestrator import VoiceOrchestrator
     VOICE_ORCHESTRATOR_AVAILABLE = True
-except ImportError:
+except ImportError as _ie:
     VOICE_ORCHESTRATOR_AVAILABLE = False
+    _record_import_failure("VOICE_ORCHESTRATOR_AVAILABLE", "backend.core.voice_orchestrator", _ie, "MODERATE", symbols=["VoiceOrchestrator"])
     VoiceOrchestrator = None
 
 # Phase 5A: BoundedAsyncQueue - backpressure for unbounded asyncio.Queue instances
 try:
     from backend.core.bounded_queue import BoundedAsyncQueue, OverflowPolicy
     BOUNDED_QUEUE_AVAILABLE = True
-except ImportError:
+except ImportError as _ie:
     BOUNDED_QUEUE_AVAILABLE = False
+    _record_import_failure("BOUNDED_QUEUE_AVAILABLE", "backend.core.bounded_queue", _ie, "MODERATE", symbols=["BoundedAsyncQueue", "OverflowPolicy"])
     BoundedAsyncQueue = None
     OverflowPolicy = None
+
+# v265.7: Run import audit at module load to surface all failures
+_log_import_audit()
 
 # =============================================================================
 # CONSTANTS
@@ -63365,6 +63541,23 @@ class JarvisSystemKernel:
         # Initialize startup issue collector for organized error/warning display
         issue_collector = get_startup_issue_collector()
         issue_collector.clear()  # Fresh start
+
+        # v265.7: Retry any CRITICAL/HIGH imports that failed at module load
+        # Transient failures (circular imports, concurrent installs) may resolve now
+        if _FAILED_IMPORTS:
+            try:
+                _retry_recovered = await asyncio.wait_for(
+                    _retry_critical_imports(), timeout=15.0,
+                )
+                if _retry_recovered:
+                    self.logger.info(
+                        "[ImportRetry] Recovered %d imports on deferred retry",
+                        _retry_recovered,
+                    )
+            except asyncio.TimeoutError:
+                self.logger.warning("[ImportRetry] Deferred retry timed out after 15s")
+            except Exception as _retry_err:
+                self.logger.debug("[ImportRetry] Deferred retry failed: %s", _retry_err)
 
         # v263.0: Initialize Startup State Machine for DAG-driven component tracking
         _ssm = None
