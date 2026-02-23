@@ -61090,7 +61090,7 @@ class JarvisSystemKernel:
         # v199.0: Invincible Node (Static IP Spot VM) state
         self._invincible_node_ready: bool = False
         self._invincible_node_ip: Optional[str] = None
-        self._early_invincible_task: Optional[asyncio.Task] = None  # v233.4: Early GCP pre-warm
+        # v266.0: _early_invincible_task removed — VM prewarm now pressure-driven
         self._model_serving = None  # v234.0: UnifiedModelServing instance
         self._pending_gcp_endpoint: Optional[str] = None  # v236.0: Deferred GCP URL
         self._pending_jprime_api_url: Optional[str] = None  # v261.0: Deferred J-Prime URL
@@ -62894,16 +62894,8 @@ class JarvisSystemKernel:
             except Exception:
                 pass
 
-            # Track background startup helpers that may run across phases.
-            try:
-                early_gcp_task = getattr(self, '_early_invincible_task', None)
-                if early_gcp_task is not None and not early_gcp_task.done():
-                    active_subsystem_reasons.append("gcp_prewarm_task")
-                    if activity_timestamp <= 0:
-                        activity_source = "gcp_prewarm_task"
-                        activity_timestamp = now
-            except Exception:
-                pass
+            # v266.0: early_invincible_task tracking removed (eager prewarm deleted).
+            # VM lifecycle is now pressure-driven via GCPHybridPrimeRouter.
 
             subsystem_active = False
             if in_startup_window and active_subsystem_reasons:
@@ -64194,70 +64186,9 @@ class JarvisSystemKernel:
             except Exception as _probe_err:
                 self.logger.debug("[GCPProbe] Probe failed: %s", _probe_err)
 
-        # =====================================================================
-        # v258.3 (Gap 10): PROACTIVE SPOT VM WARM
-        # =====================================================================
-        # When cloud_first mode is confirmed reachable but no invincible node
-        # is running, start a Spot VM warm immediately so it's ready when needed.
-        # Without this, the Spot VM doesn't start until Trinity phase (~Phase 5),
-        # adding 30-60s of wait time when inference is needed.
-        # =====================================================================
-        self._early_spot_vm_task: Optional[asyncio.Task] = None
-        if (self._gcp_probe_passed
-                and _startup_mode_now in ("cloud_first", "cloud_only")
-                and not os.environ.get("JARVIS_INVINCIBLE_NODE_IP")):
-            _spot_warm_timeout = _get_env_float("JARVIS_SPOT_VM_WARM_TIMEOUT", 30.0)
-
-            async def _proactive_spot_vm_warm():
-                """Start Spot VM immediately so it's ready when Trinity reaches GCP."""
-                try:
-                    # v261.0: Use singleton accessor instead of creating duplicate instance.
-                    # Previously `GCPVMManager()` was instantiated directly, bypassing the
-                    # singleton and causing duplicate VM tracking / racing with Phase 2.
-                    from backend.core.gcp_vm_manager import get_gcp_vm_manager
-                    _vm_mgr = await get_gcp_vm_manager()
-
-                    import psutil
-                    _mem = psutil.virtual_memory()
-                    _mem_snapshot = {
-                        "available_gb": _mem.available / (1024**3),
-                        "total_gb": _mem.total / (1024**3),
-                        "percent": _mem.percent,
-                    }
-
-                    should_create, reason, confidence = await _vm_mgr.should_create_vm(
-                        _mem_snapshot, trigger_reason="proactive_startup_warm"
-                    )
-                    if should_create and confidence >= 0.5:
-                        self.logger.info(
-                            "[EarlySpot] Proactively warming Spot VM: %s (confidence: %.0f%%)",
-                            reason, confidence * 100,
-                        )
-                        add_dashboard_log("Proactive Spot VM warm started", "INFO")
-                        vm_result = await asyncio.wait_for(
-                            _vm_mgr.create_vm(trigger_reason="proactive_startup"),
-                            timeout=_spot_warm_timeout,
-                        )
-                        if vm_result:
-                            self.logger.info("[EarlySpot] Spot VM created: %s", vm_result)
-                    else:
-                        self.logger.debug(
-                            "[EarlySpot] Spot VM not needed: %s (confidence: %.0f%%)",
-                            reason, confidence * 100,
-                        )
-                except asyncio.TimeoutError:
-                    self.logger.warning("[EarlySpot] Spot VM warm timed out")
-                except ImportError:
-                    self.logger.debug("[EarlySpot] GCP VM manager not available")
-                except Exception as _spot_err:
-                    self.logger.debug("[EarlySpot] Spot VM warm failed: %s", _spot_err)
-
-            self._early_spot_vm_task = create_safe_task(
-                _proactive_spot_vm_warm(),
-                name="early_spot_vm_warm",
-            )
-            self._background_tasks.append(self._early_spot_vm_task)
-            self.logger.info("[Kernel] Proactive Spot VM warm task created")
+        # v266.0: Proactive Spot VM warm REMOVED — VM creation is now pressure-driven
+        # via GCPHybridPrimeRouter state machine. See design doc:
+        # docs/plans/2026-02-22-gcp-pressure-driven-lifecycle-design.md
 
         if self.config.trinity_enabled and os.getenv("JARVIS_EARLY_PRIME_PREWARM", "true").lower() == "true":
             # Check golden image + GCP indicators
@@ -64635,12 +64566,9 @@ class JarvisSystemKernel:
                 )
                 self._background_tasks.append(self._jprime_watcher_task)
 
-        # =============================================================
-        # v233.4: EARLY GCP PRE-WARM — Start Invincible Node Before Phase 0
-        # =============================================================
-        # The golden image VM needs ~100-150s. Previously, provisioning
-        # started at Phase 2 (~60-90s in). By starting here, we gain
-        # 60-90s of parallel boot time. Phase 2 reuses this task.
+        # v266.0: Invincible Node eager prewarm REMOVED — VM creation is now
+        # pressure-driven via GCPHybridPrimeRouter. The router provisions VMs
+        # when memory pressure exceeds 85% sustained (3/5 readings).
         # =============================================================
         _early_gcp_golden = os.getenv(
             "JARVIS_GCP_USE_GOLDEN_IMAGE", "false"
