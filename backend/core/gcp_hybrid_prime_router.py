@@ -2152,6 +2152,21 @@ class GCPHybridPrimeRouter:
         self.logger.info(
             f"[VMLifecycle] {old_state.value} -> {new_state.value} (reason: {reason})"
         )
+
+        # v266.0: Start model unload task when entering ACTIVE
+        if new_state == VMLifecycleState.ACTIVE:
+            if self._model_unload_task is None or self._model_unload_task.done():
+                self._model_unload_task = asyncio.create_task(
+                    self._unload_local_model_after_stability(),
+                    name="gcp_model_unload_after_stability"
+                )
+
+        # v266.0: Cancel model unload if leaving ACTIVE
+        if old_state == VMLifecycleState.ACTIVE and new_state != VMLifecycleState.ACTIVE:
+            if self._model_unload_task and not self._model_unload_task.done():
+                self._model_unload_task.cancel()
+            os.environ.pop("JARVIS_GCP_OFFLOAD_ACTIVE", None)
+
         return True
 
     @property
@@ -2165,6 +2180,51 @@ class GCPHybridPrimeRouter:
     def _vm_provisioning_in_progress(self, value: bool) -> None:
         """Backward compat setter — no-op. State machine handles transitions."""
         pass  # Ignored — state machine handles this
+
+    async def _unload_local_model_after_stability(self) -> None:
+        """After GCP VM proves stable, unload local model to reclaim RAM."""
+        try:
+            self._active_stability_count = 0
+
+            for _ in range(GCP_ACTIVE_STABILITY_CHECKS):
+                await asyncio.sleep(10.0)
+
+                # Check VM is still ACTIVE and healthy
+                if self._vm_lifecycle_state != VMLifecycleState.ACTIVE:
+                    self.logger.info("[VMLifecycle] Left ACTIVE state, aborting model unload")
+                    return
+
+                if self._gcp_controller and hasattr(self._gcp_controller, 'is_vm_available'):
+                    if not self._gcp_controller.is_vm_available():
+                        self.logger.info("[VMLifecycle] GCP VM unhealthy, aborting model unload")
+                        return
+
+                self._active_stability_count += 1
+
+            # GCP stable for N checks — unload local model
+            self.logger.info(
+                f"[VMLifecycle] GCP VM stable for {GCP_ACTIVE_STABILITY_CHECKS * 10}s, "
+                f"unloading local model to reclaim RAM"
+            )
+
+            try:
+                from backend.intelligence.unified_model_serving import get_model_serving
+                model_serving = get_model_serving()
+                if model_serving and hasattr(model_serving, 'stop'):
+                    await model_serving.stop()
+                    self.logger.info("[VMLifecycle] Local model unloaded — RAM reclaimed")
+                    os.environ["JARVIS_GCP_OFFLOAD_ACTIVE"] = "true"
+                else:
+                    self.logger.debug("[VMLifecycle] UnifiedModelServing not available or has no stop()")
+            except ImportError:
+                self.logger.debug("UnifiedModelServing not available for unload")
+            except Exception as e:
+                self.logger.warning(f"[VMLifecycle] Local model unload failed: {e}")
+
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            self.logger.debug(f"[VMLifecycle] Model unload task error: {e}")
 
     async def _trigger_vm_provisioning(self, reason: str = "unknown") -> bool:
         """
