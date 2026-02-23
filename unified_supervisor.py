@@ -61108,6 +61108,10 @@ class JarvisSystemKernel:
         self._dms_recovery_task: Optional[asyncio.Task] = None
         self._model_serving_recovery_task: Optional[asyncio.Task] = None
 
+        # v265.6: Phase 5/6 background recovery tasks
+        self._trinity_component_recovery_task: Optional[asyncio.Task] = None
+        self._enterprise_service_recovery_task: Optional[asyncio.Task] = None
+
         # v266.0: Split heartbeat ownership to avoid task-handle aliasing
         # between startup progress and loading-server transport heartbeats.
         # _heartbeat_task is retained as a legacy alias for startup heartbeat.
@@ -62155,8 +62159,11 @@ class JarvisSystemKernel:
             except Exception as e:
                 self.logger.debug(f"[Kernel] Startup resilience cleanup error: {e}")
 
-        # v265.5: Cancel DMS, Resilience, and ModelServing recovery tasks
-        for _recov_attr in ("_dms_recovery_task", "_resilience_recovery_task", "_model_serving_recovery_task"):
+        # v265.5/v265.6: Cancel all background recovery tasks
+        for _recov_attr in (
+            "_dms_recovery_task", "_resilience_recovery_task", "_model_serving_recovery_task",
+            "_trinity_component_recovery_task", "_enterprise_service_recovery_task",
+        ):
             _recov_task = getattr(self, _recov_attr, None)
             if _recov_task is not None:
                 _recov_task.cancel()
@@ -71901,6 +71908,300 @@ class JarvisSystemKernel:
             "[ModelServing-Recovery] Exhausted %d attempts — inference routing unavailable", _max
         )
 
+    # ─── v265.6: Phase 5 Trinity component background recovery ───────────
+
+    def _schedule_trinity_component_recovery(self, failed_components: list) -> None:
+        """Schedule background recovery for Trinity components that failed at startup."""
+        if self._trinity_component_recovery_task is not None:
+            return  # Already running
+        self._trinity_component_recovery_task = create_safe_task(
+            self._trinity_component_recovery_loop(failed_components),
+            name="trinity-component-recovery",
+        )
+
+    async def _trinity_component_recovery_loop(self, failed_components: list) -> None:
+        """
+        v265.6: Background recovery for failed Trinity components (J-Prime, Reactor-Core).
+
+        Re-discovers repos, re-probes health endpoints, and starts components that
+        become available after initial boot. Uses exponential backoff with CPU-aware
+        scaling per iteration.
+
+        Env vars:
+            JARVIS_TRINITY_RECOVERY_INTERVAL: Base retry interval (default: 30.0s)
+            JARVIS_TRINITY_RECOVERY_MAX_ATTEMPTS: Max retries (default: 6)
+        """
+        _base_interval = _get_env_float("JARVIS_TRINITY_RECOVERY_INTERVAL", 30.0)
+        _max = int(os.environ.get("JARVIS_TRINITY_RECOVERY_MAX_ATTEMPTS", "6"))
+
+        # Initial grace period — let other startup phases finish first
+        try:
+            await asyncio.sleep(15.0)
+        except asyncio.CancelledError:
+            return
+
+        self.logger.info(
+            "[Trinity-Recovery] Starting background recovery for %s (max %d attempts)",
+            ", ".join(failed_components), _max,
+        )
+
+        for attempt in range(1, _max + 1):
+            if self._shutdown_event.is_set():
+                return
+
+            # CPU-aware backoff interval
+            _interval = _base_interval * min(attempt, 4)  # Cap multiplier at 4x
+            try:
+                import psutil as _tr_ps
+                _tr_cpu = _tr_ps.cpu_percent(interval=None)
+                if _tr_cpu > 90.0:
+                    _interval *= 1.0 + (_tr_cpu - 90.0) / 10.0 * 2.0
+            except Exception:
+                pass
+
+            try:
+                recovered = []
+                for comp_key in list(failed_components):
+                    comp_status_key = comp_key.replace("-", "_")
+                    current = self._component_status.get(comp_status_key, {}).get("status")
+                    if current == "complete":
+                        # Already recovered (e.g., via late-arrival GCP detection)
+                        recovered.append(comp_key)
+                        continue
+
+                    # Step 1: Probe if component is now running (may have been started externally)
+                    actual_port = self._get_component_port(comp_status_key)
+                    if await self._quick_health_probe(actual_port):
+                        self._update_component_status(
+                            comp_status_key, "complete",
+                            f"{comp_key} recovered (background probe port {actual_port})"
+                        )
+                        self.logger.info(
+                            "[Trinity-Recovery] %s recovered on port %d (attempt %d/%d)",
+                            comp_key, actual_port, attempt, _max,
+                        )
+                        recovered.append(comp_key)
+                        continue
+
+                    # Step 2: If we have a TrinityIntegrator, try re-discovery
+                    if self._trinity and hasattr(self._trinity, '_discover_repo'):
+                        # Clear discovery cache so we re-scan filesystem
+                        self._trinity._discovery_cache.pop(comp_key, None)
+                        config_path = (
+                            self.config.prime_repo_path if comp_key == "jarvis-prime"
+                            else self.config.reactor_repo_path
+                        )
+                        new_path = await self._trinity._discover_repo(comp_key, config_path)
+                        if new_path:
+                            self.logger.info(
+                                "[Trinity-Recovery] %s re-discovered at %s (attempt %d/%d)",
+                                comp_key, new_path, attempt, _max,
+                            )
+                            # Try starting just this component
+                            try:
+                                _start_timeout = _get_env_float("JARVIS_TRINITY_RECOVERY_START_TIMEOUT", 60.0)
+                                invincible_ready = getattr(self, '_invincible_node_ready', False)
+                                skip_prime = (comp_key != "jarvis-prime")
+                                _result = await asyncio.wait_for(
+                                    self._trinity.start_components(
+                                        skip_prime=skip_prime,
+                                        invincible_node_ready=invincible_ready,
+                                    ),
+                                    timeout=_start_timeout,
+                                )
+                                if _result.get(comp_key):
+                                    self._update_component_status(
+                                        comp_status_key, "complete",
+                                        f"{comp_key} recovered via background start"
+                                    )
+                                    recovered.append(comp_key)
+                                    self.logger.info(
+                                        "[Trinity-Recovery] %s started successfully (attempt %d/%d)",
+                                        comp_key, attempt, _max,
+                                    )
+                            except (asyncio.TimeoutError, Exception) as start_err:
+                                self.logger.debug(
+                                    "[Trinity-Recovery] %s start attempt %d failed: %s",
+                                    comp_key, attempt, start_err,
+                                )
+
+                # Remove recovered components from the failed list
+                for comp in recovered:
+                    failed_components.remove(comp)
+
+                if not failed_components:
+                    self.logger.info("[Trinity-Recovery] All failed components recovered")
+                    self._trinity_component_recovery_task = None
+                    return
+
+            except asyncio.CancelledError:
+                return
+            except Exception as e:
+                self.logger.warning(
+                    "[Trinity-Recovery] Attempt %d/%d error: %s", attempt, _max, e
+                )
+
+            try:
+                await asyncio.sleep(_interval)
+            except asyncio.CancelledError:
+                return
+
+        self.logger.warning(
+            "[Trinity-Recovery] Exhausted %d attempts — %s remain unavailable",
+            _max, ", ".join(failed_components),
+        )
+        self._trinity_component_recovery_task = None
+
+    # ─── v265.6: Phase 6 Enterprise service background recovery ──────────
+
+    def _schedule_enterprise_service_recovery(self, failed_services: list) -> None:
+        """Schedule background recovery for enterprise services that failed at startup."""
+        if self._enterprise_service_recovery_task is not None:
+            return  # Already running
+        self._enterprise_service_recovery_task = create_safe_task(
+            self._enterprise_service_recovery_loop(failed_services),
+            name="enterprise-service-recovery",
+        )
+
+    async def _enterprise_service_recovery_loop(self, failed_services: list) -> None:
+        """
+        v265.6: Background recovery for failed enterprise services.
+
+        Re-attempts initialization for services that failed or timed out terminally
+        during Phase 6. Uses bounded retries with CPU-aware backoff.
+
+        Env vars:
+            JARVIS_ENTERPRISE_RECOVERY_INTERVAL: Base retry interval (default: 30.0s)
+            JARVIS_ENTERPRISE_RECOVERY_MAX_ATTEMPTS: Max retries (default: 4)
+        """
+        _base_interval = _get_env_float("JARVIS_ENTERPRISE_RECOVERY_INTERVAL", 30.0)
+        _max = int(os.environ.get("JARVIS_ENTERPRISE_RECOVERY_MAX_ATTEMPTS", "4"))
+
+        # Map internal names to initializer coroutine factories
+        _service_initializers = {
+            "cloud_sql": ("CloudSQL", self._initialize_cloud_sql_proxy),
+            "voice_biometrics": ("VoiceBio", self._initialize_voice_biometrics),
+            "semantic_cache": ("SemanticCache", self._initialize_semantic_voice_cache),
+            "infra_orchestrator": ("InfraOrch", self._initialize_infrastructure_orchestrator),
+            "websocket_hub": ("WebSocket", self._initialize_websocket_hub),
+        }
+
+        # Initial grace period
+        try:
+            await asyncio.sleep(20.0)
+        except asyncio.CancelledError:
+            return
+
+        self.logger.info(
+            "[Enterprise-Recovery] Starting background recovery for %s (max %d attempts)",
+            ", ".join(failed_services), _max,
+        )
+
+        for attempt in range(1, _max + 1):
+            if self._shutdown_event.is_set():
+                return
+
+            # CPU-aware interval
+            _interval = _base_interval * min(attempt, 3)
+            try:
+                import psutil as _er_ps
+                _er_cpu = _er_ps.cpu_percent(interval=None)
+                if _er_cpu > 90.0:
+                    _interval *= 1.0 + (_er_cpu - 90.0) / 10.0 * 2.0
+            except Exception:
+                pass
+
+            try:
+                recovered = []
+                for svc_key in list(failed_services):
+                    # Check if already recovered (background continuation may have completed)
+                    current_status = (self._enterprise_status or {}).get(svc_key, {})
+                    if isinstance(current_status, dict) and (
+                        current_status.get("initialized")
+                        or current_status.get("enabled")
+                        or current_status.get("running")
+                    ):
+                        recovered.append(svc_key)
+                        continue
+
+                    if svc_key not in _service_initializers:
+                        continue
+
+                    display_name, init_fn = _service_initializers[svc_key]
+
+                    _svc_timeout = _get_env_float(
+                        f"JARVIS_SERVICE_TIMEOUT_{svc_key.upper()}",
+                        _get_env_float("JARVIS_SERVICE_TIMEOUT", 30.0),
+                    )
+                    # CPU-aware timeout for the retry
+                    try:
+                        import psutil as _sr_ps
+                        _sr_cpu = _sr_ps.cpu_percent(interval=None)
+                        if _sr_cpu > 90.0:
+                            _svc_timeout *= 1.0 + (_sr_cpu - 90.0) / 10.0 * 2.0
+                    except Exception:
+                        pass
+
+                    try:
+                        result = await asyncio.wait_for(init_fn(), timeout=_svc_timeout)
+                        if isinstance(result, dict) and (
+                            result.get("initialized")
+                            or result.get("enabled")
+                            or result.get("running")
+                        ):
+                            self._enterprise_status[svc_key] = result
+                            self.logger.info(
+                                "[Enterprise-Recovery] %s recovered (attempt %d/%d)",
+                                display_name, attempt, _max,
+                            )
+                            recovered.append(svc_key)
+                        else:
+                            self.logger.debug(
+                                "[Enterprise-Recovery] %s returned non-ready status (attempt %d/%d)",
+                                display_name, attempt, _max,
+                            )
+                    except asyncio.TimeoutError:
+                        self.logger.debug(
+                            "[Enterprise-Recovery] %s timed out (attempt %d/%d)",
+                            display_name, attempt, _max,
+                        )
+                    except Exception as svc_err:
+                        self.logger.debug(
+                            "[Enterprise-Recovery] %s error (attempt %d/%d): %s",
+                            display_name, attempt, _max, svc_err,
+                        )
+
+                for svc in recovered:
+                    if svc in failed_services:
+                        failed_services.remove(svc)
+
+                # Reconcile overall enterprise status after any recovery
+                if recovered:
+                    self._reconcile_enterprise_component_status()
+
+                if not failed_services:
+                    self.logger.info("[Enterprise-Recovery] All failed services recovered")
+                    self._enterprise_service_recovery_task = None
+                    return
+
+            except asyncio.CancelledError:
+                return
+            except Exception as e:
+                self.logger.warning(
+                    "[Enterprise-Recovery] Attempt %d/%d error: %s", attempt, _max, e
+                )
+
+            try:
+                await asyncio.sleep(_interval)
+            except asyncio.CancelledError:
+                return
+
+        self.logger.warning(
+            "[Enterprise-Recovery] Exhausted %d attempts — %s remain unavailable",
+            _max, ", ".join(failed_services),
+        )
+        self._enterprise_service_recovery_task = None
+
     async def _audio_health_loop(self) -> None:
         """
         v238.0: Background health monitoring for Audio Bus infrastructure.
@@ -74397,6 +74698,25 @@ class JarvisSystemKernel:
                         except Exception:
                             pass
 
+                # v265.6: Schedule background recovery for Trinity components that
+                # failed or errored during startup. Recovery loop will periodically
+                # re-discover repos and re-probe health endpoints.
+                if trinity_status in ("degraded", "error"):
+                    _failed_trinity_components = []
+                    for _comp_key, _comp_status_key in [
+                        ("jarvis-prime", "jarvis_prime"),
+                        ("reactor-core", "reactor_core"),
+                    ]:
+                        _comp_state = self._component_status.get(_comp_status_key, {}).get("status")
+                        if _comp_state in ("error", "degraded", "pending"):
+                            _failed_trinity_components.append(_comp_key)
+                    if _failed_trinity_components:
+                        self._schedule_trinity_component_recovery(_failed_trinity_components)
+                        self.logger.info(
+                            "[Trinity] Background recovery scheduled for: %s",
+                            ", ".join(_failed_trinity_components),
+                        )
+
                 if self._readiness_manager:
                     self._readiness_manager.mark_component_ready("trinity", started_count > 0)
 
@@ -75011,6 +75331,17 @@ class JarvisSystemKernel:
 
             self._reconcile_enterprise_component_status()
 
+            # v265.6: Schedule background recovery for enterprise services that
+            # failed or timed out terminally. Background-continuation services
+            # already have their own done-callback; this catches hard failures.
+            _enterprise_needs_recovery = list(timed_out_terminal) + list(failed)
+            if _enterprise_needs_recovery:
+                self._schedule_enterprise_service_recovery(_enterprise_needs_recovery)
+                self.logger.info(
+                    "[Zone6] Background recovery scheduled for: %s",
+                    ", ".join(_enterprise_needs_recovery),
+                )
+
             # v238.0: Populate ComponentRegistry with canonical component definitions
             # This MUST happen before health contracts — the aggregator needs components
             # registered to aggregate their health. Recovery engine and capability router
@@ -75127,6 +75458,18 @@ class JarvisSystemKernel:
                             f"[Zone6] Health contracts: system {_overall.value} — "
                             f"{', '.join(_bad[:5])}"
                         )
+                        # v265.6: Schedule recovery for genuinely unhealthy enterprise
+                        # services (not UNKNOWN/initialising — only UNHEALTHY).
+                        _unhealthy_svc_names = [
+                            name for name, r in _system_health.components.items()
+                            if r.status == EnterpriseHealthStatus.UNHEALTHY
+                        ]
+                        if _unhealthy_svc_names and self._enterprise_service_recovery_task is None:
+                            self._schedule_enterprise_service_recovery(list(_unhealthy_svc_names))
+                            self.logger.info(
+                                "[Zone6] Health-driven recovery scheduled for: %s",
+                                ", ".join(_unhealthy_svc_names),
+                            )
                 except Exception as _hc_err:
                     self.logger.debug(f"[Zone6] Health contract check skipped: {_hc_err}")
 
