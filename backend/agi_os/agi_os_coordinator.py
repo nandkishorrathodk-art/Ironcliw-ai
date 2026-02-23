@@ -332,8 +332,9 @@ class AGIOSCoordinator:
         #   neural_mesh: bridge needs ~47s, agents ~22s → needs 80-90s. Set 100s.
         #   hybrid: 5 (just object construction, <1s typical)
         #   screen_analyzer: 25 (fixed Py3.9 threading, faster now)
-        #   components_connected: 10 (lightweight wiring, <5s typical)
-        # New total: 35+45+100+5+25+10 = 220s (fits 290s budget with 70s spare)
+        #   components_connected: 15 (lightweight wiring + callback setup; bulk
+        #     tool registration moved to background task in v265.6)
+        # New total: 35+45+100+5+25+15 = 225s (fits 290s budget with 65s spare)
         phase_timeouts = {
             "agi_os_components": _env_float(
                 "JARVIS_AGI_OS_PHASE_COMPONENTS_TIMEOUT", 35.0
@@ -351,7 +352,7 @@ class AGIOSCoordinator:
                 "JARVIS_AGI_OS_PHASE_SCREEN_TIMEOUT", 25.0
             ),
             "components_connected": _env_float(
-                "JARVIS_AGI_OS_PHASE_CONNECT_TIMEOUT", 10.0
+                "JARVIS_AGI_OS_PHASE_CONNECT_TIMEOUT", 15.0
             ),
         }
 
@@ -1819,9 +1820,13 @@ class AGIOSCoordinator:
             self._action_orchestrator._uae_engine = self._uae_engine
             logger.info("UAE → Action Orchestrator connected")
 
-        # v239.0: Register Neural Mesh agent capabilities as tools in ToolRegistry
-        # This bridges the mesh (60+ agents) into the autonomy system so the agent
-        # runtime's THINK step can discover capabilities and ACT step can invoke them.
+        # v239.0 / v265.6: Register Neural Mesh agent capabilities as tools in
+        # ToolRegistry.  ROOT CAUSE FIX: The registration loop iterates 60+ agents ×
+        # 5-10 capabilities each = 300-600 tool constructions.  Under CPU pressure
+        # this takes 10-30s, which ALWAYS exceeded the 10s components_connected phase
+        # budget and triggered DEGRADED state.  Fix: move the heavyweight bulk
+        # registration to a background task so _connect_components() finishes in <2s.
+        # The health-aware lifecycle callback handles late registration naturally.
         if self._jarvis_bridge:
             try:
                 from autonomy.langchain_tools import (
@@ -1831,38 +1836,10 @@ class AGIOSCoordinator:
 
                 registry = ToolRegistry.get_instance()
                 default_timeout = float(os.getenv("MESH_TOOL_TIMEOUT", "30"))
-                registered = 0
-
-                for agent_name in self._jarvis_bridge.registered_agents:
-                    agent = self._jarvis_bridge.get_agent(agent_name)
-                    if agent is None:
-                        continue
-                    for capability in agent.capabilities:
-                        try:
-                            tool = NeuralMeshAgentTool(
-                                agent=agent,
-                                capability=capability,
-                                timeout_seconds=default_timeout,
-                            )
-                            registry.register(tool, replace=True)
-                            registered += 1
-                        except Exception:
-                            pass
-
-                logger.info(
-                    "Neural Mesh → ToolRegistry: %d capabilities registered from %d agents",
-                    registered,
-                    len(self._jarvis_bridge.registered_agents),
-                )
-
-                if registered == 0:
-                    logger.warning(
-                        "Neural Mesh → ToolRegistry: 0 capabilities registered — "
-                        "agents may have empty capability sets"
-                    )
 
                 # v239.0: Health-aware tool lifecycle — deregister on agent death,
                 # re-register on agent recovery. Uses AgentRegistry status callbacks.
+                # This is lightweight and runs inline (instant callback registration).
                 coordinator = getattr(self._jarvis_bridge, '_coordinator', None)
                 agent_registry = getattr(coordinator, '_registry', None) if coordinator else None
                 if agent_registry and hasattr(agent_registry, 'on_status_change'):
@@ -1916,6 +1893,56 @@ class AGIOSCoordinator:
                     self._agent_status_callback = _on_agent_status_change
                     self._agent_status_registry = agent_registry
                     logger.info("[MeshToolLifecycle] Health-aware tool lifecycle active")
+
+                # v265.6: Bulk registration runs as background task — doesn't block
+                # the components_connected phase budget. Tools become available
+                # progressively as agents are registered.
+                async def _register_mesh_tools_background():
+                    """Background bulk registration of Neural Mesh agent tools."""
+                    registered = 0
+                    total_agents = len(self._jarvis_bridge.registered_agents)
+                    for agent_name in self._jarvis_bridge.registered_agents:
+                        agent = self._jarvis_bridge.get_agent(agent_name)
+                        if agent is None:
+                            continue
+                        for capability in agent.capabilities:
+                            try:
+                                tool = NeuralMeshAgentTool(
+                                    agent=agent,
+                                    capability=capability,
+                                    timeout_seconds=default_timeout,
+                                )
+                                registry.register(tool, replace=True)
+                                registered += 1
+                            except Exception:
+                                pass
+                        # Yield control every 10 agents to avoid starving the event loop
+                        if registered % 50 == 0:
+                            await asyncio.sleep(0)
+
+                    logger.info(
+                        "Neural Mesh → ToolRegistry: %d capabilities registered "
+                        "from %d agents (background)",
+                        registered,
+                        total_agents,
+                    )
+                    if registered == 0:
+                        logger.warning(
+                            "Neural Mesh → ToolRegistry: 0 capabilities registered — "
+                            "agents may have empty capability sets"
+                        )
+
+                _task = asyncio.create_task(
+                    _register_mesh_tools_background(),
+                    name="mesh-tool-bulk-registration",
+                )
+                self._background_tasks.add(_task)
+                _task.add_done_callback(self._background_tasks.discard)
+                logger.info(
+                    "Neural Mesh tool registration deferred to background "
+                    "(%d agents queued)",
+                    len(self._jarvis_bridge.registered_agents),
+                )
 
             except Exception as e:
                 logger.warning("Mesh tool registration failed (non-fatal): %s", e)
