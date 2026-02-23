@@ -1674,14 +1674,21 @@ class UnifiedCommandProcessor:
 
     @staticmethod
     def _summarize_workspace_result(result: dict, intent: str) -> str:
-        """Generate a human-readable response from structured workspace data."""
+        """Generate a human-readable response from structured workspace data.
+
+        v266.0: Keys off the workspace_action field (from the agent's result dict
+        or the UCP's resolved action), NOT J-Prime's high-level intent.
+        Added formatting for send_email, draft_email_reply, create_calendar_event,
+        get_contacts, create_document, search_email, and handle_workspace_query.
+        """
+        # Email check
         if intent in ("check_email", "fetch_unread_emails"):
             count = result.get("count", 0)
             total = result.get("total_unread", count)
             if count == 0:
                 return "No unread emails found."
             emails = result.get("emails", [])
-            lines = [f"You have {total} unread emails. Here are the latest {count}:"]
+            lines = [f"You have {total} unread email{'s' if total != 1 else ''}. Here are the latest {count}:"]
             for em in emails[:5]:
                 subj = em.get("subject", "(no subject)")
                 sender = em.get("from", "unknown")
@@ -1689,21 +1696,96 @@ class UnifiedCommandProcessor:
             if count > 5:
                 lines.append(f"  ...and {count - 5} more")
             return "\n".join(lines)
+
+        # Calendar check
         elif intent in ("check_calendar", "check_calendar_events"):
             events = result.get("events", [])
             if not events:
                 return "No events on your calendar for this time period."
-            lines = [f"You have {len(events)} event(s):"]
+            lines = [f"You have {len(events)} event{'s' if len(events) != 1 else ''}:"]
             for ev in events[:5]:
                 summary = ev.get("summary", ev.get("title", "(untitled)"))
                 start = ev.get("start", "")
                 lines.append(f"  - {summary} ({start})")
             return "\n".join(lines)
-        elif intent == "workspace_summary":
-            # Prefer the agent's "brief" field, then "summary", then fallback
+
+        # Workspace summary / daily briefing
+        elif intent in ("workspace_summary", "daily_briefing"):
             return result.get("brief") or result.get("summary", "Workspace summary completed.")
+
+        # Send email
+        elif intent == "send_email":
+            if result.get("error"):
+                return f"Failed to send email: {result['error']}"
+            return result.get("message", "Email sent successfully.")
+
+        # Draft email
+        elif intent == "draft_email_reply":
+            if result.get("error"):
+                return f"Failed to create draft: {result['error']}"
+            return result.get("message", "Email draft created.")
+
+        # Create calendar event
+        elif intent == "create_calendar_event":
+            if result.get("error"):
+                return f"Failed to create event: {result['error']}"
+            return result.get("message", "Calendar event created.")
+
+        # Get contacts
+        elif intent == "get_contacts":
+            if result.get("error"):
+                return f"Failed to fetch contacts: {result['error']}"
+            contacts = result.get("contacts", [])
+            if not contacts:
+                return "No contacts found."
+            lines = [f"Found {len(contacts)} contact{'s' if len(contacts) != 1 else ''}:"]
+            for c in contacts[:5]:
+                name = c.get("name", "Unknown")
+                email = c.get("email", "")
+                lines.append(f"  - {name} ({email})" if email else f"  - {name}")
+            if len(contacts) > 5:
+                lines.append(f"  ...and {len(contacts) - 5} more")
+            return "\n".join(lines)
+
+        # Create document
+        elif intent == "create_document":
+            if result.get("error"):
+                return f"Failed to create document: {result['error']}"
+            return result.get("message", "Document created successfully.")
+
+        # Search email
+        elif intent == "search_email":
+            emails = result.get("emails", [])
+            if not emails:
+                return "No emails found matching your search."
+            lines = [f"Found {len(emails)} email{'s' if len(emails) != 1 else ''}:"]
+            for em in emails[:5]:
+                subj = em.get("subject", "(no subject)")
+                sender = em.get("from", "unknown")
+                lines.append(f"  - {subj} (from {sender})")
+            return "\n".join(lines)
+
+        # handle_workspace_query (keyword detector fallback) — pass through
+        elif intent == "handle_workspace_query":
+            # The keyword detector routes to a handler which returns its own result.
+            # Try to extract a meaningful response from common result fields.
+            if result.get("brief"):
+                return result["brief"]
+            if result.get("message"):
+                return result["message"]
+            if result.get("response"):
+                return str(result["response"])
+            if result.get("emails"):
+                return UnifiedCommandProcessor._summarize_workspace_result(result, "fetch_unread_emails")
+            if result.get("events"):
+                return UnifiedCommandProcessor._summarize_workspace_result(result, "check_calendar_events")
+            return "Workspace command completed."
+
+        # Unknown intent — generic success with smart extraction
         else:
-            return "Workspace command completed successfully."
+            if result.get("error"):
+                return f"Workspace action failed: {result['error']}"
+            return result.get("message") or result.get("response") or "Workspace command completed successfully."
 
     # =========================================================================
     # v242 SPINAL REFLEX ARC — New methods for reflex + J-Prime routing
