@@ -71104,10 +71104,16 @@ class JarvisSystemKernel:
 
                         self._startup_watchdog.update_phase("trinity", new_progress)
 
+                        # v265.3: Advance _current_startup_progress with the heartbeat.
+                        # Previously this stayed at 68 (Trinity start) for the entire phase.
+                        # The ceiling guard (below) caps _current_progress at milestone + 5,
+                        # so _current_progress maxed at 73% and never advanced — causing the
+                        # ProgressController to see 300s of zero progress → hard cap kill.
+                        # Fix: track real heartbeat progress as the phase milestone.
+                        self._current_startup_progress = new_progress
+
                         # v227.0: Sync heartbeat progress to _current_progress so the
                         # ProgressController sees accurate values via get_progress_state().
-                        # Previously only the watchdog was updated, leaving the controller
-                        # with stale phase progress (e.g., 65% while actual is 73-79%).
                         # v227.1: Phase ceiling guard — don't exceed the current phase
                         # milestone + buffer. Prevents poisoning if _current_progress was
                         # set high by a rogue broadcast before this fix.
