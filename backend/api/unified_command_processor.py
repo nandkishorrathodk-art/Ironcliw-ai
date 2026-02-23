@@ -4751,9 +4751,10 @@ class UnifiedCommandProcessor:
 
         try:
             if command_type == CommandType.VISION:
-                from api.vision_command_handler import vision_command_handler
+                # v265.6: Use lazy getter — defers construction to first use
+                from api.vision_command_handler import get_vision_command_handler
 
-                return vision_command_handler
+                return get_vision_command_handler()
             elif command_type == CommandType.WEATHER:
                 from system_control.weather_system_config import get_weather_system
 

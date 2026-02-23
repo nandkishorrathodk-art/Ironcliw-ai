@@ -546,14 +546,31 @@ Generate ONLY the response text, nothing else."""
         return intents or ["general_workflow"]
 
 
-# Global instance for easy access
-workflow_processor = WorkflowCommandProcessor()
+# v265.6: Deferred singleton — WorkflowParser() and WorkflowExecutionEngine()
+# construction at import time can fail if their dependencies aren't ready.
+_workflow_processor_instance: Optional["WorkflowCommandProcessor"] = None
+
+
+def get_workflow_processor() -> Optional["WorkflowCommandProcessor"]:
+    """Lazy singleton getter for WorkflowCommandProcessor."""
+    global _workflow_processor_instance
+    if _workflow_processor_instance is None:
+        try:
+            _workflow_processor_instance = WorkflowCommandProcessor()
+        except Exception as e:
+            logger.error("[WORKFLOW] WorkflowCommandProcessor init failed: %s", e)
+    return _workflow_processor_instance
+
+
+# Backward-compatible module-level name (None until first use via getter).
+workflow_processor: Optional["WorkflowCommandProcessor"] = None
 
 
 async def handle_workflow_command(
     command: JARVISCommand, user_id: str = "default", websocket: Optional[Any] = None
 ) -> Optional[Dict[str, Any]]:
-    """Helper function to check and process workflow commands"""
-    if workflow_processor.is_workflow_command(command.text):
-        return await workflow_processor.process_workflow_command(command, user_id, websocket)
+    """Helper function to check and process workflow commands."""
+    proc = get_workflow_processor()
+    if proc and proc.is_workflow_command(command.text):
+        return await proc.process_workflow_command(command, user_id, websocket)
     return None

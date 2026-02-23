@@ -4045,9 +4045,36 @@ class JARVISVoiceAPI:
             )
 
 
-# Create and export the router instance
-jarvis_api = JARVISVoiceAPI()
-router = jarvis_api.router
+# v265.6: Deferred singleton — constructor calls DynamicErrorHandler() and
+# _register_routes() which can fail if dependencies aren't ready at import
+# time. Lazy getter defers construction to first actual use (typically
+# during main.py's voice API setup, well after the event loop is running).
+_jarvis_api_instance: Optional["JARVISVoiceAPI"] = None
+
+
+def get_jarvis_api() -> Optional["JARVISVoiceAPI"]:
+    """Lazy singleton getter for JARVISVoiceAPI."""
+    global _jarvis_api_instance
+    if _jarvis_api_instance is None:
+        try:
+            _jarvis_api_instance = JARVISVoiceAPI()
+        except Exception as e:
+            logger.error("[JARVIS API] JARVISVoiceAPI initialization failed: %s", e)
+    return _jarvis_api_instance
+
+
+def get_voice_router():
+    """Lazy getter for the FastAPI router (depends on JARVISVoiceAPI)."""
+    api = get_jarvis_api()
+    return api.router if api else None
+
+
+# Backward-compatible module-level names.
+# Production callers (main.py, parallel_initializer, unified_websocket)
+# already use lazy imports inside function bodies.
+# New code should use get_jarvis_api() / get_voice_router().
+jarvis_api: Optional["JARVISVoiceAPI"] = None
+router = None
 
 # Initialize global CoreML engine (if available)
 coreml_engine: Optional[CoreMLVoiceEngineBridge] = None

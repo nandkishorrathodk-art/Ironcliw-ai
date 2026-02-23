@@ -3175,5 +3175,27 @@ Never use generic error messages or technical jargon.
             return {"error": str(e)}
 
 
-# Singleton instance
-vision_command_handler = VisionCommandHandler()
+# v265.6: Deferred singleton — constructor cascades 5+ subsystem inits
+# (EnhancedMultiSpaceSystem, YabaiSpaceDetector, QueryClassifier,
+# LearningSystem, ProactiveSuggestions) which block the event loop and
+# can crash the entire module import if any constructor fails.
+# Lazy getter defers construction to first actual use.
+_vision_command_handler_instance: Optional["VisionCommandHandler"] = None
+
+
+def get_vision_command_handler() -> Optional["VisionCommandHandler"]:
+    """Lazy singleton getter. Defers initialization to first call."""
+    global _vision_command_handler_instance
+    if _vision_command_handler_instance is None:
+        try:
+            _vision_command_handler_instance = VisionCommandHandler()
+        except Exception as e:
+            logger.error("[VISION] VisionCommandHandler initialization failed: %s", e)
+    return _vision_command_handler_instance
+
+
+# Backward-compatible module-level name.
+# Callers doing `from ... import vision_command_handler` get None initially;
+# production callers already use lazy imports inside function bodies and
+# guard against None. New code should use get_vision_command_handler().
+vision_command_handler: Optional["VisionCommandHandler"] = None

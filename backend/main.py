@@ -1023,12 +1023,18 @@ def import_voice_system():
         voice["enhanced_available"] = False
 
     try:
-        from api.jarvis_voice_api import jarvis_api
-        from api.jarvis_voice_api import router as jarvis_voice_router
+        # v265.6: Use lazy getters — module-level instantiation deferred to first use
+        from api.jarvis_voice_api import get_jarvis_api, get_voice_router
 
-        voice["jarvis_router"] = jarvis_voice_router
-        voice["jarvis_api"] = jarvis_api
-        voice["jarvis_available"] = True
+        jarvis_api = get_jarvis_api()
+        jarvis_voice_router = get_voice_router()
+        if jarvis_api and jarvis_voice_router:
+            voice["jarvis_router"] = jarvis_voice_router
+            voice["jarvis_api"] = jarvis_api
+            voice["jarvis_available"] = True
+        else:
+            logger.warning("JARVIS Voice API lazy init returned None")
+            voice["jarvis_available"] = False
     except ImportError as e:
         logger.exception(f"Failed to import JARVIS Voice API: {e}")
         voice["jarvis_available"] = False
@@ -3083,8 +3089,12 @@ async def lifespan(app: FastAPI):  # type: ignore[misc]
 
     # Initialize proactive monitoring components
     try:
-        # Set JARVIS API in vision command handler for voice integration
-        from api.vision_command_handler import vision_command_handler
+        # v265.6: Use lazy getter — defers VisionCommandHandler construction
+        from api.vision_command_handler import get_vision_command_handler
+
+        vision_command_handler = get_vision_command_handler()
+        if vision_command_handler is None:
+            raise RuntimeError("VisionCommandHandler initialization failed")
 
         voice = components.get("voice", {})
         if voice.get("jarvis_api"):

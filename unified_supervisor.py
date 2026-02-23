@@ -70923,18 +70923,15 @@ class JarvisSystemKernel:
             # Get VisionCommandHandler — prefer the pre-configured module-level singleton
             # (instantiated at import time with jarvis_api + intelligence already wired)
             # over constructing a new unconfigured instance.
+            # v265.6: Use lazy getter — defers construction to first use
             vision_handler = None
             try:
-                from backend.api.vision_command_handler import vision_command_handler as _vh_singleton
-                if _vh_singleton is not None:
-                    vision_handler = _vh_singleton
-                    self.logger.debug("[ScreenObservation] Reusing backend VisionCommandHandler singleton")
+                from backend.api.vision_command_handler import get_vision_command_handler
+                vision_handler = get_vision_command_handler()
             except ImportError:
                 try:
-                    from api.vision_command_handler import vision_command_handler as _vh_singleton
-                    if _vh_singleton is not None:
-                        vision_handler = _vh_singleton
-                        self.logger.debug("[ScreenObservation] Reusing backend VisionCommandHandler singleton")
+                    from api.vision_command_handler import get_vision_command_handler
+                    vision_handler = get_vision_command_handler()
                 except ImportError:
                     pass
 

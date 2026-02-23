@@ -1140,7 +1140,9 @@ class UnifiedWebSocketManager:
             # Route to appropriate handler
             if msg_type == "command" or msg_type == "voice_command":
                 # Execute voice command
-                from .jarvis_voice_api import JARVISCommand, jarvis_api
+                # v265.6: Use lazy getter for JARVISVoiceAPI
+                from .jarvis_voice_api import JARVISCommand, get_jarvis_api
+                jarvis_api = get_jarvis_api()
 
                 command_text = message.get("command", message.get("text", ""))
                 # Get optional audio data if provided
@@ -1767,7 +1769,9 @@ class UnifiedWebSocketManager:
                     # Standard JARVIS API processing (for non-unlock or no audio)
                     if result is None:
                         try:
-                            from .jarvis_voice_api import JARVISCommand, jarvis_api
+                            # v265.6: Use lazy getter for JARVISVoiceAPI
+                            from .jarvis_voice_api import JARVISCommand, get_jarvis_api
+                            jarvis_api = get_jarvis_api()
                             import time as _time_ws
 
                             command_obj = JARVISCommand(text=command_text, audio_data=audio_data_received)
