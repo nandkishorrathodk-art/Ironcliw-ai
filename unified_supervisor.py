@@ -60518,8 +60518,12 @@ class JarvisSystemKernel:
         # - Invincible Node (GCP VM)
         self._startup_resilience: Optional["StartupResilience"] = None
 
-        # v183.0/v204.0: Heartbeat task for loading server
+        # v266.0: Split heartbeat ownership to avoid task-handle aliasing
+        # between startup progress and loading-server transport heartbeats.
+        # _heartbeat_task is retained as a legacy alias for startup heartbeat.
         self._heartbeat_task: Optional[asyncio.Task] = None
+        self._startup_progress_heartbeat_task: Optional[asyncio.Task] = None
+        self._loading_server_heartbeat_task: Optional[asyncio.Task] = None
         self._current_progress: int = 0  # Track progress for heartbeat payload
         self._current_startup_phase: str = "initializing"  # Current startup phase name
         self._current_startup_progress: int = 0  # Base progress for heartbeat calculations
@@ -61661,6 +61665,9 @@ class JarvisSystemKernel:
                 except ProcessLookupError:
                     self.logger.debug(f"[Kernel] {_proc_name} already exited")
 
+        # Release loading server PID protection even in emergency teardown.
+        self._clear_loading_server_process()
+
         # v264.0: Screen Observation + Narration teardown (before Visual Pipeline)
         #
         # Ordering is critical: release bridge ref FIRST to kill all WeakMethod
@@ -61751,15 +61758,12 @@ class JarvisSystemKernel:
         for task in background_tasks:
             task.cancel()
 
-        # v183.0: Cancel heartbeat task
-        if self._heartbeat_task and not self._heartbeat_task.done():
-            self._heartbeat_task.cancel()
-            try:
-                await asyncio.wait_for(self._heartbeat_task, timeout=1.0)
-            except (asyncio.CancelledError, asyncio.TimeoutError):
-                pass
-            except Exception as e:
-                self.logger.debug(f"[Kernel] Heartbeat task cleanup error: {e}")
+        # v266.0: Cancel startup + loading server heartbeat tasks explicitly.
+        try:
+            await self._stop_startup_progress_heartbeat(timeout=1.0)
+            await self._stop_loading_server_heartbeat(timeout=1.0)
+        except Exception as e:
+            self.logger.debug(f"[Kernel] Heartbeat task cleanup error: {e}")
 
         # v262.0: Give tasks time to run their finally blocks (e.g., await session.close()).
         # Timeout prevents a hung finally block from stalling the entire shutdown.
@@ -64120,7 +64124,8 @@ class JarvisSystemKernel:
                 name="startup-progress-heartbeat"
             )
             self._background_tasks.append(heartbeat_task)
-            self._heartbeat_task = heartbeat_task  # Store reference for cancellation
+            self._startup_progress_heartbeat_task = heartbeat_task
+            self._heartbeat_task = heartbeat_task  # Legacy alias for compatibility
 
             # Phase 1: Preflight (Zone 5.1-5.4)
             self._current_startup_phase = "preflight"
@@ -65744,14 +65749,7 @@ class JarvisSystemKernel:
             self._current_startup_phase = "complete"
             self._current_startup_progress = 100
             try:
-                if self._heartbeat_task and not self._heartbeat_task.done():
-                    self._heartbeat_task.cancel()
-                    try:
-                        await self._heartbeat_task
-                    except asyncio.CancelledError:
-                        self.logger.debug("[Heartbeat] Task cancelled successfully")
-                    except Exception as e:
-                        self.logger.debug(f"[Heartbeat] Task cleanup exception: {e}")
+                await self._stop_startup_progress_heartbeat(timeout=2.0)
             except Exception:
                 pass
 
@@ -74459,6 +74457,46 @@ class JarvisSystemKernel:
     # lifecycle for the main JARVIS UI.
     # =========================================================================
 
+    def _register_loading_server_process(self, process: asyncio.subprocess.Process) -> None:
+        """Track loading server process/PID for lifecycle and zombie-cleanup safety."""
+        self._loading_server_process = process
+        pid = getattr(process, "pid", None)
+        if pid:
+            self._protected_pids.add(pid)
+
+    def _clear_loading_server_process(self) -> None:
+        """Clear loading server process reference and release protected PID."""
+        process = getattr(self, "_loading_server_process", None)
+        if process:
+            pid = getattr(process, "pid", None)
+            if pid:
+                self._protected_pids.discard(pid)
+        self._loading_server_process = None
+        self._loading_server_ready = False
+
+    async def _stop_startup_progress_heartbeat(self, timeout: float = 1.0) -> None:
+        """Cancel startup progress heartbeat deterministically."""
+        task = self._startup_progress_heartbeat_task or self._heartbeat_task
+        if task and not task.done():
+            task.cancel()
+            try:
+                await asyncio.wait_for(task, timeout=timeout)
+            except (asyncio.CancelledError, asyncio.TimeoutError):
+                pass
+        self._startup_progress_heartbeat_task = None
+        self._heartbeat_task = None
+
+    async def _stop_loading_server_heartbeat(self, timeout: float = 1.0) -> None:
+        """Cancel loading-server transport heartbeat deterministically."""
+        task = self._loading_server_heartbeat_task
+        if task and not task.done():
+            task.cancel()
+            try:
+                await asyncio.wait_for(task, timeout=timeout)
+            except (asyncio.CancelledError, asyncio.TimeoutError):
+                pass
+        self._loading_server_heartbeat_task = None
+
     async def _start_loading_server(self) -> bool:
         """
         Start the loading server for startup progress display.
@@ -74508,6 +74546,7 @@ class JarvisSystemKernel:
         env["JARVIS_FRONTEND_PORT"] = str(frontend_port)
 
         # Step 3: Retry loop with port increment on failure
+        await self._stop_loading_server_heartbeat()
         max_attempts = 3
         max_port = LOADING_SERVER_PORT_RANGE[1]
 
@@ -74548,22 +74587,19 @@ class JarvisSystemKernel:
                 )
 
                 # Launch subprocess
-                self._loading_server_process = await asyncio.create_subprocess_exec(
+                loading_process = await asyncio.create_subprocess_exec(
                     python_executable,
                     str(loading_server_path),
                     stdout=self._loading_server_log_file,
                     stderr=asyncio.subprocess.STDOUT,
                     env=env,
                 )
+                self._register_loading_server_process(loading_process)
 
                 self.logger.info(
                     f"[LoadingServer] Process started (PID: {self._loading_server_process.pid})"
                 )
                 self.logger.debug(f"[LoadingServer] Log file: {self._loading_server_log_path}")
-
-                # Protect from zombie cleanup
-                if self._loading_server_process.pid:
-                    self._protected_pids.add(self._loading_server_process.pid)
 
                 # Adaptive health check
                 server_ready = await self._wait_for_loading_server_health(loading_port)
@@ -74576,9 +74612,13 @@ class JarvisSystemKernel:
                         f"(PID: {self._loading_server_process.pid})"
                     )
                     # Start heartbeat background task
-                    if self._heartbeat_task is None or self._heartbeat_task.done():
-                        self._heartbeat_task = create_safe_task(
-                            self._supervisor_heartbeat_loop()
+                    if (
+                        self._loading_server_heartbeat_task is None
+                        or self._loading_server_heartbeat_task.done()
+                    ):
+                        self._loading_server_heartbeat_task = create_safe_task(
+                            self._supervisor_heartbeat_loop(),
+                            name="loading-server-heartbeat",
                         )
                         self.logger.debug("[LoadingServer] Heartbeat loop started")
                     return True
@@ -74591,16 +74631,20 @@ class JarvisSystemKernel:
                     )
                     await self._log_loading_server_errors()
                     # Process died — clean up and try next port
-                    self._loading_server_process = None
+                    self._clear_loading_server_process()
                 else:
                     # Process alive but slow — keep it running, start heartbeat
                     self.config.loading_server_port = loading_port
                     self.logger.warning(
                         "[LoadingServer] Slow to respond - continuing (may still be starting)"
                     )
-                    if self._heartbeat_task is None or self._heartbeat_task.done():
-                        self._heartbeat_task = create_safe_task(
-                            self._supervisor_heartbeat_loop()
+                    if (
+                        self._loading_server_heartbeat_task is None
+                        or self._loading_server_heartbeat_task.done()
+                    ):
+                        self._loading_server_heartbeat_task = create_safe_task(
+                            self._supervisor_heartbeat_loop(),
+                            name="loading-server-heartbeat",
                         )
                         self.logger.debug("[LoadingServer] Heartbeat loop started (slow path)")
                     return True
@@ -74618,7 +74662,7 @@ class JarvisSystemKernel:
                             self._loading_server_process.kill()
                         except ProcessLookupError:
                             pass
-                self._loading_server_process = None
+                self._clear_loading_server_process()
 
             # Brief backoff before retry
             if attempt < max_attempts - 1:
@@ -74795,8 +74839,12 @@ class JarvisSystemKernel:
 
         Also cleans up the log file handle.
         """
+        await self._stop_loading_server_heartbeat()
+        await self._stop_startup_progress_heartbeat()
+
         if not hasattr(self, '_loading_server_process') or not self._loading_server_process:
             self._cleanup_loading_server_log()
+            self._clear_loading_server_process()
             return
 
         loading_port = self.config.loading_server_port
@@ -74872,7 +74920,7 @@ class JarvisSystemKernel:
                             if self._loading_server_process.returncode is not None:
                                 self.logger.info("[LoadingServer] Gracefully terminated via HTTP")
                                 self._cleanup_loading_server_log()
-                                self._loading_server_process = None
+                                self._clear_loading_server_process()
                                 return
 
                             await asyncio.sleep(poll_interval)
@@ -74885,7 +74933,7 @@ class JarvisSystemKernel:
                             )
                             self.logger.info("[LoadingServer] Gracefully terminated")
                             self._cleanup_loading_server_log()
-                            self._loading_server_process = None
+                            self._clear_loading_server_process()
                             return
                         except asyncio.TimeoutError:
                             pass
@@ -74903,13 +74951,16 @@ class JarvisSystemKernel:
         Includes a delay to give Chrome time to redirect before killing
         the loading server, preventing "window terminated unexpectedly" errors.
         """
+        await self._stop_loading_server_heartbeat()
+
         if not hasattr(self, '_loading_server_process') or not self._loading_server_process:
             self._cleanup_loading_server_log()
+            self._clear_loading_server_process()
             return
 
         if self._loading_server_process.returncode is not None:
             self._cleanup_loading_server_log()
-            self._loading_server_process = None
+            self._clear_loading_server_process()
             return
 
         try:
@@ -74936,7 +74987,7 @@ class JarvisSystemKernel:
                 )
                 self.logger.info("[LoadingServer] Terminated (SIGINT)")
                 self._cleanup_loading_server_log()
-                self._loading_server_process = None
+                self._clear_loading_server_process()
                 return
             except asyncio.TimeoutError:
                 pass
@@ -74948,7 +74999,7 @@ class JarvisSystemKernel:
                 await asyncio.wait_for(self._loading_server_process.wait(), timeout=3.0)
                 self.logger.info("[LoadingServer] Terminated (SIGTERM)")
                 self._cleanup_loading_server_log()
-                self._loading_server_process = None
+                self._clear_loading_server_process()
                 return
             except asyncio.TimeoutError:
                 pass
@@ -74973,7 +75024,7 @@ class JarvisSystemKernel:
             self.logger.debug(f"[LoadingServer] Cleanup error: {e}")
         finally:
             self._cleanup_loading_server_log()
-            self._loading_server_process = None
+            self._clear_loading_server_process()
 
     def _cleanup_loading_server_log(self) -> None:
         """Clean up loading server log file handle."""
@@ -76357,22 +76408,35 @@ class JarvisSystemKernel:
         
         self.logger.info("[Heartbeat] Starting heartbeat loop (5s interval)")
         
-        while not self._shutdown_event.is_set():
-            try:
-                await self._send_supervisor_heartbeat()
-            except Exception as e:
-                self.logger.debug(f"[Heartbeat] Failed: {e}")
-            
-            try:
-                await asyncio.wait_for(
-                    self._shutdown_event.wait(),
-                    timeout=heartbeat_interval
-                )
-                break  # Shutdown requested
-            except asyncio.TimeoutError:
-                pass  # Continue loop
-        
-        self.logger.info("[Heartbeat] Loop stopped")
+        try:
+            while not self._shutdown_event.is_set():
+                process = self._loading_server_process
+                if process is None:
+                    self.logger.debug("[Heartbeat] Loading server process missing, stopping loop")
+                    break
+                if process.returncode is not None:
+                    self.logger.debug(
+                        f"[Heartbeat] Loading server exited (code: {process.returncode}), stopping loop"
+                    )
+                    break
+
+                try:
+                    await self._send_supervisor_heartbeat()
+                except Exception as e:
+                    self.logger.debug(f"[Heartbeat] Failed: {e}")
+
+                try:
+                    await asyncio.wait_for(
+                        self._shutdown_event.wait(),
+                        timeout=heartbeat_interval
+                    )
+                    break  # Shutdown requested
+                except asyncio.TimeoutError:
+                    pass  # Continue loop
+        finally:
+            if self._loading_server_heartbeat_task is asyncio.current_task():
+                self._loading_server_heartbeat_task = None
+            self.logger.info("[Heartbeat] Loop stopped")
 
     async def _send_supervisor_heartbeat(self) -> None:
         """Send single heartbeat to loading server."""
@@ -76395,6 +76459,7 @@ class JarvisSystemKernel:
                 ) as session:
                     async with session.post(url, json=heartbeat_data) as resp:
                         if resp.status == 200:
+                            self._loading_server_ready = True
                             self.logger.debug("[Heartbeat] Sent successfully")
         except Exception:
             pass  # Heartbeat failures are not critical
