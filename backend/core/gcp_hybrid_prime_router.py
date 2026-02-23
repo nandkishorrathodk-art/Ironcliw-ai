@@ -165,17 +165,20 @@ MEMORY_NORMAL_POLL_INTERVAL = float(os.getenv("MEMORY_NORMAL_POLL_INTERVAL", "5.
 MEMORY_SPIKE_RATE_THRESHOLD_MB = float(os.getenv("MEMORY_SPIKE_RATE_THRESHOLD_MB", "100.0"))  # 100MB/sec = immediate trigger
 MEMORY_DERIVATIVE_WINDOW_SEC = float(os.getenv("MEMORY_DERIVATIVE_WINDOW_SEC", "3.0"))  # Calculate rate over 3s window
 
-# Emergency offload configuration
-EMERGENCY_OFFLOAD_RAM_PERCENT = float(os.getenv("EMERGENCY_OFFLOAD_RAM_PERCENT", "80.0"))  # SIGSTOP at 80%
-EMERGENCY_OFFLOAD_TIMEOUT_SEC = float(os.getenv("EMERGENCY_OFFLOAD_TIMEOUT_SEC", "60.0"))  # Max time processes paused
-
-# v192.0: Emergency offload anti-cycle protection
-# Cooldown after releasing offload - prevents immediate re-trigger
-EMERGENCY_OFFLOAD_COOLDOWN_SEC = float(os.getenv("EMERGENCY_OFFLOAD_COOLDOWN_SEC", "120.0"))  # 2 min cooldown
-# Hysteresis threshold - RAM must drop this much below trigger before re-enabling
-EMERGENCY_OFFLOAD_HYSTERESIS = float(os.getenv("EMERGENCY_OFFLOAD_HYSTERESIS", "10.0"))  # 10% below threshold
-# Max consecutive offloads before forcing termination instead of pause
-EMERGENCY_OFFLOAD_MAX_CYCLES = int(os.getenv("EMERGENCY_OFFLOAD_MAX_CYCLES", "3"))  # After 3 cycles, terminate
+# v266.1: Emergency offload configuration — clean unload primary, SIGSTOP last resort
+# Step 1 threshold: clean model unload via COMPONENT_UNLOAD
+EMERGENCY_UNLOAD_RAM_PERCENT = float(os.getenv("EMERGENCY_UNLOAD_RAM_PERCENT", "85.0"))  # Clean unload at 85%
+# Post-unload verification: wait this long to check if memory dropped
+EMERGENCY_UNLOAD_VERIFY_DELAY_SEC = float(os.getenv("EMERGENCY_UNLOAD_VERIFY_DELAY_SEC", "12.0"))
+# Minimum RAM drop (GB) to consider unload successful
+EMERGENCY_UNLOAD_MIN_DROP_GB = float(os.getenv("EMERGENCY_UNLOAD_MIN_DROP_GB", "1.0"))
+# Step 3 threshold: SIGSTOP as last resort (one-shot, no cycling)
+EMERGENCY_SIGSTOP_RAM_PERCENT = float(os.getenv("EMERGENCY_SIGSTOP_RAM_PERCENT", "95.0"))
+EMERGENCY_SIGSTOP_TIMEOUT_SEC = float(os.getenv("EMERGENCY_SIGSTOP_TIMEOUT_SEC", "60.0"))
+# Cooldown applies to SIGSTOP only (clean unload has no cycling problem)
+EMERGENCY_SIGSTOP_COOLDOWN_SEC = float(os.getenv("EMERGENCY_SIGSTOP_COOLDOWN_SEC", "120.0"))
+# Hysteresis: RAM must drop this much below unload trigger before re-enabling
+EMERGENCY_OFFLOAD_HYSTERESIS = float(os.getenv("EMERGENCY_OFFLOAD_HYSTERESIS", "10.0"))
 
 # Cross-repo signaling for memory pressure
 from pathlib import Path
