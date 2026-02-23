@@ -230,6 +230,27 @@ class ScreenAnalyzerBridge:
         self._vision_model: str = "claude-sonnet-4-20250514"
         self._vision_analysis_interval: float = 5.0  # seconds
         self._last_vision_analysis: Optional[datetime] = None
+        self._vision_request_timeout_seconds: float = max(
+            1.0,
+            float(os.getenv("JARVIS_VISION_REQUEST_TIMEOUT_SECONDS", "45.0")),
+        )
+        self._vision_request_semaphore = asyncio.Semaphore(
+            max(1, int(os.getenv("JARVIS_VISION_MAX_CONCURRENT_REQUESTS", "1")))
+        )
+        self._vision_failure_threshold: int = max(
+            1,
+            int(os.getenv("JARVIS_VISION_FAILURE_THRESHOLD", "3")),
+        )
+        self._vision_circuit_cooldown_seconds: float = max(
+            1.0,
+            float(os.getenv("JARVIS_VISION_CIRCUIT_COOLDOWN_SECONDS", "30.0")),
+        )
+        self._vision_consecutive_failures: int = 0
+        self._vision_circuit_open_until: float = 0.0
+        self._vision_error_queue: asyncio.Queue[Dict[str, Any]] = asyncio.Queue(
+            maxsize=max(1, int(os.getenv("JARVIS_VISION_ERROR_QUEUE_SIZE", "8")))
+        )
+        self._vision_error_worker_task: Optional[asyncio.Task] = None
 
         # Analysis cache
         self._analysis_cache: OrderedDict[str, ScreenAnalysisResult] = OrderedDict()
@@ -276,6 +297,12 @@ class ScreenAnalyzerBridge:
             'patterns_triggered': 0,
             'owner_verifications': 0,
             'errors': 0,
+            'vision_timeouts': 0,
+            'vision_circuit_opened': 0,
+            'vision_circuit_short_circuits': 0,
+            'vision_error_queue_enqueued': 0,
+            'vision_error_queue_dropped': 0,
+            'vision_error_queue_processed': 0,
         }
 
         logger.info("Enhanced ScreenAnalyzerBridge initialized")
@@ -422,6 +449,7 @@ class ScreenAnalyzerBridge:
                 self._continuous_vision_analysis(),
                 name="vision_analysis"
             )
+            self._ensure_vision_error_worker()
 
         self._connected = True
         logger.info(
@@ -500,6 +528,119 @@ class ScreenAnalyzerBridge:
             logger.error("Failed to initialize Claude Vision: %s", e)
             self._vision_enabled = False
 
+    def _is_vision_circuit_open(self) -> bool:
+        """Return True when Claude Vision calls are temporarily blocked."""
+        until = self._vision_circuit_open_until
+        if until <= 0.0:
+            return False
+        now = time.monotonic()
+        if now >= until:
+            self._vision_circuit_open_until = 0.0
+            self._vision_consecutive_failures = 0
+            logger.info("[Vision] Circuit breaker closed after cooldown")
+            return False
+        return True
+
+    def _record_vision_success(self) -> None:
+        """Reset failure tracking after a successful Claude Vision call."""
+        self._vision_consecutive_failures = 0
+        self._vision_circuit_open_until = 0.0
+
+    def _record_vision_failure(self, reason: str) -> None:
+        """Track Claude Vision failure and open circuit when threshold is reached."""
+        self._vision_consecutive_failures += 1
+        if self._vision_consecutive_failures < self._vision_failure_threshold:
+            return
+
+        now = time.monotonic()
+        already_open = now < self._vision_circuit_open_until
+        self._vision_circuit_open_until = now + self._vision_circuit_cooldown_seconds
+        if not already_open:
+            self._stats['vision_circuit_opened'] += 1
+            logger.warning(
+                "[Vision] Circuit breaker opened for %.1fs after %d consecutive failures (%s)",
+                self._vision_circuit_cooldown_seconds,
+                self._vision_consecutive_failures,
+                reason,
+            )
+
+    def _ensure_vision_error_worker(self) -> None:
+        """Start background error-analysis worker if not already running."""
+        if self._vision_error_worker_task and not self._vision_error_worker_task.done():
+            return
+        self._vision_error_worker_task = asyncio.create_task(
+            self._vision_error_worker_loop(),
+            name="screen-vision-error-worker",
+        )
+
+    async def _stop_vision_error_worker(self) -> None:
+        """Stop background error-analysis worker and clear pending queue."""
+        if self._vision_error_worker_task:
+            self._vision_error_worker_task.cancel()
+            try:
+                await self._vision_error_worker_task
+            except asyncio.CancelledError:
+                pass
+            finally:
+                self._vision_error_worker_task = None
+
+        while not self._vision_error_queue.empty():
+            try:
+                _ = self._vision_error_queue.get_nowait()
+                self._vision_error_queue.task_done()
+            except asyncio.QueueEmpty:
+                break
+
+    def _queue_error_vision_analysis(self, state: Dict[str, Any]) -> None:
+        """Queue vision-based error analysis without blocking callback execution."""
+        payload = {
+            "screenshot": state.get("screenshot"),
+            "error_type": state.get("error_type", "unknown"),
+            "location": state.get("location", "screen"),
+            "message": state.get("message", ""),
+            "app": state.get("app", self._current_app),
+            "window": state.get("window", self._current_window),
+        }
+
+        if not payload["screenshot"]:
+            return
+
+        if self._vision_error_queue.full():
+            # Drop oldest to keep latest error context fresh.
+            try:
+                _ = self._vision_error_queue.get_nowait()
+                self._vision_error_queue.task_done()
+                self._stats['vision_error_queue_dropped'] += 1
+            except asyncio.QueueEmpty:
+                pass
+
+        try:
+            self._vision_error_queue.put_nowait(payload)
+            self._stats['vision_error_queue_enqueued'] += 1
+            self._ensure_vision_error_worker()
+        except asyncio.QueueFull:
+            self._stats['vision_error_queue_dropped'] += 1
+            logger.debug("[Vision] Error-analysis queue saturated; dropping payload")
+
+    async def _vision_error_worker_loop(self) -> None:
+        """Process queued error screenshots serially in background."""
+        while True:
+            try:
+                state = await self._vision_error_queue.get()
+            except asyncio.CancelledError:
+                break
+
+            try:
+                await self._analyze_error_with_vision(state)
+                self._stats['vision_error_queue_processed'] += 1
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                self._stats['errors'] += 1
+                logger.error("[Vision] Error-analysis worker failure: %s", e)
+            finally:
+                self._vision_error_queue.task_done()
+
     async def _register_callbacks(self) -> None:
         """Register screen analyzer callbacks with enhanced handling."""
         if not self._analyzer:
@@ -566,6 +707,26 @@ class ScreenAnalyzerBridge:
             except asyncio.CancelledError:
                 pass
 
+        await self._stop_vision_error_worker()
+
+        if self._claude_client:
+            client = self._claude_client
+            self._claude_client = None
+            try:
+                close = getattr(client, "close", None)
+                if close and callable(close):
+                    close_result = close()
+                    if asyncio.iscoroutine(close_result):
+                        await close_result
+                else:
+                    aclose = getattr(client, "aclose", None)
+                    if aclose and callable(aclose):
+                        aclose_result = aclose()
+                        if asyncio.iscoroutine(aclose_result):
+                            await aclose_result
+            except Exception as e:
+                logger.debug("Error closing Claude Vision client: %s", e)
+
         self._unregister_callbacks()
         self._connected = False
         logger.info("Screen analyzer disconnected from AGI OS")
@@ -607,7 +768,7 @@ class ScreenAnalyzerBridge:
 
             # If Claude Vision is enabled, get intelligent analysis
             if self._vision_enabled and state.get('screenshot'):
-                await self._analyze_error_with_vision(state)
+                self._queue_error_vision_analysis(state)
 
     async def _on_content_changed(self, state: Dict[str, Any]) -> None:
         """Handle content change with proactive pattern detection."""
@@ -835,6 +996,11 @@ class ScreenAnalyzerBridge:
             logger.warning("Claude Vision not available")
             return result
 
+        if self._is_vision_circuit_open():
+            self._stats['vision_circuit_short_circuits'] += 1
+            logger.debug("[Vision] Circuit breaker open; skipping analysis request")
+            return result
+
         try:
             # Capture screenshot if not provided
             if screenshot is None:
@@ -850,39 +1016,65 @@ class ScreenAnalyzerBridge:
             # v263.2: Resize and compress image to stay under Claude's 5MB limit
             image_base64, media_type = await self._prepare_image_for_api(screenshot)
 
-            # Call Claude Vision
-            response = await self._claude_client.messages.create(
-                model=self._vision_model,
-                max_tokens=1024,
-                messages=[
-                    {
-                        "role": "user",
-                        "content": [
-                            {
-                                "type": "image",
-                                "source": {
-                                    "type": "base64",
-                                    "media_type": media_type,
-                                    "data": image_base64,
-                                },
-                            },
-                            {
-                                "type": "text",
-                                "text": prompt,
-                            },
-                        ],
-                    }
-                ],
-            )
+            # Call Claude Vision with bounded concurrency and explicit timeout.
+            async with self._vision_request_semaphore:
+                try:
+                    response = await asyncio.wait_for(
+                        self._claude_client.messages.create(
+                            model=self._vision_model,
+                            max_tokens=1024,
+                            messages=[
+                                {
+                                    "role": "user",
+                                    "content": [
+                                        {
+                                            "type": "image",
+                                            "source": {
+                                                "type": "base64",
+                                                "media_type": media_type,
+                                                "data": image_base64,
+                                            },
+                                        },
+                                        {
+                                            "type": "text",
+                                            "text": prompt,
+                                        },
+                                    ],
+                                }
+                            ],
+                        ),
+                        timeout=self._vision_request_timeout_seconds,
+                    )
+                except asyncio.TimeoutError:
+                    self._stats['vision_timeouts'] += 1
+                    self._stats['errors'] += 1
+                    self._record_vision_failure("request_timeout")
+                    logger.warning(
+                        "[Vision] Analysis timed out after %.1fs",
+                        self._vision_request_timeout_seconds,
+                    )
+                    return result
+                except asyncio.CancelledError:
+                    raise
+                except Exception as e:
+                    self._stats['errors'] += 1
+                    self._record_vision_failure(str(e))
+                    logger.error("Vision analysis failed: %s", e)
+                    return result
 
             # Parse response
             analysis_text = response.content[0].text if response.content else ""
             result = self._parse_vision_response(analysis_text, result)
             result.model_used = self._vision_model
-            result.tokens_used = response.usage.input_tokens + response.usage.output_tokens
+            usage = getattr(response, "usage", None)
+            if usage:
+                result.tokens_used = usage.input_tokens + usage.output_tokens
 
+            self._record_vision_success()
             self._stats['vision_analyses'] += 1
 
+        except asyncio.CancelledError:
+            raise
         except Exception as e:
             logger.error("Vision analysis failed: %s", e)
             self._stats['errors'] += 1
@@ -1439,6 +1631,13 @@ CONFIDENCE: <0.0-1.0 confidence score>
             'current_app': self._current_app,
             'current_window': self._current_window,
             'last_activity': self._last_activity.isoformat() if self._last_activity else None,
+            'vision_request_timeout_seconds': self._vision_request_timeout_seconds,
+            'vision_circuit_open': self._is_vision_circuit_open(),
+            'vision_circuit_open_for_seconds': max(
+                0.0, self._vision_circuit_open_until - time.monotonic()
+            ),
+            'vision_consecutive_failures': self._vision_consecutive_failures,
+            'vision_error_queue_depth': self._vision_error_queue.qsize(),
             'callback_expected_count': len(self._callback_mapping),
             'callback_registered_count': len(self._registered_callbacks),
             'callback_available_types': sorted(self._available_callback_types),
