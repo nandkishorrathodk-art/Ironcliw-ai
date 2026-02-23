@@ -71396,9 +71396,22 @@ class JarvisSystemKernel:
         except asyncio.CancelledError:
             return
 
+        # v265.5: CPU-aware recovery timeout for visual pipeline components
+        _vp_recovery_timeout = _get_env_float("JARVIS_VISUAL_PIPELINE_RECOVERY_TIMEOUT", 10.0)
+
         while not self._shutdown_event.is_set():
             try:
                 await asyncio.sleep(interval)
+
+                # Re-check CPU each iteration (long-running loop)
+                _vp_eff_to = _vp_recovery_timeout
+                try:
+                    import psutil as _vp_ps
+                    _vp_cpu = _vp_ps.cpu_percent(interval=None)
+                    if _vp_cpu > 90.0:
+                        _vp_eff_to *= 1.0 + (_vp_cpu - 90.0) / 10.0 * 2.0
+                except Exception:
+                    pass
 
                 # Check Ghost Hands Orchestrator
                 if self._ghost_hands_orchestrator:
@@ -71416,7 +71429,7 @@ class JarvisSystemKernel:
                                 start_fn = getattr(self._ghost_hands_orchestrator, 'start', None)
                                 if start_fn:
                                     if asyncio.iscoroutinefunction(start_fn):
-                                        await asyncio.wait_for(start_fn(), timeout=10.0)
+                                        await asyncio.wait_for(start_fn(), timeout=_vp_eff_to)
                                     else:
                                         start_fn()
                                     ghost_hands_failures = 0
@@ -71440,7 +71453,7 @@ class JarvisSystemKernel:
                                 start_fn = getattr(self._n_optic_nerve, 'start', None)
                                 if start_fn:
                                     if asyncio.iscoroutinefunction(start_fn):
-                                        await asyncio.wait_for(start_fn(), timeout=10.0)
+                                        await asyncio.wait_for(start_fn(), timeout=_vp_eff_to)
                                     else:
                                         start_fn()
                                     n_optic_failures = 0
@@ -81453,12 +81466,13 @@ class JarvisSystemKernel:
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
                 )
-                _, stderr = await asyncio.wait_for(proc.communicate(), timeout=60.0)
+                _npm_install_to = _get_env_float("JARVIS_NPM_INSTALL_TIMEOUT", 60.0)
+                _, stderr = await asyncio.wait_for(proc.communicate(), timeout=_npm_install_to)
                 if proc.returncode != 0:
                     self.logger.warning(f"[WSRouter] npm install failed: {stderr.decode()[:200]}")
                     return None
             except asyncio.TimeoutError:
-                self.logger.warning("[WSRouter] npm install timed out (60s)")
+                self.logger.warning(f"[WSRouter] npm install timed out ({_npm_install_to:.0f}s)")
                 return None
             except FileNotFoundError:
                 self.logger.info("[WSRouter] npm not found — skipping TypeScript router")
@@ -81472,12 +81486,13 @@ class JarvisSystemKernel:
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
-            _, stderr = await asyncio.wait_for(proc.communicate(), timeout=30.0)
+            _npm_build_to = _get_env_float("JARVIS_NPM_BUILD_TIMEOUT", 30.0)
+            _, stderr = await asyncio.wait_for(proc.communicate(), timeout=_npm_build_to)
             if proc.returncode != 0:
                 self.logger.warning(f"[WSRouter] TypeScript build failed: {stderr.decode()[:200]}")
                 return None
         except asyncio.TimeoutError:
-            self.logger.warning("[WSRouter] TypeScript build timed out (30s)")
+            self.logger.warning(f"[WSRouter] TypeScript build timed out ({_npm_build_to:.0f}s)")
             return None
         except FileNotFoundError:
             return None
@@ -82468,7 +82483,8 @@ class JarvisSystemKernel:
                         stdout=asyncio.subprocess.PIPE,
                         stderr=asyncio.subprocess.PIPE,
                     )
-                    _, stderr = await asyncio.wait_for(proc.communicate(), timeout=30.0)
+                    _sh_build_to = _get_env_float("JARVIS_NPM_BUILD_TIMEOUT", 30.0)
+                    _, stderr = await asyncio.wait_for(proc.communicate(), timeout=_sh_build_to)
                     if proc.returncode == 0:
                         self.logger.info("[SelfHeal] WebSocket rebuild successful")
                         return True
@@ -82477,7 +82493,7 @@ class JarvisSystemKernel:
                             f"[SelfHeal] WebSocket rebuild failed: {stderr.decode()[:200]}"
                         )
                 except asyncio.TimeoutError:
-                    self.logger.warning("[SelfHeal] WebSocket rebuild timed out (30s)")
+                    self.logger.warning(f"[SelfHeal] WebSocket rebuild timed out ({_sh_build_to:.0f}s)")
                 except Exception as ws_err:
                     self.logger.debug(f"[SelfHeal] WebSocket rebuild error: {ws_err}")
 
