@@ -62104,6 +62104,25 @@ class JarvisSystemKernel:
                 # tiered_stop should never raise, but log just in case
                 self.logger.warning(f"[Kernel] Trinity tiered_stop unexpected error: {e}")
 
+        # v266.0: Emergency VM STOP — preserve disk/IP for fast restart
+        try:
+            from backend.core.gcp_vm_manager import get_gcp_vm_manager_safe, VMAction
+            vm_manager = get_gcp_vm_manager_safe()
+            if vm_manager:
+                for vm_name, vm_info in list(vm_manager.managed_vms.items()):
+                    if hasattr(vm_info, 'state') and vm_info.state.value in ("running", "staging"):
+                        try:
+                            await asyncio.wait_for(
+                                vm_manager.terminate_vm(
+                                    vm_name, reason="emergency_shutdown", action=VMAction.STOP
+                                ),
+                                timeout=10.0,
+                            )
+                        except Exception:
+                            pass
+        except Exception:
+            pass
+
         # v181.0: Cleanup GCP VMs (prevents orphaned Spot VMs)
         try:
             # Try to cleanup session VMs via cross_repo_startup_orchestrator
@@ -78604,6 +78623,37 @@ class JarvisSystemKernel:
                     self.logger.debug(f"[Kernel] AudioBus stop error: {ab_err}")
 
             self._audio_infrastructure_initialized = False
+
+            # =====================================================================
+            # v266.0: GCP VM SESSION LIFECYCLE — STOP VMs on shutdown
+            # =====================================================================
+            # Stop (not delete) all tracked running VMs so they preserve disk/IP
+            # for fast ~30s restart, while eliminating 24/7 compute charges.
+            # =====================================================================
+            try:
+                from backend.core.gcp_vm_manager import get_gcp_vm_manager_safe, VMAction
+                vm_manager = get_gcp_vm_manager_safe()
+                if vm_manager:
+                    for vm_name, vm_info in list(vm_manager.managed_vms.items()):
+                        if hasattr(vm_info, 'state') and vm_info.state.value in ("running", "staging", "provisioning"):
+                            try:
+                                await asyncio.wait_for(
+                                    vm_manager.terminate_vm(
+                                        vm_name,
+                                        reason="session_shutdown",
+                                        action=VMAction.STOP,
+                                    ),
+                                    timeout=15.0,
+                                )
+                                self.logger.info(f"[Kernel] VM '{vm_name}' stopped for session shutdown")
+                            except asyncio.TimeoutError:
+                                self.logger.warning(f"[Kernel] Timeout stopping VM '{vm_name}'")
+                            except Exception as e:
+                                self.logger.debug(f"[Kernel] VM stop error for '{vm_name}': {e}")
+            except ImportError:
+                pass
+            except Exception as e:
+                self.logger.debug(f"[Kernel] GCP VM session stop: {e}")
 
             # =====================================================================
             # v181.0: GCP VM CLEANUP (Normal Path)
