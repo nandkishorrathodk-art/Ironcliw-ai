@@ -381,20 +381,52 @@ class JarvisConnectionService {
       }
     };
 
+    const pushRangeSpec = (value) => {
+      if (!value || typeof value !== 'string') return;
+      const segments = value.split(/[,\s]+/).map(s => s.trim()).filter(Boolean);
+      segments.forEach((segment) => {
+        if (segment.includes('-')) {
+          const [startRaw, endRaw] = segment.split('-', 2);
+          const start = Number(startRaw);
+          const end = Number(endRaw);
+          if (
+            Number.isInteger(start) &&
+            Number.isInteger(end) &&
+            start > 0 &&
+            end > 0 &&
+            start <= end
+          ) {
+            for (let port = start; port <= end; port += 1) {
+              pushPort(port);
+            }
+          }
+          return;
+        }
+        pushPort(segment);
+      });
+    };
+
     pushPort(typeof process !== 'undefined' ? process.env?.REACT_APP_LOADING_SERVER_PORT : null);
+    pushRangeSpec(typeof process !== 'undefined' ? process.env?.REACT_APP_LOADING_SERVER_PORT_RANGE : null);
+    pushPort(typeof window !== 'undefined' ? window.JARVIS_LOADING_SERVER_PORT : null);
     try {
       pushPort(localStorage.getItem('jarvis_loading_server_port'));
     } catch {
       // Ignore localStorage access issues
     }
-    pushPort(3001); // Default loading server port
+    [
+      8080, 8081, 8082, 8083, 8084,
+      8085, 8086, 8087, 8088, 8089,
+      3001
+    ].forEach(pushPort);
 
     const seedUrls = [];
     if (this.backendUrl) seedUrls.push(this.backendUrl);
     if (typeof window !== 'undefined' && window.location?.origin) seedUrls.push(window.location.origin);
     if (typeof window !== 'undefined' && window.location?.href) {
       const current = new URL(window.location.href);
-      if (current.port === '3001') add(current.origin);
+      const currentPort = Number(current.port || (current.protocol === 'https:' ? 443 : 80));
+      if (derivedPorts.includes(currentPort)) add(current.origin);
     }
 
     seedUrls.forEach((seed) => {
@@ -405,8 +437,11 @@ class JarvisConnectionService {
       });
     });
 
-    // Final fallback for local dev/recovery when URL parsing failed.
-    add('http://localhost:3001');
+    // Final loopback fallbacks for local recovery when URL parsing/discovery fails.
+    derivedPorts.forEach((port) => {
+      add(`http://localhost:${port}`);
+      add(`http://127.0.0.1:${port}`);
+    });
     return candidates;
   }
 
