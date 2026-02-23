@@ -2555,6 +2555,73 @@ def _allocate_ephemeral_port(host: str = "127.0.0.1") -> Optional[int]:
         return None
 
 
+def _read_available_memory_gb() -> Optional[float]:
+    """Read available system memory in GB, if metrics are available."""
+    if not PSUTIL_AVAILABLE:
+        return None
+    try:
+        return float(psutil.virtual_memory().available / (1024 ** 3))
+    except Exception:
+        return None
+
+
+def _resolve_local_startup_mode_on_cloud_unavailable(
+    current_mode: str,
+    available_gb: Optional[float] = None,
+) -> str:
+    """
+    Resolve a deterministic local startup mode when cloud execution is unavailable.
+
+    Key invariant:
+    - ``cloud_only`` must never degrade into ``local_full`` by default.
+      If cloud was required due memory pressure, fallback remains conservative.
+    """
+    normalized_mode = (current_mode or "cloud_first").strip().lower()
+    if normalized_mode not in {
+        "cloud_first", "cloud_only",
+        "local_full", "local_optimized", "sequential", "minimal",
+    }:
+        normalized_mode = "cloud_first"
+
+    # Already local/non-cloud: preserve explicit mode.
+    if normalized_mode not in ("cloud_first", "cloud_only"):
+        return normalized_mode
+
+    critical_threshold = max(0.1, _get_env_float("JARVIS_CRITICAL_THRESHOLD_GB", 2.0))
+    optimize_threshold = max(
+        critical_threshold,
+        _get_env_float("JARVIS_OPTIMIZE_THRESHOLD_GB", 4.0),
+    )
+    planned_ml_gb = max(0.0, _get_env_float("JARVIS_PLANNED_ML_GB", 4.6))
+    minimal_threshold = max(
+        0.5,
+        min(
+            critical_threshold,
+            _get_env_float(
+                "JARVIS_MINIMAL_THRESHOLD_GB",
+                critical_threshold * 0.5,
+            ),
+        ),
+    )
+
+    # Unknown memory snapshot: stay conservative.
+    if available_gb is None:
+        return "local_optimized" if normalized_mode == "cloud_first" else "sequential"
+
+    predicted_post_load = max(0.0, available_gb - planned_ml_gb)
+    if available_gb < minimal_threshold:
+        return "minimal"
+    if available_gb < critical_threshold or predicted_post_load < critical_threshold:
+        return "sequential"
+    if predicted_post_load < optimize_threshold:
+        return "local_optimized"
+
+    # cloud_only remains conservative even when memory looks healthy now.
+    if normalized_mode == "cloud_only":
+        return "local_optimized"
+    return "local_full"
+
+
 # =============================================================================
 # BACKEND LAUNCH DISCOVERY
 # =============================================================================
@@ -14270,9 +14337,9 @@ class IntelligentResourceOrchestrator:
     """
 
     # Thresholds (configurable via environment)
-    CLOUD_THRESHOLD_GB = float(os.getenv("JARVIS_CLOUD_THRESHOLD_GB", "6.0"))
-    CRITICAL_THRESHOLD_GB = float(os.getenv("JARVIS_CRITICAL_THRESHOLD_GB", "2.0"))
-    OPTIMIZE_THRESHOLD_GB = float(os.getenv("JARVIS_OPTIMIZE_THRESHOLD_GB", "4.0"))
+    CLOUD_THRESHOLD_GB = _get_env_float("JARVIS_CLOUD_THRESHOLD_GB", 6.0)
+    CRITICAL_THRESHOLD_GB = _get_env_float("JARVIS_CRITICAL_THRESHOLD_GB", 2.0)
+    OPTIMIZE_THRESHOLD_GB = _get_env_float("JARVIS_OPTIMIZE_THRESHOLD_GB", 4.0)
 
     def __init__(self, config: SystemKernelConfig):
         self.config = config
@@ -14291,8 +14358,8 @@ class IntelligentResourceOrchestrator:
 
     # v258.3: Planned workload estimates for predictive capacity planning.
     # These are used to predict post-startup RAM, not just current snapshot.
-    _MACOS_BASE_CONSUMPTION_GB = float(os.getenv("JARVIS_MACOS_BASE_GB", "5.0"))
-    _PLANNED_ML_WORKLOAD_GB_FALLBACK = float(os.getenv("JARVIS_PLANNED_ML_GB", "4.6"))
+    _MACOS_BASE_CONSUMPTION_GB = _get_env_float("JARVIS_MACOS_BASE_GB", 5.0)
+    _PLANNED_ML_WORKLOAD_GB_FALLBACK = _get_env_float("JARVIS_PLANNED_ML_GB", 4.6)
     # Static fallback: whisper_medium(2.0) + speechbrain(0.3) + ecapa(0.2) + pytorch(0.5)
     #        + transformers(0.3) + neural_mesh(0.8) + warmup(0.5) = 4.6GB
 
@@ -56031,10 +56098,15 @@ class StartupWatchdog:
         self._rollback_callback = rollback_callback
         
         # Configuration from environment
-        self._enabled = os.environ.get("JARVIS_DMS_ENABLED", "true").lower() == "true"
-        self._stall_threshold = float(os.environ.get("JARVIS_DMS_STALL_THRESHOLD", "60"))
-        self._check_interval = float(os.environ.get("JARVIS_DMS_CHECK_INTERVAL", "5"))
-        self._recovery_mode = os.environ.get("JARVIS_DMS_RECOVERY_MODE", "graduated")
+        self._enabled = _get_env_bool("JARVIS_DMS_ENABLED", True)
+        self._stall_threshold = _get_env_float("JARVIS_DMS_STALL_THRESHOLD", 60.0)
+        self._check_interval = _get_env_float("JARVIS_DMS_CHECK_INTERVAL", 5.0)
+        self._recovery_mode = os.environ.get("JARVIS_DMS_RECOVERY_MODE", "graduated").strip().lower()
+        if self._recovery_mode not in {"graduated", "aggressive", "passive"}:
+            self._logger.warning(
+                f"[DMS] Invalid recovery mode '{self._recovery_mode}' - using 'graduated'"
+            )
+            self._recovery_mode = "graduated"
 
         # v187.0: Apply environment overrides for phase timeouts
         # e.g., JARVIS_DMS_TIMEOUT_TRINITY=300 sets Trinity to 5 minutes
@@ -56062,7 +56134,7 @@ class StartupWatchdog:
             trinity_config = self._phase_configs.get("trinity")
             if trinity_config:
                 # v193.0: Hollow client mode needs GCP_VM_STARTUP_TIMEOUT + fallback time
-                gcp_timeout = float(os.environ.get("GCP_VM_STARTUP_TIMEOUT", "300.0"))
+                gcp_timeout = _get_env_float("GCP_VM_STARTUP_TIMEOUT", 300.0)
                 fallback_buffer = 180.0  # Fallback processing + safety buffer
                 hollow_client_timeout = max(gcp_timeout + fallback_buffer, trinity_config.timeout_seconds)
                 if hollow_client_timeout > trinity_config.timeout_seconds:
@@ -56098,8 +56170,8 @@ class StartupWatchdog:
         # (warn→diagnostic→restart→rollback in 20 seconds). Cooldown ensures
         # minimum spacing between escalation steps.
         self._last_timeout_action_time: Dict[str, float] = {}
-        self._escalation_cooldown = float(
-            os.environ.get("JARVIS_DMS_ESCALATION_COOLDOWN", "60")
+        self._escalation_cooldown = _get_env_float(
+            "JARVIS_DMS_ESCALATION_COOLDOWN", 60.0
         )
         # v250.1: Stall handler also needs cooldown — same rapid-fire bug.
         # Without this, stall handler escalates warn→diag→restart×3→rollback
@@ -56107,14 +56179,14 @@ class StartupWatchdog:
         # each escalation step waits JARVIS_DMS_STALL_ESCALATION_COOLDOWN (default
         # 15s) before the next, giving the init time to complete.
         self._last_stall_action_time: Dict[str, float] = {}
-        self._stall_escalation_cooldown = float(
-            os.environ.get("JARVIS_DMS_STALL_ESCALATION_COOLDOWN", "15")
+        self._stall_escalation_cooldown = _get_env_float(
+            "JARVIS_DMS_STALL_ESCALATION_COOLDOWN", 15.0
         )
 
         # v232.2: Progress-aware watchdog — don't kill processes that are advancing
         self._progress_history: List[Tuple[float, int]] = []  # (timestamp, progress)
-        self._progress_advancing_window = float(
-            os.environ.get("JARVIS_DMS_PROGRESS_WINDOW", "120")
+        self._progress_advancing_window = _get_env_float(
+            "JARVIS_DMS_PROGRESS_WINDOW", 120.0
         )  # Consider progress "advancing" if it changed within this window
 
         # v3.2: Parallel initializer coordination — DMS defers to parallel_init's
@@ -56169,12 +56241,8 @@ class StartupWatchdog:
 
         # v232.2: Memory pressure circuit breaker
         rate = self._get_progress_rate()
-        _ram_pct_threshold = float(
-            os.environ.get("JARVIS_DMS_RAM_PRESSURE_PCT", "90")
-        )
-        _min_rate_threshold = float(
-            os.environ.get("JARVIS_DMS_MIN_PROGRESS_RATE", "0.05")
-        )
+        _ram_pct_threshold = _get_env_float("JARVIS_DMS_RAM_PRESSURE_PCT", 90.0)
+        _min_rate_threshold = _get_env_float("JARVIS_DMS_MIN_PROGRESS_RATE", 0.05)
         try:
             import psutil as _psutil_check
             ram_pct = _psutil_check.virtual_memory().percent
@@ -61012,6 +61080,7 @@ class JarvisSystemKernel:
         self._conversation_pipeline = None
         self._mode_dispatcher = None
         self._audio_health_task: Optional[asyncio.Task] = None
+        self._audio_recovery_task: Optional[asyncio.Task] = None
         self._audio_infrastructure_initialized: bool = False
         self._audio_pipeline_handle = None  # v238.1: PipelineHandle from bootstrap
 
@@ -63350,6 +63419,69 @@ class JarvisSystemKernel:
         # — no GCP/network calls. Determines startup_mode before any phase runs.
         # =====================================================================
         _resource_check_timeout = _get_env_float("JARVIS_RESOURCE_CHECK_TIMEOUT", 3.0)
+        _resource_check_timeout_max = _get_env_float(
+            "JARVIS_RESOURCE_CHECK_TIMEOUT_MAX",
+            max(_resource_check_timeout * 2.0, _resource_check_timeout + 2.0),
+        )
+        _resource_timeout_cpu_threshold = _get_env_float(
+            "JARVIS_RESOURCE_CHECK_TIMEOUT_CPU_THRESHOLD", 90.0
+        )
+        _resource_timeout_mem_threshold = _get_env_float(
+            "JARVIS_RESOURCE_CHECK_TIMEOUT_MEM_THRESHOLD", 85.0
+        )
+        try:
+            if PSUTIL_AVAILABLE:
+                _preflight_cpu = float(psutil.cpu_percent(interval=0.1))
+                _preflight_mem = float(psutil.virtual_memory().percent)
+                if (
+                    _preflight_cpu >= _resource_timeout_cpu_threshold
+                    or _preflight_mem >= _resource_timeout_mem_threshold
+                ):
+                    _resource_check_timeout = min(
+                        _resource_check_timeout_max,
+                        max(_resource_check_timeout * 2.0, _resource_check_timeout + 1.5),
+                    )
+                    self.logger.info(
+                        "[ResourceOrchestrator] Startup pressure detected "
+                        "(cpu=%.1f%% mem=%.1f%%) — extending preflight timeout to %.1fs",
+                        _preflight_cpu,
+                        _preflight_mem,
+                        _resource_check_timeout,
+                    )
+        except Exception:
+            pass
+
+        def _apply_resource_preflight_fallback(
+            reason: str,
+            *,
+            detail: str = "",
+        ) -> str:
+            """Apply deterministic, memory-aware fallback when preflight cannot decide."""
+            _available_gb = _read_available_memory_gb()
+            _current_mode = os.environ.get("JARVIS_STARTUP_MEMORY_MODE", "cloud_first")
+            _fallback_mode = _resolve_local_startup_mode_on_cloud_unavailable(
+                _current_mode,
+                available_gb=_available_gb,
+            )
+            os.environ["JARVIS_STARTUP_MEMORY_MODE"] = _fallback_mode
+            if _available_gb is not None:
+                os.environ["JARVIS_MEASURED_AVAILABLE_GB"] = f"{_available_gb:.2f}"
+
+            _msg = (
+                f"Resource preflight {reason}; startup mode set to {_fallback_mode}"
+                + (f" (avail={_available_gb:.1f}GB)" if _available_gb is not None else "")
+            )
+            if detail:
+                _msg = f"{_msg} [{detail}]"
+
+            self._update_component_status("resources", "degraded", _msg)
+            issue_collector.add_warning(
+                _msg,
+                IssueCategory.SYSTEM,
+                suggestion="Check system pressure and JARVIS resource preflight configuration",
+            )
+            return _fallback_mode
+
         try:
             _ro = IntelligentResourceOrchestrator(self.config)
             _rs = await asyncio.wait_for(
@@ -63369,22 +63501,23 @@ class JarvisSystemKernel:
             for _rec in _rs.recommendations:
                 _unified_logger.info("[ResourceOrchestrator] %s", _rec)
         except asyncio.TimeoutError:
-            # v258.3: INVERTED FAIL-SAFE FIX. Previously defaulted to
-            # "local_full" (most resource-hungry) under pressure — exactly
-            # when resources are LEAST available. Now defaults to
-            # "local_optimized" which skips non-critical ML and reduces
-            # parallel init. The orchestrator times out under CPU/memory
-            # pressure, so the fallback must be CONSERVATIVE.
+            _fallback_mode = _apply_resource_preflight_fallback(
+                "timed out",
+                detail=f"timeout={_resource_check_timeout:.1f}s",
+            )
             _unified_logger.warning(
-                "[ResourceOrchestrator] Timed out after %.1fs — defaulting to local_optimized",
+                "[ResourceOrchestrator] Timed out after %.1fs — fallback mode=%s",
                 _resource_check_timeout,
+                _fallback_mode,
             )
-            os.environ["JARVIS_STARTUP_MEMORY_MODE"] = "local_optimized"
         except Exception as _ro_err:
-            _unified_logger.debug(
-                "[ResourceOrchestrator] %s — defaulting to local_optimized", _ro_err
+            _fallback_mode = _apply_resource_preflight_fallback(
+                "failed",
+                detail=str(_ro_err),
             )
-            os.environ["JARVIS_STARTUP_MEMORY_MODE"] = "local_optimized"
+            _unified_logger.warning(
+                "[ResourceOrchestrator] %s — fallback mode=%s", _ro_err, _fallback_mode
+            )
 
         # =====================================================================
         # v258.3 (Gap GCP-2): STARTUP MODE RE-EVALUATION HELPER
@@ -63549,22 +63682,24 @@ class JarvisSystemKernel:
                 self.logger.info("[Kernel] AudioBus started (v238.0)")
             except asyncio.TimeoutError:
                 self.logger.warning(
-                    f"[Kernel] AudioBus init timed out ({_ab_timeout:.0f}s) — disabling"
+                    f"[Kernel] AudioBus init timed out ({_ab_timeout:.0f}s) — scheduling recovery"
                 )
-                self._audio_bus_enabled = False
                 self._audio_bus = None
                 self._component_status["audio_infrastructure"] = {
                     "status": "degraded",
-                    "message": "AudioBus init timeout — using legacy audio",
+                    "message": "AudioBus init timeout — recovery scheduled",
                 }
+                self._schedule_audio_bus_recovery("early_init_timeout")
             except Exception as ab_err:
-                self.logger.warning(f"[Kernel] AudioBus init failed: {ab_err} — disabling")
-                self._audio_bus_enabled = False
+                self.logger.warning(
+                    f"[Kernel] AudioBus init failed: {ab_err} — scheduling recovery"
+                )
                 self._audio_bus = None
                 self._component_status["audio_infrastructure"] = {
                     "status": "degraded",
-                    "message": f"AudioBus init failed: {ab_err}",
+                    "message": f"AudioBus init failed: {ab_err} (recovery scheduled)",
                 }
+                self._schedule_audio_bus_recovery("early_init_error")
         else:
             self._component_status["audio_infrastructure"] = {
                 "status": "disabled",
@@ -63612,45 +63747,98 @@ class JarvisSystemKernel:
         # Initialize and start the startup watchdog to detect stalled phases.
         # Provides graduated recovery: warn → diagnostic → restart → rollback.
         # =====================================================================
-        self._startup_watchdog = StartupWatchdog(
-            logger=self.logger,
-            diagnostic_callback=self._dms_diagnostic_callback,
-            restart_callback=self._dms_restart_callback,
-            rollback_callback=self._dms_rollback_callback,
-        )
-        # v265.0: Add timeout — DMS is the timeout mechanism but can't protect itself.
-        # If StartupWatchdog.start() hangs, the entire supervisor bootstrap hangs.
+        _dms_start_timeout = _get_env_float("JARVIS_DMS_START_TIMEOUT", 10.0)
+        _require_watchdog = _get_env_bool("JARVIS_REQUIRE_STARTUP_WATCHDOG", True)
+        self._startup_watchdog = None
+        _dms_error_detail = ""
+
         try:
-            await asyncio.wait_for(self._startup_watchdog.start(), timeout=10.0)
+            _candidate_watchdog = StartupWatchdog(
+                logger=self.logger,
+                diagnostic_callback=self._dms_diagnostic_callback,
+                restart_callback=self._dms_restart_callback,
+                rollback_callback=self._dms_rollback_callback,
+            )
+            # v265.0: Add timeout — DMS is the timeout mechanism but can't protect itself.
+            # If StartupWatchdog.start() hangs, the entire supervisor bootstrap hangs.
+            await asyncio.wait_for(
+                _candidate_watchdog.start(),
+                timeout=_dms_start_timeout,
+            )
+
+            if _require_watchdog and not _candidate_watchdog.enabled:
+                _dms_error_detail = "disabled via JARVIS_DMS_ENABLED=false"
+            else:
+                self._startup_watchdog = _candidate_watchdog
+                self._update_component_status(
+                    "startup_watchdog",
+                    "running",
+                    "Dead Man's Switch armed",
+                )
         except asyncio.TimeoutError:
-            self.logger.error("[Kernel] v265.0: DMS startup timed out (10s) — continuing without watchdog")
-            self._startup_watchdog = None
+            _dms_error_detail = f"startup timed out after {_dms_start_timeout:.1f}s"
         except Exception as _dms_err:
-            self.logger.error(f"[Kernel] v265.0: DMS startup failed: {_dms_err} — continuing without watchdog")
-            self._startup_watchdog = None
+            _dms_error_detail = str(_dms_err)
+
+        if self._startup_watchdog is None:
+            _dms_msg = (
+                "Dead Man's Switch unavailable"
+                + (f": {_dms_error_detail}" if _dms_error_detail else "")
+            )
+            self.logger.error(f"[Kernel] {_dms_msg}")
+            self._update_component_status(
+                "startup_watchdog",
+                "degraded",
+                _dms_msg,
+            )
+            issue_collector.add_warning(
+                _dms_msg,
+                IssueCategory.SYSTEM,
+                suggestion="Verify DMS configuration and startup callback dependencies",
+            )
+            if _require_watchdog:
+                self.logger.error(
+                    "[Kernel] Startup aborted: JARVIS_REQUIRE_STARTUP_WATCHDOG=true"
+                )
+                return 1
 
         # v3.2: Wire DMS ↔ parallel_initializer coordination
         # parallel_init heartbeats component completions to DMS, and DMS defers
         # escalation beyond 'diagnostic' while parallel_init is active.
         try:
             from core.parallel_initializer import set_dms_heartbeat_callback
+            _noop_heartbeat = lambda _component_name="": None
+            _noop_active = lambda _active=True: None
             set_dms_heartbeat_callback(
-                heartbeat_fn=self._startup_watchdog.notify_parallel_init_heartbeat,
-                active_fn=self._startup_watchdog.notify_parallel_init_active,
+                heartbeat_fn=(
+                    self._startup_watchdog.notify_parallel_init_heartbeat
+                    if self._startup_watchdog
+                    else _noop_heartbeat
+                ),
+                active_fn=(
+                    self._startup_watchdog.notify_parallel_init_active
+                    if self._startup_watchdog
+                    else _noop_active
+                ),
             )
             self.logger.debug("[Kernel] v3.2: DMS ↔ parallel_init coordination wired")
         except ImportError:
             self.logger.debug("[Kernel] v3.2: parallel_initializer not available for DMS wiring")
+        except Exception as _dms_wire_err:
+            self.logger.debug(
+                f"[Kernel] v3.2: DMS callback wiring failed: {_dms_wire_err}"
+            )
 
         # v232.2: Set initial execution mode for DMS dynamic constraints
         _golden_active = os.getenv("JARVIS_GCP_USE_GOLDEN_IMAGE", "false").lower() == "true"
         _gcp_enabled = getattr(self.config, 'invincible_node_enabled', False)
-        if _golden_active and _gcp_enabled:
-            self._startup_watchdog.notify_mode_change("gcp_golden")
-        elif _gcp_enabled:
-            self._startup_watchdog.notify_mode_change("gcp_standard")
-        else:
-            self._startup_watchdog.notify_mode_change("local_prime")
+        if self._startup_watchdog:
+            if _golden_active and _gcp_enabled:
+                self._startup_watchdog.notify_mode_change("gcp_golden")
+            elif _gcp_enabled:
+                self._startup_watchdog.notify_mode_change("gcp_standard")
+            else:
+                self._startup_watchdog.notify_mode_change("local_prime")
 
         # =====================================================================
         # v220.2: EARLY PRIME PRE-WARM - Start LLM loading IMMEDIATELY
@@ -63725,8 +63913,43 @@ class JarvisSystemKernel:
                 _new_mode = "sequential"
                 if _SEVERITY.get(_new_mode, 0) > _current_sev:
                     os.environ["JARVIS_STARTUP_MEMORY_MODE"] = _new_mode
-        except (asyncio.TimeoutError, ImportError, Exception) as _oom_err:
-            _unified_logger.debug("[OOMBridge] Pre-flight unavailable: %s", _oom_err)
+        except asyncio.CancelledError:
+            raise
+        except Exception as _oom_err:
+            _available_gb = _read_available_memory_gb()
+            _current_mode = os.environ.get("JARVIS_STARTUP_MEMORY_MODE", "local_full")
+            _guard_mode = _resolve_local_startup_mode_on_cloud_unavailable(
+                "cloud_only",
+                available_gb=_available_gb,
+            )
+            _mode_severity = {
+                "local_full": 0,
+                "local_optimized": 1,
+                "sequential": 2,
+                "cloud_first": 3,
+                "cloud_only": 4,
+                "minimal": 5,
+            }
+
+            if (
+                _current_mode in ("local_full", "local_optimized", "sequential", "minimal")
+                and _mode_severity.get(_guard_mode, 0) > _mode_severity.get(_current_mode, 0)
+            ):
+                os.environ["JARVIS_STARTUP_MEMORY_MODE"] = _guard_mode
+                _current_mode = _guard_mode
+
+            _oom_msg = (
+                f"OOM pre-flight unavailable: {_oom_err} "
+                f"(startup_mode={_current_mode}"
+                + (f", avail={_available_gb:.1f}GB" if _available_gb is not None else "")
+                + ")"
+            )
+            _unified_logger.warning("[OOMBridge] %s", _oom_msg)
+            issue_collector.add_warning(
+                _oom_msg,
+                IssueCategory.SYSTEM,
+                suggestion="Verify core.gcp_oom_prevention_bridge dependencies and memory telemetry",
+            )
 
         # =====================================================================
         # v258.3 (Gap 9): GCP AVAILABILITY PROBE
@@ -63858,13 +64081,22 @@ class JarvisSystemKernel:
                     )
                 else:
                     # GCP unreachable — fall back to local
-                    _fallback = "local_optimized" if _startup_mode_now == "cloud_first" else "local_full"
+                    _previous_mode = _startup_mode_now
+                    _fallback = _resolve_local_startup_mode_on_cloud_unavailable(
+                        _startup_mode_now,
+                        available_gb=_read_available_memory_gb(),
+                    )
                     self.logger.warning(
                         "[GCPProbe] GCP unreachable — falling back from %s to %s",
                         _startup_mode_now, _fallback,
                     )
                     os.environ["JARVIS_STARTUP_MEMORY_MODE"] = _fallback
                     _startup_mode_now = _fallback
+                    issue_collector.add_warning(
+                        f"GCP probe unreachable during {_previous_mode}; fell back to {_fallback}",
+                        IssueCategory.GCP,
+                        suggestion="Verify network, credentials, and GCP VM endpoint reachability",
+                    )
                     add_dashboard_log(
                         f"GCP unreachable — fell back to {_fallback}", "WARNING"
                     )
@@ -63905,16 +64137,20 @@ class JarvisSystemKernel:
                                 "JARVIS_STARTUP_MEMORY_MODE", _startup_mode_now
                             )
                             if _current_mode in ("cloud_first", "cloud_only"):
-                                _fallback = (
-                                    "local_optimized"
-                                    if _current_mode == "cloud_first"
-                                    else "local_full"
+                                _fallback = _resolve_local_startup_mode_on_cloud_unavailable(
+                                    _current_mode,
+                                    available_gb=_read_available_memory_gb(),
                                 )
                                 os.environ["JARVIS_STARTUP_MEMORY_MODE"] = _fallback
                                 self.logger.warning(
                                     "[GCPProbe] Deferred probe unreachable — falling back from %s to %s",
                                     _current_mode,
                                     _fallback,
+                                )
+                                issue_collector.add_warning(
+                                    "Deferred GCP probe unreachable; falling back to local mode",
+                                    IssueCategory.GCP,
+                                    suggestion="Check GCP endpoint health and auth scope",
                                 )
                                 add_dashboard_log(
                                     f"GCP deferred probe unreachable — fell back to {_fallback}",
@@ -63937,12 +64173,24 @@ class JarvisSystemKernel:
                     )
                     self._background_tasks.append(self._gcp_probe_task)
                 else:
+                    _previous_mode = _startup_mode_now
+                    _fallback = _resolve_local_startup_mode_on_cloud_unavailable(
+                        _startup_mode_now,
+                        available_gb=_read_available_memory_gb(),
+                    )
                     self.logger.warning(
                         "[GCPProbe] Probe timed out (%.0fs) — assuming GCP unreachable, "
-                        "falling back to local_optimized", _gcp_probe_timeout
+                        "falling back to %s",
+                        _gcp_probe_timeout,
+                        _fallback,
                     )
-                    os.environ["JARVIS_STARTUP_MEMORY_MODE"] = "local_optimized"
-                    _startup_mode_now = "local_optimized"
+                    os.environ["JARVIS_STARTUP_MEMORY_MODE"] = _fallback
+                    _startup_mode_now = _fallback
+                    issue_collector.add_warning(
+                        f"GCP probe timed out during {_previous_mode}; switched to {_fallback}",
+                        IssueCategory.GCP,
+                        suggestion="Increase JARVIS_GCP_PROBE_TIMEOUT if network latency is expected",
+                    )
             except Exception as _probe_err:
                 self.logger.debug("[GCPProbe] Probe failed: %s", _probe_err)
 
@@ -65146,65 +65394,14 @@ class JarvisSystemKernel:
             # (Intelligence) so the LLM client is available.
             # Uses audio_pipeline_bootstrap for clean composition.
             # =====================================================================
-            if self._audio_bus_enabled and self._audio_bus is not None:
-                try:
-                    _wire_start = time.time()
-                    from backend.audio.audio_pipeline_bootstrap import (
-                        wire_conversation_pipeline,
-                    )
-
-                    # Get speech state for mode transitions
-                    # v265.0: Add timeouts to pipeline wiring
-                    _speech_state = None
-                    try:
-                        from backend.core.unified_speech_state import (
-                            get_speech_state_manager,
-                        )
-                        _speech_state = await asyncio.wait_for(
-                            get_speech_state_manager(), timeout=10.0
-                        )
-                    except (asyncio.TimeoutError, Exception):
-                        pass
-
-                    self._audio_pipeline_handle = await asyncio.wait_for(
-                        wire_conversation_pipeline(
-                            audio_bus=self._audio_bus,
-                            llm_client=self._model_serving,
-                            speech_state=_speech_state,
-                        ),
-                        timeout=30.0,
-                    )
-
-                    # Store references for shutdown and status
-                    self._conversation_pipeline = self._audio_pipeline_handle.conversation_pipeline
-                    self._mode_dispatcher = self._audio_pipeline_handle.mode_dispatcher
-
-                    self._audio_infrastructure_initialized = True
-                    _wire_ms = (time.time() - _wire_start) * 1000
-
-                    self._component_status["audio_infrastructure"] = {
-                        "status": "running",
-                        "message": f"Pipeline wired via bootstrap in {_wire_ms:.0f}ms",
-                    }
-                    self.logger.info(
-                        f"[Kernel] Audio pipeline wired (v238.1) in {_wire_ms:.0f}ms"
-                    )
-
-                    # Launch background health monitor
-                    self._audio_health_task = create_safe_task(
-                        self._audio_health_loop(),
-                        name="audio-health",
-                    )
-                    self._background_tasks.append(self._audio_health_task)
-
-                except Exception as ap_err:
+            if self._audio_bus_enabled:
+                if self._audio_bus is None:
                     self.logger.warning(
-                        f"[Kernel] Audio pipeline wiring failed: {ap_err}"
+                        "[Kernel] AudioBus unavailable at Phase 4 — scheduling recovery"
                     )
-                    self._component_status["audio_infrastructure"] = {
-                        "status": "degraded",
-                        "message": f"Wiring failed: {ap_err}",
-                    }
+                    self._schedule_audio_bus_recovery("phase4_audio_bus_missing")
+                else:
+                    await self._attempt_wire_audio_pipeline(context="startup")
 
             # v258.3 (Gap GCP-2): Re-evaluate startup mode after Intelligence phase.
             # At this point, backend is loaded + intelligence systems initialized.
@@ -71386,12 +71583,176 @@ class JarvisSystemKernel:
     # v238.0: AUDIO INFRASTRUCTURE HEALTH MONITOR
     # =========================================================================
 
+    def _ensure_audio_health_monitor(self) -> None:
+        """Start AudioBus health monitor if not already running."""
+        if self._audio_health_task is not None and not self._audio_health_task.done():
+            return
+        self._audio_health_task = create_safe_task(
+            self._audio_health_loop(),
+            name="audio-health",
+        )
+        self._background_tasks.append(self._audio_health_task)
+
+    def _schedule_audio_bus_recovery(self, reason: str) -> None:
+        """Schedule bounded background recovery for AudioBus initialization failures."""
+        if not self._audio_bus_enabled:
+            return
+        if self._audio_recovery_task is not None and not self._audio_recovery_task.done():
+            return
+
+        self._audio_recovery_task = create_safe_task(
+            self._audio_recovery_loop(reason),
+            name="audio-recovery",
+        )
+        self._background_tasks.append(self._audio_recovery_task)
+
+    async def _audio_recovery_loop(self, initial_reason: str) -> None:
+        """
+        Recover AudioBus after early-init failures without requiring restart.
+
+        This avoids session-long voice degradation from transient startup
+        contention (audio device busy, delayed dependency import, etc.).
+        """
+        initial_delay = _get_env_float("JARVIS_AUDIO_RECOVERY_INITIAL_DELAY", 5.0)
+        retry_interval = _get_env_float("JARVIS_AUDIO_RECOVERY_RETRY_INTERVAL", 15.0)
+        max_attempts = _get_env_int("JARVIS_AUDIO_RECOVERY_MAX_ATTEMPTS", 12)
+        start_timeout = _get_env_float("JARVIS_AUDIO_BUS_RECOVERY_TIMEOUT", 12.0)
+
+        try:
+            await asyncio.sleep(initial_delay)
+        except asyncio.CancelledError:
+            return
+
+        attempts = 0
+        while not self._shutdown_event.is_set():
+            if max_attempts > 0 and attempts >= max_attempts:
+                break
+            attempts += 1
+
+            try:
+                if self._audio_bus is not None and getattr(self._audio_bus, "is_running", False):
+                    self._ensure_audio_health_monitor()
+                    if self._model_serving is not None:
+                        await self._attempt_wire_audio_pipeline(context="recovery")
+                    return
+
+                if self._audio_bus is None:
+                    from backend.audio.audio_bus import AudioBus
+                    self._audio_bus = AudioBus()
+
+                await asyncio.wait_for(self._audio_bus.start(), timeout=start_timeout)
+                self._component_status["audio_infrastructure"] = {
+                    "status": "running",
+                    "message": f"AudioBus recovered (attempt {attempts})",
+                }
+                self.logger.info(
+                    "[AudioRecovery] AudioBus recovered after '%s' (attempt %d)",
+                    initial_reason,
+                    attempts,
+                )
+                self._ensure_audio_health_monitor()
+                if self._model_serving is not None:
+                    await self._attempt_wire_audio_pipeline(context="recovery")
+                return
+            except asyncio.CancelledError:
+                raise
+            except Exception as recovery_err:
+                self._component_status["audio_infrastructure"] = {
+                    "status": "degraded",
+                    "message": f"AudioBus recovery attempt {attempts} failed: {recovery_err}",
+                }
+                self.logger.warning(
+                    "[AudioRecovery] Attempt %d/%s failed: %s",
+                    attempts,
+                    "∞" if max_attempts <= 0 else str(max_attempts),
+                    recovery_err,
+                )
+                try:
+                    await asyncio.sleep(retry_interval)
+                except asyncio.CancelledError:
+                    return
+
+        self._component_status["audio_infrastructure"] = {
+            "status": "degraded",
+            "message": (
+                f"AudioBus recovery exhausted after {attempts} attempts "
+                f"(reason={initial_reason})"
+            ),
+        }
+
+    async def _attempt_wire_audio_pipeline(self, context: str = "startup") -> bool:
+        """
+        Wire the conversation pipeline when AudioBus and model serving are available.
+
+        Safe to call multiple times; only performs work once.
+        """
+        if not self._audio_bus_enabled or self._audio_bus is None:
+            return False
+        if self._audio_infrastructure_initialized and self._audio_pipeline_handle is not None:
+            return True
+        if self._model_serving is None:
+            self.logger.debug(
+                "[Kernel] Audio pipeline wiring deferred (%s): model serving unavailable",
+                context,
+            )
+            return False
+
+        try:
+            _wire_start = time.time()
+            from backend.audio.audio_pipeline_bootstrap import wire_conversation_pipeline
+
+            _speech_state = None
+            try:
+                from backend.core.unified_speech_state import get_speech_state_manager
+                _speech_state = await asyncio.wait_for(
+                    get_speech_state_manager(),
+                    timeout=10.0,
+                )
+            except (asyncio.TimeoutError, Exception):
+                pass
+
+            self._audio_pipeline_handle = await asyncio.wait_for(
+                wire_conversation_pipeline(
+                    audio_bus=self._audio_bus,
+                    llm_client=self._model_serving,
+                    speech_state=_speech_state,
+                ),
+                timeout=30.0,
+            )
+
+            self._conversation_pipeline = self._audio_pipeline_handle.conversation_pipeline
+            self._mode_dispatcher = self._audio_pipeline_handle.mode_dispatcher
+            self._audio_infrastructure_initialized = True
+            _wire_ms = (time.time() - _wire_start) * 1000
+
+            self._component_status["audio_infrastructure"] = {
+                "status": "running",
+                "message": f"Pipeline wired via bootstrap in {_wire_ms:.0f}ms ({context})",
+            }
+            self.logger.info(
+                "[Kernel] Audio pipeline wired (%s) in %.0fms",
+                context,
+                _wire_ms,
+            )
+            self._ensure_audio_health_monitor()
+            return True
+        except Exception as ap_err:
+            self.logger.warning(
+                f"[Kernel] Audio pipeline wiring failed ({context}): {ap_err}"
+            )
+            self._component_status["audio_infrastructure"] = {
+                "status": "degraded",
+                "message": f"Wiring failed ({context}): {ap_err}",
+            }
+            return False
+
     async def _audio_health_loop(self) -> None:
         """
         v238.0: Background health monitoring for Audio Bus infrastructure.
 
         Periodically checks AudioBus.is_running and updates component status.
-        On failure, attempts a single restart before marking degraded.
+        On failure, retries restart a bounded number of times and then
+        schedules background recovery.
 
         Env vars:
             JARVIS_AUDIO_HEALTH_INTERVAL: Check frequency (default: 30.0s)
@@ -71399,23 +71760,29 @@ class JarvisSystemKernel:
         """
         grace = _get_env_float("JARVIS_AUDIO_HEALTH_GRACE", 15.0)
         interval = _get_env_float("JARVIS_AUDIO_HEALTH_INTERVAL", 30.0)
+        max_restart_attempts = _get_env_int("JARVIS_AUDIO_HEALTH_MAX_RESTART_ATTEMPTS", 3)
 
         try:
             await asyncio.sleep(grace)
         except asyncio.CancelledError:
             return
 
-        restart_attempted = False
+        restart_attempts = 0
 
         while not self._shutdown_event.is_set():
             try:
                 await asyncio.sleep(interval)
 
                 if self._audio_bus is None:
+                    self._component_status["audio_infrastructure"] = {
+                        "status": "degraded",
+                        "message": "AudioBus unavailable during health check; recovery scheduled",
+                    }
+                    self._schedule_audio_bus_recovery("health_loop_missing_bus")
                     continue
 
                 if self._audio_bus.is_running:
-                    restart_attempted = False
+                    restart_attempts = 0
                     stats = {}
                     if hasattr(self._audio_bus, 'get_stats'):
                         try:
@@ -71426,17 +71793,22 @@ class JarvisSystemKernel:
                         "status": "running",
                         "message": f"Healthy (sinks={stats.get('sink_count', '?')})",
                     }
+                    if self._model_serving is not None and not self._audio_infrastructure_initialized:
+                        await self._attempt_wire_audio_pipeline(context="health-loop")
                 else:
-                    if not restart_attempted:
+                    if restart_attempts < max_restart_attempts:
+                        restart_attempts += 1
                         self.logger.warning(
-                            "[AudioHealth] AudioBus not running — attempting restart"
+                            "[AudioHealth] AudioBus not running — attempting restart (%d/%d)",
+                            restart_attempts,
+                            max_restart_attempts,
                         )
-                        restart_attempted = True
                         try:
                             await asyncio.wait_for(
                                 self._audio_bus.start(), timeout=10.0
                             )
                             self.logger.info("[AudioHealth] AudioBus restarted")
+                            restart_attempts = 0
                         except Exception as restart_err:
                             self.logger.warning(
                                 f"[AudioHealth] AudioBus restart failed: {restart_err}"
@@ -71448,8 +71820,12 @@ class JarvisSystemKernel:
                     else:
                         self._component_status["audio_infrastructure"] = {
                             "status": "degraded",
-                            "message": "AudioBus not running (restart already attempted)",
+                            "message": (
+                                "AudioBus not running after health-loop restart attempts; "
+                                "background recovery scheduled"
+                            ),
                         }
+                        self._schedule_audio_bus_recovery("health_loop_restart_exhausted")
 
             except asyncio.CancelledError:
                 break
@@ -78488,41 +78864,48 @@ class JarvisSystemKernel:
             # =====================================================================
             # v238.1: AUDIO INFRASTRUCTURE SHUTDOWN (via Bootstrap)
             # =====================================================================
-            if self._audio_infrastructure_initialized:
-                # 1. Cancel health monitor
-                if self._audio_health_task is not None:
-                    self._audio_health_task.cancel()
-                    try:
-                        await asyncio.wait_for(
-                            self._audio_health_task, timeout=2.0
-                        )
-                    except (asyncio.CancelledError, asyncio.TimeoutError, Exception):
-                        pass
+            # 1. Cancel recovery and health monitors
+            if self._audio_recovery_task is not None:
+                self._audio_recovery_task.cancel()
+                try:
+                    await asyncio.wait_for(self._audio_recovery_task, timeout=2.0)
+                except (asyncio.CancelledError, asyncio.TimeoutError, Exception):
+                    pass
+                self._audio_recovery_task = None
 
-                # 2. Bootstrap shutdown (handles ModeDispatcher, Pipeline, STT, BargeIn)
+            if self._audio_health_task is not None:
+                self._audio_health_task.cancel()
+                try:
+                    await asyncio.wait_for(self._audio_health_task, timeout=2.0)
+                except (asyncio.CancelledError, asyncio.TimeoutError, Exception):
+                    pass
+                self._audio_health_task = None
+
+            # 2. Bootstrap shutdown (handles ModeDispatcher, Pipeline, STT, BargeIn)
+            if self._audio_infrastructure_initialized and self._audio_pipeline_handle is not None:
                 try:
                     from backend.audio.audio_pipeline_bootstrap import (
                         shutdown as bootstrap_shutdown,
                     )
-                    if self._audio_pipeline_handle is not None:
-                        await asyncio.wait_for(
-                            bootstrap_shutdown(self._audio_pipeline_handle),
-                            timeout=10.0,
-                        )
+                    await asyncio.wait_for(
+                        bootstrap_shutdown(self._audio_pipeline_handle),
+                        timeout=10.0,
+                    )
                 except Exception as bs_err:
                     self.logger.debug(f"[Kernel] Bootstrap shutdown error: {bs_err}")
 
-                # 3. AudioBus has its own lifecycle
-                if self._audio_bus is not None:
-                    try:
-                        await asyncio.wait_for(
-                            self._audio_bus.stop(), timeout=5.0,
-                        )
-                        self.logger.info("[Kernel] AudioBus stopped")
-                    except Exception as ab_err:
-                        self.logger.debug(f"[Kernel] AudioBus stop error: {ab_err}")
+            # 3. AudioBus has its own lifecycle and may have started even if
+            # conversation pipeline did not fully initialize.
+            if self._audio_bus is not None:
+                try:
+                    await asyncio.wait_for(
+                        self._audio_bus.stop(), timeout=5.0,
+                    )
+                    self.logger.info("[Kernel] AudioBus stopped")
+                except Exception as ab_err:
+                    self.logger.debug(f"[Kernel] AudioBus stop error: {ab_err}")
 
-                self._audio_infrastructure_initialized = False
+            self._audio_infrastructure_initialized = False
 
             # =====================================================================
             # v181.0: GCP VM CLEANUP (Normal Path)
