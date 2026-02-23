@@ -56,6 +56,12 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+# v266.0: Mmap thrash detection via vm_stat pageins
+THRASH_PAGEIN_HEALTHY = int(os.getenv("THRASH_PAGEIN_HEALTHY", "100"))
+THRASH_PAGEIN_WARNING = int(os.getenv("THRASH_PAGEIN_WARNING", "500"))
+THRASH_PAGEIN_EMERGENCY = int(os.getenv("THRASH_PAGEIN_EMERGENCY", "2000"))
+THRASH_SUSTAINED_SECONDS = int(os.getenv("THRASH_SUSTAINED_SECONDS", "10"))
+
 
 # ============================================================================
 # Data Models
@@ -418,6 +424,14 @@ class MemoryQuantizer:
         # accurate available headroom.
         self._memory_reservations: Dict[str, Tuple[float, str]] = {}
 
+        # v266.0: Thrash detection state
+        self._last_pageins: Optional[int] = None
+        self._last_pagein_time: float = 0.0
+        self._pagein_rate: float = 0.0  # pageins/sec
+        self._thrash_state: str = "healthy"  # healthy, thrashing, emergency
+        self._thrash_warning_since: float = 0.0
+        self._thrash_callbacks: List[Callable] = []
+
         logger.info("Advanced Memory Quantizer initialized")
         logger.info(f"  Config: {self.config}")
         logger.info(f"  UAE: {'✅' if uae_engine else '❌'}")
@@ -752,6 +766,61 @@ class MemoryQuantizer:
         # Fallback: Use conservative thresholds based on TRUE pressure
         return self._fallback_pressure_from_cached_metrics()
 
+    async def _get_pagein_rate_async(self) -> float:
+        """Get pageins/sec from vm_stat delta between two samples.
+
+        Uses the 'Pageins' line from vm_stat. Returns pageins/sec since
+        last call, or 0.0 on first call or error.
+        """
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                'vm_stat',
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=2.0)
+            output = stdout.decode('utf-8', errors='replace')
+
+            # Parse "Pageins:" line
+            current_pageins = None
+            for line in output.splitlines():
+                if 'Pageins' in line or 'pageins' in line:
+                    # Format: "Pageins:                          12345."
+                    parts = line.split(':')
+                    if len(parts) >= 2:
+                        num_str = parts[1].strip().rstrip('.')
+                        try:
+                            current_pageins = int(num_str)
+                        except ValueError:
+                            pass
+                    break
+
+            if current_pageins is None:
+                return 0.0
+
+            now = time.time()
+
+            if self._last_pageins is not None and self._last_pagein_time > 0:
+                elapsed = now - self._last_pagein_time
+                if elapsed > 0:
+                    delta = current_pageins - self._last_pageins
+                    rate = delta / elapsed
+                    self._last_pageins = current_pageins
+                    self._last_pagein_time = now
+                    return max(0.0, rate)
+
+            # First call — just store baseline
+            self._last_pageins = current_pageins
+            self._last_pagein_time = now
+            return 0.0
+
+        except asyncio.TimeoutError:
+            return 0.0
+        except FileNotFoundError:
+            return 0.0
+        except Exception:
+            return 0.0
+
     def _parse_memory_pressure_output(self, output: str) -> Optional[MemoryPressure]:
         """
         Parse the output of the memory_pressure command.
@@ -970,6 +1039,10 @@ class MemoryQuantizer:
                     await self._handle_tier_change(self.current_tier, metrics.tier)
                     self.current_tier = metrics.tier
 
+                # v266.0: Mmap thrash detection via vm_stat pageins
+                self._pagein_rate = await self._get_pagein_rate_async()
+                await self._check_thrash_state()
+
                 # Learn patterns for tracked components
                 for component in self.tracked_components:
                     await self.pattern_learner.learn_pattern(
@@ -1023,6 +1096,48 @@ class MemoryQuantizer:
     def register_tier_change_callback(self, callback: Callable):
         """Register callback for tier changes"""
         self.tier_change_callbacks.append(callback)
+
+    def register_thrash_callback(self, callback: Callable) -> None:
+        """Register callback for thrash state changes.
+
+        Callback receives one argument: 'healthy', 'thrashing', or 'emergency'.
+        Called when state transitions (not on every check).
+        """
+        self._thrash_callbacks.append(callback)
+
+    async def _check_thrash_state(self) -> None:
+        """Check pagein rate and transition thrash state if needed."""
+        rate = self._pagein_rate
+        now = time.time()
+        old_state = self._thrash_state
+
+        if rate >= THRASH_PAGEIN_EMERGENCY:
+            new_state = "emergency"
+        elif rate >= THRASH_PAGEIN_WARNING:
+            if self._thrash_warning_since == 0:
+                self._thrash_warning_since = now
+            if now - self._thrash_warning_since >= THRASH_SUSTAINED_SECONDS:
+                new_state = "thrashing"
+            else:
+                return  # Still accumulating sustained readings
+        else:
+            self._thrash_warning_since = 0.0
+            new_state = "healthy"
+
+        if new_state != old_state:
+            self._thrash_state = new_state
+            logger.warning(
+                f"[ThrashDetect] State change: {old_state} -> {new_state} "
+                f"(pageins/sec: {rate:.0f})"
+            )
+            for callback in self._thrash_callbacks:
+                try:
+                    if asyncio.iscoroutinefunction(callback):
+                        await callback(new_state)
+                    else:
+                        callback(new_state)
+                except Exception as e:
+                    logger.debug(f"Thrash callback error: {e}")
 
     def track_component(self, component_name: str):
         """Track memory usage for a component"""
