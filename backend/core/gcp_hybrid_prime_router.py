@@ -1242,6 +1242,8 @@ class GCPHybridPrimeRouter:
                             f"(threshold: {MEMORY_SPIKE_RATE_THRESHOLD_MB} MB/s), "
                             f"current RAM: {used_percent:.1f}%"
                         )
+                        # Clear stale readings to avoid contaminating future N-of-M checks
+                        self._trigger_readings.clear()
                         self._transition_vm_lifecycle(VMLifecycleState.TRIGGERING,
                                                        f"memory_spike_{memory_rate_mb_sec:.0f}mb_sec")
                         self._transition_vm_lifecycle(VMLifecycleState.PROVISIONING,
@@ -2181,6 +2183,60 @@ class GCPHybridPrimeRouter:
         """Backward compat setter — no-op. State machine handles transitions."""
         pass  # Ignored — state machine handles this
 
+    async def _await_vm_health_for_active(self, reason: str = "") -> None:
+        """Poll GCP VM health before transitioning BOOTING → ACTIVE.
+
+        The VM API reports RUNNING before the inference server is ready.
+        This task polls is_vm_available() (which checks the /health endpoint)
+        to confirm the inference stack is actually serving before we enter
+        ACTIVE state. Times out after 300s → COOLING_DOWN.
+        """
+        health_timeout = float(os.getenv("GCP_VM_HEALTH_GATE_TIMEOUT", "300.0"))
+        poll_interval = 10.0
+        deadline = time.time() + health_timeout
+
+        try:
+            while time.time() < deadline:
+                if self._vm_lifecycle_state != VMLifecycleState.BOOTING:
+                    self.logger.info(
+                        f"[VMLifecycle] Left BOOTING state ({self._vm_lifecycle_state.value}), "
+                        f"aborting health gate"
+                    )
+                    return
+
+                # Check if inference server is healthy
+                if self._gcp_controller and hasattr(self._gcp_controller, 'is_vm_available'):
+                    if self._gcp_controller.is_vm_available():
+                        self._transition_vm_lifecycle(
+                            VMLifecycleState.ACTIVE, "health_check_passed"
+                        )
+                        self.logger.info(
+                            f"[VMLifecycle] VM inference health confirmed — ACTIVE (reason: {reason})"
+                        )
+                        return
+
+                await asyncio.sleep(poll_interval)
+
+            # Timeout — VM never became healthy
+            self.logger.warning(
+                f"[VMLifecycle] VM health gate timeout ({health_timeout}s) — "
+                f"inference server never confirmed healthy"
+            )
+            self._transition_vm_lifecycle(
+                VMLifecycleState.COOLING_DOWN, "health_gate_timeout"
+            )
+            self._cooling_started_at = time.time()
+
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            self.logger.error(f"[VMLifecycle] Health gate error: {e}")
+            if self._vm_lifecycle_state == VMLifecycleState.BOOTING:
+                self._transition_vm_lifecycle(
+                    VMLifecycleState.COOLING_DOWN, f"health_gate_error: {e}"
+                )
+                self._cooling_started_at = time.time()
+
     async def _unload_local_model_after_stability(self) -> None:
         """After GCP VM proves stable, unload local model to reclaim RAM."""
         try:
@@ -2298,9 +2354,13 @@ class GCPHybridPrimeRouter:
                     self.logger.info("GCP VM provisioned successfully")
                     self._metrics.gcp_requests += 1
 
-                    # v266.0: Transition through BOOTING → ACTIVE
+                    # v266.0: Transition to BOOTING — ACTIVE deferred until health check
                     self._transition_vm_lifecycle(VMLifecycleState.BOOTING, "vm_created")
-                    self._transition_vm_lifecycle(VMLifecycleState.ACTIVE, "vm_provisioned_healthy")
+                    # Launch background task to poll health and transition to ACTIVE
+                    asyncio.create_task(
+                        self._await_vm_health_for_active(reason=reason),
+                        name="gcp_vm_health_gate"
+                    )
 
                     # v148.1: Record success for circuit breaker
                     if ENTERPRISE_HOOKS_AVAILABLE and record_provider_success:
