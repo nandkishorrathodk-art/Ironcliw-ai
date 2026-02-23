@@ -67195,6 +67195,53 @@ class JarvisSystemKernel:
         # GCP/Docker init often takes 2-4 minutes, 60s was causing premature timeouts
         resource_timeout = float(os.environ.get("JARVIS_RESOURCE_TIMEOUT", "300.0"))
 
+        # v266.2: Memory gate — re-evaluate mode at phase boundary
+        try:
+            import psutil as _ps2
+            _mem2 = _ps2.virtual_memory()
+            _avail_gb2 = _mem2.available / (1024**3)
+            _current_mode2 = os.environ.get("JARVIS_STARTUP_MEMORY_MODE", "local_full")
+            _sev_map = {
+                "local_full": 0, "local_optimized": 1, "sequential": 2,
+                "cloud_first": 3, "cloud_only": 4, "minimal": 5,
+            }
+            _critical2 = float(os.getenv("JARVIS_CRITICAL_THRESHOLD_GB", "2.0"))
+            _cloud2 = float(os.getenv("JARVIS_CLOUD_THRESHOLD_GB", "6.0"))
+            _optimize2 = float(os.getenv("JARVIS_OPTIMIZE_THRESHOLD_GB", "4.0"))
+            _planned_ml2 = float(os.getenv("JARVIS_PLANNED_ML_GB", "4.6"))
+            _predicted2 = max(0.0, _avail_gb2 - _planned_ml2)
+
+            if _avail_gb2 < _critical2:
+                _ideal2 = "cloud_only"
+            elif _predicted2 < _critical2 or _avail_gb2 < _cloud2:
+                _ideal2 = "cloud_first"
+            elif _predicted2 < _optimize2:
+                _ideal2 = "local_optimized"
+            else:
+                _ideal2 = "local_full"
+
+            _cur_sev2 = _sev_map.get(_current_mode2, 0)
+            _ideal_sev2 = _sev_map.get(_ideal2, 0)
+            # Monotonic: only degrade during startup (never recover upward)
+            if _ideal_sev2 > _cur_sev2:
+                self.logger.info(
+                    "[v266.2] Phase 2 gate: mode %s → %s (avail=%.1fGB)",
+                    _current_mode2, _ideal2, _avail_gb2,
+                )
+                os.environ["JARVIS_STARTUP_MEMORY_MODE"] = _ideal2
+                os.environ["JARVIS_MEASURED_AVAILABLE_GB"] = f"{_avail_gb2:.2f}"
+                _current_mode2 = _ideal2
+
+            if _current_mode2 in ("cloud_only", "minimal"):
+                self.logger.warning(
+                    "[v266.2] Phase 2: mode=%s — deferring heavy local resources",
+                    _current_mode2,
+                )
+                os.environ["JARVIS_CAPABILITY_DOCKER"] = "deferred"
+                os.environ["JARVIS_CAPABILITY_LOCAL_STORAGE"] = "deferred"
+        except Exception as _gate2_err:
+            self.logger.debug("[v266.2] Phase 2 memory gate error: %s", _gate2_err)
+
         # v188.0: Progress range for resource phase
         base_progress = 15
         end_progress = 30
@@ -68181,6 +68228,54 @@ class JarvisSystemKernel:
         update it here after health check passes.
         """
         self._state = KernelState.STARTING_BACKEND
+
+        # v266.2: Memory gate — re-evaluate mode at phase boundary
+        try:
+            import psutil as _ps3
+            _mem3 = _ps3.virtual_memory()
+            _avail_gb3 = _mem3.available / (1024**3)
+            _current_mode3 = os.environ.get("JARVIS_STARTUP_MEMORY_MODE", "local_full")
+            _sev_map3 = {
+                "local_full": 0, "local_optimized": 1, "sequential": 2,
+                "cloud_first": 3, "cloud_only": 4, "minimal": 5,
+            }
+            _critical3 = float(os.getenv("JARVIS_CRITICAL_THRESHOLD_GB", "2.0"))
+            _cloud3 = float(os.getenv("JARVIS_CLOUD_THRESHOLD_GB", "6.0"))
+            _optimize3 = float(os.getenv("JARVIS_OPTIMIZE_THRESHOLD_GB", "4.0"))
+            _planned_ml3 = float(os.getenv("JARVIS_PLANNED_ML_GB", "4.6"))
+            _predicted3 = max(0.0, _avail_gb3 - _planned_ml3)
+
+            if _avail_gb3 < _critical3:
+                _ideal3 = "cloud_only"
+            elif _predicted3 < _critical3 or _avail_gb3 < _cloud3:
+                _ideal3 = "cloud_first"
+            elif _predicted3 < _optimize3:
+                _ideal3 = "local_optimized"
+            else:
+                _ideal3 = "local_full"
+
+            _cur_sev3 = _sev_map3.get(_current_mode3, 0)
+            _ideal_sev3 = _sev_map3.get(_ideal3, 0)
+            # Monotonic: only degrade during startup (never recover upward)
+            if _ideal_sev3 > _cur_sev3:
+                self.logger.info(
+                    "[v266.2] Phase 3 gate: mode %s → %s (avail=%.1fGB)",
+                    _current_mode3, _ideal3, _avail_gb3,
+                )
+                os.environ["JARVIS_STARTUP_MEMORY_MODE"] = _ideal3
+                os.environ["JARVIS_MEASURED_AVAILABLE_GB"] = f"{_avail_gb3:.2f}"
+                _current_mode3 = _ideal3
+
+            if _current_mode3 in ("cloud_first", "cloud_only", "minimal"):
+                if _avail_gb3 < 2.0:
+                    self.logger.warning(
+                        "[v266.2] Phase 3: mode=%s, available=%.1fGB "
+                        "— setting JARVIS_BACKEND_MINIMAL=true",
+                        _current_mode3, _avail_gb3,
+                    )
+                    os.environ["JARVIS_BACKEND_MINIMAL"] = "true"
+        except Exception as _gate3_err:
+            self.logger.debug("[v266.2] Phase 3 memory gate error: %s", _gate3_err)
 
         with self.logger.section_start(LogSection.BACKEND, "Zone 6.1 | Phase 3: Backend"):
             # v211.0: Mark backend as "running" while starting
