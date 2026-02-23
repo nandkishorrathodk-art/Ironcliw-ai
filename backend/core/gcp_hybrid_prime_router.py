@@ -179,6 +179,11 @@ EMERGENCY_SIGSTOP_TIMEOUT_SEC = float(os.getenv("EMERGENCY_SIGSTOP_TIMEOUT_SEC",
 EMERGENCY_SIGSTOP_COOLDOWN_SEC = float(os.getenv("EMERGENCY_SIGSTOP_COOLDOWN_SEC", "120.0"))
 # Hysteresis: RAM must drop this much below unload trigger before re-enabling
 EMERGENCY_OFFLOAD_HYSTERESIS = float(os.getenv("EMERGENCY_OFFLOAD_HYSTERESIS", "10.0"))
+# v266.2: Post-crisis model recovery — hybrid lazy + background warm-up
+# After emergency offload, reload local model when memory stabilizes
+RECOVERY_STABILITY_THRESHOLD_PERCENT = float(os.getenv("EMERGENCY_RECOVERY_THRESHOLD_PERCENT", "75.0"))
+RECOVERY_STABILITY_DURATION_SEC = float(os.getenv("EMERGENCY_RECOVERY_STABILITY_SEC", "30.0"))
+RECOVERY_MAX_ATTEMPTS = int(os.getenv("EMERGENCY_RECOVERY_MAX_ATTEMPTS", "3"))
 
 # Cross-repo signaling for memory pressure
 from pathlib import Path
