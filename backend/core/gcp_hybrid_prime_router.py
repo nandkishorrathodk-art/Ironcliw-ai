@@ -1074,7 +1074,7 @@ class GCPHybridPrimeRouter:
         When RAM usage exceeds VM_PROVISIONING_THRESHOLD OR memory growth rate
         exceeds MEMORY_SPIKE_RATE_THRESHOLD_MB (100MB/sec), triggers GCP provisioning.
 
-        At EMERGENCY_OFFLOAD_RAM_PERCENT (80%), initiates emergency offload:
+        At EMERGENCY_UNLOAD_RAM_PERCENT (85%), initiates emergency offload:
         1. SIGSTOP all local LLM processes
         2. Provision GCP VM
         3. SIGCONT processes (or terminate if cloud ready)
@@ -1374,106 +1374,6 @@ class GCPHybridPrimeRouter:
         slope = (n * sum_t_mb - sum_t * sum_mb) / denominator
         return slope  # MB per second
 
-    async def _emergency_offload(
-        self,
-        reason: str,
-        used_percent: float,
-        rate_mb_sec: float,
-    ) -> bool:
-        """
-        v93.0: Emergency Offload - SIGSTOP local LLM processes, provision GCP.
-
-        This is the "panic button" for when memory is critically high.
-        Immediately pauses all local LLM subprocesses to prevent OOM,
-        provisions GCP VM, then either:
-        - SIGCONT processes (if GCP failed and RAM recovered)
-        - Terminates local processes (if GCP ready to take over)
-
-        Args:
-            reason: Reason for emergency offload
-            used_percent: Current RAM usage percent
-            rate_mb_sec: Current memory growth rate
-
-        Returns:
-            True if offload completed successfully
-        """
-        # Lazy init lock
-        if self._offload_lock is None:
-            self._offload_lock = asyncio.Lock()
-
-        async with self._offload_lock:
-            if self._emergency_offload_active:
-                return False  # Already in emergency mode
-
-            self._emergency_offload_active = True
-            self._emergency_offload_started_at = time.time()
-
-            self.logger.critical(
-                f"[v93.0] EMERGENCY OFFLOAD INITIATED\n"
-                f"  Reason: {reason}\n"
-                f"  RAM: {used_percent:.1f}%\n"
-                f"  Rate: {rate_mb_sec:.1f} MB/s\n"
-                f"  Action: SIGSTOP local LLM processes"
-            )
-
-            # v93.0: Signal to other repos that emergency offload is starting
-            await self._signal_memory_pressure_to_repos(
-                status="offload_active",
-                action="pause",
-                used_percent=used_percent,
-                rate_mb_sec=rate_mb_sec,
-            )
-
-            # Step 1: Identify and pause local LLM processes
-            paused_count = await self._pause_local_llm_processes()
-
-            if paused_count > 0:
-                self.logger.info(
-                    f"[v93.0] Paused {paused_count} local LLM processes via SIGSTOP"
-                )
-
-            # Step 2: Trigger GCP VM provisioning (with v153.0 recovery cascade check)
-            if not self._gcp_permanently_unavailable:
-                # v153.0: Check if GCP can be attempted (not in cooldown)
-                can_attempt, cooldown_reason = self._recovery_cascade.can_attempt_gcp()
-
-                if can_attempt:
-                    self.logger.info("[v93.0] Provisioning GCP VM for workload transfer...")
-                    success = await self._trigger_vm_provisioning(
-                        reason=f"emergency_offload_{reason}"
-                    )
-
-                    if success:
-                        self.logger.info(
-                            "[v93.0] GCP VM provisioned successfully - workload can transfer"
-                        )
-                        # v153.0: Record success in recovery cascade
-                        self._recovery_cascade.record_success(RoutingTier.GCP_VM)
-                        # Don't terminate local processes yet - let the system decide
-                        # based on actual GCP readiness
-                    else:
-                        self.logger.warning(
-                            "[v93.0] GCP VM provisioning failed - keeping processes paused "
-                            f"until RAM recovers or timeout ({EMERGENCY_OFFLOAD_TIMEOUT_SEC}s)"
-                        )
-                        # v153.0: RecoveryCascadeManager already recorded the failure in _trigger_vm_provisioning
-                else:
-                    self.logger.warning(
-                        f"[v153.0] GCP provisioning in cooldown: {cooldown_reason}. "
-                        f"Keeping processes paused until RAM recovers."
-                    )
-                    # v153.0: Get fallback tier for degraded operation
-                    fallback_tier, fallback_reason = self._recovery_cascade.get_fallback_tier(prefer_local=True)
-                    self.logger.info(
-                        f"[v153.0] Using fallback tier: {fallback_tier.value} ({fallback_reason})"
-                    )
-            else:
-                self.logger.warning(
-                    "[v93.0] GCP unavailable - processes paused until RAM recovers"
-                )
-
-            return True
-
     async def _pause_local_llm_processes(self) -> int:
         """v266.1: Pause local LLM processes via SIGSTOP (last resort only).
 
@@ -1718,12 +1618,12 @@ class GCPHybridPrimeRouter:
 
     async def _release_emergency_offload(self, reason: str) -> None:
         """
-        v93.0/v192.0: Release emergency offload - SIGCONT all paused processes.
+        v93.0/v266.1: Release emergency offload - SIGCONT all paused processes.
 
-        v192.0 Enhancement: Track cycles for anti-cycling protection:
-        - Records release timestamp for cooldown enforcement
-        - Increments cycle count (reset only when RAM drops significantly)
-        - Arms hysteresis to require RAM drop before re-trigger
+        v266.1: Simplified release — no longer tracks cycle counts (the old
+        cycling logic was the root cause of the death spiral).  Cooldown is
+        now enforced via _sigstop_released_at in _check_offload_escalation().
+        Hysteresis is still armed so that re-trigger requires a RAM drop.
         """
         if not self._emergency_offload_active:
             return
@@ -1739,14 +1639,13 @@ class GCPHybridPrimeRouter:
         self._emergency_offload_active = False
         self._emergency_offload_started_at = 0.0
 
-        # v192.0: Track release for anti-cycle protection
-        self._emergency_offload_released_at = time.time()
-        self._emergency_offload_cycle_count += 1
+        # v266.1: Record release time for SIGSTOP cooldown enforcement
+        self._sigstop_released_at = time.time()
         self._emergency_offload_hysteresis_armed = True
 
         self.logger.info(
-            f"[v192.0] Cycle tracking: count={self._emergency_offload_cycle_count}, "
-            f"hysteresis armed, cooldown={EMERGENCY_OFFLOAD_COOLDOWN_SEC}s starts now"
+            f"[v266.1] SIGSTOP released, hysteresis armed, "
+            f"cooldown={EMERGENCY_SIGSTOP_COOLDOWN_SEC}s starts now"
         )
 
         # v93.0: Signal to other repos that pressure is normal
@@ -2016,7 +1915,7 @@ class GCPHybridPrimeRouter:
                 "thresholds": {
                     "gcp_trigger": GCP_TRIGGER_RAM_PERCENT,
                     "vm_provisioning": VM_PROVISIONING_THRESHOLD,
-                    "emergency_offload": EMERGENCY_OFFLOAD_RAM_PERCENT,
+                    "emergency_offload": EMERGENCY_UNLOAD_RAM_PERCENT,
                     "critical": CRITICAL_RAM_PERCENT,
                 },
                 "emergency_offload_active": self._emergency_offload_active,
@@ -3549,7 +3448,7 @@ class GCPHybridPrimeRouter:
                 "thresholds": {
                     "gcp_trigger_percent": GCP_TRIGGER_RAM_PERCENT,
                     "vm_provisioning_percent": VM_PROVISIONING_THRESHOLD,
-                    "emergency_offload_percent": EMERGENCY_OFFLOAD_RAM_PERCENT,
+                    "emergency_offload_percent": EMERGENCY_UNLOAD_RAM_PERCENT,
                     "critical_percent": CRITICAL_RAM_PERCENT,
                     "adaptive_poll_threshold_percent": MEMORY_ADAPTIVE_POLL_THRESHOLD,
                     "spike_rate_threshold_mb_sec": MEMORY_SPIKE_RATE_THRESHOLD_MB,
