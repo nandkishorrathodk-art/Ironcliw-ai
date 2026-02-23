@@ -579,6 +579,7 @@ import contextlib
 import functools
 import hashlib
 import heapq
+import importlib.util
 import inspect
 import json
 import logging
@@ -2534,6 +2535,174 @@ def _get_env_float(key: str, default: float) -> float:
         return float(os.environ.get(key, default))
     except (ValueError, TypeError):
         return default
+
+
+# =============================================================================
+# BACKEND LAUNCH DISCOVERY
+# =============================================================================
+@dataclass(frozen=True)
+class BackendLaunchContext:
+    """Resolved context for launching the backend process."""
+    project_root: Path
+    backend_dir: Optional[Path]
+    backend_script: Optional[Path]
+
+
+def _discover_backend_launch_context(
+    primary_project_root: Optional[Path] = None,
+) -> BackendLaunchContext:
+    """
+    Resolve backend launch paths deterministically across invocation contexts.
+
+    Searches common roots (env/config/cwd parents) and returns the first root
+    that contains ``backend/main.py``. Falls back to the first existing root so
+    callers still get a stable ``project_root`` for diagnostics.
+    """
+    candidate_roots: List[Path] = []
+
+    env_project_root = os.environ.get("JARVIS_PROJECT_ROOT")
+    if env_project_root:
+        candidate_roots.append(Path(env_project_root).expanduser())
+
+    if primary_project_root is not None:
+        candidate_roots.append(primary_project_root)
+
+    candidate_roots.extend(
+        [
+            PROJECT_ROOT,
+            Path(__file__).resolve().parent,
+            Path.cwd(),
+            Path.cwd().resolve(),
+        ]
+    )
+
+    # Walk up from cwd to support launches from nested directories/worktrees.
+    try:
+        _cwd = Path.cwd().resolve()
+        for _ in range(4):
+            candidate_roots.append(_cwd)
+            _cwd = _cwd.parent
+    except Exception:
+        pass
+
+    deduped_roots: List[Path] = []
+    seen: Set[str] = set()
+    for root in candidate_roots:
+        try:
+            resolved = root.expanduser().resolve()
+        except Exception:
+            continue
+        key = str(resolved)
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped_roots.append(resolved)
+
+    fallback_root = next((root for root in deduped_roots if root.exists()), PROJECT_ROOT)
+
+    for root in deduped_roots:
+        backend_script = root / "backend" / "main.py"
+        if backend_script.exists():
+            return BackendLaunchContext(
+                project_root=root,
+                backend_dir=backend_script.parent,
+                backend_script=backend_script,
+            )
+
+    return BackendLaunchContext(
+        project_root=fallback_root,
+        backend_dir=None,
+        backend_script=None,
+    )
+
+
+def _detect_backend_runtime_capabilities(
+    context: BackendLaunchContext,
+) -> Dict[str, bool]:
+    """Detect runtime capabilities required to launch backend deterministically."""
+    backend_module_available = (
+        importlib.util.find_spec("backend.main") is not None
+        if importlib.util.find_spec("backend") is not None
+        else False
+    )
+    script_present = context.backend_script is not None and context.backend_script.exists()
+
+    return {
+        "uvicorn_available": importlib.util.find_spec("uvicorn") is not None,
+        "granian_available": importlib.util.find_spec("granian") is not None,
+        "backend_module_available": backend_module_available,
+        "backend_script_available": script_present,
+        "backend_module_possible": backend_module_available or script_present,
+    }
+
+
+def _select_backend_launch_command(
+    context: BackendLaunchContext,
+    backend_host: str,
+    backend_port: int,
+    capabilities: Optional[Dict[str, bool]] = None,
+) -> Tuple[List[str], str]:
+    """
+    Select backend launch command based on available runtime capabilities.
+
+    Order of preference:
+    1. ``uvicorn`` module launch (best observability + supervisor control)
+    2. ``backend.main`` entrypoint with ``granian`` runtime
+    """
+    caps = capabilities or _detect_backend_runtime_capabilities(context)
+
+    if caps["uvicorn_available"]:
+        if not caps["backend_module_possible"]:
+            raise RuntimeError(
+                "uvicorn is available but backend.main is not importable and backend/main.py "
+                "could not be discovered"
+            )
+        return (
+            [
+                sys.executable,
+                "-m",
+                "uvicorn",
+                "backend.main:app",
+                "--host",
+                backend_host,
+                "--port",
+                str(backend_port),
+            ],
+            "uvicorn_module",
+        )
+
+    if not caps["granian_available"]:
+        raise RuntimeError(
+            "No backend ASGI runtime available: install uvicorn or granian"
+        )
+
+    if caps["backend_script_available"] and context.backend_script is not None:
+        return (
+            [
+                sys.executable,
+                str(context.backend_script),
+                "--port",
+                str(backend_port),
+            ],
+            "backend_main_granian",
+        )
+
+    if caps["backend_module_available"]:
+        return (
+            [
+                sys.executable,
+                "-m",
+                "backend.main",
+                "--port",
+                str(backend_port),
+            ],
+            "backend_module_granian",
+        )
+
+    raise RuntimeError(
+        "granian is available but backend entrypoint is missing "
+        "(neither backend/main.py nor backend.main module found)"
+    )
 
 
 # =============================================================================
@@ -62264,6 +62433,16 @@ class JarvisSystemKernel:
                 mode_source = "default (production mode)"
 
         # Store the mode in config for reference
+        # Runtime capability guard: in-process mode requires uvicorn.
+        if self.config.in_process_backend and not UVICORN_AVAILABLE:
+            self.logger.warning(
+                "[Kernel] In-process mode requested but uvicorn is unavailable; "
+                "switching to standalone backend mode"
+            )
+            self.config.in_process_backend = False
+            selected_mode = "standalone"
+            mode_source = f"{mode_source} + runtime-capability-fallback"
+
         self.config.mode = selected_mode
 
         # Log the decision with clear explanation
@@ -67543,6 +67722,13 @@ class JarvisSystemKernel:
             self._update_component_status("backend", "running", "Starting backend server")
             self._mark_startup_activity("backend_phase_start", stage="backend")
 
+            if self.config.in_process_backend and not UVICORN_AVAILABLE:
+                self.logger.warning(
+                    "[Kernel] In-process backend requested but uvicorn is unavailable; "
+                    "falling back to subprocess launch"
+                )
+                self.config.in_process_backend = False
+
             if self.config.in_process_backend:
                 success = await self._start_backend_in_process()
                 if not success:
@@ -67654,7 +67840,7 @@ class JarvisSystemKernel:
             )
 
             startup_timeout = float(
-                os.environ.get("JARVIS_BACKEND_STARTUP_TIMEOUT", "90.0")
+                os.environ.get("JARVIS_BACKEND_STARTUP_TIMEOUT", "300.0")
             )
             uvicorn_boot_timeout = float(
                 os.environ.get("JARVIS_BACKEND_UVICORN_BOOT_TIMEOUT", "30.0")
@@ -67772,39 +67958,48 @@ class JarvisSystemKernel:
     async def _start_backend_subprocess(self) -> bool:
         """Start backend as subprocess."""
         self.logger.info("[Kernel] Starting backend subprocess...")
+        launch_context = _discover_backend_launch_context(self.config.project_root)
+        runtime_caps = _detect_backend_runtime_capabilities(launch_context)
 
-        # Find backend script
-        backend_script = Path(__file__).parent / "backend" / "main.py"
-        if not backend_script.exists():
-            # Try alternative locations
-            for alt_path in [
-                Path(__file__).parent.parent / "backend" / "main.py",
-                Path.cwd() / "backend" / "main.py",
-            ]:
-                if alt_path.exists():
-                    backend_script = alt_path
-                    break
-
-        if not backend_script.exists():
-            self.logger.error(f"[Kernel] Backend script not found at {backend_script}")
+        if not runtime_caps.get("backend_module_possible", False):
+            missing_hint = (
+                f"(searched from project root {launch_context.project_root})"
+            )
+            self.logger.error(
+                "[Kernel] Backend entrypoint not found: expected backend/main.py "
+                f"or importable backend.main module {missing_hint}"
+            )
             return False
 
         try:
-            # Start process
-            env = os.environ.copy()
-            project_root = Path(__file__).resolve().parent
-            backend_dir = project_root / "backend"
+            command, launch_mode = _select_backend_launch_command(
+                context=launch_context,
+                backend_host=self.config.backend_host,
+                backend_port=self.config.backend_port,
+                capabilities=runtime_caps,
+            )
+        except Exception as selection_error:
+            self.logger.error(f"[Kernel] Backend launch contract invalid: {selection_error}")
+            return False
 
-            # Keep backend imports deterministic across uvicorn launch contexts.
-            pythonpath_parts = [str(project_root), str(backend_dir)]
+        try:
+            env = os.environ.copy()
+            project_root = launch_context.project_root
+            backend_dir = launch_context.backend_dir or (project_root / "backend")
+
+            # Keep backend imports deterministic across launch contexts.
+            pythonpath_parts = [str(project_root)]
+            if backend_dir.exists():
+                pythonpath_parts.append(str(backend_dir))
+
             existing_pythonpath = env.get("PYTHONPATH", "")
             if existing_pythonpath:
                 pythonpath_parts.extend(
                     part for part in existing_pythonpath.split(os.pathsep) if part
                 )
 
-            deduped_pythonpath: list[str] = []
-            seen_paths: set[str] = set()
+            deduped_pythonpath: List[str] = []
+            seen_paths: Set[str] = set()
             for part in pythonpath_parts:
                 normalized = os.path.abspath(part)
                 if normalized in seen_paths:
@@ -67814,14 +68009,18 @@ class JarvisSystemKernel:
 
             env["PYTHONPATH"] = os.pathsep.join(deduped_pythonpath)
             env["JARVIS_BACKEND_PORT"] = str(self.config.backend_port)
+            env["BACKEND_PORT"] = str(self.config.backend_port)
             env["JARVIS_KERNEL_PID"] = str(os.getpid())
+            env.setdefault("JARVIS_SUPERVISED", "1")
+            env.setdefault("JARVIS_MANAGED_BY_SUPERVISOR", "1")
+
+            self.logger.info(
+                f"[Kernel] Backend launch mode: {launch_mode} "
+                f"(cwd={project_root}, port={self.config.backend_port})"
+            )
 
             self._backend_process = await asyncio.create_subprocess_exec(
-                sys.executable,
-                "-m", "uvicorn",
-                "backend.main:app",
-                "--host", self.config.backend_host,
-                "--port", str(self.config.backend_port),
+                *command,
                 cwd=str(project_root),
                 env=env,
                 stdout=asyncio.subprocess.PIPE,
@@ -67829,34 +68028,45 @@ class JarvisSystemKernel:
             )
             self._mark_startup_activity("backend_subprocess_spawned", stage="backend")
 
-            # Register with process manager
             if self._process_manager:
                 await self._process_manager.register_process(
                     "backend",
                     self._backend_process,
-                    {"port": self.config.backend_port}
+                    {"port": self.config.backend_port},
                 )
 
-            # Wait for backend to be ready (health check)
-            if await self._wait_for_backend_health(timeout=60.0):
-                self.logger.success(f"[Kernel] Backend running at http://{self.config.backend_host}:{self.config.backend_port}")
+            health_timeout = _get_env_float(
+                "JARVIS_BACKEND_SUBPROCESS_HEALTH_TIMEOUT",
+                _get_env_float("JARVIS_BACKEND_STARTUP_TIMEOUT", 300.0),
+            )
+            health_timeout = max(10.0, health_timeout)
+
+            if await self._wait_for_backend_health(timeout=health_timeout):
+                self.logger.success(
+                    f"[Kernel] Backend running at http://{self.config.backend_host}:{self.config.backend_port}"
+                )
                 return True
-            else:
-                if self._backend_process and self._backend_process.returncode is not None:
-                    try:
-                        _, stderr_bytes = await asyncio.wait_for(
-                            self._backend_process.communicate(),
-                            timeout=1.5,
-                        )
-                        if stderr_bytes:
-                            stderr_text = stderr_bytes.decode(errors="replace").strip()
-                            if stderr_text:
-                                tail_line = stderr_text.splitlines()[-1][:500]
-                                self.logger.error(f"[Kernel] Backend subprocess stderr: {tail_line}")
-                    except Exception:
-                        pass
-                self.logger.error("[Kernel] Backend failed health check")
-                return False
+
+            if self._backend_process and self._backend_process.returncode is not None:
+                try:
+                    _, stderr_bytes = await asyncio.wait_for(
+                        self._backend_process.communicate(),
+                        timeout=1.5,
+                    )
+                    if stderr_bytes:
+                        stderr_text = stderr_bytes.decode(errors="replace").strip()
+                        if stderr_text:
+                            tail_line = stderr_text.splitlines()[-1][:500]
+                            self.logger.error(
+                                f"[Kernel] Backend subprocess stderr: {tail_line}"
+                            )
+                except Exception:
+                    pass
+
+            self.logger.error(
+                f"[Kernel] Backend failed health check within {health_timeout:.1f}s"
+            )
+            return False
 
         except Exception as e:
             self.logger.error(f"[Kernel] Subprocess backend failed: {e}")
