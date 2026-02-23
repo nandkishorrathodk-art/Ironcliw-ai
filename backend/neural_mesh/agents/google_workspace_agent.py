@@ -2620,18 +2620,23 @@ Return ONLY a JSON object with these keys (use null if not found):
                     confidence=0.9,
                 )
 
+                result["workspace_action"] = "fetch_unread_emails"
                 return result
             else:
                 return {
                     "error": exec_result.error or "All email check methods failed",
+                    "workspace_action": "fetch_unread_emails",
                     "emails": [],
                 }
 
         # Fallback to direct client call if executor not available
         if self._client:
-            return await self._client.fetch_unread_emails(limit=limit)
+            _result = await self._client.fetch_unread_emails(limit=limit)
+            if isinstance(_result, dict):
+                _result["workspace_action"] = "fetch_unread_emails"
+            return _result
 
-        return {"error": "No execution method available", "emails": []}
+        return {"error": "No execution method available", "emails": [], "workspace_action": "fetch_unread_emails"}
 
     async def _search_email(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         """Search emails."""
@@ -2679,9 +2684,9 @@ Return ONLY a JSON object with these keys (use null if not found):
         original_email = payload.get("original_email_content", "")
 
         if not to:
-            return {"error": "Recipient 'to' is required", "success": False}
+            return {"error": "Recipient 'to' is required", "success": False, "workspace_action": "draft_email_reply"}
         if not subject:
-            return {"error": "Subject is required", "success": False}
+            return {"error": "Subject is required", "success": False, "workspace_action": "draft_email_reply"}
 
         generated_body = False
         model_used = None
@@ -2743,7 +2748,7 @@ EMAIL BODY:"""
                     logger.warning(f"Prime email generation failed: {e}")
 
         if not body:
-            return {"error": "Email body is required (generation failed)", "success": False}
+            return {"error": "Email body is required (generation failed)", "success": False, "workspace_action": "draft_email_reply"}
 
         # Create draft via Gmail API
         result = await self._client.draft_email(
@@ -2794,6 +2799,7 @@ EMAIL BODY:"""
         result["model_used"] = model_used
         result["execution_time_ms"] = execution_time_ms
 
+        result["workspace_action"] = "draft_email_reply"
         return result
 
     async def _track_draft_for_edits(
@@ -3009,11 +3015,11 @@ EMAIL BODY:"""
         html_body = payload.get("html_body")
 
         if not to:
-            return {"error": "Recipient 'to' is required"}
+            return {"error": "Recipient 'to' is required", "workspace_action": "send_email"}
         if not subject:
-            return {"error": "Subject is required"}
+            return {"error": "Subject is required", "workspace_action": "send_email"}
         if not body:
-            return {"error": "Email body is required"}
+            return {"error": "Email body is required", "workspace_action": "send_email"}
 
         result = await self._client.send_email(
             to=to,
@@ -3047,6 +3053,7 @@ EMAIL BODY:"""
                 confidence=0.95,
             )
 
+        result["workspace_action"] = "send_email"
         return result
 
     async def _check_calendar(self, payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -3123,19 +3130,24 @@ EMAIL BODY:"""
                     confidence=0.9,
                 )
 
+                result["workspace_action"] = "check_calendar_events"
                 return result
             else:
                 return {
                     "error": exec_result.error or "All calendar check methods failed",
                     "events": [],
+                    "workspace_action": "check_calendar_events",
                     "count": 0,
                 }
 
         # Fallback to direct client call if executor not available
         if self._client:
-            return await self._client.get_calendar_events(date_str=display_date, days=days)
+            _result = await self._client.get_calendar_events(date_str=display_date, days=days)
+            if isinstance(_result, dict):
+                _result["workspace_action"] = "check_calendar_events"
+            return _result
 
-        return {"error": "No execution method available", "events": [], "count": 0}
+        return {"error": "No execution method available", "events": [], "count": 0, "workspace_action": "check_calendar_events"}
 
     async def _create_event(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         """Create a calendar event."""
@@ -3147,9 +3159,9 @@ EMAIL BODY:"""
         attendees = payload.get("attendees", [])
 
         if not title:
-            return {"error": "Event title is required"}
+            return {"error": "Event title is required", "workspace_action": "create_calendar_event"}
         if not start:
-            return {"error": "Start time is required"}
+            return {"error": "Start time is required", "workspace_action": "create_calendar_event"}
 
         result = await self._client.create_calendar_event(
             title=title,
@@ -3176,6 +3188,7 @@ EMAIL BODY:"""
                 confidence=0.95,
             )
 
+        result["workspace_action"] = "create_calendar_event"
         return result
 
     async def _get_contacts(self, payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -3184,8 +3197,11 @@ EMAIL BODY:"""
         limit = payload.get("limit", 20)
 
         if self._client:
-            return await self._client.get_contacts(query=query, limit=limit)
-        return {"error": "Google API client not available", "contacts": []}
+            _result = await self._client.get_contacts(query=query, limit=limit)
+            if isinstance(_result, dict):
+                _result["workspace_action"] = "get_contacts"
+            return _result
+        return {"error": "Google API client not available", "contacts": [], "workspace_action": "get_contacts"}
 
     async def _create_document(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -3207,7 +3223,7 @@ EMAIL BODY:"""
         word_count = payload.get("word_count")
 
         if not topic:
-            return {"error": "Document topic is required"}
+            return {"error": "Document topic is required", "workspace_action": "create_document"}
 
         logger.info(f"Creating document: {document_type} about '{topic}'")
 
@@ -3260,14 +3276,16 @@ EMAIL BODY:"""
                     confidence=0.9,
                 )
 
+                result["workspace_action"] = "create_document"
                 return result
             else:
                 return {
                     "error": exec_result.error or "All document creation methods failed",
+                    "workspace_action": "create_document",
                     "success": False,
                 }
 
-        return {"error": "No execution method available for document creation", "success": False}
+        return {"error": "No execution method available for document creation", "success": False, "workspace_action": "create_document"}
 
     async def _get_workspace_summary(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -3340,6 +3358,7 @@ EMAIL BODY:"""
                 f"starting at {first_event['start']}."
             )
 
+        summary["workspace_action"] = "workspace_summary"
         return summary
 
     async def _handle_natural_query(self, payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -3351,7 +3370,7 @@ EMAIL BODY:"""
         query = payload.get("query", "")
 
         if not query:
-            return {"error": "No query provided"}
+            return {"error": "No query provided", "workspace_action": "handle_workspace_query"}
 
         # Detect intent
         intent, confidence, metadata = self._intent_detector.detect(query)
@@ -3381,6 +3400,7 @@ EMAIL BODY:"""
                 "message": "Ready to draft email",
                 "detected_recipient": names[0] if names else None,
                 "instructions": "Please provide: to, subject, and body",
+                "workspace_action": "draft_email_reply",
             }
 
         elif intent == WorkspaceIntent.SEND_EMAIL:
@@ -3388,6 +3408,7 @@ EMAIL BODY:"""
                 "status": "send_ready",
                 "message": "Ready to send email",
                 "instructions": "Please provide: to, subject, and body",
+                "workspace_action": "send_email",
             }
 
         elif intent == WorkspaceIntent.DAILY_BRIEFING:
@@ -3404,6 +3425,7 @@ EMAIL BODY:"""
                 "status": "event_ready",
                 "message": "Ready to create calendar event",
                 "instructions": "Please provide: title, start, and optionally end, description, location, attendees",
+                "workspace_action": "create_calendar_event",
             }
 
         else:
@@ -3412,6 +3434,7 @@ EMAIL BODY:"""
                 "detected_intent": intent.value,
                 "confidence": confidence,
                 "message": "I'm not sure what workspace action you'd like. Try asking about emails, calendar, or contacts.",
+                "workspace_action": "handle_workspace_query",
             }
 
     async def _handle_workspace_message(self, message: AgentMessage) -> None:
