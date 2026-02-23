@@ -1587,7 +1587,10 @@ class JarvisPrimeClient:
             "- Use intent=\"action\" for commands that DO something (lock screen, open app, etc.)\n"
             "- Use intent=\"answer\" for questions that need information\n"
             "- Use intent=\"conversation\" for casual chat\n"
-            "- suggested_actions: list specific actions like [\"lock_screen\"], [\"open_browser\"], etc.\n\n"
+            "- suggested_actions: list specific actions the Body should execute.\n"
+            "  System: [\"lock_screen\"], [\"unlock_screen\"], [\"open_browser\"]\n"
+            "  Workspace: [\"fetch_unread_emails\"], [\"check_calendar_events\"], [\"send_email\"], "
+            "[\"draft_email_reply\"], [\"create_calendar_event\"], [\"daily_briefing\"]\n\n"
             "After the CLASSIFICATION line, provide your normal response.\n\n"
         )
 
