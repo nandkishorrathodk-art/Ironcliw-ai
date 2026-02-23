@@ -1005,6 +1005,46 @@ class GCPHybridPrimeRouter:
                 self._gcp_permanently_unavailable = True
             else:
                 # GCP is properly configured - start monitoring
+
+                # v266.0: Register for authoritative macOS memory tier changes
+                try:
+                    from backend.core.memory_quantizer import get_memory_quantizer, MemoryTier
+                    mq = await get_memory_quantizer()
+
+                    async def _on_tier_change(old_tier, new_tier):
+                        """MemoryQuantizer authoritative tier change callback."""
+                        tier_severity = {
+                            "abundant": 0, "optimal": 1,
+                            "elevated": 2, "constrained": 3,
+                            "critical": 4, "emergency": 5,
+                        }
+                        # Handle both enum and string tier values
+                        old_name = old_tier.value if hasattr(old_tier, 'value') else str(old_tier)
+                        new_name = new_tier.value if hasattr(new_tier, 'value') else str(new_tier)
+                        new_sev = tier_severity.get(new_name.lower(), 0)
+
+                        if new_sev >= 4 and self._vm_lifecycle_state == VMLifecycleState.IDLE:
+                            self.logger.info(
+                                f"[VMLifecycle] MemoryQuantizer tier change: {old_name} -> {new_name}"
+                            )
+                            self._trigger_readings.append(True)
+                            above_count = sum(1 for r in self._trigger_readings if r)
+                            if above_count >= GCP_TRIGGER_READINGS_REQUIRED:
+                                self._transition_vm_lifecycle(
+                                    VMLifecycleState.TRIGGERING,
+                                    f"mq_tier_{new_name}"
+                                )
+
+                    if hasattr(mq, 'register_tier_change_callback'):
+                        mq.register_tier_change_callback(_on_tier_change)
+                        self.logger.info("[VMLifecycle] Registered MemoryQuantizer tier callback")
+                    else:
+                        self.logger.debug("MemoryQuantizer has no register_tier_change_callback")
+                except ImportError:
+                    self.logger.debug("MemoryQuantizer not available — using psutil-only polling")
+                except Exception as e:
+                    self.logger.debug(f"MemoryQuantizer callback registration failed: {e}")
+
                 self._memory_pressure_task = asyncio.create_task(
                     self._memory_pressure_monitor(),
                     name="gcp_memory_pressure_monitor",
