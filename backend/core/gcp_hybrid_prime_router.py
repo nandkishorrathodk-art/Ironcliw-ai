@@ -1568,103 +1568,136 @@ class GCPHybridPrimeRouter:
             self.logger.warning(f"[v93.0] Error pausing PID {pid}: {e}")
             return False
 
-    async def _check_emergency_offload_release(self, current_used_percent: float) -> None:
-        """
-        v93.0/v148.0: Check if emergency offload should be released.
+    async def _check_offload_escalation(self, current_used_percent: float, rate_mb_sec: float) -> None:
+        """v266.1: Check escalation ladder during active emergency offload.
 
-        Releases if:
-        1. RAM dropped below threshold (processes can resume)
-        2. Timeout exceeded (force resume to prevent permanent freeze)
-        3. GCP VM is ready and processes should terminate
-        
-        v148.0 Enhancement: Escalation if memory continues growing:
-        4. If RAM still growing despite offload, trigger aggressive cleanup
-        5. If RAM exceeds critical threshold (95%), terminate paused processes
+        Step 1 complete (clean unload fired). Now:
+        - Verify unload worked (wait, re-read memory)
+        - If RAM still high, attempt GCP
+        - If GCP fails and RAM >= 95%, one-shot SIGSTOP (no cycling)
         """
         elapsed = time.time() - self._emergency_offload_started_at
 
-        # v148.0: Critical memory escalation (95%+) - HIGHEST PRIORITY
-        # If memory is still critically high despite pausing LLM processes,
-        # something else is consuming memory. Terminate paused processes
-        # to free any shared memory and trigger GC.
-        CRITICAL_ESCALATION_THRESHOLD = float(os.getenv("CRITICAL_ESCALATION_THRESHOLD", "95.0"))
-        if current_used_percent >= CRITICAL_ESCALATION_THRESHOLD:
-            self.logger.critical(
-                f"[v148.0] CRITICAL: RAM at {current_used_percent:.1f}% despite offload - "
-                f"escalating to process termination"
-            )
-            await self._terminate_paused_processes()
-            self._emergency_offload_active = False
-            
-            # v148.0: Trigger garbage collection to free memory
+        # --- Post-unload verification gate ---
+        if self._clean_unload_fired and not self._clean_unload_verified:
+            if elapsed < EMERGENCY_UNLOAD_VERIFY_DELAY_SEC:
+                # Still waiting for verification window
+                return
+
+            # Verification window elapsed — read memory
             try:
-                import gc
-                gc.collect()
-                self.logger.info("[v148.0] Forced garbage collection after escalation")
+                import psutil
+                mem = psutil.virtual_memory()
+                post_unload_percent = mem.percent
+                ram_dropped_gb = (current_used_percent - post_unload_percent) * mem.total / (100 * 1024 ** 3)
             except Exception:
-                pass
-            return
+                post_unload_percent = current_used_percent
+                ram_dropped_gb = 0.0
 
-        # v148.0: Check if GCP provisioning is in progress and extend timeout if so
-        # Don't force-release processes if we're still waiting for GCP
-        effective_timeout = EMERGENCY_OFFLOAD_TIMEOUT_SEC
-        if self._vm_provisioning_in_progress:
-            # Extend timeout while GCP provisioning is active
-            effective_timeout = max(effective_timeout, 180.0)  # At least 3 minutes for GCP
-            if elapsed >= effective_timeout:
-                self.logger.warning(
-                    f"[v148.0] Extended offload timeout ({elapsed:.1f}s) - "
-                    f"GCP provisioning still in progress"
-                )
-            # Don't force release yet if GCP is still provisioning
-            elif elapsed < effective_timeout:
-                pass  # Keep waiting for GCP
+            if ram_dropped_gb < 0:
+                ram_dropped_gb = 0.0
 
-        # Timeout - force release
-        if elapsed >= effective_timeout and not self._vm_provisioning_in_progress:
-            self.logger.warning(
-                f"[v93.0] Emergency offload timeout ({elapsed:.1f}s) - force releasing"
-            )
-            await self._release_emergency_offload(reason="timeout")
-            return
-
-        # RAM recovered
-        if current_used_percent < VM_PROVISIONING_THRESHOLD - 10:
-            self.logger.info(
-                f"[v93.0] RAM recovered to {current_used_percent:.1f}% - releasing paused processes"
-            )
-            await self._release_emergency_offload(reason="ram_recovered")
-            return
-
-        # GCP ready - can terminate local processes
-        if self._gcp_controller and hasattr(self._gcp_controller, 'is_vm_available'):
-            if self._gcp_controller.is_vm_available():
+            if ram_dropped_gb >= EMERGENCY_UNLOAD_MIN_DROP_GB or post_unload_percent < EMERGENCY_UNLOAD_RAM_PERCENT:
+                # Unload worked — cancel escalation
                 self.logger.info(
-                    "[v93.0] GCP VM ready - terminating local LLM processes for cloud takeover"
+                    f"[v266.1] Post-unload verification PASSED: "
+                    f"RAM {post_unload_percent:.1f}% (dropped {ram_dropped_gb:.1f}GB). "
+                    f"Escalation stopped."
+                )
+                self._clean_unload_verified = True
+                self._emergency_offload_active = False
+                self._emergency_offload_hysteresis_armed = True
+                await self._signal_memory_pressure_to_repos(
+                    status="normal", action=None, used_percent=post_unload_percent,
+                )
+                return
+
+            # Unload didn't drop enough — proceed to GCP
+            self._clean_unload_verified = True  # Mark verified (failed, but checked)
+            self.logger.warning(
+                f"[v266.1] Post-unload verification FAILED: "
+                f"RAM still {post_unload_percent:.1f}% (dropped only {ram_dropped_gb:.1f}GB). "
+                f"Attempting GCP offload."
+            )
+
+            # Step 2: GCP attempt
+            if not self._gcp_permanently_unavailable:
+                can_attempt, cooldown_reason = self._recovery_cascade.can_attempt_gcp()
+                if can_attempt:
+                    self.logger.info("[v266.1] Provisioning GCP VM for workload transfer...")
+                    success = await self._trigger_vm_provisioning(
+                        reason=f"post_unload_escalation_ram_{post_unload_percent:.0f}pct"
+                    )
+                    if success:
+                        self.logger.info("[v266.1] GCP VM provisioned — escalation resolved")
+                        self._recovery_cascade.record_success(RoutingTier.GCP_VM)
+                        self._emergency_offload_active = False
+                        self._emergency_offload_hysteresis_armed = True
+                        return
+                    else:
+                        self.logger.warning("[v266.1] GCP provisioning failed")
+                else:
+                    self.logger.warning(f"[v266.1] GCP in cooldown: {cooldown_reason}")
+
+            return  # Wait for next poll cycle to check SIGSTOP threshold
+
+        # --- SIGSTOP last resort gate ---
+        if current_used_percent >= EMERGENCY_SIGSTOP_RAM_PERCENT and not self._sigstop_active:
+            # Check SIGSTOP cooldown
+            time_since_sigstop = time.time() - self._sigstop_released_at
+            if self._sigstop_released_at > 0 and time_since_sigstop < EMERGENCY_SIGSTOP_COOLDOWN_SEC:
+                self.logger.warning(
+                    f"[v266.1] RAM at {current_used_percent:.1f}% but SIGSTOP in cooldown "
+                    f"({EMERGENCY_SIGSTOP_COOLDOWN_SEC - time_since_sigstop:.0f}s remaining)"
+                )
+                return
+
+            self.logger.critical(
+                f"[v266.1] LAST RESORT: RAM at {current_used_percent:.1f}% "
+                f"(>={EMERGENCY_SIGSTOP_RAM_PERCENT}%) after unload + GCP failed. "
+                f"One-shot SIGSTOP on JARVIS-owned PIDs."
+            )
+            self._sigstop_active = True
+            paused_count = await self._pause_local_llm_processes()
+            self.logger.critical(f"[v266.1] SIGSTOP sent to {paused_count} process(es)")
+            return
+
+        # --- SIGSTOP timeout: terminate if no recovery ---
+        if self._sigstop_active:
+            sigstop_elapsed = time.time() - self._emergency_offload_started_at
+            if sigstop_elapsed >= EMERGENCY_SIGSTOP_TIMEOUT_SEC:
+                self.logger.critical(
+                    f"[v266.1] SIGSTOP timeout ({sigstop_elapsed:.0f}s) — "
+                    f"terminating paused processes (no cycling)"
                 )
                 await self._terminate_paused_processes()
+                self._sigstop_active = False
                 self._emergency_offload_active = False
+                self._sigstop_released_at = time.time()
+                self._emergency_offload_hysteresis_armed = True
                 return
-        
-        # v148.0: Check if memory is still growing (other processes consuming)
-        if len(self._memory_history) >= 3:
-            recent_samples = list(self._memory_history)[-3:]
-            memory_trend = recent_samples[-1][1] - recent_samples[0][1]  # [1] is used_percent
 
-            if memory_trend > 5.0:  # Memory grew more than 5% despite offload
-                self.logger.warning(
-                    f"[v148.0] Memory still growing (+{memory_trend:.1f}%) despite offload - "
-                    f"non-LLM processes may be consuming memory"
-                )
-                # Signal to other repos to reduce load
-                await self._signal_memory_pressure_to_repos(
-                    status="critical",
-                    action="reduce_load",
-                    used_percent=current_used_percent,
-                )
+            # Check if GCP became available while SIGSTOP'd
+            if self._gcp_controller and hasattr(self._gcp_controller, 'is_vm_available'):
+                if self._gcp_controller.is_vm_available():
+                    self.logger.info("[v266.1] GCP VM ready during SIGSTOP — terminating local processes")
+                    await self._terminate_paused_processes()
+                    self._sigstop_active = False
+                    self._emergency_offload_active = False
+                    return
 
-                # v149.0: Aggressive memory cleanup when growth continues
-                await self._aggressive_memory_cleanup(memory_trend)
+        # --- Global timeout: force-end offload ---
+        max_offload_duration = EMERGENCY_SIGSTOP_TIMEOUT_SEC * 3  # 180s absolute max
+        if elapsed >= max_offload_duration:
+            self.logger.warning(
+                f"[v266.1] Global offload timeout ({elapsed:.0f}s) — force-ending"
+            )
+            if self._sigstop_active:
+                await self._terminate_paused_processes()
+            self._sigstop_active = False
+            self._emergency_offload_active = False
+            self._emergency_offload_hysteresis_armed = True
+            return
 
     async def _release_emergency_offload(self, reason: str) -> None:
         """
