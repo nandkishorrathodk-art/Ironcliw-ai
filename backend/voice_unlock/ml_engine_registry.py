@@ -2262,6 +2262,18 @@ class MLEngineRegistry:
             return True, "Contract verification cached"
 
         req_timeout = max(1.0, float(timeout or os.getenv("JARVIS_CLOUD_CONTRACT_TIMEOUT", "4.0")))
+        # v265.3: Extend timeout under CPU pressure. At 99.8% CPU, the
+        # event loop barely gets time slices to process HTTP responses.
+        # A 4s timeout measured under normal CPU is too aggressive when
+        # everything is starved.
+        try:
+            import psutil as _psutil
+            _cpu = _psutil.cpu_percent(interval=None)
+            if _cpu > 90.0:
+                _cpu_factor = 1.0 + (_cpu - 90.0) / 10.0 * 2.0
+                req_timeout *= _cpu_factor
+        except Exception:
+            pass
         probe_attempts = max(1, int(os.getenv("JARVIS_CLOUD_CONTRACT_ATTEMPTS", "2")))
         probe_backoff = max(0.1, float(os.getenv("JARVIS_CLOUD_CONTRACT_BACKOFF_SECONDS", "0.35")))
         connect_timeout = max(

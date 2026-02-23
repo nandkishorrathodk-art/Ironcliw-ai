@@ -221,10 +221,37 @@ class AdaptiveThresholdCalculator:
         except OSError as e:
             logger.debug(f"[AdaptiveThreshold] Failed to save history: {e}")
 
+    def _get_cpu_pressure_factor(self) -> float:
+        """
+        v3.3: Query current CPU utilization and return a dynamic multiplier.
+
+        Under CPU pressure, components take proportionally longer because they
+        get fewer CPU cycles. The adaptive threshold must extend to prevent
+        premature cancellation (which causes cascade failures).
+
+        Returns:
+            Multiplier >= 1.0. At 99% CPU → 2.5x. At 95% → 1.5x. Below 90% → 1.0x.
+        """
+        try:
+            import psutil
+            # interval=None returns instant cached reading (non-blocking)
+            cpu = psutil.cpu_percent(interval=None)
+        except Exception:
+            return 1.0
+
+        if cpu < 90.0:
+            return 1.0
+        # Linear interpolation: 90% → 1.0x, 100% → 3.0x
+        # At 95% → 1.5x, at 99% → 2.8x
+        return 1.0 + (cpu - 90.0) / 10.0 * 2.0
+
     def get_threshold(self, name: str, static_default: float) -> float:
         """
         Get adaptive threshold for a component, falling back to static default
         if no history exists.
+
+        v3.3: CPU-pressure-aware — extends thresholds dynamically when CPU
+        is saturated. Prevents premature cancellation under resource contention.
 
         Args:
             name: Component name
@@ -242,6 +269,13 @@ class AdaptiveThresholdCalculator:
             except (ValueError, TypeError):
                 pass
 
+        # v3.3: CPU-pressure multiplier — under heavy load, everything takes
+        # longer. The EMA was measured under historical (often lighter) load.
+        # Without this, 99.8% CPU → components take 2-5x longer than EMA →
+        # premature cancellation → cascade failure (cloud_sql_proxy → learning_db
+        # → TwoTier → 80s wasted timeout).
+        cpu_factor = self._get_cpu_pressure_factor()
+
         entry = self._history.get(name)
         if entry and entry.get("count", 0) >= 3:
             # Have enough samples — use EMA-based threshold
@@ -251,16 +285,28 @@ class AdaptiveThresholdCalculator:
             ema_var = entry.get("ema_var", 0.0)
             stddev = max(ema_var, 0.0) ** 0.5
             adaptive = ema * self._safety_factor + 2.0 * stddev
+            # v3.3: Apply CPU pressure factor BEFORE floor guards
+            adaptive *= cpu_factor
             # v3.1: Also respect peak — never set threshold below the all-time max
             # (a component that once took 80s shouldn't be killed at 30s)
             peak = entry.get("peak", 0.0)
             adaptive = max(adaptive, peak * 1.1)  # 10% headroom above peak
             # Floor guards
             adaptive = max(adaptive, self._minimum_floor)
-            adaptive = max(adaptive, static_default * 0.6)
+            # v3.3: Raised floor from 0.6 → 0.8 of static_default.
+            # At 0.6, cloud_sql_proxy (45s static) floored at 27s — below its
+            # internal ensure_timeout (40s). The watchdog killed it before its
+            # own timeout could fire.
+            adaptive = max(adaptive, static_default * 0.8)
+            if cpu_factor > 1.0:
+                logger.debug(
+                    f"[AdaptiveThreshold] {name}: {adaptive:.1f}s "
+                    f"(CPU pressure ×{cpu_factor:.1f})"
+                )
             return adaptive
 
-        return static_default
+        # v3.3: Even static defaults get CPU pressure extension
+        return static_default * cpu_factor
 
     def record_duration(self, name: str, duration_seconds: float) -> None:
         """
@@ -1157,6 +1203,14 @@ class ParallelInitializer:
                                 f"⚠️ Watchdog: {name} stale after {running_secs:.0f}s "
                                 f"(threshold: {comp.stale_threshold_seconds:.0f}s) — "
                                 f"CANCELLING task"
+                            )
+                            # v3.3: Record the cancelled duration to prevent
+                            # survivorship bias. Without this, only fast
+                            # successes update the EMA → threshold erodes
+                            # downward → more premature cancellations → more
+                            # fast-only samples → vicious cycle.
+                            self._adaptive_calc.record_duration(
+                                name, running_secs
                             )
                             await self._mark_skipped(
                                 name,

@@ -64671,11 +64671,42 @@ class JarvisSystemKernel:
                     ReadinessState as _ttRS,
                 )
                 _tt_gate = _tt_get_gate()
-                if _tt_gate.state == _ttRS.UNAVAILABLE:
-                    _infra_degraded = True
-                    self.logger.info(
-                        "[TwoTier] Cloud SQL UNAVAILABLE — using fast-path timeout"
-                    )
+                # v265.3: Also fast-path when gate is CHECKING/UNKNOWN.
+                # When the watchdog cancels cloud_sql_proxy mid-flight,
+                # ensure_proxy_ready() is interrupted after setting state
+                # to CHECKING — it never transitions to UNAVAILABLE.
+                # Without this check, TwoTier burns the full 80s timeout
+                # waiting for a database that will never be ready.
+                if _tt_gate.state in (
+                    _ttRS.UNAVAILABLE, _ttRS.CHECKING, _ttRS.UNKNOWN
+                ):
+                    # Double-check: is the gate genuinely not ready, or is
+                    # it still actively checking? Look at cloud_sql_proxy
+                    # component status in the parallel initializer.
+                    _tt_sql_truly_dead = _tt_gate.state == _ttRS.UNAVAILABLE
+                    if not _tt_sql_truly_dead:
+                        try:
+                            _tt_pi = getattr(self, "app", None)
+                            _tt_pi = getattr(_tt_pi, "state", None) if _tt_pi else None
+                            _tt_pi = getattr(
+                                _tt_pi, "parallel_initializer", None
+                            ) if _tt_pi else None
+                            if _tt_pi:
+                                _sql_comp = _tt_pi.components.get("cloud_sql_proxy")
+                                if _sql_comp and _sql_comp.phase.value in (
+                                    "failed", "skipped"
+                                ):
+                                    _tt_sql_truly_dead = True
+                        except Exception:
+                            # If we can't check, assume degraded since gate
+                            # isn't READY either
+                            _tt_sql_truly_dead = True
+                    if _tt_sql_truly_dead:
+                        _infra_degraded = True
+                        self.logger.info(
+                            f"[TwoTier] Cloud SQL gate={_tt_gate.state.value} "
+                            "— using fast-path timeout"
+                        )
             except (ImportError, Exception):
                 pass
             if not _infra_degraded:
