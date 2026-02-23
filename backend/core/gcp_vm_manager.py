@@ -6077,11 +6077,134 @@ class GCPVMManager:
 
         return True, f"[InvincibleGuard] Unknown action {action} for '{vm_name}'"
 
-    async def terminate_vm(self, vm_name: str, reason: str = "Manual termination") -> bool:
+    async def _stop_vm_instance(self, vm_name: str, reason: str) -> bool:
+        """Stop a VM instance (preserve disk/IP). Used for session shutdown.
+
+        v266.0: Unlike terminate/delete, STOP preserves the VM's disk and static IP.
+        The VM transitions to VMState.STOPPED in managed_vms (not removed).
+        Cost tracking session ends but the VM entry persists for fast resume.
+        """
+        try:
+            logger.info(f"[VMLifecycle] Stopping VM '{vm_name}' (reason: {reason})")
+
+            # Check if VM exists in GCP before attempting stop
+            exists, gcp_status = await self._check_vm_exists_in_gcp(vm_name)
+
+            if not exists:
+                logger.info(
+                    f"[VMLifecycle] VM '{vm_name}' does not exist in GCP — "
+                    f"marking STOPPED in local tracking"
+                )
+                async with self._vm_lock:
+                    if vm_name in self.managed_vms:
+                        self.managed_vms[vm_name].state = VMState.STOPPED
+                return True
+
+            # Already stopped — no-op
+            if gcp_status == "STOPPED":
+                logger.info(f"[VMLifecycle] VM '{vm_name}' is already STOPPED in GCP")
+                async with self._vm_lock:
+                    if vm_name in self.managed_vms:
+                        self.managed_vms[vm_name].state = VMState.STOPPED
+                        self.managed_vms[vm_name].last_activity_time = time.time()
+                return True
+
+            # Already stopping — wait for it
+            if gcp_status == "STOPPING":
+                logger.info(f"[VMLifecycle] VM '{vm_name}' is already STOPPING in GCP — waiting")
+                # Fall through to wait logic below with a short timeout
+                async with self._vm_lock:
+                    if vm_name in self.managed_vms:
+                        self.managed_vms[vm_name].state = VMState.STOPPING
+                # Wait up to 60s for it to finish stopping
+                for _ in range(30):
+                    await asyncio.sleep(2)
+                    _, status = await self._check_vm_exists_in_gcp(vm_name)
+                    if status == "STOPPED":
+                        break
+                async with self._vm_lock:
+                    if vm_name in self.managed_vms:
+                        self.managed_vms[vm_name].state = VMState.STOPPED
+                        self.managed_vms[vm_name].last_activity_time = time.time()
+                return True
+
+            # VM is RUNNING (or other active state) — issue stop command
+            logger.info(
+                f"[VMLifecycle] Issuing GCP stop for '{vm_name}' "
+                f"(current GCP status: {gcp_status})"
+            )
+
+            # Update local state to STOPPING before the API call
+            async with self._vm_lock:
+                if vm_name in self.managed_vms:
+                    self.managed_vms[vm_name].state = VMState.STOPPING
+
+            # GCP API: stop (not delete) — wrapped in thread for async
+            operation = await asyncio.to_thread(
+                self.instances_client.stop,
+                project=self.config.project_id,
+                zone=self.config.zone,
+                instance=vm_name,
+            )
+
+            # Wait for operation with 120s timeout (stop can take 30-90s)
+            try:
+                await self._wait_for_operation(operation, timeout=120)
+            except (TimeoutError, asyncio.TimeoutError):
+                logger.warning(
+                    f"[VMLifecycle] Timeout waiting for stop of '{vm_name}' (120s), "
+                    f"updating state optimistically — VM may still stop"
+                )
+            except Exception as wait_err:
+                logger.warning(f"[VMLifecycle] Error waiting for stop operation: {wait_err}")
+
+            # Update managed_vms state (don't remove — VM still exists)
+            vm_runtime_seconds = 0.0
+            async with self._vm_lock:
+                if vm_name in self.managed_vms:
+                    vm = self.managed_vms[vm_name]
+                    vm.state = VMState.STOPPED
+                    vm.last_activity_time = time.time()
+                    # Compute runtime for cost tracking
+                    vm.update_cost()
+                    vm_runtime_seconds = time.time() - vm.created_at
+
+            # End cost tracking session for this VM (isolated — failures don't block)
+            if vm_name in self.managed_vms:
+                await self._record_vm_termination_safe(
+                    self.managed_vms[vm_name], f"stopped: {reason}"
+                )
+
+            logger.info(
+                f"[VMLifecycle] VM '{vm_name}' stopped successfully "
+                f"(runtime: {vm_runtime_seconds / 3600:.2f}h)"
+            )
+            return True
+
+        except Exception as e:
+            error_str = str(e).lower()
+            # Handle 404 gracefully — VM may have been preempted/deleted
+            if "404" in error_str or "not found" in error_str or "notfound" in error_str:
+                logger.info(
+                    f"[VMLifecycle] VM '{vm_name}' not found during stop "
+                    f"(may have been preempted) — marking STOPPED"
+                )
+                async with self._vm_lock:
+                    if vm_name in self.managed_vms:
+                        self.managed_vms[vm_name].state = VMState.STOPPED
+                return True
+
+            logger.error(f"[VMLifecycle] Failed to stop VM '{vm_name}': {e}")
+            return False
+
+    async def terminate_vm(self, vm_name: str, reason: str = "Manual termination",
+                           action: VMAction = VMAction.DELETE) -> bool:
         """
         v134.0: Terminate a VM instance with existence verification and circuit breaker protection.
         v153.0: Added invincible VM protection — persistent VMs cannot be terminated by
                 automated systems (cost-cutting, idle detection, memory pressure, max lifetime).
+        v266.0: Added action parameter — VMAction.STOP halts the VM (preserving disk/IP)
+                instead of deleting. Used for session shutdown to enable fast resume.
 
         ROOT CAUSE FIX for 404 NotFound errors:
         This method now verifies VM existence in GCP before attempting delete operations.
@@ -6094,14 +6217,19 @@ class GCPVMManager:
         Args:
             vm_name: Name of the VM to terminate
             reason: Reason for termination (for logging/tracking)
+            action: VMAction.DELETE (default) removes VM, VMAction.STOP halts it
 
         Returns:
-            True if terminated successfully (or VM doesn't exist), False otherwise
+            True if terminated/stopped successfully (or VM doesn't exist), False otherwise
         """
-        # v153.0 → v266.0: Centralized protection check
-        is_protected, guard_msg = self.check_vm_protection(vm_name, VMAction.DELETE, reason)
+        # v153.0 → v266.0: Centralized protection check (uses caller's action, not hardcoded DELETE)
+        is_protected, guard_msg = self.check_vm_protection(vm_name, action, reason)
         if is_protected:
             return False
+
+        # v266.0: STOP action — halt VM, preserve disk/IP
+        if action == VMAction.STOP:
+            return await self._stop_vm_instance(vm_name, reason)
 
         async with self._vm_lock:
             if vm_name not in self.managed_vms:
@@ -6843,6 +6971,10 @@ class GCPVMManager:
                     # v153.0 → v266.0: Centralized protection check
                     _is_protected, _ = self.check_vm_protection(vm_name, VMAction.TERMINATE, "monitoring_loop")
                     if _is_protected:
+                        continue
+
+                    # v266.0: Skip VMs that are already STOPPED (halted for session lifecycle)
+                    if vm_name in self.managed_vms and self.managed_vms[vm_name].state == VMState.STOPPED:
                         continue
 
                     # 4a. Check VM lifetime (hard limit)
