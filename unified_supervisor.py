@@ -2537,6 +2537,24 @@ def _get_env_float(key: str, default: float) -> float:
         return default
 
 
+def _allocate_ephemeral_port(host: str = "127.0.0.1") -> Optional[int]:
+    """
+    Ask the OS for an available ephemeral TCP port.
+
+    This is a deterministic final fallback when configured port ranges are
+    exhausted. The socket is closed immediately after allocation, so callers
+    must bind promptly to minimize race windows.
+    """
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            sock.bind((host, 0))
+            port = int(sock.getsockname()[1])
+            return port if port > 0 else None
+    except Exception:
+        return None
+
+
 # =============================================================================
 # BACKEND LAUNCH DISCOVERY
 # =============================================================================
@@ -3717,26 +3735,82 @@ class StartupLock:
         """
         is_locked, holder_pid = self.is_locked()
 
-        if is_locked and not force:
-            return False
+        # Shared lock already held by a live kernel.
+        if is_locked:
+            if holder_pid == self.pid:
+                self._acquired = True
+                return True
+            if not force:
+                return False
 
-        # Clean up stale lock or force acquire
-        if self.lock_path.exists():
-            self.lock_path.unlink()
+            # Root hardening: never steal a live lock by default.
+            # Force takeover must kill/handover first (handled by takeover protocol).
+            allow_live_steal = _get_env_bool("JARVIS_STARTUP_LOCK_FORCE_STEAL", False)
+            if holder_pid and self._is_process_alive(holder_pid) and not allow_live_steal:
+                return False
 
-        # Write new lock
+        # Write new lock atomically to prevent create/unlink races when two
+        # supervisors start concurrently.
         lock_data = {
             "pid": self.pid,
             "acquired_at": datetime.now().isoformat(),
             "kernel_version": KERNEL_VERSION,
             "hostname": platform.node(),
         }
-
+        payload = json.dumps(lock_data, indent=2)
         self.lock_path.parent.mkdir(parents=True, exist_ok=True)
-        self.lock_path.write_text(json.dumps(lock_data, indent=2))
-        self._acquired = True
 
-        return True
+        max_attempts = 3
+        for attempt in range(1, max_attempts + 1):
+            try:
+                fd = os.open(
+                    str(self.lock_path),
+                    os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+                    0o644,
+                )
+                with os.fdopen(fd, "w") as lock_file:
+                    lock_file.write(payload)
+                    lock_file.flush()
+                self._acquired = True
+                return True
+            except FileExistsError:
+                current_holder = self.get_current_holder() or {}
+                current_pid_raw = current_holder.get("pid")
+                current_pid: Optional[int] = None
+                if isinstance(current_pid_raw, int):
+                    current_pid = current_pid_raw
+                else:
+                    try:
+                        current_pid = int(current_pid_raw) if current_pid_raw is not None else None
+                    except Exception:
+                        current_pid = None
+
+                allow_live_steal = _get_env_bool("JARVIS_STARTUP_LOCK_FORCE_STEAL", False)
+                holder_live = (
+                    current_pid is not None
+                    and current_pid != self.pid
+                    and self._is_process_alive(current_pid)
+                )
+
+                # Live holder: deny unless explicit force-steal override.
+                if holder_live and not (force and allow_live_steal):
+                    return False
+
+                # Stale/invalid lock file (or explicit live-steal): remove and retry.
+                try:
+                    self.lock_path.unlink()
+                except FileNotFoundError:
+                    pass
+                except OSError:
+                    if attempt >= max_attempts:
+                        return False
+
+                if attempt < max_attempts:
+                    time.sleep(0.05 * attempt)
+            except OSError:
+                return False
+
+        return False
 
     def release(self) -> None:
         """Release the lock."""
@@ -62799,6 +62873,40 @@ class JarvisSystemKernel:
             if self.config.gcp_enabled:
                 self.logger.error("[Kernel] GCP is enabled - check VM provisioning status")
 
+            # Structured timeout forensics for deterministic post-mortem triage.
+            try:
+                current_phase = getattr(self, "_current_startup_phase", "unknown")
+                current_progress = getattr(self, "_current_progress", 0) or 0
+                activity_markers = sorted(
+                    self._startup_activity_markers.items(),
+                    key=lambda kv: kv[1],
+                    reverse=True,
+                )[:5]
+                marker_summary = [
+                    f"{name}:{(time.time() - ts):.1f}s ago"
+                    for name, ts in activity_markers
+                ]
+                component_summary = {
+                    name: info.get("status", "unknown")
+                    for name, info in (self._component_status or {}).items()
+                    if info.get("status") not in ("complete", "healthy")
+                }
+                self.logger.error(
+                    f"[Kernel] Timeout context: phase={current_phase}, progress={current_progress}%"
+                )
+                if marker_summary:
+                    self.logger.error(
+                        "[Kernel] Recent startup activity markers: "
+                        + ", ".join(marker_summary)
+                    )
+                if component_summary:
+                    self.logger.error(
+                        "[Kernel] Non-ready components at timeout: "
+                        + ", ".join(f"{k}={v}" for k, v in component_summary.items())
+                    )
+            except Exception:
+                pass
+
             # Log diagnostic checkpoint for forensics
             if DIAGNOSTICS_AVAILABLE and log_shutdown_trigger:
                 try:
@@ -66545,6 +66653,35 @@ class JarvisSystemKernel:
                 graceful_first=True,  # Try graceful handover before force
             )
 
+            # Root hardening: absorb short lock handover races during restarts.
+            # If another supervisor is shutting down, give it a bounded window
+            # to release the lock, then retry takeover once.
+            if not takeover_result.success and not self._force:
+                lock_wait_seconds = max(
+                    0.0,
+                    _get_env_float("JARVIS_STARTUP_LOCK_WAIT_SECONDS", 20.0),
+                )
+                if lock_wait_seconds > 0:
+                    wait_deadline = time.monotonic() + lock_wait_seconds
+                    self.logger.info(
+                        "[Kernel] Startup lock busy - waiting up to "
+                        f"{lock_wait_seconds:.0f}s for graceful handover"
+                    )
+
+                    while time.monotonic() < wait_deadline:
+                        is_locked, _ = self._startup_lock.is_locked()
+                        if not is_locked:
+                            break
+                        await asyncio.sleep(0.5)
+
+                    is_locked, _ = self._startup_lock.is_locked()
+                    if not is_locked:
+                        self.logger.info("[Kernel] Startup lock released - retrying takeover")
+                        takeover_result = await takeover.attempt_takeover(
+                            force=self._force,
+                            graceful_first=True,
+                        )
+
             if not takeover_result.success:
                 # Report detailed failure info
                 holder_info = self._startup_lock.get_current_holder()
@@ -67599,6 +67736,21 @@ class JarvisSystemKernel:
                         )
                         port_found = True
 
+                # Final fallback: OS-assigned ephemeral port.
+                if not port_found:
+                    ephemeral_host = self.config.backend_host or "127.0.0.1"
+                    if ephemeral_host in ("0.0.0.0", "::"):
+                        ephemeral_host = "127.0.0.1"
+
+                    ephemeral_port = _allocate_ephemeral_port(ephemeral_host)
+                    if ephemeral_port:
+                        self.config.backend_port = ephemeral_port
+                        port_manager.selected_port = ephemeral_port
+                        self.logger.success(
+                            f"[Kernel] Fallback OS ephemeral port allocated: {ephemeral_port}"
+                        )
+                        port_found = True
+
                 if not port_found:
                     self.logger.error("[Kernel] Failed to allocate any port (all in use)")
                     self.logger.error("[Kernel] Try: lsof -i :8000-8100 | grep LISTEN")
@@ -68177,18 +68329,22 @@ class JarvisSystemKernel:
             return False
 
         # =========================================================================
-        # v215.0: Two-Phase Health Check (HTTP + WebSocket Readiness)
+        # v215.0+: Two-phase backend readiness with capability fallback.
+        #
+        # Phase 1: /health responds (HTTP transport is up)
+        # Phase 2: /health/ready confirms interactive readiness (WebSocket, etc.)
+        #
+        # Root hardening:
+        # - Newer backends expose /health/ready with websocket_ready.
+        # - Older backends may only expose /health.
+        # - We detect missing readiness endpoint (404/405/501) and fall back to
+        #   a legacy /health contract after a bounded grace period.
         # =========================================================================
-        # Phase 1: Wait for basic HTTP health endpoint
-        # Phase 2: Verify WebSocket endpoints are ready via /health/ready
-        # This ensures frontend WebSocket connections succeed after backend is marked ready
-        # =========================================================================
-        
         health_url = f"http://localhost:{self.config.backend_port}/health"
         readiness_url = f"http://localhost:{self.config.backend_port}/health/ready"
         start_time = time.time()
         http_ready = False
-        
+
         # Phase 1: Wait for basic HTTP health
         self.logger.debug("[Kernel] Phase 1: Waiting for HTTP health endpoint...")
         while (time.time() - start_time) < timeout:
@@ -68205,17 +68361,34 @@ class JarvisSystemKernel:
             except Exception:
                 pass
             await asyncio.sleep(1.0)
-        
+
         if not http_ready:
             self.logger.warning("[Kernel] HTTP health check failed - backend not ready")
             return False
-        
-        # Phase 2: Wait for WebSocket readiness (remaining timeout)
-        # This ensures /ws endpoint is fully initialized before frontend connects
+
+        # Phase 2: Wait for interactive readiness using remaining timeout budget.
         remaining_timeout = timeout - (time.time() - start_time)
-        ws_timeout = min(remaining_timeout, 30.0)  # Cap WebSocket wait at 30s
+        ws_timeout_cap = max(
+            5.0,
+            _get_env_float("JARVIS_BACKEND_WS_READINESS_TIMEOUT", 30.0),
+        )
+        ws_timeout = min(max(1.0, remaining_timeout), ws_timeout_cap)
         ws_start_time = time.time()
-        
+
+        require_readiness_endpoint = _get_env_bool(
+            "JARVIS_BACKEND_REQUIRE_READINESS_ENDPOINT", False
+        )
+        legacy_grace = max(
+            1.0,
+            _get_env_float("JARVIS_BACKEND_LEGACY_READINESS_GRACE", 5.0),
+        )
+        legacy_success_target = max(
+            1,
+            _get_env_int("JARVIS_BACKEND_LEGACY_HEALTH_SUCCESS_COUNT", 2),
+        )
+        readiness_missing_since = 0.0
+        legacy_successes = 0
+
         self.logger.debug("[Kernel] Phase 2: Verifying WebSocket readiness...")
         while (time.time() - ws_start_time) < ws_timeout:
             if _backend_boot_failed():
@@ -68225,39 +68398,104 @@ class JarvisSystemKernel:
                 async with aiohttp.ClientSession() as session:  # type: ignore[union-attr]
                     async with session.get(readiness_url, timeout=5.0) as response:
                         if response.status == 200:
-                            data = await response.json()
-                            
-                            # Check if WebSocket is ready
-                            websocket_ready = data.get("details", {}).get("websocket_ready", False)
+                            readiness_missing_since = 0.0
+                            legacy_successes = 0
+
+                            try:
+                                data = await response.json()
+                            except Exception as parse_err:
+                                data = {}
+                                self.logger.debug(
+                                    f"[Kernel] Readiness payload parse error: {parse_err}"
+                                )
+
+                            # Check if WebSocket is ready.
+                            websocket_ready = bool(
+                                data.get("details", {}).get("websocket_ready", False)
+                            )
                             status = data.get("status", "unknown")
-                            ready = data.get("ready", False)
-                            
-                            # Log readiness status for debugging
+                            ready = bool(data.get("ready", False))
+
+                            # Log readiness status for debugging.
                             self.logger.debug(
                                 f"[Kernel] Readiness check: status={status}, "
                                 f"ready={ready}, websocket_ready={websocket_ready}"
                             )
-                            
-                            # Accept if WebSocket is ready OR if system is fully ready
-                            # (some configurations may not have websocket_ready explicitly)
-                            if websocket_ready or (ready and status in ("ready", "operational", "interactive", "websocket_ready")):
+
+                            # Accept if WebSocket is ready OR readiness contract says operational.
+                            if websocket_ready or (
+                                ready
+                                and status in (
+                                    "ready",
+                                    "operational",
+                                    "interactive",
+                                    "websocket_ready",
+                                )
+                            ):
                                 self.logger.info(
                                     f"[Kernel] ✓ Backend fully ready "
                                     f"(status={status}, websocket={websocket_ready})"
                                 )
                                 return True
-                            
-                            # Not ready yet - WebSocket still initializing
+
+                            # Not ready yet - WebSocket still initializing.
                             if status in ("warming_up", "initializing"):
                                 self.logger.debug(
                                     f"[Kernel] WebSocket initializing... (status={status})"
                                 )
-                                
+
+                        elif response.status in (404, 405, 501):
+                            # Older backends may not implement /health/ready.
+                            if readiness_missing_since <= 0:
+                                readiness_missing_since = time.time()
+                                self.logger.info(
+                                    "[Kernel] Backend readiness endpoint unavailable "
+                                    f"(HTTP {response.status}) - evaluating legacy /health contract"
+                                )
+
+                            if not require_readiness_endpoint:
+                                try:
+                                    async with session.get(health_url, timeout=5.0) as health_response:
+                                        if health_response.status == 200:
+                                            legacy_successes += 1
+                                        else:
+                                            legacy_successes = 0
+                                except Exception:
+                                    legacy_successes = 0
+
+                                missing_elapsed = time.time() - readiness_missing_since
+                                if (
+                                    legacy_successes >= legacy_success_target
+                                    and missing_elapsed >= legacy_grace
+                                ):
+                                    self.logger.warning(
+                                        "[Kernel] Backend ready via legacy /health contract "
+                                        f"(readiness endpoint unavailable for {missing_elapsed:.1f}s)"
+                                    )
+                                    return True
+                            else:
+                                legacy_successes = 0
+                        else:
+                            legacy_successes = 0
+
             except Exception as e:
                 self.logger.debug(f"[Kernel] Readiness check error: {e}")
-            
-            await asyncio.sleep(0.5)  # Check more frequently for WebSocket
-        
+
+            await asyncio.sleep(0.5)  # Check frequently during readiness convergence.
+
+        # Legacy fallback when readiness endpoint is consistently absent.
+        if readiness_missing_since > 0 and not require_readiness_endpoint:
+            missing_elapsed = time.time() - readiness_missing_since
+            if (
+                legacy_successes >= legacy_success_target
+                and missing_elapsed >= legacy_grace
+            ):
+                self.logger.warning(
+                    "[Kernel] Backend readiness endpoint unavailable; "
+                    "proceeding with legacy /health readiness"
+                )
+                return True
+
         # Timeout waiting for WebSocket readiness.
         # Default is strict readiness (fail startup) to avoid false-positive
         # healthy states where HTTP works but core interactive channels do not.
@@ -72311,6 +72549,8 @@ class JarvisSystemKernel:
                 trinity_integrator = None
                 # v222.0: Track timeout for proper status (error vs skipped)
                 _trinity_startup_timed_out = False
+                _trinity_lock_conflict = False
+                _trinity_lock_conflict_reason: Optional[str] = None
 
                 if CROSS_REPO_ORCHESTRATOR_AVAILABLE and ProcessOrchestrator is not None:
                     try:
@@ -73290,12 +73530,38 @@ class JarvisSystemKernel:
                         self.logger.info("[Trinity] Cross-repo startup lock released")
 
                     except StartupLockError as e:
+                        _trinity_lock_conflict = True
+                        _trinity_lock_conflict_reason = str(e)
                         self.logger.error(f"[Trinity] Failed to acquire startup lock: {e}")
                         self.logger.warning("[Trinity] Another supervisor instance may be running")
                         # v198.2: Sync manual progress with heartbeat tracker
                         if self._startup_watchdog:
                             trinity_heartbeat_progress["current"] = 67
                             self._startup_watchdog.update_phase("trinity", 67)
+
+                        # Root hardening: attempt to attach to already-running Trinity
+                        # components owned by the lock holder, instead of silently
+                        # treating this as "no components configured".
+                        try:
+                            for comp_key, comp_status_key in [
+                                ("jarvis-prime", "jarvis_prime"),
+                                ("reactor-core", "reactor_core"),
+                            ]:
+                                actual_port = self._get_component_port(comp_status_key)
+                                if await self._quick_health_probe(actual_port):
+                                    results[comp_key] = True
+                                    self._update_component_status(
+                                        comp_status_key,
+                                        "complete",
+                                        f"{comp_key} already running on port {actual_port} (peer-owned lock)",
+                                    )
+                                    self.logger.info(
+                                        f"[Trinity] Attached to existing {comp_key} on port {actual_port}"
+                                    )
+                        except Exception as _probe_err:
+                            self.logger.debug(
+                                f"[Trinity] Existing component probe failed after lock conflict: {_probe_err}"
+                            )
                     except Exception as e:
                         self.logger.warning(f"[Trinity] Cross-repo orchestration failed (non-fatal): {e}")
                         # v198.2: Sync manual progress with heartbeat tracker
@@ -73462,6 +73728,11 @@ class JarvisSystemKernel:
                 # v222.0: _trinity_startup_timed_out is already set by either path above
                 # No need to compute it again
 
+                trinity_status = "complete"
+                trinity_status_message = (
+                    f"{started_count}/{max(total_count, 1)} Trinity components ready"
+                )
+
                 if started_count > 0:
                     self.logger.success(f"[Trinity] 🚀 {started_count}/{total_count} component(s) started")
                     for component, started in results.items():
@@ -73478,6 +73749,13 @@ class JarvisSystemKernel:
                                 self._update_component_status("jarvis_prime", "error", "J-Prime failed to start")
                             elif "reactor" in component.lower():
                                 self._update_component_status("reactor_core", "error", "Reactor-Core failed to start")
+
+                    if _trinity_lock_conflict:
+                        trinity_status = "degraded"
+                        trinity_status_message = (
+                            f"{started_count}/{max(total_count, 1)} Trinity components active "
+                            "(cross-repo lock held by peer supervisor)"
+                        )
 
                     # =====================================================================
                     # v180.0: TRINITY AUTO-RESTART WATCHDOG
@@ -73521,6 +73799,32 @@ class JarvisSystemKernel:
                             self._background_tasks.append(self._jprime_watcher_task)
                             self.logger.info("[v261.0] J-Prime readiness watcher started (Trinity path)")
 
+                elif total_count == 0 and _trinity_lock_conflict:
+                    reason_suffix = (
+                        f": {_trinity_lock_conflict_reason}"
+                        if _trinity_lock_conflict_reason
+                        else ""
+                    )
+                    self.logger.warning(
+                        "[Trinity] Startup lock conflict prevented local Trinity launch"
+                        f"{reason_suffix}"
+                    )
+                    trinity_status = "degraded"
+                    trinity_status_message = (
+                        "Trinity launch blocked by cross-repo startup lock; "
+                        "peer supervisor may own components"
+                    )
+                    for comp_status_key in ("jarvis_prime", "reactor_core"):
+                        current_state = (
+                            self._component_status.get(comp_status_key, {})
+                            .get("status", "pending")
+                        )
+                        if current_state in ("pending", "running"):
+                            self._update_component_status(
+                                comp_status_key,
+                                "degraded",
+                                "Startup lock conflict - component ownership delegated to peer supervisor",
+                            )
                 elif total_count == 0 and not _trinity_startup_timed_out:
                     # v222.0: Only mark as "skipped" if Trinity was NOT attempted
                     # If we timed out, status was already set to "error" above
@@ -73528,17 +73832,27 @@ class JarvisSystemKernel:
                     # v182.0: Mark as skipped when no components configured
                     self._update_component_status("jarvis_prime", "skipped", "Not configured")
                     self._update_component_status("reactor_core", "skipped", "Not configured")
+                    trinity_status = "skipped"
+                    trinity_status_message = "No Trinity components configured"
                 elif total_count == 0 and _trinity_startup_timed_out:
                     # v222.0: Timeout occurred, already logged and status set to error
                     self.logger.warning("[Trinity] Component startup timed out (status already set to error)")
+                    trinity_status = "error"
+                    trinity_status_message = "Trinity startup timed out before components were ready"
                 else:
                     self.logger.warning(f"[Trinity] ⚠️ 0/{total_count} components started")
+                    trinity_status = "degraded"
+                    trinity_status_message = f"0/{total_count} Trinity components started"
 
                 # v182.0: Final Trinity status broadcast
-                self._update_component_status("trinity", "complete", f"{started_count}/{max(total_count, 1)} Trinity components ready")
+                self._update_component_status(
+                    "trinity",
+                    trinity_status,
+                    trinity_status_message,
+                )
                 await self._broadcast_component_update(
                     stage="trinity",
-                    message=f"Trinity integration complete: {started_count} component(s) active"
+                    message=f"Trinity integration status: {trinity_status_message}"
                 )
 
                 # Voice narration for Trinity components

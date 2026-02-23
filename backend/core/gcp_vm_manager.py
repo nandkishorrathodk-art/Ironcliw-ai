@@ -236,9 +236,17 @@ class VMState(Enum):
     STAGING = "staging"
     RUNNING = "running"
     STOPPING = "stopping"
+    STOPPED = "stopped"
     TERMINATED = "terminated"
     FAILED = "failed"
     UNKNOWN = "unknown"
+
+
+class VMAction(Enum):
+    """Action types for VM lifecycle operations."""
+    STOP = "stop"          # Halt VM, preserve disk/IP
+    DELETE = "delete"       # Remove VM and ephemeral resources
+    TERMINATE = "terminate" # Force-terminate (monitoring loop)
 
 
 @dataclass
@@ -6016,6 +6024,59 @@ class GCPVMManager:
                 # Continue waiting - operation might still complete
                 await asyncio.sleep(2)
 
+    def check_vm_protection(self, vm_name: str, action: VMAction, reason: str = "") -> Tuple[bool, str]:
+        """
+        Centralized VM protection check. Single source of truth for all guard logic.
+        v266.0: Replaces scattered InvincibleGuard checks in terminate_vm,
+        _force_delete_vm, and monitoring loop.
+
+        Returns:
+            (is_protected, explanation) — True means the action is BLOCKED.
+        """
+        # Detection: is this an invincible VM?
+        static_name = getattr(self.config, 'static_instance_name', 'jarvis-prime-node')
+        is_invincible = vm_name.startswith(static_name)
+
+        if not is_invincible and vm_name in self.managed_vms:
+            vm_meta = self.managed_vms[vm_name].metadata or {}
+            is_invincible = (
+                vm_meta.get("vm_class") == "invincible"
+                or vm_meta.get("labels", {}).get("vm-class") == "invincible"
+            )
+
+        if not is_invincible:
+            return False, ""  # Not protected, allow any action
+
+        # Invincible VM — check action type
+        if action in (VMAction.DELETE, VMAction.TERMINATE):
+            msg = (
+                f"[InvincibleGuard] BLOCKED {action.value} of persistent VM '{vm_name}' "
+                f"(reason: {reason}). Use GCP Console or gcloud CLI for manual override."
+            )
+            logger.warning(msg)
+            return True, msg
+
+        if action == VMAction.STOP:
+            # STOP is allowed for session shutdown when session lifecycle is enabled
+            session_lifecycle = os.getenv("JARVIS_GCP_SESSION_LIFECYCLE", "true").lower() == "true"
+            is_session_reason = reason in ("session_shutdown", "supervisor_cleanup", "emergency_shutdown")
+
+            if session_lifecycle and is_session_reason:
+                logger.info(
+                    f"[InvincibleGuard] Allowing STOP of '{vm_name}' "
+                    f"(session lifecycle, reason: {reason})"
+                )
+                return False, ""  # Allow STOP
+
+            msg = (
+                f"[InvincibleGuard] BLOCKED STOP of persistent VM '{vm_name}' "
+                f"(reason: {reason}, session_lifecycle={session_lifecycle})"
+            )
+            logger.warning(msg)
+            return True, msg
+
+        return True, f"[InvincibleGuard] Unknown action {action} for '{vm_name}'"
+
     async def terminate_vm(self, vm_name: str, reason: str = "Manual termination") -> bool:
         """
         v134.0: Terminate a VM instance with existence verification and circuit breaker protection.
@@ -6037,25 +6098,9 @@ class GCPVMManager:
         Returns:
             True if terminated successfully (or VM doesn't exist), False otherwise
         """
-        # v153.0: INVINCIBLE VM PROTECTION — central guard for ALL termination paths.
-        # This prevents the monitoring loop's cost-cutting, idle detection, memory
-        # pressure, and max lifetime checks from deleting persistent VMs.
-        is_invincible = vm_name.startswith("jarvis-prime-node")
-
-        # Also check metadata if VM is tracked
-        if not is_invincible and vm_name in self.managed_vms:
-            vm_meta = self.managed_vms[vm_name].metadata or {}
-            is_invincible = (
-                vm_meta.get("vm_class") == "invincible"
-                or vm_meta.get("labels", {}).get("vm-class") == "invincible"
-            )
-
-        if is_invincible:
-            logger.warning(
-                f"🛡️ [InvincibleGuard] BLOCKED termination of persistent VM '{vm_name}' "
-                f"(reason: {reason}). Invincible VMs cannot be terminated by automated systems. "
-                f"Use GCP Console or gcloud CLI for manual override."
-            )
+        # v153.0 → v266.0: Centralized protection check
+        is_protected, guard_msg = self.check_vm_protection(vm_name, VMAction.DELETE, reason)
+        if is_protected:
             return False
 
         async with self._vm_lock:
@@ -6246,12 +6291,9 @@ class GCPVMManager:
         ROOT CAUSE FIX: Now checks if VM exists before attempting delete to
         prevent 404 NotFound errors from cluttering logs and circuit breaker.
         """
-        # v153.0: Invincible VM protection — same guard as terminate_vm()
-        if vm_name.startswith("jarvis-prime-node"):
-            logger.warning(
-                f"🛡️ [InvincibleGuard] BLOCKED force-deletion of persistent VM '{vm_name}' "
-                f"(reason: {reason}). Use GCP Console or gcloud CLI for manual override."
-            )
+        # v153.0 → v266.0: Centralized protection check (was name-only, now full check)
+        is_protected, guard_msg = self.check_vm_protection(vm_name, VMAction.DELETE, reason)
+        if is_protected:
             return False
 
         # v134.0: Check if VM actually exists in GCP first
