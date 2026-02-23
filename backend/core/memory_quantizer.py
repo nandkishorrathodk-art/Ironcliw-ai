@@ -483,6 +483,60 @@ class MemoryQuantizer:
         self.current_metrics = metrics
         return metrics
 
+    async def get_current_metrics_async(self) -> MemoryMetrics:
+        """
+        Async version of get_current_metrics() - non-blocking memory_pressure call.
+
+        v266.0: Use this from async contexts (monitor loops, callbacks) to avoid
+        blocking the event loop with the memory_pressure subprocess. The psutil
+        calls are fast (<1ms) and safe to call synchronously; only the
+        memory_pressure subprocess (up to 2s) is made async.
+
+        The sync get_current_metrics() is preserved for backward compatibility
+        (called synchronously from backend/main.py and other non-async callers).
+        """
+        mem = psutil.virtual_memory()
+        swap = psutil.swap_memory()
+        process = psutil.Process()
+        process_mem = process.memory_info()
+
+        # Get system memory pressure (macOS specific - PRIMARY signal)
+        # v266.0: async subprocess instead of blocking subprocess.run()
+        pressure = await self._get_memory_pressure_async()
+
+        # Calculate macOS-aware memory pressure percentage
+        # macOS uses: wired + active + compressed as "truly used"
+        # inactive and purgeable can be freed instantly
+        macos_pressure_percent = self._calculate_macos_memory_pressure(mem)
+
+        # Calculate tier based on macOS kernel pressure, not psutil percent
+        tier = self._calculate_tier_macos(pressure, macos_pressure_percent, swap)
+
+        metrics = MemoryMetrics(
+            timestamp=time.time(),
+            process_memory_gb=process_mem.rss / (1024 ** 3),
+            system_memory_gb=mem.total / (1024 ** 3),
+            system_memory_percent=macos_pressure_percent,  # Use macOS-aware calculation
+            system_memory_available_gb=mem.available / (1024 ** 3),
+            tier=tier,
+            pressure=pressure,
+            swap_used_gb=swap.used / (1024 ** 3),
+            page_faults=getattr(process_mem, 'pfaults', 0),
+            metadata={
+                'process_pid': os.getpid(),
+                'python_version': sys.version.split()[0],
+                'psutil_percent': mem.percent,  # Keep original for comparison
+                'macos_pressure_percent': macos_pressure_percent,
+                'wired_gb': getattr(mem, 'wired', 0) / (1024 ** 3),
+                'active_gb': getattr(mem, 'active', 0) / (1024 ** 3),
+                'inactive_gb': getattr(mem, 'inactive', 0) / (1024 ** 3),
+                'compressed_gb': getattr(mem, 'compressed', 0) / (1024 ** 3) if hasattr(mem, 'compressed') else 0
+            }
+        )
+
+        self.current_metrics = metrics
+        return metrics
+
     def _calculate_macos_memory_pressure(self, mem) -> float:
         """
         Calculate macOS-specific memory pressure percentage
@@ -591,7 +645,7 @@ class MemoryQuantizer:
 
     def _get_memory_pressure(self) -> MemoryPressure:
         """
-        Get system memory pressure from macOS kernel (PRIMARY truth source)
+        Get system memory pressure from macOS kernel (PRIMARY truth source) - SYNC version.
 
         macOS kernel's memory_pressure is the MOST accurate indicator.
         It considers:
@@ -602,6 +656,10 @@ class MemoryQuantizer:
         - Memory allocation requests
 
         This is MORE reliable than simple percentage calculations!
+
+        NOTE: This calls subprocess.run() synchronously and blocks for up to 2s.
+        Use _get_memory_pressure_async() from async contexts to avoid blocking
+        the event loop. See v266.0 fix (same pattern as ECAPA v265.2).
         """
         try:
             import subprocess
@@ -613,33 +671,88 @@ class MemoryQuantizer:
             )
             output = result.stdout.lower()
 
-            # Parse the kernel's assessment
-            if 'critical' in output:
-                return MemoryPressure.CRITICAL
-            elif 'warn' in output:
-                return MemoryPressure.WARN
-            elif 'normal' in output:
-                return MemoryPressure.NORMAL
-
-            # Parse "system-wide memory free percentage" if available
-            if 'percentage' in output:
-                import re
-                match = re.search(r'percentage:\s*(\d+)%', output)
-                if match:
-                    free_percent = int(match.group(1))
-                    # macOS reports FREE percentage (opposite of used)
-                    if free_percent < 10:
-                        return MemoryPressure.CRITICAL
-                    elif free_percent < 25:
-                        return MemoryPressure.WARN
-                    else:
-                        return MemoryPressure.NORMAL
+            parsed = self._parse_memory_pressure_output(output)
+            if parsed is not None:
+                return parsed
 
         except Exception as e:
             logger.debug(f"memory_pressure command failed: {e}")
 
         # Fallback: Use conservative thresholds based on TRUE pressure
-        # NOT psutil's percentage which includes inactive pages
+        return self._fallback_pressure_from_cached_metrics()
+
+    async def _get_memory_pressure_async(self) -> MemoryPressure:
+        """
+        Get system memory pressure from macOS kernel - ASYNC non-blocking version.
+
+        v266.0: Replaces subprocess.run() with asyncio.create_subprocess_exec()
+        to avoid blocking the event loop for up to 2s per call. Same pattern as
+        ECAPA v265.2 (importlib) and ChromaDB v265.2 (import) fixes.
+
+        Used by get_current_metrics_async() and _monitor_loop().
+        """
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                'memory_pressure',
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout_bytes, _ = await asyncio.wait_for(proc.communicate(), timeout=2.0)
+            output = stdout_bytes.decode('utf-8', errors='replace').lower()
+
+            parsed = self._parse_memory_pressure_output(output)
+            if parsed is not None:
+                return parsed
+
+        except asyncio.TimeoutError:
+            logger.debug("memory_pressure command timed out (2s)")
+        except FileNotFoundError:
+            logger.debug("memory_pressure command not found")
+        except Exception as e:
+            logger.debug(f"memory_pressure failed: {e}")
+
+        # Fallback: Use conservative thresholds based on TRUE pressure
+        return self._fallback_pressure_from_cached_metrics()
+
+    def _parse_memory_pressure_output(self, output: str) -> Optional[MemoryPressure]:
+        """
+        Parse the output of the memory_pressure command.
+
+        Returns the parsed MemoryPressure, or None if parsing fails.
+        Shared by both sync and async paths.
+        """
+        # Parse the kernel's assessment
+        if 'critical' in output:
+            return MemoryPressure.CRITICAL
+        elif 'warn' in output:
+            return MemoryPressure.WARN
+        elif 'normal' in output:
+            return MemoryPressure.NORMAL
+
+        # Parse "system-wide memory free percentage" if available
+        if 'percentage' in output:
+            import re
+            match = re.search(r'percentage:\s*(\d+)%', output)
+            if match:
+                free_percent = int(match.group(1))
+                # macOS reports FREE percentage (opposite of used)
+                if free_percent < 10:
+                    return MemoryPressure.CRITICAL
+                elif free_percent < 25:
+                    return MemoryPressure.WARN
+                else:
+                    return MemoryPressure.NORMAL
+
+        return None
+
+    def _fallback_pressure_from_cached_metrics(self) -> MemoryPressure:
+        """
+        Fallback pressure determination when memory_pressure command is unavailable.
+
+        Uses conservative thresholds based on TRUE macOS pressure percentage
+        (wired + active + compressed), NOT psutil's percentage which includes
+        inactive pages.
+        """
         if self.current_metrics:
             pressure = self.current_metrics.metadata.get('macos_pressure_percent', 0)
             if pressure > 90:
@@ -808,7 +921,9 @@ class MemoryQuantizer:
         while self.monitoring:
             try:
                 # Get current metrics
-                metrics = self.get_current_metrics()
+                # v266.0: use async variant to avoid blocking event loop
+                # with subprocess.run(['memory_pressure']) for up to 2s
+                metrics = await self.get_current_metrics_async()
                 self.metrics_history.append(metrics)
                 self.planner.add_metrics(metrics)
 
