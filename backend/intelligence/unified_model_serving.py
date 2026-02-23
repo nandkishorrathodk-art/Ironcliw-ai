@@ -2284,6 +2284,31 @@ class UnifiedModelServing:
             except Exception as e:
                 self.logger.warning(f"[v235.1] Model unload error: {e}")
 
+    def reset_local_circuit_breaker(self) -> None:
+        """v266.2: Reset PRIME_LOCAL circuit breaker after verified model reload.
+
+        Called by GCPHybridPrimeRouter when post-crisis recovery successfully
+        reloads the local model. Directly closes the breaker so requests
+        immediately route to LOCAL instead of waiting for HALF_OPEN timeout.
+        """
+        _provider = ModelProvider.PRIME_LOCAL.value
+        cb = self._circuit_breaker._get_cb(_provider)
+        if cb is not None:
+            with self._circuit_breaker._lock:
+                cb._state = _CanonicalCBState.CLOSED
+                cb._failure_count = 0
+                cb._success_count = 0
+            self._circuit_breaker._sync_state_from_canonical(_provider, cb)
+        else:
+            with self._circuit_breaker._lock:
+                state = self._circuit_breaker._states.get(_provider)
+                if state:
+                    state.state = CircuitState.CLOSED
+                    state.failure_count = 0
+        self.logger.info(
+            "[v266.2] PRIME_LOCAL circuit breaker reset to CLOSED (post-crisis recovery)"
+        )
+
     # ── v266.0: Component Unload (GCP-disabled escape valve) ─────────
 
     async def _handle_component_unload(self, tier) -> None:
