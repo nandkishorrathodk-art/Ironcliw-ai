@@ -431,6 +431,7 @@ class MemoryQuantizer:
         self._thrash_state: str = "healthy"  # healthy, thrashing, emergency
         self._thrash_warning_since: float = 0.0
         self._thrash_callbacks: List[Callable] = []
+        self._unload_callbacks: List[Callable] = []
 
         logger.info("Advanced Memory Quantizer initialized")
         logger.info(f"  Config: {self.config}")
@@ -982,8 +983,22 @@ class MemoryQuantizer:
             gc.collect(2)
 
         elif strategy == OptimizationStrategy.COMPONENT_UNLOAD:
-            # Unload non-critical components
-            logger.debug("Component unload requested")
+            # v266.0: Fire registered unload callbacks
+            if self._unload_callbacks:
+                logger.warning(
+                    f"[ComponentUnload] Firing {len(self._unload_callbacks)} unload callback(s) "
+                    f"(tier={self.current_tier.value})"
+                )
+                for callback in self._unload_callbacks:
+                    try:
+                        if asyncio.iscoroutinefunction(callback):
+                            await callback(self.current_tier)
+                        else:
+                            callback(self.current_tier)
+                    except Exception as e:
+                        logger.error(f"[ComponentUnload] Callback error: {e}")
+            else:
+                logger.debug("Component unload requested but no callbacks registered")
 
         elif strategy == OptimizationStrategy.BUFFER_REDUCTION:
             # Reduce buffer sizes
@@ -1104,6 +1119,16 @@ class MemoryQuantizer:
         Called when state transitions (not on every check).
         """
         self._thrash_callbacks.append(callback)
+
+    def register_unload_callback(self, callback: Callable) -> None:
+        """Register callback for COMPONENT_UNLOAD strategy.
+
+        Callback receives one argument: the current MemoryTier.
+        Called when the system enters CRITICAL or EMERGENCY tier and
+        the COMPONENT_UNLOAD optimization strategy fires. Use this to
+        unload heavy components (e.g., the local LLM model) to free RAM.
+        """
+        self._unload_callbacks.append(callback)
 
     async def _check_thrash_state(self) -> None:
         """Check pagein rate and transition thrash state if needed."""
