@@ -3739,6 +3739,23 @@ class IntelligentKernelTakeover:
         self._takeover_start = time.time()
         result = TakeoverResult(success=False)
 
+        async def _acquire_startup_lock(force_lock: bool, context: str) -> bool:
+            """
+            Acquire startup lock with bounded retries to handle concurrent startup races.
+            """
+            for attempt in range(1, self.max_retries + 1):
+                if self.startup_lock.acquire(force=force_lock):
+                    return True
+                if attempt < self.max_retries:
+                    await asyncio.sleep(min(1.0, 0.15 * (2 ** (attempt - 1))))
+
+            holder = self.startup_lock.get_current_holder() or {}
+            holder_pid = holder.get("pid", "unknown")
+            result.errors.append(
+                f"{context}: failed to acquire startup lock (holder PID: {holder_pid})"
+            )
+            return False
+
         try:
             # Phase 1: Check current lock status
             is_locked, holder_pid = self.startup_lock.is_locked()
@@ -3756,7 +3773,7 @@ class IntelligentKernelTakeover:
                     )
 
                 # Acquire lock
-                if self.startup_lock.acquire(force=False):
+                if await _acquire_startup_lock(False, "clean_start"):
                     result.success = True
                     result.takeover_method = "clean_start"
                     self.logger.info("[Takeover] Clean start - no previous kernel")
@@ -3771,9 +3788,9 @@ class IntelligentKernelTakeover:
             if holder_pid is None:
                 # Shouldn't happen, but handle gracefully
                 self.logger.warning("[Takeover] Lock exists but no holder PID - treating as stale")
-                self.startup_lock.acquire(force=True)
-                result.success = True
-                result.takeover_method = "stale_no_pid"
+                if await _acquire_startup_lock(True, "stale_no_pid"):
+                    result.success = True
+                    result.takeover_method = "stale_no_pid"
                 result.duration_ms = (time.time() - self._takeover_start) * 1000
                 return result
 
@@ -3785,9 +3802,9 @@ class IntelligentKernelTakeover:
             if kernel_info.status == KernelHealthStatus.DEAD:
                 # Stale lock - just take it
                 self.logger.info("[Takeover] Previous kernel is dead - cleaning stale lock")
-                self.startup_lock.acquire(force=True)
-                result.success = True
-                result.takeover_method = "stale_lock"
+                if await _acquire_startup_lock(True, "stale_lock"):
+                    result.success = True
+                    result.takeover_method = "stale_lock"
 
             elif kernel_info.status in (KernelHealthStatus.ZOMBIE, KernelHealthStatus.UNRESPONSIVE):
                 # Zombie or unresponsive - force kill
@@ -3796,10 +3813,10 @@ class IntelligentKernelTakeover:
                 )
                 await self._force_kill_process(holder_pid)
                 await asyncio.sleep(0.5)  # Wait for process cleanup
-                self.startup_lock.acquire(force=True)
-                result.success = True
-                result.takeover_method = "force_kill_unresponsive"
-                result.processes_cleaned = 1
+                if await _acquire_startup_lock(True, "force_kill_unresponsive"):
+                    result.success = True
+                    result.takeover_method = "force_kill_unresponsive"
+                    result.processes_cleaned = 1
 
             elif kernel_info.status in (KernelHealthStatus.HEALTHY, KernelHealthStatus.DEGRADED):
                 # Healthy or degraded kernel running - try graceful takeover
@@ -3809,10 +3826,10 @@ class IntelligentKernelTakeover:
                     self.logger.warning(f"[Takeover] Force requested - killing {status_desc} kernel")
                     await self._force_kill_process(holder_pid)
                     await asyncio.sleep(0.5)
-                    self.startup_lock.acquire(force=True)
-                    result.success = True
-                    result.takeover_method = "force_kill_user_request"
-                    result.processes_cleaned = 1
+                    if await _acquire_startup_lock(True, "force_kill_user_request"):
+                        result.success = True
+                        result.takeover_method = "force_kill_user_request"
+                        result.processes_cleaned = 1
 
                 elif graceful_first:
                     # Try graceful handover
@@ -3820,19 +3837,19 @@ class IntelligentKernelTakeover:
                     handover_success = await self._graceful_handover(holder_pid, kernel_info)
 
                     if handover_success:
-                        self.startup_lock.acquire(force=True)
-                        result.success = True
-                        result.takeover_method = "graceful_handover"
-                        result.processes_cleaned = 1
+                        if await _acquire_startup_lock(True, "graceful_handover"):
+                            result.success = True
+                            result.takeover_method = "graceful_handover"
+                            result.processes_cleaned = 1
                     else:
                         # Graceful failed - fall back to force
                         self.logger.warning("[Takeover] Graceful handover failed - forcing")
                         await self._force_kill_process(holder_pid)
                         await asyncio.sleep(0.5)
-                        self.startup_lock.acquire(force=True)
-                        result.success = True
-                        result.takeover_method = "force_after_graceful_failed"
-                        result.processes_cleaned = 1
+                        if await _acquire_startup_lock(True, "force_after_graceful_failed"):
+                            result.success = True
+                            result.takeover_method = "force_after_graceful_failed"
+                            result.processes_cleaned = 1
                 else:
                     # No force, no graceful - can't proceed
                     result.errors.append(
@@ -3845,10 +3862,10 @@ class IntelligentKernelTakeover:
                 self.logger.warning(f"[Takeover] Unknown kernel status: {kernel_info.status}")
                 await self._force_kill_process(holder_pid)
                 await asyncio.sleep(0.5)
-                self.startup_lock.acquire(force=True)
-                result.success = True
-                result.takeover_method = "force_unknown_status"
-                result.processes_cleaned = 1
+                if await _acquire_startup_lock(True, "force_unknown_status"):
+                    result.success = True
+                    result.takeover_method = "force_unknown_status"
+                    result.processes_cleaned = 1
 
             # Phase 4: Clean up any remaining cross-repo orphans
             if result.success:
@@ -3969,8 +3986,14 @@ class IntelligentKernelTakeover:
                 timeout=self.ipc_timeout
             )
 
-            # Send health check request
-            request = json.dumps({"action": "health", "source": "takeover"}) + "\n"
+            # Send health check request.
+            # v266.0: use IPCServer contract ("command"/"args"), keep legacy
+            # "action" field for compatibility with older kernels.
+            request = json.dumps({
+                "command": IPCCommand.HEALTH.value,
+                "args": {"source": "takeover", "target_pid": pid},
+                "action": "health",
+            }) + "\n"
             writer.write(request.encode())
             await writer.drain()
 
@@ -3985,7 +4008,24 @@ class IntelligentKernelTakeover:
 
             if response:
                 data = json.loads(response.decode())
-                return data.get("status") in ("ok", "healthy", "running")
+
+                # Legacy payload format support.
+                if isinstance(data, dict) and data.get("status") in ("ok", "healthy", "running"):
+                    return True
+
+                # Current IPCServer envelope:
+                # {"success": bool, "result": {...}, "error": ...}
+                if isinstance(data, dict) and data.get("success") is True:
+                    result = data.get("result")
+                    if isinstance(result, dict):
+                        health_level = str(result.get("health_level", "")).upper()
+                        return health_level in {
+                            "PROCESS_EXISTS",
+                            "IPC_RESPONSIVE",
+                            "HTTP_HEALTHY",
+                            "FULLY_READY",
+                        }
+                    return True
             return False
 
         except asyncio.TimeoutError:
@@ -4018,9 +4058,12 @@ class IntelligentKernelTakeover:
             )
 
             request = json.dumps({
+                "command": IPCCommand.SHUTDOWN.value,
+                "args": {
+                    "reason": "new_kernel_takeover",
+                    "source_pid": os.getpid(),
+                },
                 "action": "shutdown",
-                "reason": "new_kernel_takeover",
-                "source_pid": os.getpid(),
             }) + "\n"
             writer.write(request.encode())
             await writer.drain()
@@ -4036,7 +4079,20 @@ class IntelligentKernelTakeover:
 
             if response:
                 data = json.loads(response.decode())
-                if data.get("status") != "shutting_down":
+
+                # Legacy payload format support.
+                if isinstance(data, dict) and data.get("status") == "shutting_down":
+                    pass
+                # Current IPCServer envelope.
+                elif isinstance(data, dict) and data.get("success") is True:
+                    result = data.get("result")
+                    acknowledged = (
+                        isinstance(result, dict) and result.get("acknowledged") is True
+                    )
+                    if not acknowledged:
+                        self.logger.debug(f"[Takeover] Unexpected shutdown ACK payload: {data}")
+                        return False
+                else:
                     self.logger.debug(f"[Takeover] Unexpected response: {data}")
                     return False
 
@@ -10635,7 +10691,9 @@ class ResourceManagerRegistry:
         self,
         parallel: bool = True,
         base_progress: int = 15,
-        end_progress: int = 30
+        end_progress: int = 30,
+        manager_timeout: Optional[float] = None,
+        overall_timeout: Optional[float] = None,
     ) -> Dict[str, bool]:
         """
         Initialize all registered managers with progress reporting.
@@ -10647,6 +10705,10 @@ class ResourceManagerRegistry:
             parallel: Initialize in parallel (faster) or sequential (safer)
             base_progress: Starting progress percentage (default: 15)
             end_progress: Ending progress percentage (default: 30)
+            manager_timeout: Per-manager initialization timeout in seconds.
+                            None/<=0 disables per-manager timeout.
+            overall_timeout: Global timeout for the entire resource initialization.
+                            None/<=0 disables global timeout.
 
         Returns:
             Dict mapping manager name to success status
@@ -10655,83 +10717,149 @@ class ResourceManagerRegistry:
         total = len(self._managers)
         completed = 0
         progress_per_manager = (end_progress - base_progress) / max(total, 1)
+        start_monotonic = time.monotonic()
+
+        if manager_timeout is not None and manager_timeout <= 0:
+            manager_timeout = None
+        if overall_timeout is not None and overall_timeout <= 0:
+            overall_timeout = None
+        overall_deadline = (
+            start_monotonic + overall_timeout
+            if overall_timeout is not None
+            else None
+        )
+
+        async def _emit_progress(name: str, status: str) -> None:
+            nonlocal completed
+            completed += 1
+            current_progress = int(base_progress + (completed * progress_per_manager))
+
+            if self._progress_callback:
+                try:
+                    await self._progress_callback(
+                        name,
+                        status,
+                        completed,
+                        total,
+                        current_progress,
+                    )
+                except Exception as cb_err:
+                    self._logger.debug(f"Progress callback error: {cb_err}")
+
+            self._logger.debug(
+                f"[ResourceRegistry] {name} {status} ({completed}/{total}, {current_progress}%)"
+            )
+
+        async def _initialize_manager(
+            name: str,
+            manager: ResourceManagerBase,
+        ) -> bool:
+            if manager_timeout is None:
+                return await manager.safe_initialize()
+            try:
+                return await asyncio.wait_for(
+                    manager.safe_initialize(),
+                    timeout=manager_timeout,
+                )
+            except asyncio.TimeoutError:
+                manager._ready = False
+                manager._health_status = "error"
+                manager._error = (
+                    f"Initialization timed out after {manager_timeout:.1f}s"
+                )
+                self._logger.warning(
+                    f"Manager {name} timed out after {manager_timeout:.1f}s"
+                )
+                return False
 
         if parallel:
-            # v188.0: Parallel initialization with per-completion progress updates
-            # Use asyncio.wait with FIRST_COMPLETED to report progress incrementally
             pending_tasks: Dict[asyncio.Task, str] = {}
-            
+
             for name, manager in self._managers.items():
-                task = create_safe_task(manager.safe_initialize())
+                task = create_safe_task(
+                    _initialize_manager(name, manager),
+                    name=f"resource-init-{name}",
+                )
                 pending_tasks[task] = name
-            
+
             while pending_tasks:
-                # Wait for any task to complete
+                now = time.monotonic()
+                if overall_deadline is not None and now >= overall_deadline:
+                    self._logger.warning(
+                        f"[ResourceRegistry] Overall initialization timeout "
+                        f"after {overall_timeout:.1f}s; marking remaining managers as failed"
+                    )
+                    for task, name in list(pending_tasks.items()):
+                        task.cancel()
+                        pending_tasks.pop(task, None)
+                        results[name] = False
+                        await _emit_progress(name, "timeout")
+                    break
+
+                wait_timeout: Optional[float] = None
+                if overall_deadline is not None:
+                    wait_timeout = max(0.0, min(1.0, overall_deadline - now))
+
                 done, pending = await asyncio.wait(
                     pending_tasks.keys(),
+                    timeout=wait_timeout,
                     return_when=asyncio.FIRST_COMPLETED
                 )
-                
+
+                if not done:
+                    continue
+
                 for task in done:
                     name = pending_tasks.pop(task)
                     try:
                         result = task.result()
-                        results[name] = result
-                        status = "complete" if result else "failed"
+                        result_bool = bool(result)
+                        results[name] = result_bool
+                        status = "complete" if result_bool else "failed"
+                    except asyncio.CancelledError:
+                        results[name] = False
+                        status = "cancelled"
                     except Exception as e:
                         self._logger.error(f"Manager {name} initialization error: {e}")
                         results[name] = False
                         status = "error"
-                    
-                    completed += 1
-                    current_progress = int(base_progress + (completed * progress_per_manager))
-                    
-                    # v188.0: Report progress for each completed manager
-                    if self._progress_callback:
-                        try:
-                            await self._progress_callback(
-                                name,
-                                status,
-                                completed,
-                                total,
-                                current_progress
-                            )
-                        except Exception as cb_err:
-                            self._logger.debug(f"Progress callback error: {cb_err}")
-                    
-                    self._logger.debug(
-                        f"[ResourceRegistry] {name} {status} ({completed}/{total}, {current_progress}%)"
-                    )
-                
-                # Update pending_tasks dict with remaining tasks
-                pending_tasks = {t: pending_tasks.get(t) for t in pending if t in pending_tasks}
+
+                    await _emit_progress(name, status)
+
+                pending_tasks = {t: pending_tasks[t] for t in pending if t in pending_tasks}
         else:
             # Sequential initialization with progress updates
             for name, manager in self._managers.items():
+                now = time.monotonic()
+                if overall_deadline is not None and now >= overall_deadline:
+                    self._logger.warning(
+                        f"[ResourceRegistry] Overall initialization timeout "
+                        f"after {overall_timeout:.1f}s; marking remaining managers as failed"
+                    )
+                    results[name] = False
+                    await _emit_progress(name, "timeout")
+                    for remaining_name in self._managers.keys():
+                        if remaining_name in results:
+                            continue
+                        results[remaining_name] = False
+                        await _emit_progress(remaining_name, "timeout")
+                    break
+
                 try:
-                    result = await manager.safe_initialize()
-                    results[name] = result
-                    status = "complete" if result else "failed"
+                    result = await _initialize_manager(name, manager)
+                    result_bool = bool(result)
+                    results[name] = result_bool
+                    status = "complete" if result_bool else "failed"
                 except Exception as e:
                     self._logger.error(f"Manager {name} initialization error: {e}")
                     results[name] = False
                     status = "error"
-                
-                completed += 1
-                current_progress = int(base_progress + (completed * progress_per_manager))
-                
-                # v188.0: Report progress for each completed manager
-                if self._progress_callback:
-                    try:
-                        await self._progress_callback(
-                            name,
-                            status,
-                            completed,
-                            total,
-                            current_progress
-                        )
-                    except Exception as cb_err:
-                        self._logger.debug(f"Progress callback error: {cb_err}")
+
+                await _emit_progress(name, status)
+
+        for name in self._managers.keys():
+            if name not in results:
+                results[name] = False
 
         self._initialized = True
         return results
@@ -66812,25 +66940,26 @@ class JarvisSystemKernel:
 
                 self.logger.debug("[Kernel] Invincible Node task ready")
 
-            # v188.0: Initialize all in parallel with timeout and progress reporting
+            # v266.0: Initialize all with per-manager timeout isolation.
+            # Root fix: prevent one hung manager from stalling the entire startup.
+            resource_manager_timeout = float(
+                os.environ.get("JARVIS_RESOURCE_MANAGER_TIMEOUT", "90.0")
+            )
             try:
-                results = await asyncio.wait_for(
-                    self._resource_registry.initialize_all(
-                        parallel=True,
-                        base_progress=base_progress,
-                        end_progress=end_progress
-                    ),
-                    timeout=resource_timeout
+                results = await self._resource_registry.initialize_all(
+                    parallel=True,
+                    base_progress=base_progress,
+                    end_progress=end_progress,
+                    manager_timeout=resource_manager_timeout,
+                    overall_timeout=resource_timeout,
                 )
-            except asyncio.TimeoutError:
-                self.logger.error(f"[Kernel] Resource initialization timed out after {resource_timeout}s")
-                heartbeat_stop.set()
-                heartbeat_task.cancel()
-                # v233.4: Don't cancel early boot task — it's independent
-                if invincible_node_task and not _reuse_early:
-                    invincible_node_task.cancel()
-                self._update_component_status("resources", "error", f"Timed out after {resource_timeout}s")
-                return False
+            except Exception as resource_init_err:
+                self.logger.error(
+                    f"[Kernel] Resource initialization error: {resource_init_err}"
+                )
+                results = {
+                    name: False for name in self._resource_registry.get_all_status().keys()
+                }
             finally:
                 # Stop heartbeat task
                 heartbeat_stop.set()
@@ -67201,65 +67330,77 @@ class JarvisSystemKernel:
 
                 # Get port range from config or use defaults
                 port_start, port_end = BACKEND_PORT_RANGE
-                fallback_ports = [
-                    port_start + 10,  # Try 8010
-                    port_start + 20,  # Try 8020
-                    port_start + 50,  # Try 8050
-                ]
+                candidate_ports = list(range(port_start, port_end + 1))
 
-                # Filter to valid ports
-                valid_fallback_ports = [p for p in fallback_ports if p <= port_end]
+                async def _check_port_in_use(port: int) -> bool:
+                    if ASYNC_STARTUP_UTILS_AVAILABLE and async_check_port is not None:
+                        return await async_check_port("localhost", port, timeout=0.75)
 
-                # Check all fallback ports in parallel using async
-                if ASYNC_STARTUP_UTILS_AVAILABLE and async_check_port is not None:
-                    # Parallel async port checks
-                    port_checks = await asyncio.gather(
-                        *[async_check_port("localhost", port, timeout=1.0) for port in valid_fallback_ports],
-                        return_exceptions=True
-                    )
-                else:
-                    # Fallback to asyncio.to_thread for each port
-                    async def _check_port_fallback(port: int) -> bool:
-                        def _sync_check() -> bool:
-                            try:
-                                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                                sock.settimeout(1.0)
-                                result = sock.connect_ex(('localhost', port))
-                                sock.close()
+                    def _sync_check() -> bool:
+                        try:
+                            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+                                sock.settimeout(0.75)
+                                result = sock.connect_ex(("localhost", port))
                                 return result == 0  # True = in use
-                            except Exception:
-                                return False  # Assume available on error
+                        except Exception:
+                            return True  # Unknown => treat as busy
 
-                        return await asyncio.to_thread(_sync_check)
+                    return await asyncio.to_thread(_sync_check)
 
-                    port_checks = await asyncio.gather(
-                        *[_check_port_fallback(port) for port in valid_fallback_ports],
-                        return_exceptions=True
+                # Scan range in batches to avoid a single giant gather on busy hosts.
+                batch_size = max(
+                    8,
+                    int(os.environ.get("JARVIS_PORT_FALLBACK_BATCH_SIZE", "24")),
+                )
+                port_found = False
+                for idx in range(0, len(candidate_ports), batch_size):
+                    batch = candidate_ports[idx: idx + batch_size]
+                    checks = await asyncio.gather(
+                        *[_check_port_in_use(port) for port in batch],
+                        return_exceptions=True,
                     )
 
-                # Find first available port
-                port_found = False
-                for fallback_port, is_in_use in zip(valid_fallback_ports, port_checks):
-                    if isinstance(is_in_use, Exception):
-                        # On error, try this port (optimistic)
-                        self.config.backend_port = fallback_port
-                        port_manager.selected_port = fallback_port
-                        self.logger.success(f"[Kernel] Fallback port allocated: {fallback_port}")
-                        port_found = True
+                    for fallback_port, is_in_use in zip(batch, checks):
+                        if isinstance(is_in_use, Exception):
+                            self.logger.debug(
+                                f"[Kernel] Fallback probe failed for port {fallback_port}: {is_in_use}"
+                            )
+                            continue
+
+                        if not is_in_use:  # False = no listener = available
+                            self.config.backend_port = fallback_port
+                            port_manager.selected_port = fallback_port
+                            self.logger.success(
+                                f"[Kernel] Fallback port allocated from range: {fallback_port}"
+                            )
+                            port_found = True
+                            break
+
+                    if port_found:
                         break
-                    elif not is_in_use:  # False = nothing listening = available
-                        self.config.backend_port = fallback_port
-                        port_manager.selected_port = fallback_port
-                        self.logger.success(f"[Kernel] Fallback port allocated: {fallback_port}")
+
+                # Last resort: dynamic ephemeral range from DynamicPortManager.
+                if not port_found and getattr(port_manager, "dynamic_port_enabled", False):
+                    try:
+                        dynamic_port = await port_manager._find_dynamic_port()
+                    except Exception as dyn_err:
+                        self.logger.debug(
+                            f"[Kernel] Dynamic fallback port discovery failed: {dyn_err}"
+                        )
+                        dynamic_port = None
+
+                    if dynamic_port:
+                        self.config.backend_port = dynamic_port
+                        port_manager.selected_port = dynamic_port
+                        self.logger.success(
+                            f"[Kernel] Fallback dynamic port allocated: {dynamic_port}"
+                        )
                         port_found = True
-                        break
-                    else:
-                        self.logger.debug(f"[Kernel] Fallback port {fallback_port} in use")
 
                 if not port_found:
                     self.logger.error("[Kernel] Failed to allocate any port (all in use)")
                     self.logger.error("[Kernel] Try: lsof -i :8000-8100 | grep LISTEN")
-                return False
+                    return False
 
             # Update config with selected port
             if port_manager.selected_port is not None:
@@ -67404,6 +67545,11 @@ class JarvisSystemKernel:
 
             if self.config.in_process_backend:
                 success = await self._start_backend_in_process()
+                if not success:
+                    self.logger.warning(
+                        "[Kernel] In-process backend failed, attempting subprocess fallback..."
+                    )
+                    success = await self._start_backend_subprocess()
             else:
                 success = await self._start_backend_subprocess()
 
@@ -67507,18 +67653,67 @@ class JarvisSystemKernel:
                 name="backend-uvicorn-serve",
             )
 
-            # Wait for server to be ready
-            for _ in range(30):  # 30 second timeout
+            startup_timeout = float(
+                os.environ.get("JARVIS_BACKEND_STARTUP_TIMEOUT", "90.0")
+            )
+            uvicorn_boot_timeout = float(
+                os.environ.get("JARVIS_BACKEND_UVICORN_BOOT_TIMEOUT", "30.0")
+            )
+            uvicorn_boot_timeout = min(startup_timeout, max(5.0, uvicorn_boot_timeout))
+            start_monotonic = time.monotonic()
+
+            # Stage 1: wait for uvicorn server.started
+            while (time.monotonic() - start_monotonic) < uvicorn_boot_timeout:
                 self._mark_startup_activity("backend_in_process_wait", stage="backend")
                 if self._backend_server.started:
-                    self.logger.success(f"[Kernel] Backend running at http://{self.config.backend_host}:{self.config.backend_port}")
-                    return True
-                if self._backend_server_task.done():
-                    self.logger.error("[Kernel] Backend server task exited before startup completed")
                     break
-                await asyncio.sleep(1.0)
+                if self._backend_server_task.done():
+                    task_error = None
+                    try:
+                        task_error = self._backend_server_task.exception()
+                    except asyncio.CancelledError:
+                        task_error = asyncio.CancelledError()
+                    except Exception as inspect_err:
+                        task_error = inspect_err
 
-            self.logger.error("[Kernel] Backend failed to start in time")
+                    if task_error:
+                        self.logger.error(
+                            f"[Kernel] Backend server task exited before startup completed: "
+                            f"{type(task_error).__name__}: {task_error}"
+                        )
+                    else:
+                        self.logger.error(
+                            "[Kernel] Backend server task exited before startup completed"
+                        )
+                    await self._stop_backend_in_process(
+                        reason="startup-task-exited",
+                        timeout=3.0,
+                    )
+                    return False
+                await asyncio.sleep(0.5)
+
+            if not self._backend_server.started:
+                self.logger.error(
+                    f"[Kernel] Backend failed to boot uvicorn in {uvicorn_boot_timeout:.1f}s"
+                )
+                await self._stop_backend_in_process(reason="startup-timeout", timeout=5.0)
+                return False
+
+            # Stage 2: verify HTTP/WebSocket readiness (not just uvicorn socket bind).
+            remaining_budget = max(
+                5.0,
+                startup_timeout - (time.monotonic() - start_monotonic),
+            )
+            backend_ready = await self._wait_for_backend_health(timeout=remaining_budget)
+            if backend_ready:
+                self.logger.success(
+                    f"[Kernel] Backend running at http://{self.config.backend_host}:{self.config.backend_port}"
+                )
+                return True
+
+            self.logger.error(
+                f"[Kernel] Backend health check failed within {startup_timeout:.1f}s startup budget"
+            )
             await self._stop_backend_in_process(reason="startup-timeout", timeout=5.0)
             return False
 
@@ -67647,6 +67842,19 @@ class JarvisSystemKernel:
                 self.logger.success(f"[Kernel] Backend running at http://{self.config.backend_host}:{self.config.backend_port}")
                 return True
             else:
+                if self._backend_process and self._backend_process.returncode is not None:
+                    try:
+                        _, stderr_bytes = await asyncio.wait_for(
+                            self._backend_process.communicate(),
+                            timeout=1.5,
+                        )
+                        if stderr_bytes:
+                            stderr_text = stderr_bytes.decode(errors="replace").strip()
+                            if stderr_text:
+                                tail_line = stderr_text.splitlines()[-1][:500]
+                                self.logger.error(f"[Kernel] Backend subprocess stderr: {tail_line}")
+                    except Exception:
+                        pass
                 self.logger.error("[Kernel] Backend failed health check")
                 return False
 
@@ -67670,10 +67878,42 @@ class JarvisSystemKernel:
         The fix verifies /health/ready includes websocket_ready: true before
         signaling that the backend is ready for frontend connections.
         """
+        def _backend_boot_failed() -> bool:
+            # In-process mode: uvicorn serve() exited before readiness.
+            if self._backend_server_task is not None and self._backend_server_task.done():
+                task_error = None
+                try:
+                    task_error = self._backend_server_task.exception()
+                except asyncio.CancelledError:
+                    task_error = asyncio.CancelledError()
+                except Exception as inspect_err:
+                    task_error = inspect_err
+
+                if task_error:
+                    self.logger.error(
+                        f"[Kernel] Backend task exited during health check: "
+                        f"{type(task_error).__name__}: {task_error}"
+                    )
+                else:
+                    self.logger.error("[Kernel] Backend task exited during health check")
+                return True
+
+            # Subprocess mode: process terminated before readiness.
+            if self._backend_process is not None and self._backend_process.returncode is not None:
+                self.logger.error(
+                    f"[Kernel] Backend subprocess exited with return code "
+                    f"{self._backend_process.returncode} during health check"
+                )
+                return True
+
+            return False
+
         if not AIOHTTP_AVAILABLE:
             # Simple socket check using async_check_port
             start_time = time.time()
             while (time.time() - start_time) < timeout:
+                if _backend_boot_failed():
+                    return False
                 self._mark_startup_activity("backend_socket_health_probe", stage="backend")
                 try:
                     if ASYNC_STARTUP_UTILS_AVAILABLE and async_check_port is not None:
@@ -67719,6 +67959,8 @@ class JarvisSystemKernel:
         # Phase 1: Wait for basic HTTP health
         self.logger.debug("[Kernel] Phase 1: Waiting for HTTP health endpoint...")
         while (time.time() - start_time) < timeout:
+            if _backend_boot_failed():
+                return False
             self._mark_startup_activity("backend_http_health_probe", stage="backend")
             try:
                 async with aiohttp.ClientSession() as session:  # type: ignore[union-attr]
@@ -67743,6 +67985,8 @@ class JarvisSystemKernel:
         
         self.logger.debug("[Kernel] Phase 2: Verifying WebSocket readiness...")
         while (time.time() - ws_start_time) < ws_timeout:
+            if _backend_boot_failed():
+                return False
             self._mark_startup_activity("backend_ws_readiness_probe", stage="backend")
             try:
                 async with aiohttp.ClientSession() as session:  # type: ignore[union-attr]
