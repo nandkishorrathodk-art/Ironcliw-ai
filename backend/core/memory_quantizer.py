@@ -200,9 +200,11 @@ class PredictiveMemoryPlanner:
             OptimizationStrategy.CACHE_PRUNING: 50,
             OptimizationStrategy.LAZY_LOADING: 100,
             OptimizationStrategy.AGGRESSIVE_GC: 200,
-            OptimizationStrategy.COMPONENT_UNLOAD: 300,
+            # v266.0: COMPONENT_UNLOAD now actually unloads the LLM model (4-8GB)
+            OptimizationStrategy.COMPONENT_UNLOAD: 6000,
             OptimizationStrategy.BUFFER_REDUCTION: 150,
-            OptimizationStrategy.EMERGENCY_CLEANUP: 500,
+            # v266.0: EMERGENCY_CLEANUP is gc.collect + flush — realistic estimate
+            OptimizationStrategy.EMERGENCY_CLEANUP: 50,
             OptimizationStrategy.PREDICTIVE_PREEMPT: 75
         }
         return impact_estimates.get(strategy, 50)
