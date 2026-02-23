@@ -4924,7 +4924,16 @@ const JarvisVoice = () => {
             }, 15000);
           }
         } else if (result.route === 'queued') {
-          setResponse('📤 Command queued — reconnecting to JARVIS...');
+          setResponse(
+            result.recovering
+              ? '⚠️ JARVIS backend recovery started — command queued for automatic retry'
+              : '📤 Command queued — reconnecting to JARVIS...'
+          );
+          setIsProcessing(false);
+          // Trigger reconnection
+          connectionService.reconnect();
+        } else if (result.route === 'recovering') {
+          setResponse('⚠️ JARVIS backend recovery started — please try again shortly');
           setIsProcessing(false);
           // Trigger reconnection
           connectionService.reconnect();
@@ -4979,7 +4988,23 @@ const JarvisVoice = () => {
       }
     } catch (error) {
       console.error('[TEXT-CMD] Direct REST failed:', error);
-      setResponse('⚠️ Cannot reach JARVIS backend — check that the system is running');
+      const connectionService = jarvisConnectionServiceRef.current;
+      if (connectionService && typeof connectionService.requestBackendRecovery === 'function') {
+        try {
+          const recovery = await connectionService.requestBackendRecovery('jarvis_voice_direct_rest_failure');
+          if (recovery?.accepted) {
+            setResponse('⚠️ JARVIS backend recovery started — retrying connection...');
+            setTimeout(() => connectionService.reconnect(), 750);
+          } else {
+            setResponse('⚠️ Cannot reach JARVIS backend — recovery endpoint unavailable');
+          }
+        } catch (recoveryError) {
+          console.error('[TEXT-CMD] Recovery request failed:', recoveryError);
+          setResponse('⚠️ Cannot reach JARVIS backend — check that the system is running');
+        }
+      } else {
+        setResponse('⚠️ Cannot reach JARVIS backend — check that the system is running');
+      }
     } finally {
       setIsProcessing(false);
     }
@@ -5664,6 +5689,24 @@ const JarvisVoice = () => {
           // WebSocket: response comes through message handler
           return;
         }
+
+        if (result.route === 'queued') {
+          setResponse(
+            result.recovering
+              ? '⚠️ JARVIS backend recovery started — command queued for automatic retry'
+              : '📤 Command queued — reconnecting to JARVIS...'
+          );
+          setIsProcessing(false);
+          connectionService.reconnect();
+          return;
+        }
+
+        if (result.route === 'recovering') {
+          setResponse('⚠️ JARVIS backend recovery started — please wait a moment');
+          setIsProcessing(false);
+          connectionService.reconnect();
+          return;
+        }
       } catch (error) {
         console.warn('[TEXT COMMAND] Connection service failed:', error.message);
       }
@@ -6282,7 +6325,8 @@ const JarvisVoice = () => {
           return cleaned;
         };
 
-        const utterance = new SpeechSynthesisUtterance(sanitizedText);
+        const fallbackSpeechText = sanitizeForSpeech(text);
+        const utterance = new SpeechSynthesisUtterance(fallbackSpeechText);
         utterance.rate = 0.7;   // Even slower rate for smooth, non-rushed speech
         utterance.pitch = 0.95; // Slightly lower pitch for more authoritative tone
         utterance.volume = 0.9; // Slightly lower volume for more natural sound

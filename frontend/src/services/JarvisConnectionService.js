@@ -93,6 +93,15 @@ class JarvisConnectionService {
       inProgress: false,
       lastAttemptTime: null
     };
+
+    // Control-plane recovery state
+    this.recoveryState = {
+      inProgress: false,
+      activePromise: null,
+      lastAttemptAt: 0,
+      cooldownMs: 8000,
+      lastResult: null
+    };
     
     // Initialize asynchronously (non-blocking)
     this._initializeAsync();
@@ -331,6 +340,168 @@ class JarvisConnectionService {
     } catch {
       // Ignore localStorage errors
     }
+  }
+
+  // ==========================================================================
+  // CONTROL-PLANE RECOVERY
+  // ==========================================================================
+
+  _getControlPlaneCandidates() {
+    const candidates = [];
+    const add = (url) => {
+      if (!url || typeof url !== 'string') return;
+      if (!candidates.includes(url)) candidates.push(url);
+    };
+
+    const loadingServerEnv = typeof process !== 'undefined'
+      ? process.env?.REACT_APP_LOADING_SERVER_URL
+      : null;
+    if (loadingServerEnv) add(loadingServerEnv);
+
+    try {
+      const storedUrl = localStorage.getItem('jarvis_loading_server_url');
+      if (storedUrl) add(storedUrl);
+    } catch {
+      // Ignore localStorage access issues
+    }
+
+    const parse = (url) => {
+      try {
+        return new URL(url);
+      } catch {
+        return null;
+      }
+    };
+
+    const derivedPorts = [];
+    const pushPort = (value) => {
+      const port = Number(value);
+      if (Number.isInteger(port) && port > 0 && port < 65536 && !derivedPorts.includes(port)) {
+        derivedPorts.push(port);
+      }
+    };
+
+    pushPort(typeof process !== 'undefined' ? process.env?.REACT_APP_LOADING_SERVER_PORT : null);
+    try {
+      pushPort(localStorage.getItem('jarvis_loading_server_port'));
+    } catch {
+      // Ignore localStorage access issues
+    }
+    pushPort(3001); // Default loading server port
+
+    const seedUrls = [];
+    if (this.backendUrl) seedUrls.push(this.backendUrl);
+    if (typeof window !== 'undefined' && window.location?.origin) seedUrls.push(window.location.origin);
+    if (typeof window !== 'undefined' && window.location?.href) {
+      const current = new URL(window.location.href);
+      if (current.port === '3001') add(current.origin);
+    }
+
+    seedUrls.forEach((seed) => {
+      const parsed = parse(seed);
+      if (!parsed) return;
+      derivedPorts.forEach((port) => {
+        add(`${parsed.protocol}//${parsed.hostname}:${port}`);
+      });
+    });
+
+    // Final fallback for local dev/recovery when URL parsing failed.
+    add('http://localhost:3001');
+    return candidates;
+  }
+
+  async _triggerControlPlaneRecovery(reason = 'backend_unreachable', options = {}) {
+    const force = options.force === true;
+    const now = Date.now();
+
+    if (this.recoveryState.inProgress && this.recoveryState.activePromise) {
+      return this.recoveryState.activePromise;
+    }
+
+    const cooldownElapsed = now - this.recoveryState.lastAttemptAt;
+    if (!force && this.recoveryState.lastAttemptAt > 0 && cooldownElapsed < this.recoveryState.cooldownMs) {
+      const result = {
+        accepted: false,
+        status: 'cooldown',
+        retryAfterMs: this.recoveryState.cooldownMs - cooldownElapsed
+      };
+      this.recoveryState.lastResult = result;
+      return result;
+    }
+
+    const runRecovery = async () => {
+      this.recoveryState.inProgress = true;
+      this.recoveryState.lastAttemptAt = Date.now();
+      this._emit('recovery', { stage: 'started', reason });
+
+      const candidates = this._getControlPlaneCandidates();
+      const errors = [];
+
+      for (const baseUrl of candidates) {
+        const endpoint = `${baseUrl.replace(/\/$/, '')}/api/supervisor/recover`;
+        try {
+          const response = await fetchWithTimeout(endpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              reason,
+              action: 'restart',
+              force
+            })
+          }, 4000);
+
+          let payload = {};
+          try {
+            payload = await response.json();
+          } catch {
+            payload = {};
+          }
+
+          const accepted = Boolean(payload.accepted) ||
+            payload.status === 'restart_initiated' ||
+            payload.status === 'in_progress' ||
+            payload.status === 'already_healthy';
+
+          if (response.ok && accepted) {
+            const result = {
+              accepted: true,
+              status: payload.status || 'accepted',
+              endpoint,
+              payload
+            };
+            this.recoveryState.lastResult = result;
+            this._emit('recovery', { stage: 'accepted', reason, endpoint, payload });
+            return result;
+          }
+
+          errors.push({
+            endpoint,
+            status: response.status,
+            message: payload?.message || `HTTP ${response.status}`
+          });
+        } catch (error) {
+          errors.push({ endpoint, message: error.message });
+        }
+      }
+
+      const result = {
+        accepted: false,
+        status: 'unreachable',
+        message: 'No supervisor recovery endpoint reachable',
+        errors
+      };
+      this.recoveryState.lastResult = result;
+      this._emit('recovery', { stage: 'failed', reason, errors });
+      return result;
+    };
+
+    this.recoveryState.activePromise = runRecovery()
+      .finally(() => {
+        this.recoveryState.inProgress = false;
+        this.recoveryState.activePromise = null;
+      });
+
+    return this.recoveryState.activePromise;
   }
 
   // ==========================================================================
@@ -660,6 +831,9 @@ class JarvisConnectionService {
     console.warn('[JarvisConnection] Connection lost');
     this._stopHealthMonitoring();
     this._setState(ConnectionState.OFFLINE);
+    this._triggerControlPlaneRecovery('health_monitor_connection_lost').catch((error) => {
+      console.debug('[JarvisConnection] Recovery trigger failed:', error?.message || error);
+    });
     this._scheduleReconnect();
   }
 
@@ -763,7 +937,8 @@ class JarvisConnectionService {
    * Routing priority:
    *   1. WebSocket (real-time, bidirectional) — preferred
    *   2. REST API (/api/command) — fallback when WebSocket unavailable
-   *   3. Queue for retry — when both are down
+   *   3. Control-plane recovery trigger — when backend is unreachable
+   *   4. Queue for retry — when both paths are down
    * 
    * @param {string} command - The command text
    * @param {object} options - Options: mode, metadata, audioData, timeout, onProgress
@@ -812,17 +987,50 @@ class JarvisConnectionService {
       }
     }
 
-    // Strategy 3: Queue for later if both paths are down
+    // Strategy 3: Trigger control-plane recovery via loading server.
+    const recovery = await this._triggerControlPlaneRecovery('command_send_failure');
+    if (recovery.accepted) {
+      this._setState(ConnectionState.RECONNECTING);
+      setTimeout(() => {
+        this.reconnect().catch(() => {});
+      }, 750);
+    }
+
+    // Strategy 4: Queue for later if both paths are down
     // v263.1: Use _queueMessage() API which wraps items in a Promise with
     // resolve/reject callbacks. Direct .push() to offlineQueue creates items
     // without these callbacks, causing "item.reject is not a function" in _flushQueue().
     if (this.wsClient && typeof this.wsClient._queueMessage === 'function') {
       this.wsClient._queueMessage(message, 'default', 'normal').catch(() => {});
       console.log('[JarvisConnection] Command queued for retry when connection is restored');
-      return { success: false, route: 'queued', error: 'No connection available — command queued for retry' };
+      return {
+        success: false,
+        route: 'queued',
+        recovering: recovery.accepted === true,
+        recovery,
+        error: recovery.accepted
+          ? 'Backend recovery initiated — command queued for retry'
+          : 'No connection available — command queued for retry'
+      };
     }
 
-    return { success: false, route: 'none', error: 'No connection to JARVIS backend' };
+    if (recovery.accepted) {
+      return {
+        success: false,
+        route: 'recovering',
+        recovering: true,
+        recovery,
+        error: 'Backend recovery initiated'
+      };
+    }
+
+    return {
+      success: false,
+      route: 'none',
+      recovering: false,
+      recovery,
+      error: 'No connection to JARVIS backend'
+    };
   }
 
   /**
@@ -910,8 +1118,17 @@ class JarvisConnectionService {
       backendUrl: this.backendUrl,
       mode: this.backendMode,
       consecutiveFailures: this.consecutiveFailures,
+      recovery: {
+        inProgress: this.recoveryState.inProgress,
+        lastAttemptAt: this.recoveryState.lastAttemptAt,
+        lastResult: this.recoveryState.lastResult
+      },
       wsStats: this.wsClient?.getStats() || null
     };
+  }
+
+  async requestBackendRecovery(reason = 'manual_request') {
+    return this._triggerControlPlaneRecovery(reason, { force: true });
   }
 
   async reconnect() {
