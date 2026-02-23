@@ -63390,10 +63390,19 @@ class JarvisSystemKernel:
         # v249.0: Initialize event bus and CLI renderer
         # v265.0: Add timeout — bare await could hang if event bus has I/O issues
         _event_bus = get_event_bus()
+        # v265.5: CPU-aware timeout + env var override
+        _eb_timeout = _get_env_float("JARVIS_EVENT_BUS_START_TIMEOUT", 10.0)
         try:
-            await asyncio.wait_for(_event_bus.start(), timeout=10.0)
+            import psutil as _eb_ps
+            _eb_cpu = _eb_ps.cpu_percent(interval=None)
+            if _eb_cpu > 90.0:
+                _eb_timeout *= 1.0 + (_eb_cpu - 90.0) / 10.0 * 2.0
+        except Exception:
+            pass
+        try:
+            await asyncio.wait_for(_event_bus.start(), timeout=_eb_timeout)
         except asyncio.TimeoutError:
-            self.logger.warning("[Kernel] Event bus start timed out (10s) — continuing")
+            self.logger.warning(f"[Kernel] Event bus start timed out ({_eb_timeout:.0f}s) — continuing")
         except Exception as _eb_err:
             self.logger.warning(f"[Kernel] Event bus start failed: {_eb_err}")
         _renderer = _create_cli_renderer(
@@ -64896,8 +64905,17 @@ class JarvisSystemKernel:
                 try:
                     self._voice_orchestrator = VoiceOrchestrator()
                     # v265.0: Add timeout — IPC server start could hang
+                    # v265.5: CPU-aware scaling + env var override
+                    _vo_timeout = _get_env_float("JARVIS_VOICE_ORCH_START_TIMEOUT", 15.0)
+                    try:
+                        import psutil as _vo_ps
+                        _vo_cpu = _vo_ps.cpu_percent(interval=None)
+                        if _vo_cpu > 90.0:
+                            _vo_timeout *= 1.0 + (_vo_cpu - 90.0) / 10.0 * 2.0
+                    except Exception:
+                        pass
                     await asyncio.wait_for(
-                        self._voice_orchestrator.start(), timeout=15.0
+                        self._voice_orchestrator.start(), timeout=_vo_timeout
                     )
 
                     # Connect TTS callback if narrator exists
@@ -65624,14 +65642,23 @@ class JarvisSystemKernel:
                     initialize_reactor_core,
                     shutdown_reactor_core,
                 )
-                _rc_ok = await asyncio.wait_for(initialize_reactor_core(), timeout=30.0)
+                # v265.5: CPU-aware timeout + env var override
+                _rc_timeout = _get_env_float("JARVIS_REACTOR_CORE_INIT_TIMEOUT", 30.0)
+                try:
+                    import psutil as _rc_ps
+                    _rc_cpu = _rc_ps.cpu_percent(interval=None)
+                    if _rc_cpu > 90.0:
+                        _rc_timeout *= 1.0 + (_rc_cpu - 90.0) / 10.0 * 2.0
+                except Exception:
+                    pass
+                _rc_ok = await asyncio.wait_for(initialize_reactor_core(), timeout=_rc_timeout)
                 if _rc_ok:
                     self._reactor_core_active = True
                     add_dashboard_log("Reactor Core pipeline activated", "INFO")
                 else:
                     add_dashboard_log("Reactor Core pipeline unavailable (non-fatal)", "WARN")
             except asyncio.TimeoutError:
-                add_dashboard_log("Reactor Core init timed out (30s) — skipping", "WARN")
+                add_dashboard_log(f"Reactor Core init timed out ({_rc_timeout:.0f}s) — skipping", "WARN")
             except ImportError:
                 pass
             except Exception as e:
@@ -65641,15 +65668,24 @@ class JarvisSystemKernel:
             # v265.0: Add timeout — previously bare await could hang
             try:
                 from backend.autonomy.reactor_core_watcher import start_reactor_core_watcher
+                # v265.5: CPU-aware timeout + env var override
+                _rcw_timeout = _get_env_float("JARVIS_REACTOR_WATCHER_TIMEOUT", 15.0)
+                try:
+                    import psutil as _rcw_ps
+                    _rcw_cpu = _rcw_ps.cpu_percent(interval=None)
+                    if _rcw_cpu > 90.0:
+                        _rcw_timeout *= 1.0 + (_rcw_cpu - 90.0) / 10.0 * 2.0
+                except Exception:
+                    pass
                 _watcher = await asyncio.wait_for(
-                    start_reactor_core_watcher(), timeout=15.0
+                    start_reactor_core_watcher(), timeout=_rcw_timeout
                 )
                 self._reactor_core_watcher = _watcher
                 if hasattr(_watcher, '_watch_task') and _watcher._watch_task:
                     self._background_tasks.append(_watcher._watch_task)
                 add_dashboard_log("Reactor Core watcher active", "INFO")
             except asyncio.TimeoutError:
-                self.logger.debug("Reactor Core watcher timed out (15s)")
+                self.logger.debug(f"Reactor Core watcher timed out ({_rcw_timeout:.0f}s)")
             except Exception as e:
                 self.logger.debug(f"Reactor Core watcher error: {e}")
 
@@ -66597,12 +66633,21 @@ class JarvisSystemKernel:
             # - Graceful handover protocol with timeout
             # - Async parallel process scanning
             # =====================================================================
+            # v265.5: CPU-aware handover timeout + env var override
+            _takeover_timeout = _get_env_float("JARVIS_KERNEL_HANDOVER_TIMEOUT", 30.0)
+            try:
+                import psutil as _tk_ps
+                _tk_cpu = _tk_ps.cpu_percent(interval=None)
+                if _tk_cpu > 90.0:
+                    _takeover_timeout *= 1.0 + (_tk_cpu - 90.0) / 10.0 * 2.0
+            except Exception:
+                pass
             takeover = IntelligentKernelTakeover(
                 startup_lock=self._startup_lock,
                 logger=self.logger,
                 locks_dir=LOCKS_DIR,
                 ipc_timeout=5.0,
-                handover_timeout=30.0,
+                handover_timeout=_takeover_timeout,
             )
 
             takeover_result = await takeover.attempt_takeover(
@@ -70423,7 +70468,19 @@ class JarvisSystemKernel:
                 return
 
             pm = get_persistence_manager()
-            stranded = await asyncio.wait_for(pm.startup(), timeout=10.0)
+            # v265.5: CPU-aware timeouts for ghost display recovery
+            _gd_startup_to = _get_env_float("JARVIS_GHOST_PERSIST_STARTUP_TIMEOUT", 10.0)
+            _gd_repat_to = _get_env_float("JARVIS_GHOST_REPATRIATION_TIMEOUT", 15.0)
+            try:
+                import psutil as _gd_ps
+                _gd_cpu = _gd_ps.cpu_percent(interval=None)
+                if _gd_cpu > 90.0:
+                    _gd_f = 1.0 + (_gd_cpu - 90.0) / 10.0 * 2.0
+                    _gd_startup_to *= _gd_f
+                    _gd_repat_to *= _gd_f
+            except Exception:
+                pass
+            stranded = await asyncio.wait_for(pm.startup(), timeout=_gd_startup_to)
 
             if stranded:
                 self.logger.info(
@@ -70431,7 +70488,7 @@ class JarvisSystemKernel:
                 )
                 result = await asyncio.wait_for(
                     pm.repatriate_stranded_windows(stranded, narrate_callback=None),
-                    timeout=15.0,
+                    timeout=_gd_repat_to,
                 )
                 self.logger.info(
                     f"[GhostDisplay] Repatriation: success={result.get('success', 0)}, "
@@ -74992,8 +75049,17 @@ class JarvisSystemKernel:
                     # v265.3: collect_all() had no timeout — if any health
                     # check blocks (e.g., network call in a provider), the
                     # entire enterprise phase stalls.
+                    # v265.5: CPU-aware timeout + env var override
+                    _health_agg_timeout = _get_env_float("JARVIS_HEALTH_AGG_TIMEOUT", 15.0)
+                    try:
+                        import psutil as _ha_ps
+                        _ha_cpu = _ha_ps.cpu_percent(interval=None)
+                        if _ha_cpu > 90.0:
+                            _health_agg_timeout *= 1.0 + (_ha_cpu - 90.0) / 10.0 * 2.0
+                    except Exception:
+                        pass
                     _system_health = await asyncio.wait_for(
-                        _aggregator.collect_all(), timeout=15.0
+                        _aggregator.collect_all(), timeout=_health_agg_timeout
                     )
                     _overall = _system_health.overall
 
@@ -76397,6 +76463,15 @@ class JarvisSystemKernel:
             self._current_startup_progress = 97
             self.logger.info("[Kernel] Waiting for Trinity components to complete...")
             trinity_wait_timeout = float(os.environ.get("JARVIS_TRINITY_WAIT_TIMEOUT", "30.0"))
+            # v265.5: CPU-aware scaling — Trinity components (frontend build,
+            # model loading) all compete for CPU during late startup.
+            try:
+                import psutil as _tw_ps
+                _tw_cpu = _tw_ps.cpu_percent(interval=None)
+                if _tw_cpu > 90.0:
+                    trinity_wait_timeout *= 1.0 + (_tw_cpu - 90.0) / 10.0 * 2.0
+            except Exception:
+                pass
             trinity_wait_start = time.time()
 
             while not self._is_trinity_ready():
@@ -77315,7 +77390,7 @@ class JarvisSystemKernel:
                     
                     await asyncio.wait_for(
                         self._frontend_process.wait(),
-                        timeout=10.0
+                        timeout=_get_env_float("JARVIS_FRONTEND_GRACEFUL_TIMEOUT", 10.0),
                     )
                 except asyncio.TimeoutError:
                     # Force kill if graceful shutdown fails
@@ -77328,7 +77403,10 @@ class JarvisSystemKernel:
                         except ProcessLookupError:
                             pass  # v253.2: Already exited
                     try:
-                        await asyncio.wait_for(self._frontend_process.wait(), timeout=5.0)
+                        await asyncio.wait_for(
+                            self._frontend_process.wait(),
+                            timeout=_get_env_float("JARVIS_FRONTEND_KILL_TIMEOUT", 5.0),
+                        )
                     except asyncio.TimeoutError:
                         pass  # v253.2: Bounded wait
                 self.logger.info("[Frontend] Stopped")
@@ -78808,7 +78886,7 @@ class JarvisSystemKernel:
             if self._backend_server or self._backend_server_task:
                 await self._stop_backend_in_process(
                     reason="cleanup",
-                    timeout=15.0,
+                    timeout=_get_env_float("JARVIS_BACKEND_INPROC_STOP_TIMEOUT", 15.0),
                     force_cancel_on_timeout=True,
                 )
 
@@ -78878,7 +78956,10 @@ class JarvisSystemKernel:
             # Stop global hybrid orchestrator singleton if present.
             try:
                 from core.hybrid_orchestrator import stop_orchestrator
-                await asyncio.wait_for(stop_orchestrator(), timeout=10.0)
+                await asyncio.wait_for(
+                    stop_orchestrator(),
+                    timeout=_get_env_float("JARVIS_HYBRID_ORCH_STOP_TIMEOUT", 10.0),
+                )
                 self.logger.debug("[Kernel] Hybrid orchestrator stopped")
             except Exception as hy_err:
                 self.logger.debug(f"[Kernel] Hybrid orchestrator cleanup error: {hy_err}")
@@ -78890,7 +78971,10 @@ class JarvisSystemKernel:
                     from intelligence.model_lifecycle_manager import shutdown_lifecycle_manager
                 except ImportError:
                     from backend.intelligence.model_lifecycle_manager import shutdown_lifecycle_manager
-                await asyncio.wait_for(shutdown_lifecycle_manager(), timeout=10.0)
+                await asyncio.wait_for(
+                    shutdown_lifecycle_manager(),
+                    timeout=_get_env_float("JARVIS_MODEL_LIFECYCLE_STOP_TIMEOUT", 10.0),
+                )
                 self.logger.debug("[Kernel] Model lifecycle manager stopped")
             except Exception as ml_err:
                 self.logger.debug(f"[Kernel] Model lifecycle manager cleanup error: {ml_err}")
@@ -78999,7 +79083,7 @@ class JarvisSystemKernel:
                                         reason="session_shutdown",
                                         action=VMAction.STOP,
                                     ),
-                                    timeout=15.0,
+                                    timeout=_get_env_float("JARVIS_VM_STOP_TIMEOUT", 15.0),
                                 )
                                 self.logger.info(f"[Kernel] VM '{vm_name}' stopped for session shutdown")
                             except asyncio.TimeoutError:
@@ -79023,7 +79107,10 @@ class JarvisSystemKernel:
                         shutdown_orchestrator,
                     )
                     try:
-                        await asyncio.wait_for(shutdown_orchestrator(), timeout=15.0)
+                        await asyncio.wait_for(
+                            shutdown_orchestrator(),
+                            timeout=_get_env_float("JARVIS_CROSS_REPO_STOP_TIMEOUT", 15.0),
+                        )
                         self.logger.info("[Kernel] Cross-repo orchestrator shutdown complete")
                     except asyncio.TimeoutError:
                         self.logger.warning("[Kernel] Orchestrator shutdown timed out (15s)")
@@ -79046,7 +79133,10 @@ class JarvisSystemKernel:
                     pass  # v253.2: Already exited
                 else:
                     try:
-                        await asyncio.wait_for(self._backend_process.wait(), timeout=10.0)
+                        await asyncio.wait_for(
+                            self._backend_process.wait(),
+                            timeout=_get_env_float("JARVIS_BACKEND_PROC_STOP_TIMEOUT", 10.0),
+                        )
                     except asyncio.TimeoutError:
                         try:
                             self._backend_process.kill()
@@ -81732,12 +81822,22 @@ class JarvisSystemKernel:
         ]
 
         # Execute in parallel with timeout
+        # v265.5: CPU-aware timeout + env var override
+        _preflight_timeout = _get_env_float("JARVIS_PREFLIGHT_CHECK_TIMEOUT", 30.0)
+        try:
+            import psutil as _pf_ps
+            _pf_cpu = _pf_ps.cpu_percent(interval=None)
+            if _pf_cpu > 90.0:
+                _preflight_timeout *= 1.0 + (_pf_cpu - 90.0) / 10.0 * 2.0
+        except Exception:
+            pass
+
         async def run_check(name: str, coro) -> Tuple[str, Dict[str, Any]]:
             try:
-                result = await asyncio.wait_for(coro, timeout=30.0)
+                result = await asyncio.wait_for(coro, timeout=_preflight_timeout)
                 return name, result
             except asyncio.TimeoutError:
-                return name, {"passed": False, "error": "Check timed out"}
+                return name, {"passed": False, "error": f"Check timed out ({_preflight_timeout:.0f}s)"}
             except Exception as e:
                 return name, {"passed": False, "error": str(e)}
 
