@@ -761,16 +761,20 @@ class GCPHybridPrimeRouter:
         self._last_memory_rate_check: float = 0.0
         self._current_memory_rate_mb_sec: float = 0.0  # Current rate of memory growth (MB/sec)
 
-        # Emergency offload state
+        # v266.1: Emergency offload state — 3-step escalation ladder
         self._emergency_offload_active: bool = False
         self._emergency_offload_started_at: float = 0.0
-        self._paused_processes: Dict[int, str] = {}  # pid -> process_name
         self._offload_lock: Optional[asyncio.Lock] = None  # Lazy init
+        self._clean_unload_fired: bool = False  # Step 1 completed
+        self._clean_unload_verified: bool = False  # Post-unload verification passed
 
-        # v192.0: Anti-cycle protection for emergency offload
-        self._emergency_offload_released_at: float = 0.0  # When last offload ended
-        self._emergency_offload_cycle_count: int = 0  # Consecutive offload cycles
-        self._emergency_offload_hysteresis_armed: bool = False  # True = waiting for RAM to drop
+        # SIGSTOP state (last resort only)
+        self._sigstop_active: bool = False
+        self._paused_processes: Dict[int, str] = {}  # pid -> process_name
+        self._sigstop_released_at: float = 0.0  # Cooldown tracking for SIGSTOP only
+
+        # Hysteresis (applies to all emergency actions)
+        self._emergency_offload_hysteresis_armed: bool = False
 
         # Process tracking for emergency offload
         self._ml_loader_ref = None  # Reference to ProcessIsolatedMLLoader
