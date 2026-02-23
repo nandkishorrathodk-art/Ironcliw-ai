@@ -409,6 +409,11 @@ class PrimeLocalClient(ModelClient):
             max_workers=1, thread_name_prefix="llm-inference"
         )
 
+        # v266.0: Mmap thrash cascade state
+        self._model_swapping: bool = False
+        self._current_model_entry: Optional[Dict[str, Any]] = None  # Current QUANT_CATALOG entry
+        self._thrash_downgrade_attempted: bool = False
+
     def _discover_model(self, model_name: str) -> Optional[Path]:
         """
         Discover a model file by searching multiple directories.
@@ -655,6 +660,11 @@ class PrimeLocalClient(ModelClient):
                         model_path = await self._auto_download_model(
                             model_name
                         )
+                    # v266.0: Look up catalog entry for explicit model
+                    for _cat_entry in self.QUANT_CATALOG:
+                        if _cat_entry["filename"] == model_name:
+                            selected_entry = _cat_entry
+                            break
                 elif available_gb is not None:
                     # Dynamic selection from QUANT_CATALOG
                     result = await self._select_best_model(available_gb)
@@ -853,6 +863,7 @@ class PrimeLocalClient(ModelClient):
 
                 self._model_path = model_path
                 self._loaded = True
+                self._current_model_entry = selected_entry  # v266.0: Track for thrash downgrade
                 _name = (
                     selected_entry["name"]
                     if selected_entry
@@ -2169,6 +2180,16 @@ class UnifiedModelServing:
             )
             self.logger.info("[v235.1] Memory pressure monitor started")
 
+        # v266.0: Register for thrash detection
+        try:
+            from backend.core.memory_quantizer import get_memory_quantizer
+            _mq = await get_memory_quantizer()
+            if _mq and hasattr(_mq, 'register_thrash_callback'):
+                _mq.register_thrash_callback(self._handle_thrash_state_change)
+                self.logger.info("[v266.0] Registered thrash detection callback")
+        except Exception as e:
+            self.logger.debug(f"[v266.0] Thrash callback registration: {e}")
+
     async def _start_memory_monitor(self) -> None:
         """v235.1: Background monitor that unloads local model under memory pressure (Fix C4)."""
         _critical_since: Optional[float] = None
@@ -2249,6 +2270,119 @@ class UnifiedModelServing:
                 )
             except Exception as e:
                 self.logger.warning(f"[v235.1] Model unload error: {e}")
+
+    # ── v266.0: Mmap Thrash Cascade Response ─────────────────────────
+
+    async def _handle_thrash_state_change(self, new_state: str) -> None:
+        """Handle mmap thrash state changes from MemoryQuantizer.
+
+        Two-step cascade:
+        Step 1 (thrashing): Downgrade one tier in QUANT_CATALOG.
+        Step 2 (still thrashing or emergency): Trigger GCP offload.
+        """
+        _local = self._clients.get(ModelProvider.PRIME_LOCAL)
+        if not _local or not isinstance(_local, PrimeLocalClient):
+            return
+
+        if new_state == "healthy":
+            _local._thrash_downgrade_attempted = False
+            return
+
+        if new_state == "emergency":
+            # Skip downgrade, go straight to GCP
+            self.logger.critical(
+                "[ThrashCascade] EMERGENCY pagein rate — triggering GCP offload"
+            )
+            await self._trigger_gcp_offload_from_thrash()
+            return
+
+        if new_state == "thrashing":
+            if _local._thrash_downgrade_attempted:
+                # Already tried downgrade, still thrashing — go to GCP
+                self.logger.warning(
+                    "[ThrashCascade] Still thrashing after downgrade — triggering GCP offload"
+                )
+                await self._trigger_gcp_offload_from_thrash()
+                return
+
+            # Step 1: Downgrade one tier
+            _local._thrash_downgrade_attempted = True
+            await self._downgrade_model_one_tier()
+
+    async def _downgrade_model_one_tier(self) -> None:
+        """Unload current model, load next smaller from QUANT_CATALOG."""
+        _local = self._clients.get(ModelProvider.PRIME_LOCAL)
+        if not _local or not isinstance(_local, PrimeLocalClient):
+            self.logger.warning("[ThrashCascade] No PrimeLocalClient — cannot downgrade")
+            return
+
+        if not _local._current_model_entry:
+            self.logger.warning("[ThrashCascade] No current model entry — cannot downgrade")
+            return
+
+        current_rank = _local._current_model_entry.get("quality_rank", 0)
+        # Find next tier (higher quality_rank number = smaller model)
+        smaller_entries = [
+            e for e in PrimeLocalClient.QUANT_CATALOG
+            if e["quality_rank"] > current_rank
+        ]
+        smaller_entries.sort(key=lambda e: e["quality_rank"])
+
+        if not smaller_entries:
+            self.logger.warning(
+                "[ThrashCascade] Already on smallest model — cannot downgrade further"
+            )
+            await self._trigger_gcp_offload_from_thrash()
+            return
+
+        next_model = smaller_entries[0]
+        self.logger.warning(
+            f"[ThrashCascade] Downgrading: {_local._current_model_entry['name']} "
+            f"-> {next_model['name']}"
+        )
+
+        _local._model_swapping = True
+        try:
+            # Unload current model via the existing mechanism
+            await self._unload_local_model()
+
+            # Load smaller model
+            success = await _local.load_model(model_name=next_model["filename"])
+            if not success:
+                self.logger.error("[ThrashCascade] Downgrade load failed — triggering GCP")
+                await self._trigger_gcp_offload_from_thrash()
+        except Exception as e:
+            self.logger.error(f"[ThrashCascade] Downgrade error: {e}")
+            await self._trigger_gcp_offload_from_thrash()
+        finally:
+            _local._model_swapping = False
+
+    async def _trigger_gcp_offload_from_thrash(self) -> None:
+        """Signal GCP router to enter VM provisioning for thrash recovery."""
+        _local = self._clients.get(ModelProvider.PRIME_LOCAL)
+        if _local and isinstance(_local, PrimeLocalClient):
+            _local._model_swapping = True
+        try:
+            from backend.core.gcp_hybrid_prime_router import (
+                get_gcp_hybrid_prime_router,
+                VMLifecycleState,
+            )
+            router = await get_gcp_hybrid_prime_router()
+            if router and hasattr(router, '_transition_vm_lifecycle'):
+                if router._vm_lifecycle_state == VMLifecycleState.IDLE:
+                    router._transition_vm_lifecycle(
+                        VMLifecycleState.TRIGGERING, "mmap_thrash_emergency"
+                    )
+                    router._transition_vm_lifecycle(
+                        VMLifecycleState.PROVISIONING, "thrash_bypass"
+                    )
+                    await router._trigger_vm_provisioning(reason="mmap_thrash")
+        except ImportError:
+            self.logger.debug("[ThrashCascade] GCP router not available")
+        except Exception as e:
+            self.logger.error(f"[ThrashCascade] GCP offload trigger failed: {e}")
+
+    # ── End v266.0 Thrash Cascade ────────────────────────────────────
 
     async def stop(self) -> None:
         """Stop the model serving layer.
