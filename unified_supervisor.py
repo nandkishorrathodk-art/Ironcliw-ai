@@ -60542,6 +60542,8 @@ class JarvisSystemKernel:
         # Frontend and loading server processes
         self._frontend_process: Optional[asyncio.subprocess.Process] = None
         self._loading_server_process: Optional[asyncio.subprocess.Process] = None
+        self._frontend_start_task: Optional[asyncio.Task] = None
+        self._frontend_start_lock = asyncio.Lock()
 
         # v183.0: Protected PIDs - processes spawned by THIS kernel that must NOT be killed
         # Used by zombie cleanup to avoid killing our own loading server, frontend, etc.
@@ -60703,6 +60705,7 @@ class JarvisSystemKernel:
         # - Voice approval workflows
         # - Proactive event streaming
         self._agi_os: Optional[Any] = None  # AGIOSCoordinator
+        self._agi_os_init_task: Optional[asyncio.Task] = None
         self._neural_mesh_bridge: Optional[Any] = None  # Runtime↔Mesh bridge handle
 
         # v200.0: Two-Tier + AGI OS status tracking
@@ -64989,28 +64992,18 @@ class JarvisSystemKernel:
                 self.logger.info("[Kernel] ───────────────────────────────────────────────────────")
                 self.logger.info("[Kernel] Starting frontend warmup (parallel with Trinity)...")
                 self.logger.info("[Kernel] ───────────────────────────────────────────────────────")
-                
-                async def _frontend_warmup() -> bool:
-                    """Start frontend compilation early, in parallel with Trinity."""
-                    try:
-                        # Only start if not already running
-                        if hasattr(self, '_frontend_process') and self._frontend_process:
-                            if self._frontend_process.returncode is None:
-                                self.logger.debug("[FrontendWarmup] Frontend already running")
-                                return True
-                        
-                        # Start the frontend (same logic as _start_frontend but async)
-                        return await self._start_frontend()
-                    except Exception as e:
-                        self.logger.warning(f"[FrontendWarmup] Error (non-fatal): {e}")
-                        return False
-                
-                frontend_warmup_task = create_safe_task(
-                    _frontend_warmup(),
-                    name="frontend_warmup"
-                )
-                self._frontend_warmup_task = frontend_warmup_task
-                self.logger.debug("[Kernel] Frontend warmup task started")
+
+                try:
+                    frontend_warmup_task = await self._ensure_frontend_start_task(
+                        caller="warmup",
+                    )
+                    self._frontend_warmup_task = frontend_warmup_task
+                    self.logger.debug("[Kernel] Frontend warmup task started")
+                except Exception as fw_err:
+                    self.logger.warning(
+                        f"[FrontendWarmup] Could not schedule warmup task: {fw_err}"
+                    )
+                    self._frontend_warmup_task = None
             else:
                 self.logger.debug("[Kernel] No frontend directory - skipping warmup")
                 self._frontend_warmup_task = None
@@ -65490,46 +65483,70 @@ class JarvisSystemKernel:
                 self._startup_watchdog.register_phase_timeout("agi_os", _agi_os_dms_timeout)
                 self._startup_watchdog.update_phase("agi_os", 86)
 
-            if _ssm: await _ssm.start_component("agi_os")
+            # v267.0: AGI OS is optional for interactive readiness.
+            # We allow a bounded startup budget, then continue with AGI OS
+            # completing in the background via a tracked task.
+            _agi_os_startup_budget = _get_env_float(
+                "JARVIS_AGI_OS_STARTUP_BUDGET",
+                min(45.0, max(15.0, _agi_os_outer_timeout * 0.2)),
+            )
+            _agi_os_startup_budget = max(
+                5.0,
+                min(_agi_os_startup_budget, _agi_os_outer_timeout),
+            )
+
+            if _ssm:
+                await _ssm.start_component("agi_os")
+
+            _agi_os_task = self._ensure_agi_os_init_task(
+                outer_timeout=_agi_os_outer_timeout,
+                startup_critical=False,
+            )
+            _agi_os_ok = False
+            _agi_os_deferred = False
             try:
-                _agi_os_ok = await asyncio.wait_for(
-                    self._initialize_agi_os(), timeout=_agi_os_outer_timeout
+                _agi_os_ok = bool(
+                    await shielded_wait_for(
+                        _agi_os_task,
+                        timeout=_agi_os_startup_budget,
+                        name="agi_os_startup_budget",
+                    )
                 )
             except asyncio.TimeoutError:
-                self.logger.error(
-                    f"[Kernel] v262.0: _initialize_agi_os() OUTER timeout after "
-                    f"{_agi_os_outer_timeout:.0f}s"
+                _agi_os_deferred = True
+                self.logger.info(
+                    "[AGI-OS] Initialization exceeded %.0fs startup budget — "
+                    "continuing in background",
+                    _agi_os_startup_budget,
                 )
-                _agi_os_ok = False
                 self._update_component_status(
-                    "agi_os", "error",
-                    f"Outer timeout ({_agi_os_outer_timeout:.0f}s)",
+                    "agi_os",
+                    "running",
+                    f"Initialization continuing in background ({_agi_os_startup_budget:.0f}s startup budget)",
                 )
-                # Attempt cleanup since the internal handler was interrupted.
-                # R3: Guard import — if _agi_os is set, the import at line 65884 succeeded
-                # and the module is fully loaded. If _agi_os is None, the import may have
-                # been interrupted (partially-loaded module in sys.modules) — skip cleanup.
-                if self._agi_os:
-                    # v262.0 R3.1: Use BaseException (not Exception) to suppress
-                    # CancelledError during cleanup. In Python 3.9+, CancelledError
-                    # is a BaseException — suppress(Exception) would let it propagate
-                    # uncaught through this except handler and crash the caller.
-                    with contextlib.suppress(BaseException):
-                        try:
-                            from agi_os import stop_agi_os
-                            await asyncio.wait_for(stop_agi_os(), timeout=15.0)
-                        except (asyncio.TimeoutError, ImportError):
-                            pass
             except asyncio.CancelledError:
-                self.logger.error("[Kernel] v262.0: _initialize_agi_os() cancelled")
+                self.logger.error("[Kernel] v267.0: AGI OS startup budget wait cancelled")
                 _agi_os_ok = False
-                raise  # Re-raise to let caller handle shutdown
+                raise
+            except Exception as _agi_wait_err:
+                self.logger.warning(f"[AGI-OS] Startup wait failed: {_agi_wait_err}")
+                _agi_os_ok = False
+
             if _ssm:
-                if _agi_os_ok:
+                if _agi_os_deferred:
+                    await _ssm.skip_component(
+                        "agi_os",
+                        "Initialization continuing in background",
+                    )
+                elif _agi_os_ok:
                     await _ssm.complete_component("agi_os")
                 else:
-                    await _ssm.complete_component("agi_os", error="Init failed or timed out")
-            if not _agi_os_ok:
+                    await _ssm.complete_component(
+                        "agi_os",
+                        error="Init failed or timed out",
+                    )
+
+            if not _agi_os_ok and not _agi_os_deferred:
                 # Non-fatal - continue without AGI OS
                 issue_collector.add_warning(
                     "AGI OS failed to initialize - continuing without autonomous features",
@@ -65537,9 +65554,23 @@ class JarvisSystemKernel:
                     suggestion="Check AGI OS modules and dependencies"
                 )
 
+            _agi_os_status = self._component_status.get(
+                "agi_os", {}
+            ).get("status", "pending")
+            if _agi_os_deferred:
+                _agi_message = (
+                    "AGI OS initializing in background — initializing Visual Pipeline..."
+                )
+            elif _agi_os_ok:
+                _agi_message = "AGI OS active — initializing Visual Pipeline..."
+            else:
+                _agi_message = (
+                    "AGI OS unavailable — initializing Visual Pipeline..."
+                )
+
             await self._broadcast_startup_progress(
                 stage="agi_os",
-                message="AGI OS active — initializing Visual Pipeline...",
+                message=_agi_message,
                 progress=90,
                 metadata={
                     "icon": "brain",
@@ -65554,7 +65585,7 @@ class JarvisSystemKernel:
                         "trinity": {"status": "complete"},
                         "enterprise": {"status": "complete"},
                         "ghost_display": {"status": "complete"},
-                        "agi_os": {"status": "complete"},
+                        "agi_os": {"status": _agi_os_status},
                         "visual_pipeline": {"status": "running"},
                         "frontend": {"status": "pending"},
                     }
@@ -68838,7 +68869,85 @@ class JarvisSystemKernel:
     # - Proactive event stream
     # =========================================================================
 
-    async def _initialize_agi_os(self) -> bool:
+    def _ensure_agi_os_init_task(
+        self,
+        *,
+        outer_timeout: float,
+        startup_critical: bool,
+    ) -> asyncio.Task:
+        """Create or reuse the AGI OS initialization task."""
+        task = self._agi_os_init_task
+        if task is None or task.done():
+            task = create_safe_task(
+                self._run_agi_os_initialization_with_timeout(
+                    outer_timeout=outer_timeout,
+                    startup_critical=startup_critical,
+                ),
+                name="agi-os-init",
+            )
+            self._agi_os_init_task = task
+            self._background_tasks.append(task)
+            task.add_done_callback(self._on_agi_os_init_done)
+        return task
+
+    async def _run_agi_os_initialization_with_timeout(
+        self,
+        *,
+        outer_timeout: float,
+        startup_critical: bool,
+    ) -> bool:
+        """Run AGI OS initialization with an outer timeout guard."""
+        mode = "startup" if startup_critical else "background"
+        try:
+            return await asyncio.wait_for(
+                self._initialize_agi_os(startup_critical=startup_critical),
+                timeout=outer_timeout,
+            )
+        except asyncio.TimeoutError:
+            self.logger.error(
+                f"[Kernel] v267.0: _initialize_agi_os() OUTER timeout after "
+                f"{outer_timeout:.0f}s ({mode})"
+            )
+            self._update_component_status(
+                "agi_os",
+                "error",
+                f"Outer timeout ({outer_timeout:.0f}s)",
+            )
+            # Guard import cleanup — only valid if AGI module fully loaded.
+            if self._agi_os:
+                with contextlib.suppress(BaseException):
+                    try:
+                        from agi_os import stop_agi_os
+                        await asyncio.wait_for(stop_agi_os(), timeout=15.0)
+                    except (asyncio.TimeoutError, ImportError):
+                        pass
+            return False
+        except asyncio.CancelledError:
+            self.logger.error(
+                f"[Kernel] v267.0: _initialize_agi_os() cancelled ({mode})"
+            )
+            raise
+
+    def _on_agi_os_init_done(self, task: asyncio.Task) -> None:
+        """Finalize AGI OS init task lifecycle and emit completion diagnostics."""
+        if task is self._agi_os_init_task:
+            self._agi_os_init_task = None
+
+        if task.cancelled():
+            return
+
+        try:
+            success = bool(task.result())
+        except Exception as e:
+            self.logger.debug(f"[AGI-OS] Deferred init task failed: {e}")
+            return
+
+        if success:
+            self.logger.info("[AGI-OS] Deferred initialization completed")
+        else:
+            self.logger.warning("[AGI-OS] Deferred initialization completed without activation")
+
+    async def _initialize_agi_os(self, startup_critical: bool = True) -> bool:
         """
         v200.0: Initialize AGI OS (Autonomous General Intelligence Operating System).
 
@@ -68858,8 +68967,15 @@ class JarvisSystemKernel:
             self._update_component_status("agi_os", "skipped", "Disabled via config")
             return True
 
+        startup_watchdog = self._startup_watchdog if startup_critical else None
+
+        async def _broadcast_agi_progress(progress: int, message: str) -> None:
+            if not startup_critical:
+                return
+            await self._broadcast_progress(progress, "agi_os", message)
+
         self._update_component_status("agi_os", "running", "Initializing AGI OS...")
-        await self._broadcast_progress(86, "agi_os", "Initializing AGI Operating System...")  # v258.3: 85→86
+        await _broadcast_agi_progress(86, "Initializing AGI Operating System...")  # v258.3: 85→86
 
         with self.logger.section_start(LogSection.BOOT, "Zone 6.7 | AGI OS"):  # v258.3: renumbered from 6.5
             try:
@@ -68902,8 +69018,8 @@ class JarvisSystemKernel:
                 # But the actual init runs up to JARVIS_AGI_OS_INIT_TIMEOUT (270s).
                 # This disconnect caused DMS TIMEOUT at 120-180s while init still
                 # had 90+ seconds remaining.
-                if self._startup_watchdog:
-                    self._startup_watchdog.register_phase_timeout(
+                if startup_watchdog:
+                    startup_watchdog.register_phase_timeout(
                         "agi_os", agi_os_init_timeout
                     )
 
@@ -68942,7 +69058,7 @@ class JarvisSystemKernel:
                     # Without this, the 60-75s gap between progress 86→87
                     # triggers the DMS 60s stall detector.
                     # =====================================================================
-                    await self._broadcast_progress(86, "agi_os", "Starting AGI OS Coordinator...")
+                    await _broadcast_agi_progress(86, "Starting AGI OS Coordinator...")
                     self._mark_startup_activity("agi_os:coordinator_start", stage="agi_os")
 
                     # Sub-progress counter + start time for time-based progress
@@ -68972,12 +69088,13 @@ class JarvisSystemKernel:
                         # v258.3: DMS heartbeat — without this, DMS _last_progress_time
                         # was NEVER updated during AGI OS init.  Only update_phase()
                         # sets it; _mark_startup_activity and _broadcast_progress do not.
-                        if self._startup_watchdog:
-                            self._startup_watchdog.update_phase("agi_os", _sub_progress)
+                        if startup_watchdog:
+                            startup_watchdog.update_phase("agi_os", _sub_progress)
                         try:
                             await asyncio.wait_for(
-                                self._broadcast_progress(
-                                    _sub_progress, "agi_os", f"AGI OS [{step}]: {detail}"
+                                _broadcast_agi_progress(
+                                    _sub_progress,
+                                    f"AGI OS [{step}]: {detail}",
                                 ),
                                 timeout=_agi_progress_broadcast_timeout,
                             )
@@ -69039,8 +69156,8 @@ class JarvisSystemKernel:
                             if startup_task in done:
                                 self._agi_os = startup_task.result()
                                 # v258.3: Advance progress after coordinator started
-                                if self._startup_watchdog:
-                                    self._startup_watchdog.update_phase("agi_os", 87)
+                                if startup_watchdog:
+                                    startup_watchdog.update_phase("agi_os", 87)
                                 break
 
                             elapsed = time.monotonic() - startup_started
@@ -69053,13 +69170,12 @@ class JarvisSystemKernel:
                             _frac = min(1.0, elapsed / max(1.0, agi_os_init_timeout))
                             _progress = min(88, 86 + int(_frac * 3))
                             # v258.3: DMS heartbeat — prevents TIMEOUT during long init.
-                            if self._startup_watchdog:
-                                self._startup_watchdog.update_phase("agi_os", _progress)
+                            if startup_watchdog:
+                                startup_watchdog.update_phase("agi_os", _progress)
                             try:
                                 await asyncio.wait_for(
-                                    self._broadcast_progress(
+                                    _broadcast_agi_progress(
                                         _progress,
-                                        "agi_os",
                                         f"Starting AGI OS Coordinator... ({elapsed:.0f}s elapsed)",
                                     ),
                                     timeout=_agi_progress_broadcast_timeout,
@@ -69091,8 +69207,8 @@ class JarvisSystemKernel:
                         # v262.0: DMS heartbeat + activity marker after startup_task completes.
                         # Must use progress > 88 (heartbeat loop's max) to avoid regression warning
                         # and to refresh _last_progress_value_change_time (Path B).
-                        if self._startup_watchdog:
-                            self._startup_watchdog.update_phase("agi_os", 89)
+                        if startup_watchdog:
+                            startup_watchdog.update_phase("agi_os", 89)
                         self._mark_startup_activity("agi_os:coordinator_started", stage="agi_os")
 
                         self._agi_os_status["coordinator"] = True
@@ -69144,8 +69260,8 @@ class JarvisSystemKernel:
                     # v262.0: DMS heartbeat for Step 3 — value 89 (same as above) refreshes
                     # _last_progress_time but NOT _last_progress_value_change_time (Path B).
                     # Path A (_mark_startup_activity) is the primary liveness signal here.
-                    if self._startup_watchdog:
-                        self._startup_watchdog.update_phase("agi_os", 89)
+                    if startup_watchdog:
+                        startup_watchdog.update_phase("agi_os", 89)
                     self._mark_startup_activity("agi_os:verify_voice_pre", stage="agi_os")
                     try:
                         _verify_timeout = _get_env_float("JARVIS_AGI_OS_VERIFY_TIMEOUT", 5.0)
@@ -69166,8 +69282,8 @@ class JarvisSystemKernel:
                     # v252.2: Fixed unawaited coroutine — get_approval_manager() is async
                     # =====================================================================
                     # v262.0: DMS heartbeat for Step 4 — same value (89), same rationale.
-                    if self._startup_watchdog:
-                        self._startup_watchdog.update_phase("agi_os", 89)
+                    if startup_watchdog:
+                        startup_watchdog.update_phase("agi_os", 89)
                     self._mark_startup_activity("agi_os:verify_approval_pre", stage="agi_os")
                     try:
                         approval_mgr = await asyncio.wait_for(
@@ -69185,11 +69301,11 @@ class JarvisSystemKernel:
                     # =====================================================================
                     # STEP 5: Complete
                     # =====================================================================
-                    await self._broadcast_progress(87, "agi_os", "AGI OS active")
+                    await _broadcast_agi_progress(87, "AGI OS active")
 
                     # v262.0: Final DMS heartbeat — value changes (89→90), resetting Path B.
-                    if self._startup_watchdog:
-                        self._startup_watchdog.update_phase("agi_os", 90)
+                    if startup_watchdog:
+                        startup_watchdog.update_phase("agi_os", 90)
                     self._mark_startup_activity("agi_os:complete", stage="agi_os")
 
                     if self._agi_os_status["coordinator"]:
@@ -74365,6 +74481,64 @@ class JarvisSystemKernel:
     # loading page to the main JARVIS UI.
     # =========================================================================
 
+    async def _ensure_frontend_start_task(self, caller: str = "unknown") -> asyncio.Task:
+        """Create or reuse the single frontend startup task."""
+        async with self._frontend_start_lock:
+            task = self._frontend_start_task
+            if task is None or task.done():
+                task = create_safe_task(
+                    self._start_frontend(),
+                    name="frontend-startup",
+                )
+                self._frontend_start_task = task
+                self._background_tasks.append(task)
+                task.add_done_callback(self._on_frontend_start_done)
+                self.logger.debug(
+                    f"[Frontend] Created startup task (caller={caller})"
+                )
+            else:
+                self.logger.debug(
+                    f"[Frontend] Reusing startup task (caller={caller})"
+                )
+            return task
+
+    def _on_frontend_start_done(self, task: asyncio.Task) -> None:
+        """Release the frontend startup task handle when it completes."""
+        if task is self._frontend_start_task:
+            self._frontend_start_task = None
+
+    async def _wait_for_frontend_start(
+        self,
+        *,
+        timeout: float,
+        caller: str,
+    ) -> Tuple[bool, bool]:
+        """
+        Wait for frontend startup task with timeout.
+
+        Returns:
+            (started, pending)
+            started=True  -> frontend task returned success
+            pending=True  -> timeout elapsed, task still running in background
+        """
+        task = await self._ensure_frontend_start_task(caller=caller)
+        try:
+            started = bool(
+                await shielded_wait_for(
+                    task,
+                    timeout=max(1.0, timeout),
+                    name=f"frontend_start:{caller}",
+                )
+            )
+            return started, False
+        except asyncio.TimeoutError:
+            return False, True
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            self.logger.warning(f"[Frontend] Startup task error ({caller}): {e}")
+            return False, False
+
     async def _phase_frontend_transition(self) -> bool:
         """
         Phase 7: Transition from loading page to main frontend (v118.0 robust).
@@ -74399,6 +74573,7 @@ class JarvisSystemKernel:
         # v211.0: Step 1: Check if frontend warmup task already started the frontend
         # This happens when frontend started in parallel with Trinity
         warmup_task = getattr(self, '_frontend_warmup_task', None)
+        warmup_pending = False
 
         if warmup_task is not None:
             self.logger.info("[Kernel] Checking frontend warmup task (started during Trinity)...")
@@ -74412,8 +74587,17 @@ class JarvisSystemKernel:
             
             try:
                 # Wait for warmup task with timeout
-                warmup_timeout = 120.0  # Max 2 minutes to wait for warmup
-                frontend_started = await asyncio.wait_for(warmup_task, timeout=warmup_timeout)
+                warmup_timeout = _get_env_float(
+                    "JARVIS_FRONTEND_WARMUP_WAIT_TIMEOUT",
+                    90.0,
+                )
+                frontend_started = bool(
+                    await shielded_wait_for(
+                        warmup_task,
+                        timeout=warmup_timeout,
+                        name="frontend_warmup_wait",
+                    )
+                )
                 
                 if frontend_started:
                     self.logger.success(f"[Kernel] Frontend ready from warmup (port {frontend_port})")
@@ -74421,9 +74605,16 @@ class JarvisSystemKernel:
                 else:
                     self.logger.info("[Kernel] Frontend warmup didn't complete - will retry")
             except asyncio.TimeoutError:
-                self.logger.warning(f"[Kernel] Frontend warmup timed out after {warmup_timeout}s")
+                warmup_pending = True
+                self.logger.info(
+                    "[Kernel] Frontend warmup still running after %.0fs - handing off to single-flight startup",
+                    warmup_timeout,
+                )
             except Exception as e:
                 self.logger.warning(f"[Kernel] Frontend warmup error: {e}")
+            finally:
+                if warmup_task.done():
+                    self._frontend_warmup_task = None
         
         # v260.1: Advance progress after warmup check
         self._current_startup_progress = 94
@@ -74436,12 +74627,32 @@ class JarvisSystemKernel:
                 self._update_component_status("frontend", "running", "Starting React frontend...")
                 await self._broadcast_progress(95, "frontend", "Starting React frontend...")
 
-                frontend_started = await self._start_frontend()
+                wait_timeout = _get_env_float("JARVIS_FRONTEND_START_WAIT_TIMEOUT", 120.0)
+                if warmup_pending:
+                    wait_timeout = min(
+                        wait_timeout,
+                        _get_env_float("JARVIS_FRONTEND_HANDOFF_TIMEOUT", 45.0),
+                    )
+
+                frontend_started, startup_pending = await self._wait_for_frontend_start(
+                    timeout=wait_timeout,
+                    caller="phase7",
+                )
                 if frontend_started:
                     self._current_startup_progress = 96
                     self.logger.success(f"[Kernel] React frontend ready on port {frontend_port}")
                     self._update_component_status("frontend", "complete", f"React frontend ready on port {frontend_port}")
                     await self._broadcast_progress(96, "frontend", "React frontend ready")
+                elif startup_pending:
+                    self.logger.info(
+                        "[Kernel] Frontend startup continuing in background after %.0fs handoff budget",
+                        wait_timeout,
+                    )
+                    self._update_component_status(
+                        "frontend",
+                        "running",
+                        f"Startup continuing in background ({wait_timeout:.0f}s handoff budget)",
+                    )
                 else:
                     self.logger.info("[Kernel] Frontend not started (directory not found or failed)")
                     self._update_component_status("frontend", "skipped", "Frontend not started")
