@@ -68281,11 +68281,20 @@ class JarvisSystemKernel:
             return False
 
         # Phase 2: Wait for interactive readiness using remaining timeout budget.
+        # v265.5: CPU-aware timeout scaling — under 99.8% CPU, WebSocket
+        # health endpoint response is slow because uvicorn workers compete
+        # for CPU with model loading and import resolution.
         remaining_timeout = timeout - (time.time() - start_time)
-        ws_timeout_cap = max(
-            5.0,
-            _get_env_float("JARVIS_BACKEND_WS_READINESS_TIMEOUT", 30.0),
-        )
+        _ws_base = _get_env_float("JARVIS_BACKEND_WS_READINESS_TIMEOUT", 30.0)
+        try:
+            import psutil as _ws_psutil
+            _ws_cpu = _ws_psutil.cpu_percent(interval=None)
+            if _ws_cpu > 90.0:
+                _ws_factor = 1.0 + (_ws_cpu - 90.0) / 10.0 * 2.0
+                _ws_base *= _ws_factor
+        except Exception:
+            pass
+        ws_timeout_cap = max(5.0, _ws_base)
         ws_timeout = min(max(1.0, remaining_timeout), ws_timeout_cap)
         ws_start_time = time.time()
 
@@ -68938,6 +68947,15 @@ class JarvisSystemKernel:
         )
 
         init_timeout = float(os.getenv("JARVIS_MEMORY_AGENT_INIT_TIMEOUT", "30.0"))
+        # v265.5: CPU-aware timeout scaling — Cloud SQL connection + SQLite
+        # fallback path both involve I/O that slows dramatically under CPU pressure.
+        try:
+            import psutil as _mem_psutil
+            _mem_cpu = _mem_psutil.cpu_percent(interval=None)
+            if _mem_cpu > 90.0:
+                init_timeout *= 1.0 + (_mem_cpu - 90.0) / 10.0 * 2.0
+        except Exception:
+            pass
         agent = PersistentConversationMemoryAgent(
             kernel_id=self.config.kernel_id,
             repo_name="jarvis",
@@ -69017,6 +69035,16 @@ class JarvisSystemKernel:
         attempts = max(1, int(os.getenv("JARVIS_MEMORY_AGENT_RETRY_ATTEMPTS", "3")))
         base_delay = float(os.getenv("JARVIS_MEMORY_AGENT_RETRY_BACKOFF", "4.0"))
         init_timeout = float(os.getenv("JARVIS_MEMORY_AGENT_INIT_TIMEOUT", "30.0"))
+        # v265.5: CPU-aware timeout scaling for retry loop (same formula as
+        # initial attempt) — retries happen later in boot when CPU may still
+        # be under load from parallel services.
+        try:
+            import psutil as _mem_retry_psutil
+            _mem_retry_cpu = _mem_retry_psutil.cpu_percent(interval=None)
+            if _mem_retry_cpu > 90.0:
+                init_timeout *= 1.0 + (_mem_retry_cpu - 90.0) / 10.0 * 2.0
+        except Exception:
+            pass
 
         for attempt in range(1, attempts + 1):
             if self._persistent_memory_agent is not None:
