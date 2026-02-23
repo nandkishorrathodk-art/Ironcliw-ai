@@ -68528,6 +68528,42 @@ class JarvisSystemKernel:
 
         with self.logger.section_start(LogSection.BOOT, "Zone 4.5 | Integration Components"):
             try:
+                # v267.1 ROOT CAUSE FIX:
+                # Importing two-tier modules synchronously inside async startup can
+                # freeze the event loop for minutes (cold imports + heavy deps),
+                # defeating wait_for() timeouts and stalling progress at 58%.
+                # Offload imports to a worker thread and bound them with a timeout.
+                _two_tier_import_timeout = max(
+                    3.0,
+                    _get_env_float("JARVIS_TWO_TIER_IMPORT_TIMEOUT", 20.0),
+                )
+
+                async def _import_two_tier_module(*module_names: str):
+                    import importlib
+
+                    if not module_names:
+                        raise ImportError("No module names provided")
+
+                    last_error: Optional[BaseException] = None
+                    for module_name in module_names:
+                        try:
+                            return await asyncio.wait_for(
+                                asyncio.to_thread(importlib.import_module, module_name),
+                                timeout=_two_tier_import_timeout,
+                            )
+                        except ImportError as imp_err:
+                            last_error = imp_err
+                            continue
+                        except asyncio.TimeoutError as timeout_err:
+                            raise asyncio.TimeoutError(
+                                f"module import timed out after {_two_tier_import_timeout:.1f}s "
+                                f"({module_name})"
+                            ) from timeout_err
+
+                    if last_error:
+                        raise last_error
+                    raise ImportError(f"Unable to import any candidate modules: {module_names}")
+
                 # =============================================================
                 # v244.0: Steps 1-2 run in parallel (watchdog + cross-repo).
                 # Step 3 (runner) runs after since it uses watchdog ref.
@@ -68540,12 +68576,12 @@ class JarvisSystemKernel:
                         return
                     await self._broadcast_progress(56, "integration_watchdog", "Starting Agentic Watchdog...")
                     try:
-                        from core.agentic_watchdog import (
-                            start_watchdog,
-                            WatchdogConfig,
-                            AgenticMode,
-                            get_watchdog,
+                        _watchdog_mod = await _import_two_tier_module(
+                            "core.agentic_watchdog",
+                            "backend.core.agentic_watchdog",
                         )
+                        start_watchdog = getattr(_watchdog_mod, "start_watchdog")
+                        WatchdogConfig = getattr(_watchdog_mod, "WatchdogConfig")
 
                         async def watchdog_tts(text: str) -> None:
                             if self._narrator and self.config.voice_enabled:
@@ -68574,6 +68610,9 @@ class JarvisSystemKernel:
                     except ImportError as e:
                         self.logger.warning(f"[Integration] Watchdog module not available: {e}")
                         self._two_tier_status["watchdog"]["status"] = "unavailable"
+                    except asyncio.TimeoutError as e:
+                        self.logger.warning(f"[Integration] Watchdog import/init timed out: {e}")
+                        self._two_tier_status["watchdog"]["status"] = "timeout"
                     except Exception as e:
                         self.logger.warning(f"[Integration] Watchdog init failed: {e}")
                         self._two_tier_status["watchdog"]["status"] = "error"
@@ -68584,14 +68623,19 @@ class JarvisSystemKernel:
                     if self._state in (KernelState.SHUTTING_DOWN, KernelState.FAILED):
                         return
                     await self._broadcast_progress(58, "cross_repo_init", "Initializing Cross-Repo State...")
+                    _cross_repo_timeout = float(os.environ.get("JARVIS_CROSS_REPO_INIT_TIMEOUT", "30.0"))
+                    _import_completed = False
                     try:
-                        from core.cross_repo_state_initializer import (
-                            initialize_cross_repo_state,
-                            CrossRepoStateConfig,
-                            get_cross_repo_initializer,
+                        _cross_repo_mod = await _import_two_tier_module(
+                            "core.cross_repo_state_initializer",
+                            "backend.core.cross_repo_state_initializer",
                         )
+                        initialize_cross_repo_state = getattr(
+                            _cross_repo_mod,
+                            "initialize_cross_repo_state",
+                        )
+                        _import_completed = True
 
-                        _cross_repo_timeout = float(os.environ.get("JARVIS_CROSS_REPO_INIT_TIMEOUT", "30.0"))
                         # v265.4: CPU-aware timeout — extend under pressure
                         try:
                             import psutil as _cr_psutil
@@ -68621,10 +68665,16 @@ class JarvisSystemKernel:
                         self._two_tier_status["cross_repo"]["status"] = "cancelled"
                         raise
                     except asyncio.TimeoutError:
-                        self.logger.warning(
-                            f"[Integration] Cross-Repo init timed out ({_cross_repo_timeout}s) — "
-                            "possible stale DLM lock or hung filesystem. Continuing without cross-repo."
-                        )
+                        if _import_completed:
+                            self.logger.warning(
+                                f"[Integration] Cross-Repo init timed out ({_cross_repo_timeout}s) — "
+                                "possible stale DLM lock or hung filesystem. Continuing without cross-repo."
+                            )
+                        else:
+                            self.logger.warning(
+                                f"[Integration] Cross-Repo module import timed out after "
+                                f"{_two_tier_import_timeout:.1f}s — continuing without cross-repo"
+                            )
                         self._two_tier_status["cross_repo"] = {
                             "status": "timeout",
                             "initialized": False,
@@ -68770,14 +68820,13 @@ class JarvisSystemKernel:
                 await self._broadcast_progress(60, "integration_runner", "Creating AgenticTaskRunner...")
 
                 try:
-                    from core.agentic_task_runner import (
-                        RunnerMode,
-                        get_agentic_runner,
-                        get_or_create_agentic_runner,
-                        set_agentic_runner,
-                        AgenticTaskRunner,
-                        AgenticRunnerConfig,
+                    _runner_mod = await _import_two_tier_module(
+                        "core.agentic_task_runner",
+                        "backend.core.agentic_task_runner",
                     )
+                    get_agentic_runner = getattr(_runner_mod, "get_agentic_runner")
+                    set_agentic_runner = getattr(_runner_mod, "set_agentic_runner")
+                    create_agentic_runner = getattr(_runner_mod, "create_agentic_runner", None)
 
                     # Get or create the agentic runner instance
                     self._agentic_runner = get_agentic_runner()
@@ -68801,7 +68850,8 @@ class JarvisSystemKernel:
                                     self.logger.debug(f"[Integration/Runner] TTS error: {e}")
 
                         try:
-                            from core.agentic_task_runner import create_agentic_runner
+                            if not callable(create_agentic_runner):
+                                raise AttributeError("create_agentic_runner not available")
 
                             # v265.4: CPU-aware runner timeout — extend under pressure
                             _runner_base_timeout = _get_env_float("JARVIS_AGENTIC_RUNNER_TIMEOUT", 60.0)
@@ -68836,8 +68886,6 @@ class JarvisSystemKernel:
 
                         except asyncio.TimeoutError:
                             self.logger.warning("[Integration] AgenticTaskRunner creation timed out (60s) - check network/component health")
-                        except ImportError as ie:
-                            self.logger.warning(f"[Integration] AgenticTaskRunner import failed: {ie}")
                         except Exception as create_err:
                             import traceback
                             self.logger.warning(f"[Integration] AgenticTaskRunner creation failed: {create_err}")
@@ -68850,6 +68898,9 @@ class JarvisSystemKernel:
                     else:
                         self._two_tier_status["runner_wired"] = False
 
+                except asyncio.TimeoutError as e:
+                    self.logger.warning(f"[Integration] AgenticTaskRunner import timed out: {e}")
+                    self._two_tier_status["runner_wired"] = False
                 except ImportError as e:
                     self.logger.warning(f"[Integration] AgenticTaskRunner not available: {e}")
                     self._two_tier_status["runner_wired"] = False

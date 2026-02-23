@@ -7875,7 +7875,22 @@ def mount_routers():
 @app.post("/api/command")
 async def process_command(request: dict):
     """Simple command endpoint for testing"""
-    command = request.get("command", "")
+    if not isinstance(request, dict):
+        logger.warning(
+            f"Command endpoint received non-object payload: {type(request).__name__}"
+        )
+        return {
+            "error": "invalid_request",
+            "message": "Request body must be a JSON object with a 'command' field.",
+        }
+
+    raw_command = request.get("command", "")
+    if raw_command is None:
+        command = ""
+    elif isinstance(raw_command, str):
+        command = raw_command.strip()
+    else:
+        command = str(raw_command).strip()
 
     # Trigger intelligent preloading (Phase 2) if available
     if hasattr(app.state, "component_manager") and app.state.component_manager:
@@ -8814,6 +8829,7 @@ async def _await_first_tts_success(
     tasks: dict[str, "asyncio.Task"],
     timeout_seconds: Optional[float] = None,
     timeout: Optional[float] = None,
+    **kwargs,
 ):
     """
     Wait for the first non-None TTS result within a global timeout.
@@ -8826,9 +8842,14 @@ async def _await_first_tts_success(
     if not tasks:
         return None
 
-    # Backward-compatible timeout contract: accept both timeout_seconds and timeout.
+    # Backward-compatible timeout contract:
+    # accept timeout_seconds, timeout, and legacy aliases.
     if timeout_seconds is None:
         timeout_seconds = timeout
+    if timeout_seconds is None:
+        timeout_seconds = kwargs.get("global_timeout")
+    if timeout_seconds is None:
+        timeout_seconds = kwargs.get("timeout_s")
     if timeout_seconds is None:
         timeout_seconds = 5.0
 

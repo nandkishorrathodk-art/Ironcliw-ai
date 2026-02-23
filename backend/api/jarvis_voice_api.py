@@ -3622,7 +3622,7 @@ class JARVISVoiceAPI:
                             response = f"I encountered an error: {str(e)}. Please try again."
                     else:
                         # Provide basic response without full personality
-                        if "weather" in data["text"].lower():
+                        if "weather" in command_text.lower():
                             # Try to use weather system even in limited mode
                             try:
                                 # First, try to get the initialized weather system
@@ -3671,7 +3671,7 @@ class JARVISVoiceAPI:
                                     )
 
                                     # Get weather with vision
-                                    result = await weather_system.get_weather(data["text"])
+                                    result = await weather_system.get_weather(command_text)
 
                                     if result.get("success") and result.get("formatted_response"):
                                         response = result["formatted_response"]
@@ -3726,15 +3726,15 @@ class JARVISVoiceAPI:
                                     response = "I encountered an error accessing the weather system. I've opened the Weather app for manual viewing."
                                 except Exception:
                                     response = "I'm having difficulty accessing weather data at the moment."
-                        elif "time" in data["text"].lower():
+                        elif "time" in command_text.lower():
                             response = f"The current time is {datetime.now().strftime('%I:%M %p')}."
                         else:
                             # Natural varied fallback for unknown commands
                             fallback_responses = [
-                                f"I understand you said '{data['text']}', but I'm still initializing my full capabilities.",
-                                f"I heard '{data['text']}'. Let me get my systems fully online to help you better.",
-                                f"Got it - '{data['text']}'. My intelligence systems are warming up.",
-                                f"I registered '{data['text']}'. Give me a moment to bring all systems online.",
+                                f"I understand you said '{command_text}', but I'm still initializing my full capabilities.",
+                                f"I heard '{command_text}'. Let me get my systems fully online to help you better.",
+                                f"Got it - '{command_text}'. My intelligence systems are warming up.",
+                                f"I registered '{command_text}'. Give me a moment to bring all systems online.",
                             ]
                             response = random.choice(
                                 fallback_responses
