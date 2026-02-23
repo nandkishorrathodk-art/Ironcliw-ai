@@ -21951,6 +21951,7 @@ class IntelligenceRegistry:
         self._managers: Dict[str, IntelligenceManagerBase] = {}
         self._logger = UnifiedLogger()
         self._initialized = False
+        self._last_init_errors: Dict[str, str] = {}
 
     def register(self, manager: IntelligenceManagerBase) -> None:
         """Register an intelligence manager."""
@@ -21967,21 +21968,35 @@ class IntelligenceRegistry:
         Each manager gets an individual timeout (env-var configurable) so one
         hanging manager cannot block the entire intelligence phase.
         """
-        _per_mgr_timeout = _get_env_float("JARVIS_INTEL_MANAGER_TIMEOUT", 30.0)
+        requested_timeout = _get_env_float("JARVIS_INTEL_MANAGER_TIMEOUT", 30.0)
+        _per_mgr_timeout = max(5.0, requested_timeout)
+        self._last_init_errors = {}
         results: Dict[str, bool] = {}
         names = list(self._managers.keys())
         managers = list(self._managers.values())
+
+        if not names:
+            self._logger.warning("IntelligenceRegistry has no managers to initialize")
+            self._initialized = True
+            return results
 
         async def _init_one(name: str, mgr: "IntelligenceManagerBase") -> bool:
             try:
                 return await asyncio.wait_for(mgr.initialize(), timeout=_per_mgr_timeout)
             except asyncio.TimeoutError:
-                self._logger.warning(f"{name}: initialization timed out ({_per_mgr_timeout:.0f}s)")
+                error_msg = (
+                    f"initialization timed out ({_per_mgr_timeout:.0f}s "
+                    f"requested={requested_timeout:.2f}s)"
+                )
+                self._last_init_errors[name] = error_msg
+                self._logger.warning(f"{name}: {error_msg}")
                 return False
             except asyncio.CancelledError:
                 raise
             except Exception as e:
-                self._logger.error(f"{name} initialization error: {e}")
+                error_msg = f"initialization error: {type(e).__name__}: {e}"
+                self._last_init_errors[name] = error_msg
+                self._logger.error(f"{name} {error_msg}")
                 return False
 
         gather_results = await asyncio.gather(
@@ -21994,6 +22009,9 @@ class IntelligenceRegistry:
                 raise result
             elif isinstance(result, BaseException):
                 self._logger.error(f"{name} initialization raised: {result}")
+                self._last_init_errors[name] = (
+                    f"initialization raised: {type(result).__name__}: {result}"
+                )
                 results[name] = False
             else:
                 results[name] = bool(result)
@@ -22001,6 +22019,7 @@ class IntelligenceRegistry:
                     self._logger.success(f"{name}: initialized")
                 else:
                     self._logger.warning(f"{name}: initialization failed")
+                    self._last_init_errors.setdefault(name, "initialization returned False")
 
         self._initialized = True
         return results
@@ -22008,6 +22027,10 @@ class IntelligenceRegistry:
     def get_all_status(self) -> Dict[str, Dict[str, Any]]:
         """Get status of all managers."""
         return {name: manager.status for name, manager in self._managers.items()}
+
+    def get_last_init_errors(self) -> Dict[str, str]:
+        """Get per-manager initialization errors from the latest initialize_all call."""
+        return dict(self._last_init_errors)
 
 
 class PersistentConversationMemoryAgent:
@@ -68627,7 +68650,33 @@ class JarvisSystemKernel:
                 if ready_count > 0:
                     self._update_component_status("intelligence", "complete", f"Intelligence ready: {ready_count}/{len(results)} initialized")
                 else:
-                    self._update_component_status("intelligence", "error", "No intelligence components initialized")
+                    init_errors: Dict[str, str] = {}
+                    try:
+                        if self._intelligence_registry is not None:
+                            init_errors = self._intelligence_registry.get_last_init_errors()
+                    except Exception:
+                        init_errors = {}
+
+                    if init_errors:
+                        summary = "; ".join(
+                            f"{name}: {msg}" for name, msg in init_errors.items()
+                        )
+                        self.logger.error(
+                            "[Kernel] Intelligence initialization failed for all managers: "
+                            f"{summary}"
+                        )
+                        status_message = (
+                            "No intelligence components initialized "
+                            f"({summary[:220]})"
+                        )
+                    else:
+                        status_message = "No intelligence components initialized"
+
+                    self._update_component_status(
+                        "intelligence",
+                        "error",
+                        status_message,
+                    )
 
                 # v239.0: System Service Registry — Phase 4 activation (EventSourcing, MessageBroker)
                 if self._service_registry:
@@ -68702,6 +68751,7 @@ class JarvisSystemKernel:
 
             except Exception as e:
                 self.logger.warning(f"[Kernel] Intelligence initialization failed: {e}")
+                self.logger.debug(traceback.format_exc())
                 self._update_component_status("intelligence", "error", f"Failed: {e}")
                 return False
 
