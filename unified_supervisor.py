@@ -65941,6 +65941,14 @@ class JarvisSystemKernel:
                     max(60.0, TRINITY_PHASE_HOLD_HARD_CAP - 15.0),
                 ),
             )
+            # v265.6: CPU-aware outer timeout scaling (same formula as inner)
+            try:
+                import psutil as _agi_outer_ps
+                _agi_outer_cpu = _agi_outer_ps.cpu_percent(interval=None)
+                if _agi_outer_cpu > 90.0:
+                    _agi_os_outer_timeout *= 1.0 + (_agi_outer_cpu - 90.0) / 10.0 * 2.0
+            except Exception:
+                pass
             if self._startup_watchdog:
                 # v262.0: Register correct DMS timeout from the start (was 90s, overwritten to 270s inside method)
                 _agi_os_timeout_cap = max(60.0, TRINITY_PHASE_HOLD_HARD_CAP - 30.0)
@@ -66172,6 +66180,16 @@ class JarvisSystemKernel:
             _fe_outer_timeout = _get_env_float(
                 "JARVIS_FRONTEND_PHASE_TIMEOUT", 180.0
             )
+            # v265.6: CPU-aware timeout scaling — frontend builds (npm install,
+            # TypeScript compile, self-heal build) are CPU-intensive.  Under
+            # heavy load these routinely exceed the 180s base.
+            try:
+                import psutil as _fe_ps
+                _fe_cpu = _fe_ps.cpu_percent(interval=None)
+                if _fe_cpu > 90.0:
+                    _fe_outer_timeout *= 1.0 + (_fe_cpu - 90.0) / 10.0 * 2.0
+            except Exception:
+                pass
             if self._startup_watchdog:
                 self._startup_watchdog.register_phase_timeout(
                     "frontend", _fe_outer_timeout
@@ -69938,6 +69956,17 @@ class JarvisSystemKernel:
                         f"to {agi_os_init_timeout_cap:.1f}s (phase-hold guardrail)"
                     )
                     agi_os_init_timeout = agi_os_init_timeout_cap
+
+                # v265.6: CPU-aware timeout scaling — under heavy CPU load,
+                # AGI OS init (6 phases, ~220s total) stalls due to starved event
+                # loop.  Scale: 90%→1.0x, 95%→1.5x, 99%→2.8x, 100%→3.0x.
+                try:
+                    import psutil as _agi_ps
+                    _agi_cpu = _agi_ps.cpu_percent(interval=None)
+                    if _agi_cpu > 90.0:
+                        agi_os_init_timeout *= 1.0 + (_agi_cpu - 90.0) / 10.0 * 2.0
+                except Exception:
+                    pass
 
                 # v258.3: Synchronize DMS timeout with actual init timeout.
                 # Previously, DMS was registered with JARVIS_AGI_OS_TIMEOUT (90s)
