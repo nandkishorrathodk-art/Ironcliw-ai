@@ -71581,6 +71581,244 @@ class JarvisSystemKernel:
             }
             return False
 
+    # ------------------------------------------------------------------
+    # v265.5: BACKGROUND RECOVERY LOOPS — DMS, Resilience, ModelServing
+    # ------------------------------------------------------------------
+
+    def _schedule_dms_recovery(self, reason: str) -> None:
+        """Schedule background DMS recovery after init failure."""
+        if self._dms_recovery_task is not None:
+            return
+        self._dms_recovery_task = create_safe_task(
+            self._dms_recovery_loop(reason),
+            name="dms-recovery",
+        )
+        self._background_tasks.append(self._dms_recovery_task)
+
+    async def _dms_recovery_loop(self, initial_reason: str) -> None:
+        """Retry DMS init with CPU-aware backoff."""
+        _delay = _get_env_float("JARVIS_DMS_RECOVERY_INITIAL_DELAY", 15.0)
+        _max = _get_env_int("JARVIS_DMS_RECOVERY_MAX_ATTEMPTS", 6)
+        _interval = _get_env_float("JARVIS_DMS_RECOVERY_INTERVAL", 15.0)
+        _timeout = _get_env_float("JARVIS_DMS_RECOVERY_TIMEOUT", 15.0)
+
+        try:
+            await asyncio.sleep(_delay)
+        except asyncio.CancelledError:
+            return
+
+        for attempt in range(1, _max + 1):
+            if self._startup_watchdog is not None:
+                return  # Recovered elsewhere
+            # CPU-aware scaling
+            _eff_timeout = _timeout
+            _eff_interval = _interval
+            try:
+                import psutil as _dms_r_ps
+                _dms_r_cpu = _dms_r_ps.cpu_percent(interval=None)
+                if _dms_r_cpu > 90.0:
+                    _f = 1.0 + (_dms_r_cpu - 90.0) / 10.0 * 2.0
+                    _eff_timeout *= _f
+                    _eff_interval *= _f
+            except Exception:
+                pass
+
+            try:
+                _cand = StartupWatchdog(
+                    logger=self.logger,
+                    diagnostic_callback=self._dms_diagnostic_callback,
+                    restart_callback=self._dms_restart_callback,
+                    rollback_callback=self._dms_rollback_callback,
+                )
+                await asyncio.wait_for(_cand.start(), timeout=_eff_timeout)
+                if _cand.enabled:
+                    self._startup_watchdog = _cand
+                    self._update_component_status(
+                        "startup_watchdog", "running",
+                        f"Dead Man's Switch recovered (attempt {attempt})",
+                    )
+                    self.logger.info(
+                        "[DMS-Recovery] Watchdog recovered after '%s' (attempt %d)",
+                        initial_reason, attempt,
+                    )
+                    # Re-wire parallel_initializer coordination
+                    try:
+                        from core.parallel_initializer import set_dms_heartbeat_callback
+                        _noop_hb = lambda _c="": None
+                        _noop_act = lambda _a=True: None
+                        set_dms_heartbeat_callback(
+                            heartbeat_fn=(
+                                self._startup_watchdog.heartbeat
+                                if hasattr(self._startup_watchdog, "heartbeat")
+                                else _noop_hb
+                            ),
+                            set_parallel_active_fn=(
+                                self._startup_watchdog.set_parallel_init_active
+                                if hasattr(self._startup_watchdog, "set_parallel_init_active")
+                                else _noop_act
+                            ),
+                        )
+                    except Exception:
+                        pass
+                    # Notify current phase
+                    if hasattr(self._startup_watchdog, "set_execution_mode"):
+                        try:
+                            self._startup_watchdog.set_execution_mode("parallel")
+                        except Exception:
+                            pass
+                    return
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                self.logger.warning(
+                    "[DMS-Recovery] Attempt %d/%d failed: %s", attempt, _max, e
+                )
+            try:
+                await asyncio.sleep(_eff_interval)
+            except asyncio.CancelledError:
+                return
+
+        self.logger.warning(
+            "[DMS-Recovery] Exhausted %d attempts — running without stall protection", _max
+        )
+
+    def _schedule_resilience_recovery(self, reason: str) -> None:
+        """Schedule background Startup Resilience recovery."""
+        if self._resilience_recovery_task is not None:
+            return
+        self._resilience_recovery_task = create_safe_task(
+            self._resilience_recovery_loop(reason),
+            name="resilience-recovery",
+        )
+        self._background_tasks.append(self._resilience_recovery_task)
+
+    async def _resilience_recovery_loop(self, initial_reason: str) -> None:
+        """Retry StartupResilience init with exponential backoff."""
+        _delay = _get_env_float("JARVIS_RESILIENCE_RECOVERY_DELAY", 10.0)
+        _max = _get_env_int("JARVIS_RESILIENCE_RECOVERY_MAX_ATTEMPTS", 5)
+        _interval = _get_env_float("JARVIS_RESILIENCE_RECOVERY_INTERVAL", 30.0)
+
+        try:
+            await asyncio.sleep(_delay)
+        except asyncio.CancelledError:
+            return
+
+        _backoff = _interval
+        for attempt in range(1, _max + 1):
+            if self._startup_resilience is not None:
+                return
+            try:
+                cand = StartupResilience(logger=self.logger)
+                await cand.start()
+                self._startup_resilience = cand
+                self._update_component_status(
+                    "startup_resilience", "running",
+                    f"Resilience coordinator recovered (attempt {attempt})",
+                )
+                self.logger.info(
+                    "[Resilience-Recovery] Recovered after '%s' (attempt %d)",
+                    initial_reason, attempt,
+                )
+                return
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                self.logger.warning(
+                    "[Resilience-Recovery] Attempt %d/%d failed: %s", attempt, _max, e
+                )
+            try:
+                await asyncio.sleep(_backoff)
+            except asyncio.CancelledError:
+                return
+            _backoff = min(_backoff * 1.5, 120.0)
+
+        self.logger.warning(
+            "[Resilience-Recovery] Exhausted %d attempts — no Docker/Ollama monitoring", _max
+        )
+
+    def _schedule_model_serving_recovery(self, reason: str) -> None:
+        """Schedule background UnifiedModelServing recovery."""
+        if self._model_serving_recovery_task is not None:
+            return
+        self._model_serving_recovery_task = create_safe_task(
+            self._model_serving_recovery_loop(reason),
+            name="model-serving-recovery",
+        )
+        self._background_tasks.append(self._model_serving_recovery_task)
+
+    async def _model_serving_recovery_loop(self, initial_reason: str) -> None:
+        """Retry UnifiedModelServing init with CPU-aware timeout."""
+        _delay = _get_env_float("JARVIS_MODEL_SERVING_RECOVERY_DELAY", 20.0)
+        _max = _get_env_int("JARVIS_MODEL_SERVING_RECOVERY_MAX_ATTEMPTS", 4)
+        _interval = _get_env_float("JARVIS_MODEL_SERVING_RECOVERY_INTERVAL", 30.0)
+        _base_timeout = _get_env_float("JARVIS_MODEL_SERVING_INIT_TIMEOUT", 30.0)
+
+        try:
+            await asyncio.sleep(_delay)
+        except asyncio.CancelledError:
+            return
+
+        for attempt in range(1, _max + 1):
+            if self._model_serving is not None:
+                return
+            _eff_timeout = _base_timeout
+            try:
+                import psutil as _msr_ps
+                _msr_cpu = _msr_ps.cpu_percent(interval=None)
+                if _msr_cpu > 90.0:
+                    _eff_timeout *= 1.0 + (_msr_cpu - 90.0) / 10.0 * 2.0
+            except Exception:
+                pass
+
+            try:
+                from backend.intelligence.unified_model_serving import get_model_serving
+                ms = await asyncio.wait_for(get_model_serving(), timeout=_eff_timeout)
+                self._model_serving = ms
+                self.logger.info(
+                    "[ModelServing-Recovery] Recovered after '%s' (attempt %d)",
+                    initial_reason, attempt,
+                )
+                # Apply deferred endpoints
+                if self._pending_gcp_endpoint:
+                    try:
+                        from backend.intelligence.unified_model_serving import (
+                            notify_gcp_endpoint_ready as _ngcp,
+                        )
+                        await _ngcp(self._pending_gcp_endpoint)
+                        self._pending_gcp_endpoint = None
+                    except Exception:
+                        pass
+                if self._pending_jprime_api_url:
+                    try:
+                        from backend.intelligence.unified_model_serving import (
+                            notify_jprime_api_ready as _njp,
+                        )
+                        await _njp(self._pending_jprime_api_url)
+                        self._pending_jprime_api_url = None
+                    except Exception:
+                        pass
+                # Wire audio pipeline if AudioBus is ready
+                if self._audio_bus is not None and getattr(self._audio_bus, "is_running", False):
+                    try:
+                        await self._attempt_wire_audio_pipeline(context="model-serving-recovery")
+                    except Exception:
+                        pass
+                return
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                self.logger.warning(
+                    "[ModelServing-Recovery] Attempt %d/%d failed: %s", attempt, _max, e
+                )
+            try:
+                await asyncio.sleep(_interval)
+            except asyncio.CancelledError:
+                return
+
+        self.logger.warning(
+            "[ModelServing-Recovery] Exhausted %d attempts — inference routing unavailable", _max
+        )
+
     async def _audio_health_loop(self) -> None:
         """
         v238.0: Background health monitoring for Audio Bus infrastructure.
