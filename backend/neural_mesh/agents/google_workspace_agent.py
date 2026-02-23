@@ -2645,7 +2645,10 @@ Return ONLY a JSON object with these keys (use null if not found):
 
         self._email_queries += 1
 
-        return await self._client.search_emails(query=query, limit=limit)
+        _result = await self._client.search_emails(query=query, limit=limit)
+        if isinstance(_result, dict):
+            _result["workspace_action"] = "search_email"
+        return _result
 
     async def _draft_email(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -2992,6 +2995,7 @@ EMAIL BODY:"""
                     "spatial_target": spatial_target,
                     "actions_count": result.actions_count,
                     "execution_time_ms": execution_time_ms,
+                    "workspace_action": "draft_email_reply",
                     "message": (
                         f"Email draft created visually on screen. "
                         f"Switched to Gmail and filled in recipient ({to}) and subject ({subject}). "
