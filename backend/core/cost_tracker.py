@@ -1958,8 +1958,16 @@ class CostTracker:
                 "Budget check failed",
                 error=e,
             )
-            # On error, allow VM creation (don't block due to tracking issues)
-            return True, f"Budget check error (allowing): {e}", details
+            logger.error(
+                f"[CostTracker] Budget check failed — blocking VM creation for safety: {e}"
+            )
+            # Fail-CLOSED: under pressure-driven VM creation, a cost tracking
+            # failure must block creation rather than allow unlimited provisioning.
+            if not isinstance(details, dict):
+                details = {}
+            details["error"] = str(e)
+            details["fail_mode"] = "closed"
+            return False, f"Budget check error (blocking for safety): {e}", details
 
     async def forecast_daily_cost(self) -> Dict[str, Any]:
         """
