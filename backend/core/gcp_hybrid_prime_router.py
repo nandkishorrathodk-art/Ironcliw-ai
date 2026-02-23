@@ -1694,8 +1694,8 @@ class GCPHybridPrimeRouter:
             self._recovery_in_progress = True
             try:
                 from backend.intelligence.unified_model_serving import get_model_serving
-                model_serving = await get_model_serving()
-                success = await model_serving.load_model()
+                model_serving = await asyncio.wait_for(get_model_serving(), timeout=10.0)
+                success = await asyncio.wait_for(model_serving.load_model(), timeout=120.0)
                 if success:
                     model_serving.reset_local_circuit_breaker()
                     self._model_needs_recovery = False

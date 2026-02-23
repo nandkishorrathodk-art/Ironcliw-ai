@@ -63827,51 +63827,6 @@ class JarvisSystemKernel:
             except Exception as _reeval_err:
                 self.logger.debug("[ModeReeval] %s failed: %s", phase_label, _reeval_err)
 
-        async def can_spawn_heavy_process(estimated_mb: int, label: str) -> bool:
-            """v266.2: Admission gate before spawning heavy subprocesses.
-
-            Checks if spawning a process that needs ~estimated_mb would push
-            the system into CRITICAL/EMERGENCY memory tier.
-
-            Returns True if safe to spawn, False if memory too tight.
-            """
-            try:
-                import psutil
-                _mem = psutil.virtual_memory()
-                _avail_mb = _mem.available / (1024 ** 2)
-                # Reserve 500MB safety margin on top of estimated need
-                _needed_mb = estimated_mb + 500
-                if _avail_mb < _needed_mb:
-                    self.logger.warning(
-                        f"[v266.2] Admission gate BLOCKED {label}: "
-                        f"needs ~{_needed_mb}MB but only {_avail_mb:.0f}MB available"
-                    )
-                    return False
-
-                # Also check MemoryQuantizer tier if available
-                try:
-                    from backend.core.memory_quantizer import get_memory_quantizer, MemoryTier
-                    _mq = await asyncio.wait_for(get_memory_quantizer(), timeout=2.0)
-                    if _mq:
-                        _metrics = _mq.get_current_metrics()
-                        if _metrics.tier in (MemoryTier.CRITICAL, MemoryTier.EMERGENCY):
-                            self.logger.warning(
-                                f"[v266.2] Admission gate BLOCKED {label}: "
-                                f"memory tier is {_metrics.tier.value}"
-                            )
-                            return False
-                except Exception:
-                    pass  # MemoryQuantizer may not be ready yet
-
-                self.logger.debug(
-                    f"[v266.2] Admission gate OK for {label}: "
-                    f"{_avail_mb:.0f}MB available, needs ~{_needed_mb}MB"
-                )
-                return True
-            except Exception as e:
-                self.logger.debug(f"[v266.2] Admission gate error for {label}: {e}")
-                return True  # Fail-open: don't block on gate errors
-
         # =====================================================================
         # v258.4 (P1-7): LOADED COMPONENTS REGISTRY
         # =====================================================================
@@ -67201,6 +67156,7 @@ class JarvisSystemKernel:
             _mem2 = _ps2.virtual_memory()
             _avail_gb2 = _mem2.available / (1024**3)
             _current_mode2 = os.environ.get("JARVIS_STARTUP_MEMORY_MODE", "local_full")
+            # NOTE: Mirrors _REEVAL_SEVERITY / _reevaluate_startup_mode() threshold logic.
             _sev_map = {
                 "local_full": 0, "local_optimized": 1, "sequential": 2,
                 "cloud_first": 3, "cloud_only": 4, "minimal": 5,
@@ -68235,6 +68191,7 @@ class JarvisSystemKernel:
             _mem3 = _ps3.virtual_memory()
             _avail_gb3 = _mem3.available / (1024**3)
             _current_mode3 = os.environ.get("JARVIS_STARTUP_MEMORY_MODE", "local_full")
+            # NOTE: Mirrors _REEVAL_SEVERITY / _reevaluate_startup_mode() threshold logic.
             _sev_map3 = {
                 "local_full": 0, "local_optimized": 1, "sequential": 2,
                 "cloud_first": 3, "cloud_only": 4, "minimal": 5,
@@ -68587,8 +68544,9 @@ class JarvisSystemKernel:
                 _adm_needed_mb = 500 + 500  # 500MB estimated + 500MB safety margin
                 if _adm_avail_mb < _adm_needed_mb:
                     self.logger.warning(
-                        f"[v266.2] Backend subprocess blocked by admission gate: "
-                        f"needs ~{_adm_needed_mb}MB but only {_adm_avail_mb:.0f}MB available"
+                        f"[v266.2] Backend subprocess low memory: "
+                        f"needs ~{_adm_needed_mb}MB but only {_adm_avail_mb:.0f}MB available "
+                        f"— switching to minimal mode"
                     )
                     os.environ["JARVIS_BACKEND_MINIMAL"] = "true"
             except Exception as _adm_err:
@@ -68667,7 +68625,7 @@ class JarvisSystemKernel:
                     pass
                 os.environ["JARVIS_BACKEND_MINIMAL"] = "true"
                 return False
-            raise  # Re-raise non-ENOMEM OSErrors
+            raise  # Non-ENOMEM OSErrors propagate to caller for loud failure
         except MemoryError:
             self.logger.error(
                 "[v266.2] Backend subprocess MemoryError. Escalating startup mode."

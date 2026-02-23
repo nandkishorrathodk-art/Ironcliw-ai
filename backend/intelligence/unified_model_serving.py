@@ -2298,7 +2298,7 @@ class UnifiedModelServing:
                 cb._state = _CanonicalCBState.CLOSED
                 cb._failure_count = 0
                 cb._success_count = 0
-            self._circuit_breaker._sync_state_from_canonical(_provider, cb)
+                self._circuit_breaker._sync_state_from_canonical(_provider, cb)
         else:
             with self._circuit_breaker._lock:
                 state = self._circuit_breaker._states.get(_provider)
