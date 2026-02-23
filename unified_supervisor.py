@@ -70572,13 +70572,25 @@ class JarvisSystemKernel:
         max_failures = int(os.environ.get("JARVIS_GHOST_MAX_HEALTH_FAILURES", "3"))
         consecutive_failures = 0
 
+        # v265.5: CPU-aware timeout for health check polling
+        _ghost_health_timeout = _get_env_float("JARVIS_GHOST_HEALTH_CHECK_TIMEOUT", 10.0)
+
         while not self._shutdown_event.is_set():
             try:
                 await asyncio.sleep(interval)
 
+                # Re-check CPU each iteration (long-running loop)
+                _gh_eff_to = _ghost_health_timeout
+                try:
+                    import psutil as _gh_ps
+                    _gh_cpu = _gh_ps.cpu_percent(interval=None)
+                    if _gh_cpu > 90.0:
+                        _gh_eff_to *= 1.0 + (_gh_cpu - 90.0) / 10.0 * 2.0
+                except Exception:
+                    pass
                 hw_status = await asyncio.wait_for(
                     phantom_mgr.get_display_status_async(),
-                    timeout=10.0,
+                    timeout=_gh_eff_to,
                 )
 
                 if hw_status and hw_status.ghost_display_active:
