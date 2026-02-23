@@ -68579,6 +68579,21 @@ class JarvisSystemKernel:
                 f"(cwd={project_root}, port={self.config.backend_port})"
             )
 
+            # v266.2: Pre-spawn admission gate — check available RAM
+            try:
+                import psutil as _ps_adm
+                _adm_mem = _ps_adm.virtual_memory()
+                _adm_avail_mb = _adm_mem.available / (1024 ** 2)
+                _adm_needed_mb = 500 + 500  # 500MB estimated + 500MB safety margin
+                if _adm_avail_mb < _adm_needed_mb:
+                    self.logger.warning(
+                        f"[v266.2] Backend subprocess blocked by admission gate: "
+                        f"needs ~{_adm_needed_mb}MB but only {_adm_avail_mb:.0f}MB available"
+                    )
+                    os.environ["JARVIS_BACKEND_MINIMAL"] = "true"
+            except Exception as _adm_err:
+                self.logger.debug(f"[v266.2] Admission gate error: {_adm_err}")
+
             self._backend_process = await asyncio.create_subprocess_exec(
                 *command,
                 cwd=str(project_root),
@@ -68628,6 +68643,50 @@ class JarvisSystemKernel:
             )
             return False
 
+        except OSError as e:
+            import errno
+            if e.errno == errno.ENOMEM:
+                self.logger.error(
+                    "[v266.2] Backend subprocess OOM (Cannot allocate memory). "
+                    "Escalating startup mode."
+                )
+                # Inline mode escalation (can't access nested _reevaluate_startup_mode)
+                try:
+                    _cur_mode = os.environ.get("JARVIS_STARTUP_MEMORY_MODE", "local_full")
+                    _sev_map_oom = {
+                        "local_full": 0, "local_optimized": 1, "sequential": 2,
+                        "cloud_first": 3, "cloud_only": 4, "minimal": 5,
+                    }
+                    _cur_sev_oom = _sev_map_oom.get(_cur_mode, 0)
+                    if _cur_sev_oom < 4:  # Not yet cloud_only
+                        os.environ["JARVIS_STARTUP_MEMORY_MODE"] = "cloud_only"
+                        self.logger.warning(
+                            "[v266.2] ENOMEM: mode escalated %s → cloud_only", _cur_mode
+                        )
+                except Exception:
+                    pass
+                os.environ["JARVIS_BACKEND_MINIMAL"] = "true"
+                return False
+            raise  # Re-raise non-ENOMEM OSErrors
+        except MemoryError:
+            self.logger.error(
+                "[v266.2] Backend subprocess MemoryError. Escalating startup mode."
+            )
+            try:
+                _cur_mode = os.environ.get("JARVIS_STARTUP_MEMORY_MODE", "local_full")
+                _sev_map_mem = {
+                    "local_full": 0, "local_optimized": 1, "sequential": 2,
+                    "cloud_first": 3, "cloud_only": 4, "minimal": 5,
+                }
+                _cur_sev_mem = _sev_map_mem.get(_cur_mode, 0)
+                if _cur_sev_mem < 4:
+                    os.environ["JARVIS_STARTUP_MEMORY_MODE"] = "cloud_only"
+                    self.logger.warning(
+                        "[v266.2] MemoryError: mode escalated %s → cloud_only", _cur_mode
+                    )
+            except Exception:
+                pass
+            return False
         except Exception as e:
             self.logger.error(f"[Kernel] Subprocess backend failed: {e}")
             return False
