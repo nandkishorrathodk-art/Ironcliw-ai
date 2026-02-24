@@ -64176,7 +64176,9 @@ class JarvisSystemKernel:
                 if _oom_attempt_idx < len(_oom_attempts) - 1:
                     _unified_logger.info(
                         "[OOMBridge] Attempt %d failed (%s), retrying with %ds timeout...",
-                        _oom_attempt_idx + 1, _oom_err, int(_oom_retry_timeout),
+                        _oom_attempt_idx + 1,
+                        str(_oom_err) or type(_oom_err).__name__,
+                        int(_oom_retry_timeout),
                     )
                     continue
                 # Final attempt failed — unconditional degradation
@@ -64188,10 +64190,13 @@ class JarvisSystemKernel:
                 # v266.3: OOMBridge is broken — cloud modes can't execute without it.
                 # Unconditionally degrade to local fallback regardless of current mode.
                 os.environ["JARVIS_STARTUP_MEMORY_MODE"] = _guard_mode
+                # v266.3: Signal to Phase 2/3 gates that cloud modes are not viable.
+                os.environ["JARVIS_OOMBRIDGE_AVAILABLE"] = "0"
 
+                _oom_err_str = str(_oom_err) or type(_oom_err).__name__
                 _oom_msg = (
                     f"OOM pre-flight unavailable after {len(_oom_attempts)} attempts: "
-                    f"{_oom_err} "
+                    f"{_oom_err_str} "
                     f"(degraded to {_guard_mode}"
                     + (f", avail={_available_gb:.1f}GB" if _available_gb is not None else "")
                     + ")"
@@ -67188,6 +67193,12 @@ class JarvisSystemKernel:
             else:
                 _ideal2 = "local_full"
 
+            # v266.3: If OOMBridge is broken, cloud modes can't execute.
+            # Clamp to best available local mode instead.
+            if os.environ.get("JARVIS_OOMBRIDGE_AVAILABLE") == "0":
+                if _ideal2 in ("cloud_first", "cloud_only"):
+                    _ideal2 = "sequential"
+
             _cur_sev2 = _sev_map.get(_current_mode2, 0)
             _ideal_sev2 = _sev_map.get(_ideal2, 0)
             # Monotonic: only degrade during startup (never recover upward)
@@ -68222,6 +68233,12 @@ class JarvisSystemKernel:
                 _ideal3 = "local_optimized"
             else:
                 _ideal3 = "local_full"
+
+            # v266.3: If OOMBridge is broken, cloud modes can't execute.
+            # Clamp to best available local mode instead.
+            if os.environ.get("JARVIS_OOMBRIDGE_AVAILABLE") == "0":
+                if _ideal3 in ("cloud_first", "cloud_only"):
+                    _ideal3 = "sequential"
 
             _cur_sev3 = _sev_map3.get(_current_mode3, 0)
             _ideal_sev3 = _sev_map3.get(_ideal3, 0)
