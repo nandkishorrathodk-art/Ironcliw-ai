@@ -62328,6 +62328,16 @@ class JarvisSystemKernel:
         except Exception as _teb_err:
             self.logger.debug(f"[Kernel] v266.2: TrinityEventBus reset error: {_teb_err}")
 
+        # v266.2: Close the startup progress reporter's aiohttp session.
+        try:
+            from loading_server import shutdown_progress_reporter
+            await asyncio.wait_for(shutdown_progress_reporter(), timeout=3.0)
+            self.logger.debug("[Kernel] v266.2: ProgressReporter session closed")
+        except asyncio.TimeoutError:
+            self.logger.debug("[Kernel] v266.2: ProgressReporter close timed out (3s)")
+        except Exception as _pr_err:
+            self.logger.debug(f"[Kernel] v266.2: ProgressReporter close error: {_pr_err}")
+
         self._state = KernelState.STOPPED
         self.logger.warning("[Kernel] ⚠️ Emergency shutdown complete")
 

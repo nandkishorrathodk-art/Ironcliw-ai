@@ -7592,6 +7592,15 @@ class StartupProgressReporter:
     def update_url(self) -> str:
         return f"http://{self.host}:{self.port}/api/update-progress"
     
+    async def close(self) -> None:
+        """v266.2: Close the aiohttp session to prevent resource leaks."""
+        if self._session is not None and not self._session.closed:
+            try:
+                await self._session.close()
+            except Exception:
+                pass
+        self._session = None
+
     async def _get_session(self) -> Optional[aiohttp.ClientSession]:
         if self._session is None or self._session.closed:
             try:
@@ -8121,6 +8130,14 @@ def get_progress_reporter() -> StartupProgressReporter:
     if _reporter is None:
         _reporter = StartupProgressReporter()
     return _reporter
+
+
+async def shutdown_progress_reporter() -> None:
+    """v266.2: Close the global reporter's aiohttp session and reset singleton."""
+    global _reporter
+    if _reporter is not None:
+        await _reporter.close()
+        _reporter = None
 
 
 async def report_progress(stage: str, message: str, progress: float, metadata: Dict = None) -> bool:
