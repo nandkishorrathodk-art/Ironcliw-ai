@@ -2845,6 +2845,28 @@ def _resolve_local_startup_mode_on_cloud_unavailable(
     candidate_sev = severity.get(candidate, 0)
     return normalized_mode if candidate_sev < current_sev else candidate
 
+
+def _is_cloud_probe_candidate(
+    desired_mode: str,
+    effective_mode: str,
+    cloud_recovery_candidate: bool = False,
+) -> bool:
+    """
+    Determine whether startup should attempt a GCP availability probe.
+
+    desired_mode expresses operator/resource intent. effective_mode may be
+    temporarily degraded for safety. Probe eligibility is intentionally keyed
+    to desired intent (or an explicit recovery candidate flag), so degraded
+    effective mode does not suppress cloud recovery opportunities.
+    """
+    _desired = (desired_mode or "").strip().lower()
+    if _desired in ("cloud_first", "cloud_only"):
+        return True
+
+    # If effective mode is local for safety but cloud recovery remains desired,
+    # this explicit flag keeps probe behavior deterministic.
+    return bool(cloud_recovery_candidate)
+
 # =============================================================================
 # BACKEND LAUNCH DISCOVERY
 # =============================================================================
@@ -64163,7 +64185,11 @@ class JarvisSystemKernel:
         )
         self._gcp_probe_passed = False
         self._gcp_probe_task = None
-        if _startup_desired_mode in ("cloud_first", "cloud_only") or _cloud_recovery_candidate:
+        if _is_cloud_probe_candidate(
+            _startup_desired_mode,
+            _startup_effective_mode,
+            _cloud_recovery_candidate,
+        ):
             # v266.3: _startup_mode_now = effective mode (may be degraded by OOMBridge).
             # Used for fallback logic within the probe; distinct from _startup_desired_mode.
             _startup_mode_now = os.environ.get("JARVIS_STARTUP_MEMORY_MODE", "local_full")

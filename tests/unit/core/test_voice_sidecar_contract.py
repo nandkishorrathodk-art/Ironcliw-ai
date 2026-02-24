@@ -38,7 +38,6 @@ def test_contract_client_object_constructs():
         control_timeout=2.0,
         health_timeout=1.0,
         command=["voice-sidecar"],
-        manage_worker=True,
     )
     client = VoiceSidecarClient(cfg)
     assert client.config.base_url.endswith(":9860")

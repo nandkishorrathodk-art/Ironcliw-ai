@@ -1,6 +1,8 @@
-# JARVIS Voice Sidecar (Go)
+# JARVIS Voice Sidecar (Go Observer)
 
-Control-plane supervisor for Python voice worker reliability.
+Read-only control-plane observer for Python health, startup mode signals, and safety advisories.
+
+It does **not** start/stop/restart Python workers and does not own model/runtime logic.
 
 ## Build
 ```bash
@@ -14,21 +16,20 @@ go build -o voice-sidecar .
 ./voice-sidecar --config ../../config/voice_sidecar.example.yaml
 ```
 
-Or env-only:
-```bash
-JARVIS_VOICE_SIDECAR_WORKER_COMMAND="python3 -m backend.voice.voice_worker_service" \
-JARVIS_VOICE_SIDECAR_WORKER_AUTOSTART=true \
-./voice-sidecar
-```
-
 ## Endpoints
+- `GET /healthz`
+- `GET /metrics`
 - `GET /v1/health`
-- `GET /v1/metrics`
+- `GET /v1/observer/state`
 - `GET /v1/gates/heavy-load`
-- `POST /v1/control/start`
-- `POST /v1/control/stop`
-- `POST /v1/control/restart`
-- `GET /v1/control/status`
+
+## Contracts
+- Polls Python status over either:
+  - Supervisor Unix IPC socket (`command=status`), or
+  - HTTP status endpoint (configurable)
+- Publishes advisory-only signals:
+  - `recovery_stuck`
+  - `mode_oscillation_risk`
 
 ## Tests
 ```bash

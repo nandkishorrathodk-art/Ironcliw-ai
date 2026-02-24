@@ -1,7 +1,7 @@
 package main
 
 import (
-	"bytes"
+	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
@@ -13,7 +13,6 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"runtime"
@@ -31,11 +30,12 @@ import (
 )
 
 type Config struct {
-	Listen           ListenConfig   `json:"listen" yaml:"listen"`
-	Pressure         PressureConfig `json:"pressure" yaml:"pressure"`
-	Worker           WorkerConfig   `json:"worker" yaml:"worker"`
-	Backoff          BackoffConfig  `json:"backoff" yaml:"backoff"`
-	ControlTimeoutMs int            `json:"control_timeout_ms" yaml:"control_timeout_ms"`
+	Listen   ListenConfig   `json:"listen" yaml:"listen"`
+	Poll     PollConfig     `json:"poll" yaml:"poll"`
+	Python   PythonConfig   `json:"python" yaml:"python"`
+	Pressure PressureConfig `json:"pressure" yaml:"pressure"`
+	Advisory AdvisoryConfig `json:"advisory" yaml:"advisory"`
+	Backoff  BackoffConfig  `json:"backoff" yaml:"backoff"`
 }
 
 type ListenConfig struct {
@@ -43,28 +43,29 @@ type ListenConfig struct {
 	Address string `json:"address" yaml:"address"`
 }
 
-type PressureConfig struct {
-	FailClosed          bool    `json:"fail_closed" yaml:"fail_closed"`
-	MinAvailableMemoryMB uint64  `json:"min_available_memory_mb" yaml:"min_available_memory_mb"`
-	MaxMemoryPercent    float64 `json:"max_memory_percent" yaml:"max_memory_percent"`
-	MaxCPUPercent       float64 `json:"max_cpu_percent" yaml:"max_cpu_percent"`
-	MonitorIntervalMs   int     `json:"monitor_interval_ms" yaml:"monitor_interval_ms"`
-	SampleTimeoutMs     int     `json:"sample_timeout_ms" yaml:"sample_timeout_ms"`
+type PollConfig struct {
+	IntervalMs      int `json:"interval_ms" yaml:"interval_ms"`
+	RequestTimeoutMs int `json:"request_timeout_ms" yaml:"request_timeout_ms"`
 }
 
-type WorkerConfig struct {
-	Command              []string          `json:"command" yaml:"command"`
-	WorkingDir           string            `json:"working_dir" yaml:"working_dir"`
-	Env                  map[string]string `json:"env" yaml:"env"`
-	AutoStart            bool              `json:"auto_start" yaml:"auto_start"`
-	AutoRecover          bool              `json:"auto_recover" yaml:"auto_recover"`
-	StopOnPressure       bool              `json:"stop_on_pressure" yaml:"stop_on_pressure"`
-	HealthURL            string            `json:"health_url" yaml:"health_url"`
-	HealthTimeoutMs      int               `json:"health_timeout_ms" yaml:"health_timeout_ms"`
-	HealthFailureLimit   int               `json:"health_failure_limit" yaml:"health_failure_limit"`
-	StartupHealthWaitMs  int               `json:"startup_health_wait_ms" yaml:"startup_health_wait_ms"`
-	StartupHealthPollMs  int               `json:"startup_health_poll_ms" yaml:"startup_health_poll_ms"`
-	StopTimeoutMs        int               `json:"stop_timeout_ms" yaml:"stop_timeout_ms"`
+type PythonConfig struct {
+	Transport      string `json:"transport" yaml:"transport"`
+	StatusURL      string `json:"status_url" yaml:"status_url"`
+	HealthURL      string `json:"health_url" yaml:"health_url"`
+	UnixSocketPath string `json:"unix_socket_path" yaml:"unix_socket_path"`
+}
+
+type PressureConfig struct {
+	FailClosed           bool    `json:"fail_closed" yaml:"fail_closed"`
+	MinAvailableMemoryMB uint64  `json:"min_available_memory_mb" yaml:"min_available_memory_mb"`
+	MaxMemoryPercent     float64 `json:"max_memory_percent" yaml:"max_memory_percent"`
+	MaxCPUPercent        float64 `json:"max_cpu_percent" yaml:"max_cpu_percent"`
+}
+
+type AdvisoryConfig struct {
+	RecoveryStuckSeconds     int `json:"recovery_stuck_seconds" yaml:"recovery_stuck_seconds"`
+	ModeOscillationWindowSec int `json:"mode_oscillation_window_sec" yaml:"mode_oscillation_window_sec"`
+	ModeOscillationLimit     int `json:"mode_oscillation_limit" yaml:"mode_oscillation_limit"`
 }
 
 type BackoffConfig struct {
@@ -74,41 +75,41 @@ type BackoffConfig struct {
 }
 
 type PressureSnapshot struct {
-	Timestamp          time.Time `json:"timestamp"`
-	CPUPercent         float64   `json:"cpu_percent"`
-	MemoryPercent      float64   `json:"memory_percent"`
-	MemoryAvailableMB  uint64    `json:"memory_available_mb"`
-	MemoryTotalMB      uint64    `json:"memory_total_mb"`
-	Valid              bool      `json:"valid"`
-	Reason             string    `json:"reason,omitempty"`
+	Timestamp         time.Time `json:"timestamp"`
+	CPUPercent        float64   `json:"cpu_percent"`
+	MemoryPercent     float64   `json:"memory_percent"`
+	MemoryAvailableMB uint64    `json:"memory_available_mb"`
+	MemoryTotalMB     uint64    `json:"memory_total_mb"`
+	Valid             bool      `json:"valid"`
+	Reason            string    `json:"reason,omitempty"`
 }
 
-type WorkerStatus struct {
-	State             string    `json:"state"`
-	PID               int       `json:"pid"`
-	StartedAt         time.Time `json:"started_at,omitempty"`
-	RestartCount      int       `json:"restart_count"`
-	LastExit          string    `json:"last_exit,omitempty"`
-	LastError         string    `json:"last_error,omitempty"`
-	BackoffUntil      time.Time `json:"backoff_until,omitempty"`
-	HealthFailures    int       `json:"health_failures"`
-	LastHealthCheckAt time.Time `json:"last_health_check_at,omitempty"`
+type AdvisorySignal struct {
+	Code      string    `json:"code"`
+	Severity  string    `json:"severity"`
+	Message   string    `json:"message"`
+	Triggered time.Time `json:"triggered"`
+}
+
+type ObservedState struct {
+	Timestamp         time.Time        `json:"timestamp"`
+	PythonReachable   bool             `json:"python_reachable"`
+	DesiredMode       string           `json:"desired_mode"`
+	EffectiveMode     string           `json:"effective_mode"`
+	MemoryTier        string           `json:"memory_tier"`
+	RecoveryState     string           `json:"recovery_state"`
+	LocalCircuitState string           `json:"local_circuit_state"`
+	Pressure          PressureSnapshot `json:"pressure"`
+	Advisories        []AdvisorySignal `json:"advisories"`
+	RawStatus         map[string]any   `json:"raw_status,omitempty"`
 }
 
 type Metrics struct {
-	StartRequests   uint64
-	StopRequests    uint64
-	RestartRequests uint64
-	CrashRecoveries uint64
-	CrashCount      uint64
-	PressureSamples uint64
+	PollErrors uint64
+	PollSuccess uint64
 }
 
-type ControlRequest struct {
-	Reason string `json:"reason"`
-}
-
-type Supervisor struct {
+type Observer struct {
 	cfg    Config
 	logger *slog.Logger
 
@@ -120,130 +121,154 @@ type Supervisor struct {
 	stopOnce  sync.Once
 	wg        sync.WaitGroup
 
-	mu sync.RWMutex
-
-	workerCmd           *exec.Cmd
-	workerPID           int
-	workerStartedAt     time.Time
-	workerStopRequested bool
-	workerRestartCount  int
-	workerLastExit      string
-	workerLastError     string
-	workerBackoffUntil  time.Time
-	backoffExp          int
-
-	pressure              PressureSnapshot
-	healthFailureCount    int
-	lastHealthCheckAt     time.Time
-	workerHealthCheckPass bool
-
-	metrics Metrics
-
 	sf singleflight.Group
 
-	samplePressureFn    func(context.Context) (PressureSnapshot, error)
-	checkWorkerHealthFn func(context.Context, string, time.Duration) error
+	mu         sync.RWMutex
+	state      ObservedState
+	failures   int
+	backoffTil time.Time
+	metrics    Metrics
 
-	serveErr atomic.Value
+	lastEffectiveMode      string
+	modeChangeTimestamps   []time.Time
+	recoveryActiveSince    time.Time
+	recoveryStuckTriggered bool
 }
 
 func defaultConfig() Config {
+	home, _ := os.UserHomeDir()
+	defaultSocket := filepath.Join(home, ".jarvis", "locks", "kernel.sock")
 	return Config{
 		Listen: ListenConfig{
 			Network: "tcp",
 			Address: "127.0.0.1:9860",
 		},
+		Poll: PollConfig{
+			IntervalMs:      1000,
+			RequestTimeoutMs: 900,
+		},
+		Python: PythonConfig{
+			Transport:      "unix",
+			StatusURL:      "http://127.0.0.1:8000/supervisor/status",
+			HealthURL:      "http://127.0.0.1:8000/supervisor/health",
+			UnixSocketPath: defaultSocket,
+		},
 		Pressure: PressureConfig{
 			FailClosed:           true,
 			MinAvailableMemoryMB: 2048,
-			MaxMemoryPercent:     85.0,
-			MaxCPUPercent:        90.0,
-			MonitorIntervalMs:    1000,
-			SampleTimeoutMs:      800,
+			MaxMemoryPercent:     90.0,
+			MaxCPUPercent:        95.0,
 		},
-		Worker: WorkerConfig{
-			Command:             []string{},
-			WorkingDir:          "",
-			Env:                 map[string]string{},
-			AutoStart:           false,
-			AutoRecover:         true,
-			StopOnPressure:      true,
-			HealthURL:           "",
-			HealthTimeoutMs:     1500,
-			HealthFailureLimit:  3,
-			StartupHealthWaitMs: 15000,
-			StartupHealthPollMs: 250,
-			StopTimeoutMs:       5000,
+		Advisory: AdvisoryConfig{
+			RecoveryStuckSeconds:     180,
+			ModeOscillationWindowSec: 120,
+			ModeOscillationLimit:     6,
 		},
 		Backoff: BackoffConfig{
-			InitialMs:  1000,
-			MaxMs:      30000,
+			InitialMs:  500,
+			MaxMs:      10000,
 			Multiplier: 2.0,
 		},
-		ControlTimeoutMs: 5000,
 	}
 }
 
 func loadConfig(path string) (Config, error) {
 	cfg := defaultConfig()
-	if strings.TrimSpace(path) == "" {
-		applyEnvOverrides(&cfg)
-		return cfg, validateConfig(cfg)
-	}
-
-	buf, err := os.ReadFile(path)
-	if err != nil {
-		return cfg, fmt.Errorf("read config: %w", err)
-	}
-
-	ext := strings.ToLower(filepath.Ext(path))
-	switch ext {
-	case ".json":
-		if err := json.Unmarshal(buf, &cfg); err != nil {
-			return cfg, fmt.Errorf("parse json config: %w", err)
+	if strings.TrimSpace(path) != "" {
+		buf, err := os.ReadFile(path)
+		if err != nil {
+			return cfg, fmt.Errorf("read config: %w", err)
 		}
-	default:
 		if err := yaml.Unmarshal(buf, &cfg); err != nil {
 			return cfg, fmt.Errorf("parse yaml config: %w", err)
 		}
 	}
-
 	applyEnvOverrides(&cfg)
+	cfg.Python.UnixSocketPath = expandHomePath(cfg.Python.UnixSocketPath)
 	if err := validateConfig(cfg); err != nil {
 		return cfg, err
 	}
 	return cfg, nil
 }
 
+func expandHomePath(path string) string {
+	trimmed := strings.TrimSpace(path)
+	if trimmed == "~" {
+		home, err := os.UserHomeDir()
+		if err == nil {
+			return home
+		}
+		return trimmed
+	}
+	if strings.HasPrefix(trimmed, "~/") {
+		home, err := os.UserHomeDir()
+		if err == nil {
+			return filepath.Join(home, trimmed[2:])
+		}
+	}
+	return trimmed
+}
+
 func applyEnvOverrides(cfg *Config) {
 	overrideString(&cfg.Listen.Network, "JARVIS_VOICE_SIDECAR_NETWORK")
 	overrideString(&cfg.Listen.Address, "JARVIS_VOICE_SIDECAR_ADDRESS")
-
+	overrideInt(&cfg.Poll.IntervalMs, "JARVIS_VOICE_SIDECAR_POLL_INTERVAL_MS")
+	overrideInt(&cfg.Poll.RequestTimeoutMs, "JARVIS_VOICE_SIDECAR_REQUEST_TIMEOUT_MS")
+	overrideString(&cfg.Python.Transport, "JARVIS_VOICE_SIDECAR_PYTHON_TRANSPORT")
+	overrideString(&cfg.Python.StatusURL, "JARVIS_VOICE_SIDECAR_STATUS_URL")
+	overrideString(&cfg.Python.HealthURL, "JARVIS_VOICE_SIDECAR_HEALTH_URL")
+	overrideString(&cfg.Python.UnixSocketPath, "JARVIS_VOICE_SIDECAR_SOCKET")
 	overrideBool(&cfg.Pressure.FailClosed, "JARVIS_VOICE_SIDECAR_FAIL_CLOSED")
 	overrideUint64(&cfg.Pressure.MinAvailableMemoryMB, "JARVIS_VOICE_SIDECAR_MIN_MEM_MB")
 	overrideFloat64(&cfg.Pressure.MaxMemoryPercent, "JARVIS_VOICE_SIDECAR_MAX_MEM_PERCENT")
 	overrideFloat64(&cfg.Pressure.MaxCPUPercent, "JARVIS_VOICE_SIDECAR_MAX_CPU_PERCENT")
-	overrideInt(&cfg.Pressure.MonitorIntervalMs, "JARVIS_VOICE_SIDECAR_MONITOR_INTERVAL_MS")
-	overrideInt(&cfg.Pressure.SampleTimeoutMs, "JARVIS_VOICE_SIDECAR_SAMPLE_TIMEOUT_MS")
-
-	if raw := strings.TrimSpace(os.Getenv("JARVIS_VOICE_SIDECAR_WORKER_COMMAND")); raw != "" {
-		cfg.Worker.Command = strings.Fields(raw)
-	}
-	overrideString(&cfg.Worker.WorkingDir, "JARVIS_VOICE_SIDECAR_WORKER_DIR")
-	overrideBool(&cfg.Worker.AutoStart, "JARVIS_VOICE_SIDECAR_WORKER_AUTOSTART")
-	overrideBool(&cfg.Worker.AutoRecover, "JARVIS_VOICE_SIDECAR_WORKER_AUTORECOVER")
-	overrideBool(&cfg.Worker.StopOnPressure, "JARVIS_VOICE_SIDECAR_STOP_ON_PRESSURE")
-	overrideString(&cfg.Worker.HealthURL, "JARVIS_VOICE_SIDECAR_WORKER_HEALTH_URL")
-	overrideInt(&cfg.Worker.HealthTimeoutMs, "JARVIS_VOICE_SIDECAR_WORKER_HEALTH_TIMEOUT_MS")
-	overrideInt(&cfg.Worker.HealthFailureLimit, "JARVIS_VOICE_SIDECAR_WORKER_HEALTH_FAILURE_LIMIT")
-	overrideInt(&cfg.Worker.StartupHealthWaitMs, "JARVIS_VOICE_SIDECAR_WORKER_STARTUP_WAIT_MS")
-	overrideInt(&cfg.Worker.StartupHealthPollMs, "JARVIS_VOICE_SIDECAR_WORKER_STARTUP_POLL_MS")
-	overrideInt(&cfg.Worker.StopTimeoutMs, "JARVIS_VOICE_SIDECAR_WORKER_STOP_TIMEOUT_MS")
-
+	overrideInt(&cfg.Advisory.RecoveryStuckSeconds, "JARVIS_VOICE_SIDECAR_RECOVERY_STUCK_SECONDS")
+	overrideInt(&cfg.Advisory.ModeOscillationWindowSec, "JARVIS_VOICE_SIDECAR_MODE_OSCILLATION_WINDOW_SEC")
+	overrideInt(&cfg.Advisory.ModeOscillationLimit, "JARVIS_VOICE_SIDECAR_MODE_OSCILLATION_LIMIT")
 	overrideInt(&cfg.Backoff.InitialMs, "JARVIS_VOICE_SIDECAR_BACKOFF_INITIAL_MS")
 	overrideInt(&cfg.Backoff.MaxMs, "JARVIS_VOICE_SIDECAR_BACKOFF_MAX_MS")
 	overrideFloat64(&cfg.Backoff.Multiplier, "JARVIS_VOICE_SIDECAR_BACKOFF_MULTIPLIER")
-	overrideInt(&cfg.ControlTimeoutMs, "JARVIS_VOICE_SIDECAR_CONTROL_TIMEOUT_MS")
+}
+
+func validateConfig(cfg Config) error {
+	if strings.TrimSpace(cfg.Listen.Network) == "" {
+		return errors.New("listen.network must be set")
+	}
+	if strings.TrimSpace(cfg.Listen.Address) == "" {
+		return errors.New("listen.address must be set")
+	}
+	if cfg.Poll.IntervalMs < 250 {
+		return errors.New("poll.interval_ms must be >= 250")
+	}
+	if cfg.Poll.RequestTimeoutMs < 200 {
+		return errors.New("poll.request_timeout_ms must be >= 200")
+	}
+	cfg.Python.Transport = strings.ToLower(strings.TrimSpace(cfg.Python.Transport))
+	if cfg.Python.Transport != "http" && cfg.Python.Transport != "unix" {
+		return errors.New("python.transport must be http or unix")
+	}
+	if cfg.Python.Transport == "http" && strings.TrimSpace(cfg.Python.StatusURL) == "" {
+		return errors.New("python.status_url must be set for http transport")
+	}
+	if cfg.Python.Transport == "unix" && strings.TrimSpace(cfg.Python.UnixSocketPath) == "" {
+		return errors.New("python.unix_socket_path must be set for unix transport")
+	}
+	if cfg.Backoff.InitialMs <= 0 || cfg.Backoff.MaxMs <= 0 {
+		return errors.New("backoff initial/max must be > 0")
+	}
+	if cfg.Backoff.Multiplier < 1.0 {
+		return errors.New("backoff.multiplier must be >= 1")
+	}
+	if cfg.Advisory.RecoveryStuckSeconds < 30 {
+		return errors.New("advisory.recovery_stuck_seconds must be >= 30")
+	}
+	if cfg.Advisory.ModeOscillationWindowSec < 30 {
+		return errors.New("advisory.mode_oscillation_window_sec must be >= 30")
+	}
+	if cfg.Advisory.ModeOscillationLimit < 2 {
+		return errors.New("advisory.mode_oscillation_limit must be >= 2")
+	}
+	return nil
 }
 
 func overrideString(target *string, env string) {
@@ -260,811 +285,528 @@ func overrideBool(target *bool, env string) {
 
 func overrideInt(target *int, env string) {
 	if v := strings.TrimSpace(os.Getenv(env)); v != "" {
-		if p, err := strconv.Atoi(v); err == nil {
-			*target = p
+		if parsed, err := strconv.Atoi(v); err == nil {
+			*target = parsed
 		}
 	}
 }
 
 func overrideUint64(target *uint64, env string) {
 	if v := strings.TrimSpace(os.Getenv(env)); v != "" {
-		if p, err := strconv.ParseUint(v, 10, 64); err == nil {
-			*target = p
+		if parsed, err := strconv.ParseUint(v, 10, 64); err == nil {
+			*target = parsed
 		}
 	}
 }
 
 func overrideFloat64(target *float64, env string) {
 	if v := strings.TrimSpace(os.Getenv(env)); v != "" {
-		if p, err := strconv.ParseFloat(v, 64); err == nil {
-			*target = p
+		if parsed, err := strconv.ParseFloat(v, 64); err == nil {
+			*target = parsed
 		}
-	}
-}
-
-func validateConfig(cfg Config) error {
-	if cfg.Listen.Network != "tcp" && cfg.Listen.Network != "unix" {
-		return fmt.Errorf("listen.network must be tcp or unix")
-	}
-	if strings.TrimSpace(cfg.Listen.Address) == "" {
-		return fmt.Errorf("listen.address must not be empty")
-	}
-	if cfg.Pressure.MonitorIntervalMs <= 0 {
-		return fmt.Errorf("pressure.monitor_interval_ms must be > 0")
-	}
-	if cfg.Pressure.SampleTimeoutMs <= 0 {
-		return fmt.Errorf("pressure.sample_timeout_ms must be > 0")
-	}
-	if cfg.Worker.AutoStart || cfg.Worker.AutoRecover {
-		if len(cfg.Worker.Command) == 0 {
-			return fmt.Errorf("worker.command must be configured when worker lifecycle is enabled")
-		}
-	}
-	if cfg.Worker.HealthFailureLimit <= 0 {
-		return fmt.Errorf("worker.health_failure_limit must be > 0")
-	}
-	if cfg.Worker.StartupHealthPollMs <= 0 {
-		return fmt.Errorf("worker.startup_health_poll_ms must be > 0")
-	}
-	if cfg.Worker.StopTimeoutMs <= 0 {
-		return fmt.Errorf("worker.stop_timeout_ms must be > 0")
-	}
-	if cfg.Backoff.InitialMs <= 0 || cfg.Backoff.MaxMs <= 0 {
-		return fmt.Errorf("backoff initial/max must be > 0")
-	}
-	if cfg.Backoff.MaxMs < cfg.Backoff.InitialMs {
-		return fmt.Errorf("backoff.max_ms must be >= backoff.initial_ms")
-	}
-	if cfg.Backoff.Multiplier < 1.0 {
-		return fmt.Errorf("backoff.multiplier must be >= 1")
-	}
-	if cfg.ControlTimeoutMs <= 0 {
-		return fmt.Errorf("control_timeout_ms must be > 0")
-	}
-	return nil
-}
-
-func newSupervisor(cfg Config, logger *slog.Logger) *Supervisor {
-	runCtx, runCancel := context.WithCancel(context.Background())
-	return &Supervisor{
-		cfg:    cfg,
-		logger: logger,
-
-		runCtx:    runCtx,
-		runCancel: runCancel,
-
-		samplePressureFn: samplePressure,
-		checkWorkerHealthFn: func(ctx context.Context, url string, timeout time.Duration) error {
-			return checkWorkerHealth(ctx, url, timeout)
-		},
 	}
 }
 
 func samplePressure(ctx context.Context) (PressureSnapshot, error) {
-	vm, err := mem.VirtualMemoryWithContext(ctx)
+	totalTimeout := time.Until(deadlineFromContext(ctx, 900*time.Millisecond))
+	if totalTimeout <= 0 {
+		return PressureSnapshot{}, context.DeadlineExceeded
+	}
+	vmStat, err := mem.VirtualMemoryWithContext(ctx)
 	if err != nil {
 		return PressureSnapshot{}, fmt.Errorf("read memory metrics: %w", err)
 	}
-	cpuVals, err := cpu.PercentWithContext(ctx, 0, false)
+	cpuSamples, err := cpu.PercentWithContext(ctx, 0, false)
 	if err != nil {
 		return PressureSnapshot{}, fmt.Errorf("read cpu metrics: %w", err)
 	}
-	cpuPercent := 0.0
-	if len(cpuVals) > 0 {
-		cpuPercent = cpuVals[0]
+	cpuPct := 0.0
+	if len(cpuSamples) > 0 {
+		cpuPct = cpuSamples[0]
 	}
-
 	return PressureSnapshot{
 		Timestamp:         time.Now().UTC(),
-		CPUPercent:        cpuPercent,
-		MemoryPercent:     vm.UsedPercent,
-		MemoryAvailableMB: vm.Available / 1024 / 1024,
-		MemoryTotalMB:     vm.Total / 1024 / 1024,
+		CPUPercent:        cpuPct,
+		MemoryPercent:     vmStat.UsedPercent,
+		MemoryAvailableMB: vmStat.Available / 1024 / 1024,
+		MemoryTotalMB:     vmStat.Total / 1024 / 1024,
 		Valid:             true,
+		Reason:            fmt.Sprintf("sample_timeout=%s", totalTimeout),
 	}, nil
 }
 
-func checkWorkerHealth(ctx context.Context, url string, timeout time.Duration) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return err
+func deadlineFromContext(ctx context.Context, fallback time.Duration) time.Time {
+	if deadline, ok := ctx.Deadline(); ok {
+		return deadline
 	}
-	client := &http.Client{Timeout: timeout}
-	resp, err := client.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-		return fmt.Errorf("health status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(body)))
-	}
-	return nil
+	return time.Now().Add(fallback)
 }
 
-func (s *Supervisor) start() error {
-	if err := s.refreshPressure(context.Background()); err != nil {
-		s.logger.Warn("initial pressure sample failed", "error", err.Error())
-	}
+func newObserver(cfg Config, logger *slog.Logger) *Observer {
+	return &Observer{cfg: cfg, logger: logger}
+}
+
+func (o *Observer) start() error {
+	o.runCtx, o.runCancel = context.WithCancel(context.Background())
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/v1/health", s.handleHealth)
-	mux.HandleFunc("/v1/metrics", s.handleMetrics)
-	mux.HandleFunc("/v1/gates/heavy-load", s.handleHeavyLoadGate)
-	mux.HandleFunc("/v1/control/start", s.handleStart)
-	mux.HandleFunc("/v1/control/stop", s.handleStop)
-	mux.HandleFunc("/v1/control/restart", s.handleRestart)
-	mux.HandleFunc("/v1/control/status", s.handleStatus)
+	mux.HandleFunc("/healthz", o.handleHealthz)
+	mux.HandleFunc("/metrics", o.handleMetrics)
+	mux.HandleFunc("/v1/health", o.handleHealth)
+	mux.HandleFunc("/v1/observer/state", o.handleObserverState)
+	mux.HandleFunc("/v1/gates/heavy-load", o.handleHeavyLoadGate)
 
-	s.httpServer = &http.Server{
-		Handler:           mux,
-		ReadHeaderTimeout: 5 * time.Second,
-	}
-
-	listener, err := s.createListener()
+	o.httpServer = &http.Server{Handler: mux}
+	ln, err := net.Listen(o.cfg.Listen.Network, o.cfg.Listen.Address)
 	if err != nil {
-		return err
+		return fmt.Errorf("listen %s %s: %w", o.cfg.Listen.Network, o.cfg.Listen.Address, err)
 	}
-	s.listener = listener
+	o.listener = ln
 
-	s.wg.Add(1)
-	go s.monitorLoop()
-
-	s.wg.Add(1)
+	o.wg.Add(1)
 	go func() {
-		defer s.wg.Done()
-		err := s.httpServer.Serve(listener)
+		defer o.wg.Done()
+		err := o.httpServer.Serve(ln)
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {
-			s.serveErr.Store(err)
-			s.logger.Error("http server exited", "error", err.Error())
+			o.logger.Error("http serve failed", "error", err.Error())
 		}
 	}()
 
-	s.logger.Info(
-		"voice sidecar started",
-		"network", s.cfg.Listen.Network,
-		"address", s.cfg.Listen.Address,
+	o.wg.Add(1)
+	go func() {
+		defer o.wg.Done()
+		o.pollLoop()
+	}()
+
+	o.logger.Info("voice sidecar observer started",
+		"listen", o.cfg.Listen.Address,
+		"transport", o.cfg.Python.Transport,
 	)
-
-	if s.cfg.Worker.AutoStart {
-		ctx, cancel := context.WithTimeout(s.runCtx, s.controlTimeout())
-		defer cancel()
-		if err := s.startWorker(ctx, "auto_start"); err != nil {
-			s.logger.Error("worker auto-start failed", "error", err.Error())
-			if s.cfg.Pressure.FailClosed {
-				return err
-			}
-		}
-	}
-
 	return nil
 }
 
-func (s *Supervisor) createListener() (net.Listener, error) {
-	if s.cfg.Listen.Network == "unix" {
-		sockPath := s.cfg.Listen.Address
-		if err := os.RemoveAll(sockPath); err != nil {
-			return nil, fmt.Errorf("remove stale unix socket: %w", err)
-		}
-		if err := os.MkdirAll(filepath.Dir(sockPath), 0o755); err != nil {
-			return nil, fmt.Errorf("create unix socket dir: %w", err)
-		}
-		ln, err := net.Listen("unix", sockPath)
-		if err != nil {
-			return nil, fmt.Errorf("listen unix: %w", err)
-		}
-		if err := os.Chmod(sockPath, 0o660); err != nil {
-			s.logger.Warn("could not chmod unix socket", "path", sockPath, "error", err.Error())
-		}
-		return ln, nil
-	}
-	ln, err := net.Listen("tcp", s.cfg.Listen.Address)
-	if err != nil {
-		return nil, fmt.Errorf("listen tcp: %w", err)
-	}
-	return ln, nil
-}
-
-func (s *Supervisor) stop(ctx context.Context) error {
+func (o *Observer) stop(ctx context.Context) error {
 	var stopErr error
-	s.stopOnce.Do(func() {
-		s.runCancel()
-
-		workerStopCtx, workerStopCancel := context.WithTimeout(context.Background(), time.Duration(s.cfg.Worker.StopTimeoutMs)*time.Millisecond)
-		defer workerStopCancel()
-		if err := s.stopWorker(workerStopCtx, "sidecar_shutdown"); err != nil {
-			s.logger.Warn("worker stop during sidecar shutdown failed", "error", err.Error())
-			stopErr = err
+	o.stopOnce.Do(func() {
+		if o.runCancel != nil {
+			o.runCancel()
 		}
-
-		if s.httpServer != nil {
-			shutdownCtx, shutdownCancel := context.WithTimeout(ctx, 5*time.Second)
-			defer shutdownCancel()
-			if err := s.httpServer.Shutdown(shutdownCtx); err != nil {
-				s.logger.Warn("http server shutdown failed", "error", err.Error())
-				if stopErr == nil {
-					stopErr = err
-				}
+		if o.httpServer != nil {
+			if err := o.httpServer.Shutdown(ctx); err != nil && !errors.Is(err, context.Canceled) {
+				stopErr = err
 			}
 		}
-
-		s.wg.Wait()
-
-		if s.cfg.Listen.Network == "unix" {
-			if err := os.Remove(s.cfg.Listen.Address); err != nil && !os.IsNotExist(err) {
-				s.logger.Warn("failed to remove unix socket", "path", s.cfg.Listen.Address, "error", err.Error())
-			}
-		}
+		o.wg.Wait()
 	})
 	return stopErr
 }
 
-func (s *Supervisor) monitorLoop() {
-	defer s.wg.Done()
-	ticker := time.NewTicker(time.Duration(s.cfg.Pressure.MonitorIntervalMs) * time.Millisecond)
-	defer ticker.Stop()
-
+func (o *Observer) pollLoop() {
+	interval := time.Duration(o.cfg.Poll.IntervalMs) * time.Millisecond
 	for {
 		select {
-		case <-s.runCtx.Done():
+		case <-o.runCtx.Done():
 			return
-		case <-ticker.C:
-			if err := s.refreshPressure(s.runCtx); err != nil {
-				s.logger.Warn("pressure monitor sample failed", "error", err.Error())
+		default:
+		}
+
+		now := time.Now()
+		o.mu.RLock()
+		backoffTil := o.backoffTil
+		o.mu.RUnlock()
+		if backoffTil.After(now) {
+			timer := time.NewTimer(backoffTil.Sub(now))
+			select {
+			case <-o.runCtx.Done():
+				timer.Stop()
+				return
+			case <-timer.C:
 			}
-			s.applyPressurePolicy()
-			s.applyWorkerHealthPolicy()
+		}
+
+		obsErr := o.observeOnce()
+		if obsErr != nil {
+			atomic.AddUint64(&o.metrics.PollErrors, 1)
+			o.applyPollFailure(obsErr)
+		} else {
+			atomic.AddUint64(&o.metrics.PollSuccess, 1)
+			o.resetPollFailure()
+		}
+
+		timer := time.NewTimer(interval)
+		select {
+		case <-o.runCtx.Done():
+			timer.Stop()
+			return
+		case <-timer.C:
 		}
 	}
 }
 
-func (s *Supervisor) refreshPressure(ctx context.Context) error {
-	timeout := time.Duration(s.cfg.Pressure.SampleTimeoutMs) * time.Millisecond
-	sampleCtx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
+func (o *Observer) observeOnce() error {
+	_, err, _ := o.sf.Do("observe", func() (interface{}, error) {
+		ctx, cancel := context.WithTimeout(o.runCtx, time.Duration(o.cfg.Poll.RequestTimeoutMs)*time.Millisecond)
+		defer cancel()
 
-	snap, err := s.samplePressureFn(sampleCtx)
-	if err != nil {
-		snap = PressureSnapshot{
-			Timestamp: time.Now().UTC(),
-			Valid:     false,
-			Reason:    err.Error(),
+		pressure, pressureErr := samplePressure(ctx)
+		if pressureErr != nil {
+			pressure = PressureSnapshot{Timestamp: time.Now().UTC(), Valid: false, Reason: pressureErr.Error()}
 		}
-	}
 
-	s.mu.Lock()
-	s.pressure = snap
-	atomic.AddUint64(&s.metrics.PressureSamples, 1)
-	s.mu.Unlock()
-	return err
-}
-
-func (s *Supervisor) applyPressurePolicy() {
-	allowed, reason := s.currentGateState()
-	if allowed {
-		return
-	}
-	if !s.cfg.Worker.StopOnPressure {
-		return
-	}
-
-	s.mu.RLock()
-	running := s.workerCmd != nil
-	s.mu.RUnlock()
-	if !running {
-		return
-	}
-
-	s.logger.Warn("pressure gate closed; stopping worker", "reason", reason)
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(s.cfg.Worker.StopTimeoutMs)*time.Millisecond)
-	defer cancel()
-	if err := s.stopWorker(ctx, "pressure_policy"); err != nil {
-		s.logger.Warn("worker stop on pressure failed", "error", err.Error())
-	}
-}
-
-func (s *Supervisor) applyWorkerHealthPolicy() {
-	if strings.TrimSpace(s.cfg.Worker.HealthURL) == "" {
-		return
-	}
-
-	s.mu.RLock()
-	running := s.workerCmd != nil
-	s.mu.RUnlock()
-	if !running {
-		return
-	}
-
-	timeout := time.Duration(s.cfg.Worker.HealthTimeoutMs) * time.Millisecond
-	err := s.checkWorkerHealthFn(s.runCtx, s.cfg.Worker.HealthURL, timeout)
-
-	s.mu.Lock()
-	s.lastHealthCheckAt = time.Now().UTC()
-	if err == nil {
-		s.healthFailureCount = 0
-		s.workerHealthCheckPass = true
-		s.mu.Unlock()
-		return
-	}
-	
-	s.healthFailureCount++
-	currentFailures := s.healthFailureCount
-	s.workerHealthCheckPass = false
-	s.workerLastError = fmt.Sprintf("health check failed: %v", err)
-	s.mu.Unlock()
-
-	s.logger.Warn("worker health check failed",
-		"failures", currentFailures,
-		"limit", s.cfg.Worker.HealthFailureLimit,
-		"error", err.Error(),
-	)
-	if currentFailures < s.cfg.Worker.HealthFailureLimit {
-		return
-	}
-
-	s.mu.Lock()
-	s.healthFailureCount = 0
-	s.mu.Unlock()
-
-	ctx, cancel := context.WithTimeout(context.Background(), s.controlTimeout())
-	defer cancel()
-	if err := s.restartWorker(ctx, "health_policy"); err != nil {
-		s.logger.Warn("worker restart on health policy failed", "error", err.Error())
-	}
-}
-
-func (s *Supervisor) controlTimeout() time.Duration {
-	return time.Duration(s.cfg.ControlTimeoutMs) * time.Millisecond
-}
-
-func (s *Supervisor) currentGateState() (bool, string) {
-	s.mu.RLock()
-	snap := s.pressure
-	s.mu.RUnlock()
-	return s.evaluateGate(snap)
-}
-
-func (s *Supervisor) evaluateGate(snap PressureSnapshot) (bool, string) {
-	if !snap.Valid {
-		if s.cfg.Pressure.FailClosed {
-			if snap.Reason == "" {
-				return false, "pressure metrics unavailable"
-			}
-			return false, fmt.Sprintf("pressure metrics unavailable: %s", snap.Reason)
+		status, fetchErr := o.fetchPythonStatus(ctx)
+		if fetchErr != nil {
+			o.updateObservedState(ObservedState{
+				Timestamp:       time.Now().UTC(),
+				PythonReachable: false,
+				DesiredMode:     "unknown",
+				EffectiveMode:   "unknown",
+				MemoryTier:      "unknown",
+				RecoveryState:   "idle",
+				Pressure:        pressure,
+				Advisories:      o.computeAdvisories("unknown", "unknown", "idle", pressure),
+			})
+			return nil, fetchErr
 		}
-		return true, ""
-	}
 
-	if snap.MemoryAvailableMB < s.cfg.Pressure.MinAvailableMemoryMB {
-		return false, fmt.Sprintf("available memory %dMB below minimum %dMB", snap.MemoryAvailableMB, s.cfg.Pressure.MinAvailableMemoryMB)
-	}
-	if snap.MemoryPercent > s.cfg.Pressure.MaxMemoryPercent {
-		return false, fmt.Sprintf("memory pressure %.1f%% above max %.1f%%", snap.MemoryPercent, s.cfg.Pressure.MaxMemoryPercent)
-	}
-	if snap.CPUPercent > s.cfg.Pressure.MaxCPUPercent {
-		return false, fmt.Sprintf("cpu pressure %.1f%% above max %.1f%%", snap.CPUPercent, s.cfg.Pressure.MaxCPUPercent)
-	}
-	return true, ""
-}
-
-func (s *Supervisor) startWorker(ctx context.Context, reason string) error {
-	_, err, _ := s.sf.Do("worker:start", func() (interface{}, error) {
-		return nil, s.startWorkerInternal(ctx, reason)
+		desired, effective, memTier, recovery, localCircuit := extractSignals(status, pressure)
+		state := ObservedState{
+			Timestamp:         time.Now().UTC(),
+			PythonReachable:   true,
+			DesiredMode:       desired,
+			EffectiveMode:     effective,
+			MemoryTier:        memTier,
+			RecoveryState:     recovery,
+			LocalCircuitState: localCircuit,
+			Pressure:          pressure,
+			RawStatus:         status,
+		}
+		state.Advisories = o.computeAdvisories(desired, effective, recovery, pressure)
+		o.updateObservedState(state)
+		return nil, nil
 	})
 	return err
 }
 
-func (s *Supervisor) startWorkerInternal(ctx context.Context, reason string) error {
-	s.mu.Lock()
-	if s.workerCmd != nil {
-		s.mu.Unlock()
-		return nil
+func (o *Observer) fetchPythonStatus(ctx context.Context) (map[string]any, error) {
+	if strings.EqualFold(o.cfg.Python.Transport, "unix") {
+		return fetchStatusViaUnix(ctx, o.cfg.Python.UnixSocketPath)
 	}
-	if len(s.cfg.Worker.Command) == 0 {
-		s.mu.Unlock()
-		return fmt.Errorf("worker command is empty")
-	}
-	if !s.workerBackoffUntil.IsZero() && time.Now().Before(s.workerBackoffUntil) {
-		until := s.workerBackoffUntil
-		s.mu.Unlock()
-		return fmt.Errorf("worker in backoff until %s", until.Format(time.RFC3339Nano))
-	}
-	s.mu.Unlock()
-
-	allowed, gateReason := s.currentGateState()
-	if !allowed {
-		s.mu.Lock()
-		s.workerLastError = gateReason
-		s.mu.Unlock()
-		return fmt.Errorf("worker start blocked by pressure gate: %s", gateReason)
-	}
-
-	cmd := exec.CommandContext(s.runCtx, s.cfg.Worker.Command[0], s.cfg.Worker.Command[1:]...)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if strings.TrimSpace(s.cfg.Worker.WorkingDir) != "" {
-		cmd.Dir = s.cfg.Worker.WorkingDir
-	}
-	if len(s.cfg.Worker.Env) > 0 {
-		env := os.Environ()
-		for k, v := range s.cfg.Worker.Env {
-			env = append(env, fmt.Sprintf("%s=%s", k, v))
-		}
-		cmd.Env = env
-	}
-
-	if err := cmd.Start(); err != nil {
-		s.mu.Lock()
-		s.workerLastError = err.Error()
-		s.mu.Unlock()
-		return err
-	}
-
-	s.mu.Lock()
-	s.workerCmd = cmd
-	s.workerPID = cmd.Process.Pid
-	s.workerStartedAt = time.Now().UTC()
-	s.workerStopRequested = false
-	s.workerLastError = ""
-	s.workerBackoffUntil = time.Time{}
-	s.healthFailureCount = 0
-	atomic.AddUint64(&s.metrics.StartRequests, 1)
-	pid := s.workerPID
-	s.mu.Unlock()
-
-	s.logger.Info("worker started", "pid", pid, "reason", reason, "command", strings.Join(s.cfg.Worker.Command, " "))
-
-	s.wg.Add(1)
-	go s.waitWorker(cmd)
-
-	if strings.TrimSpace(s.cfg.Worker.HealthURL) != "" && s.cfg.Worker.StartupHealthWaitMs > 0 {
-		if err := s.waitForWorkerHealth(ctx); err != nil {
-			s.logger.Warn("worker failed startup health checks", "error", err.Error())
-			stopCtx, cancel := context.WithTimeout(context.Background(), time.Duration(s.cfg.Worker.StopTimeoutMs)*time.Millisecond)
-			defer cancel()
-			_ = s.stopWorker(stopCtx, "startup_health_failed")
-			return fmt.Errorf("startup health check failed: %w", err)
-		}
-	}
-
-	return nil
+	return fetchStatusViaHTTP(ctx, o.cfg.Python.StatusURL)
 }
 
-func (s *Supervisor) waitForWorkerHealth(ctx context.Context) error {
-	deadline := time.Now().Add(time.Duration(s.cfg.Worker.StartupHealthWaitMs) * time.Millisecond)
-	poll := time.Duration(s.cfg.Worker.StartupHealthPollMs) * time.Millisecond
-	if poll <= 0 {
-		poll = 250 * time.Millisecond
-	}
-
-	for {
-		if time.Now().After(deadline) {
-			return fmt.Errorf("startup health timeout (%dms)", s.cfg.Worker.StartupHealthWaitMs)
-		}
-		if err := s.checkWorkerHealthFn(ctx, s.cfg.Worker.HealthURL, time.Duration(s.cfg.Worker.HealthTimeoutMs)*time.Millisecond); err == nil {
-			return nil
-		}
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-s.runCtx.Done():
-			return context.Canceled
-		case <-time.After(poll):
-		}
-	}
-}
-
-func (s *Supervisor) waitWorker(cmd *exec.Cmd) {
-	defer s.wg.Done()
-	err := cmd.Wait()
-
-	s.mu.Lock()
-	if s.workerCmd != cmd {
-		s.mu.Unlock()
-		return
-	}
-
-	expectedStop := s.workerStopRequested
-	exitText := "exited"
+func fetchStatusViaHTTP(ctx context.Context, url string) (map[string]any, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		exitText = err.Error()
+		return nil, err
 	}
-	s.workerLastExit = exitText
-	s.workerCmd = nil
-	s.workerPID = 0
-	s.workerStartedAt = time.Time{}
-	s.workerStopRequested = false
-	shouldRecover := !expectedStop && s.cfg.Worker.AutoRecover
-	if !expectedStop {
-		atomic.AddUint64(&s.metrics.CrashCount, 1)
-		s.workerRestartCount++
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
 	}
-	delay := s.nextBackoffDelayLocked()
-	if shouldRecover {
-		s.workerBackoffUntil = time.Now().Add(delay)
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		return nil, fmt.Errorf("status url %s -> %d: %s", url, resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	var payload map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		return nil, err
+	}
+	if wrapped, ok := payload["result"].(map[string]any); ok {
+		return wrapped, nil
+	}
+	return payload, nil
+}
+
+func fetchStatusViaUnix(ctx context.Context, socketPath string) (map[string]any, error) {
+	dialer := net.Dialer{Timeout: 800 * time.Millisecond}
+	conn, err := dialer.DialContext(ctx, "unix", socketPath)
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Close()
+	_ = conn.SetDeadline(deadlineFromContext(ctx, 800*time.Millisecond))
+
+	req := map[string]any{"command": "status", "args": map[string]any{}}
+	buf, _ := json.Marshal(req)
+	if _, err := conn.Write(append(buf, '\n')); err != nil {
+		return nil, err
+	}
+
+	line, err := bufio.NewReader(conn).ReadBytes('\n')
+	if err != nil {
+		return nil, err
+	}
+
+	var envelope map[string]any
+	if err := json.Unmarshal(line, &envelope); err != nil {
+		return nil, err
+	}
+	if success, _ := envelope["success"].(bool); !success {
+		return nil, fmt.Errorf("ipc status failed: %v", envelope["error"])
+	}
+	result, ok := envelope["result"].(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("ipc status missing result")
+	}
+	return result, nil
+}
+
+func extractSignals(status map[string]any, pressure PressureSnapshot) (string, string, string, string, string) {
+	startup := mapGet(status, "startup_modes")
+	desired := stringOrDefault(startup["desired_mode"], "unknown")
+	effective := stringOrDefault(startup["effective_mode"], "unknown")
+
+	pressureSignal := mapGet(status, "memory_pressure_signal")
+	memoryTier := stringOrDefault(pressureSignal["status"], "unknown")
+	if memoryTier == "unknown" {
+		memoryTier = deriveMemoryTier(pressure.MemoryPercent)
+	}
+	recoveryState := stringOrDefault(pressureSignal["recovery_state"], "idle")
+	localCircuit := stringOrDefault(pressureSignal["local_circuit_state"], "unknown")
+	return desired, effective, memoryTier, recoveryState, localCircuit
+}
+
+func mapGet(container map[string]any, key string) map[string]any {
+	if container == nil {
+		return map[string]any{}
+	}
+	v, ok := container[key].(map[string]any)
+	if !ok {
+		return map[string]any{}
+	}
+	return v
+}
+
+func stringOrDefault(v any, fallback string) string {
+	s, ok := v.(string)
+	if !ok || strings.TrimSpace(s) == "" {
+		return fallback
+	}
+	return s
+}
+
+func deriveMemoryTier(memoryPercent float64) string {
+	switch {
+	case memoryPercent >= 90:
+		return "critical"
+	case memoryPercent >= 75:
+		return "elevated"
+	default:
+		return "normal"
+	}
+}
+
+func (o *Observer) computeAdvisories(desired, effective, recovery string, pressure PressureSnapshot) []AdvisorySignal {
+	now := time.Now().UTC()
+	advisories := make([]AdvisorySignal, 0, 2)
+
+	o.mu.Lock()
+	if o.lastEffectiveMode != "" && effective != "" && effective != "unknown" && effective != o.lastEffectiveMode {
+		o.modeChangeTimestamps = append(o.modeChangeTimestamps, now)
+	}
+	if effective != "" && effective != "unknown" {
+		o.lastEffectiveMode = effective
+	}
+	windowCutoff := now.Add(-time.Duration(o.cfg.Advisory.ModeOscillationWindowSec) * time.Second)
+	trimmed := make([]time.Time, 0, len(o.modeChangeTimestamps))
+	for _, ts := range o.modeChangeTimestamps {
+		if ts.After(windowCutoff) {
+			trimmed = append(trimmed, ts)
+		}
+	}
+	o.modeChangeTimestamps = trimmed
+	oscillationRisk := len(trimmed) >= o.cfg.Advisory.ModeOscillationLimit
+
+	recoveryActive := recovery == "reloading" || recovery == "armed" || recovery == "cooldown"
+	if recoveryActive {
+		if o.recoveryActiveSince.IsZero() {
+			o.recoveryActiveSince = now
+			o.recoveryStuckTriggered = false
+		}
 	} else {
-		s.workerBackoffUntil = time.Time{}
-		s.backoffExp = 0
+		o.recoveryActiveSince = time.Time{}
+		o.recoveryStuckTriggered = false
 	}
-	s.mu.Unlock()
-
-	s.logger.Warn("worker exited", "expected", expectedStop, "error", errString(err), "next_backoff_ms", delay.Milliseconds())
-
-	if shouldRecover {
-		atomic.AddUint64(&s.metrics.CrashRecoveries, 1)
-		go s.recoverAfter(delay, "crash_recovery")
-	}
-}
-
-func (s *Supervisor) nextBackoffDelayLocked() time.Duration {
-	initial := float64(s.cfg.Backoff.InitialMs)
-	maxDelay := float64(s.cfg.Backoff.MaxMs)
-	exp := math.Pow(s.cfg.Backoff.Multiplier, float64(s.backoffExp))
-	delayMs := initial * exp
-	if delayMs > maxDelay {
-		delayMs = maxDelay
-	}
-	s.backoffExp++
-	return time.Duration(delayMs) * time.Millisecond
-}
-
-func (s *Supervisor) recoverAfter(delay time.Duration, reason string) {
-	select {
-	case <-s.runCtx.Done():
-		return
-	case <-time.After(delay):
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), s.controlTimeout())
-	defer cancel()
-	if err := s.startWorker(ctx, reason); err != nil {
-		s.logger.Warn("worker recovery start failed", "error", err.Error())
-	}
-}
-
-func (s *Supervisor) stopWorker(ctx context.Context, reason string) error {
-	_, err, _ := s.sf.Do("worker:stop", func() (interface{}, error) {
-		return nil, s.stopWorkerInternal(ctx, reason)
-	})
-	return err
-}
-
-func (s *Supervisor) stopWorkerInternal(ctx context.Context, reason string) error {
-	s.mu.Lock()
-	cmd := s.workerCmd
-	if cmd == nil {
-		s.mu.Unlock()
-		return nil
-	}
-	s.workerStopRequested = true
-	atomic.AddUint64(&s.metrics.StopRequests, 1)
-	s.mu.Unlock()
-
-	s.logger.Info("stopping worker", "pid", cmd.Process.Pid, "reason", reason)
-	_ = terminateProcess(cmd.Process)
-
-	ticker := time.NewTicker(100 * time.Millisecond)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			_ = cmd.Process.Kill()
-			return fmt.Errorf("worker stop timeout: %w", ctx.Err())
-		case <-ticker.C:
-			s.mu.RLock()
-			stillRunning := s.workerCmd == cmd
-			s.mu.RUnlock()
-			if !stillRunning {
-				return nil
-			}
+	recoveryStuck := false
+	if !o.recoveryActiveSince.IsZero() {
+		elapsed := now.Sub(o.recoveryActiveSince)
+		if elapsed >= time.Duration(o.cfg.Advisory.RecoveryStuckSeconds)*time.Second {
+			recoveryStuck = true
 		}
 	}
+	o.mu.Unlock()
+
+	if recoveryStuck {
+		advisories = append(advisories, AdvisorySignal{
+			Code:      "recovery_stuck",
+			Severity:  "warning",
+			Message:   "Recovery state has remained active beyond advisory threshold",
+			Triggered: now,
+		})
+	}
+	if oscillationRisk {
+		advisories = append(advisories, AdvisorySignal{
+			Code:      "mode_oscillation_risk",
+			Severity:  "warning",
+			Message:   fmt.Sprintf("Effective mode changed too frequently (desired=%s effective=%s)", desired, effective),
+			Triggered: now,
+		})
+	}
+	if !pressure.Valid && o.cfg.Pressure.FailClosed {
+		advisories = append(advisories, AdvisorySignal{
+			Code:      "pressure_metrics_unavailable",
+			Severity:  "critical",
+			Message:   "Pressure metrics unavailable under fail-closed policy",
+			Triggered: now,
+		})
+	}
+	return advisories
 }
 
-func terminateProcess(proc *os.Process) error {
-	if proc == nil {
-		return nil
-	}
-	if runtime.GOOS == "windows" {
-		return proc.Kill()
-	}
-	if err := proc.Signal(syscall.SIGTERM); err != nil {
-		return proc.Kill()
-	}
-	return nil
+func (o *Observer) updateObservedState(state ObservedState) {
+	o.mu.Lock()
+	o.state = state
+	o.mu.Unlock()
 }
 
-func (s *Supervisor) restartWorker(ctx context.Context, reason string) error {
-	_, err, _ := s.sf.Do("worker:restart", func() (interface{}, error) {
-		atomic.AddUint64(&s.metrics.RestartRequests, 1)
-		stopCtx, cancelStop := context.WithTimeout(ctx, time.Duration(s.cfg.Worker.StopTimeoutMs)*time.Millisecond)
-		defer cancelStop()
-		_ = s.stopWorkerInternal(stopCtx, "restart")
-		return nil, s.startWorkerInternal(ctx, reason)
-	})
-	return err
+func (o *Observer) applyPollFailure(err error) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	o.failures++
+	delayMs := float64(o.cfg.Backoff.InitialMs) * math.Pow(o.cfg.Backoff.Multiplier, float64(max(0, o.failures-1)))
+	delayMs = math.Min(delayMs, float64(o.cfg.Backoff.MaxMs))
+	o.backoffTil = time.Now().Add(time.Duration(delayMs) * time.Millisecond)
+	o.logger.Warn("python observation failed",
+		"error", err.Error(),
+		"failure_count", o.failures,
+		"backoff_ms", int(delayMs),
+	)
 }
 
-func errString(err error) string {
-	if err == nil {
-		return ""
-	}
-	return err.Error()
+func (o *Observer) resetPollFailure() {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	o.failures = 0
+	o.backoffTil = time.Time{}
 }
 
-func (s *Supervisor) snapshotForResponse() (PressureSnapshot, WorkerStatus, bool, string) {
-	s.mu.RLock()
-	snap := s.pressure
-	status := WorkerStatus{
-		State:             s.workerStateLocked(),
-		PID:               s.workerPID,
-		StartedAt:         s.workerStartedAt,
-		RestartCount:      s.workerRestartCount,
-		LastExit:          s.workerLastExit,
-		LastError:         s.workerLastError,
-		BackoffUntil:      s.workerBackoffUntil,
-		HealthFailures:    s.healthFailureCount,
-		LastHealthCheckAt: s.lastHealthCheckAt,
-	}
-	s.mu.RUnlock()
-	allow, reason := s.evaluateGate(snap)
-	return snap, status, allow, reason
+func (o *Observer) snapshot() ObservedState {
+	o.mu.RLock()
+	defer o.mu.RUnlock()
+	return o.state
 }
 
-func (s *Supervisor) workerStateLocked() string {
-	if s.workerCmd != nil {
-		return "running"
+func (o *Observer) evaluateHeavyLoadGate(state ObservedState) (bool, string) {
+	snap := state.Pressure
+	if !snap.Valid {
+		if o.cfg.Pressure.FailClosed {
+			return false, firstNonEmpty(snap.Reason, "pressure metrics unavailable")
+		}
+		return true, "pressure metrics unavailable (fail-open)"
 	}
-	if !s.workerBackoffUntil.IsZero() && time.Now().Before(s.workerBackoffUntil) {
-		return "backoff"
+	if snap.MemoryAvailableMB < o.cfg.Pressure.MinAvailableMemoryMB {
+		return false, fmt.Sprintf("memory available %dMB < %dMB", snap.MemoryAvailableMB, o.cfg.Pressure.MinAvailableMemoryMB)
 	}
-	return "stopped"
+	if snap.MemoryPercent > o.cfg.Pressure.MaxMemoryPercent {
+		return false, fmt.Sprintf("memory percent %.1f > %.1f", snap.MemoryPercent, o.cfg.Pressure.MaxMemoryPercent)
+	}
+	if snap.CPUPercent > o.cfg.Pressure.MaxCPUPercent {
+		return false, fmt.Sprintf("cpu percent %.1f > %.1f", snap.CPUPercent, o.cfg.Pressure.MaxCPUPercent)
+	}
+	return true, "within pressure limits"
 }
 
-func (s *Supervisor) handleHealth(w http.ResponseWriter, _ *http.Request) {
-	snap, worker, allow, reason := s.snapshotForResponse()
+func (o *Observer) handleHealthz(w http.ResponseWriter, _ *http.Request) {
+	state := o.snapshot()
 	status := "ok"
-	if !allow {
+	if !state.PythonReachable {
 		status = "degraded"
 	}
-
-	payload := map[string]interface{}{
-		"status": status,
-		"time":   time.Now().UTC().Format(time.RFC3339Nano),
-		"gate": map[string]interface{}{
-			"heavy_load_allowed": allow,
-			"reason":             reason,
-		},
-		"pressure": snap,
-		"worker":   worker,
-		"listen": map[string]string{
-			"network": s.cfg.Listen.Network,
-			"address": s.cfg.Listen.Address,
-		},
-	}
-	writeJSON(w, http.StatusOK, payload)
+	writeJSON(w, http.StatusOK, map[string]any{
+		"status":           status,
+		"python_reachable": state.PythonReachable,
+		"timestamp":        time.Now().UTC(),
+	})
 }
 
-func (s *Supervisor) handleStatus(w http.ResponseWriter, _ *http.Request) {
-	snap, worker, allow, reason := s.snapshotForResponse()
-	payload := map[string]interface{}{
-		"gate": map[string]interface{}{
-			"heavy_load_allowed": allow,
-			"reason":             reason,
-		},
-		"pressure": snap,
-		"worker":   worker,
-	}
-	writeJSON(w, http.StatusOK, payload)
+func (o *Observer) handleHealth(w http.ResponseWriter, _ *http.Request) {
+	state := o.snapshot()
+	allowed, reason := o.evaluateHeavyLoadGate(state)
+	writeJSON(w, http.StatusOK, map[string]any{
+		"status":            "ok",
+		"python_reachable":  state.PythonReachable,
+		"desired_mode":      state.DesiredMode,
+		"effective_mode":    state.EffectiveMode,
+		"memory_tier":       state.MemoryTier,
+		"recovery_state":    state.RecoveryState,
+		"local_circuit":     state.LocalCircuitState,
+		"heavy_load_allowed": allowed,
+		"heavy_load_reason":  reason,
+		"advisories":         state.Advisories,
+		"timestamp":          state.Timestamp,
+	})
 }
 
-func (s *Supervisor) handleHeavyLoadGate(w http.ResponseWriter, _ *http.Request) {
-	snap, _, allow, reason := s.snapshotForResponse()
-	payload := map[string]interface{}{
-		"allowed": allow,
+func (o *Observer) handleObserverState(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, o.snapshot())
+}
+
+func (o *Observer) handleHeavyLoadGate(w http.ResponseWriter, _ *http.Request) {
+	state := o.snapshot()
+	allowed, reason := o.evaluateHeavyLoadGate(state)
+	statusCode := http.StatusOK
+	if !allowed {
+		statusCode = http.StatusTooManyRequests
+	}
+	writeJSON(w, statusCode, map[string]any{
+		"allowed": allowed,
 		"reason":  reason,
-		"pressure": snap,
-	}
-	status := http.StatusOK
-	if !allow {
-		status = http.StatusTooManyRequests
-	}
-	writeJSON(w, status, payload)
+		"pressure": state.Pressure,
+	})
 }
 
-func (s *Supervisor) handleStart(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
-		return
+func (o *Observer) handleMetrics(w http.ResponseWriter, _ *http.Request) {
+	state := o.snapshot()
+	allowed, _ := o.evaluateHeavyLoadGate(state)
+	pollErrors := atomic.LoadUint64(&o.metrics.PollErrors)
+	pollSuccess := atomic.LoadUint64(&o.metrics.PollSuccess)
+
+	buf := &strings.Builder{}
+	fmt.Fprintf(buf, "# TYPE jarvis_voice_sidecar_python_reachable gauge\n")
+	fmt.Fprintf(buf, "jarvis_voice_sidecar_python_reachable %d\n", boolToInt(state.PythonReachable))
+	fmt.Fprintf(buf, "# TYPE jarvis_voice_sidecar_heavy_load_allowed gauge\n")
+	fmt.Fprintf(buf, "jarvis_voice_sidecar_heavy_load_allowed %d\n", boolToInt(allowed))
+	fmt.Fprintf(buf, "# TYPE jarvis_voice_sidecar_pressure_memory_percent gauge\n")
+	fmt.Fprintf(buf, "jarvis_voice_sidecar_pressure_memory_percent %.4f\n", state.Pressure.MemoryPercent)
+	fmt.Fprintf(buf, "# TYPE jarvis_voice_sidecar_pressure_cpu_percent gauge\n")
+	fmt.Fprintf(buf, "jarvis_voice_sidecar_pressure_cpu_percent %.4f\n", state.Pressure.CPUPercent)
+	fmt.Fprintf(buf, "# TYPE jarvis_voice_sidecar_pressure_memory_available_mb gauge\n")
+	fmt.Fprintf(buf, "jarvis_voice_sidecar_pressure_memory_available_mb %d\n", state.Pressure.MemoryAvailableMB)
+	fmt.Fprintf(buf, "# TYPE jarvis_voice_sidecar_poll_errors_total counter\n")
+	fmt.Fprintf(buf, "jarvis_voice_sidecar_poll_errors_total %d\n", pollErrors)
+	fmt.Fprintf(buf, "# TYPE jarvis_voice_sidecar_poll_success_total counter\n")
+	fmt.Fprintf(buf, "jarvis_voice_sidecar_poll_success_total %d\n", pollSuccess)
+	fmt.Fprintf(buf, "# TYPE jarvis_voice_sidecar_mode_info gauge\n")
+	fmt.Fprintf(buf, "jarvis_voice_sidecar_mode_info{desired=\"%s\",effective=\"%s\"} 1\n",
+		escapeLabelValue(state.DesiredMode),
+		escapeLabelValue(state.EffectiveMode),
+	)
+	fmt.Fprintf(buf, "# TYPE jarvis_voice_sidecar_recovery_state_info gauge\n")
+	fmt.Fprintf(buf, "jarvis_voice_sidecar_recovery_state_info{state=\"%s\",local_circuit=\"%s\"} 1\n",
+		escapeLabelValue(state.RecoveryState),
+		escapeLabelValue(state.LocalCircuitState),
+	)
+	for _, advisory := range state.Advisories {
+		fmt.Fprintf(buf,
+			"jarvis_voice_sidecar_advisory_active{code=\"%s\",severity=\"%s\"} 1\n",
+			escapeLabelValue(advisory.Code),
+			escapeLabelValue(advisory.Severity),
+		)
 	}
-	req := parseControlRequest(r)
-	ctx, cancel := context.WithTimeout(r.Context(), s.controlTimeout())
-	defer cancel()
-	if err := s.startWorker(ctx, firstNonEmpty(req.Reason, "api_start")); err != nil {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": err.Error()})
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]string{"status": "started"})
-}
-
-func (s *Supervisor) handleStop(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
-		return
-	}
-	req := parseControlRequest(r)
-	ctx, cancel := context.WithTimeout(r.Context(), s.controlTimeout())
-	defer cancel()
-	if err := s.stopWorker(ctx, firstNonEmpty(req.Reason, "api_stop")); err != nil {
-		writeJSON(w, http.StatusGatewayTimeout, map[string]string{"error": err.Error()})
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]string{"status": "stopped"})
-}
-
-func (s *Supervisor) handleRestart(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
-		return
-	}
-	req := parseControlRequest(r)
-	ctx, cancel := context.WithTimeout(r.Context(), s.controlTimeout())
-	defer cancel()
-	if err := s.restartWorker(ctx, firstNonEmpty(req.Reason, "api_restart")); err != nil {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": err.Error()})
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]string{"status": "restarted"})
-}
-
-func (s *Supervisor) handleMetrics(w http.ResponseWriter, _ *http.Request) {
-	snap, worker, allow, _ := s.snapshotForResponse()
-
-	buf := bytes.NewBuffer(nil)
-	fmt.Fprintf(buf, "# HELP jarvis_voice_sidecar_gate_open Whether heavy-load gate is open (1=true).\n")
-	fmt.Fprintf(buf, "# TYPE jarvis_voice_sidecar_gate_open gauge\n")
-	fmt.Fprintf(buf, "jarvis_voice_sidecar_gate_open %d\n", boolToInt(allow))
-
-	fmt.Fprintf(buf, "# HELP jarvis_voice_sidecar_worker_running Whether worker is running (1=true).\n")
-	fmt.Fprintf(buf, "# TYPE jarvis_voice_sidecar_worker_running gauge\n")
-	fmt.Fprintf(buf, "jarvis_voice_sidecar_worker_running %d\n", boolToInt(worker.State == "running"))
-
-	fmt.Fprintf(buf, "# HELP jarvis_voice_sidecar_cpu_percent Latest CPU percent.\n")
-	fmt.Fprintf(buf, "# TYPE jarvis_voice_sidecar_cpu_percent gauge\n")
-	fmt.Fprintf(buf, "jarvis_voice_sidecar_cpu_percent %.4f\n", snap.CPUPercent)
-
-	fmt.Fprintf(buf, "# HELP jarvis_voice_sidecar_memory_percent Latest memory percent.\n")
-	fmt.Fprintf(buf, "# TYPE jarvis_voice_sidecar_memory_percent gauge\n")
-	fmt.Fprintf(buf, "jarvis_voice_sidecar_memory_percent %.4f\n", snap.MemoryPercent)
-
-	fmt.Fprintf(buf, "# HELP jarvis_voice_sidecar_memory_available_mb Latest available memory in MB.\n")
-	fmt.Fprintf(buf, "# TYPE jarvis_voice_sidecar_memory_available_mb gauge\n")
-	fmt.Fprintf(buf, "jarvis_voice_sidecar_memory_available_mb %d\n", snap.MemoryAvailableMB)
-
-	startRequests := atomic.LoadUint64(&s.metrics.StartRequests)
-	stopRequests := atomic.LoadUint64(&s.metrics.StopRequests)
-	restartRequests := atomic.LoadUint64(&s.metrics.RestartRequests)
-	crashRecoveries := atomic.LoadUint64(&s.metrics.CrashRecoveries)
-	crashes := atomic.LoadUint64(&s.metrics.CrashCount)
-	pressureSamples := atomic.LoadUint64(&s.metrics.PressureSamples)
-
-	fmt.Fprintf(buf, "# TYPE jarvis_voice_sidecar_start_requests_total counter\n")
-	fmt.Fprintf(buf, "jarvis_voice_sidecar_start_requests_total %d\n", startRequests)
-	fmt.Fprintf(buf, "# TYPE jarvis_voice_sidecar_stop_requests_total counter\n")
-	fmt.Fprintf(buf, "jarvis_voice_sidecar_stop_requests_total %d\n", stopRequests)
-	fmt.Fprintf(buf, "# TYPE jarvis_voice_sidecar_restart_requests_total counter\n")
-	fmt.Fprintf(buf, "jarvis_voice_sidecar_restart_requests_total %d\n", restartRequests)
-	fmt.Fprintf(buf, "# TYPE jarvis_voice_sidecar_crash_recoveries_total counter\n")
-	fmt.Fprintf(buf, "jarvis_voice_sidecar_crash_recoveries_total %d\n", crashRecoveries)
-	fmt.Fprintf(buf, "# TYPE jarvis_voice_sidecar_crash_total counter\n")
-	fmt.Fprintf(buf, "jarvis_voice_sidecar_crash_total %d\n", crashes)
-	fmt.Fprintf(buf, "# TYPE jarvis_voice_sidecar_pressure_samples_total counter\n")
-	fmt.Fprintf(buf, "jarvis_voice_sidecar_pressure_samples_total %d\n", pressureSamples)
 
 	w.Header().Set("Content-Type", "text/plain; version=0.0.4")
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(buf.Bytes())
+	_, _ = w.Write([]byte(buf.String()))
 }
 
 func boolToInt(v bool) int {
@@ -1074,52 +816,48 @@ func boolToInt(v bool) int {
 	return 0
 }
 
-func firstNonEmpty(values ...string) string {
-	for _, v := range values {
-		if strings.TrimSpace(v) != "" {
-			return strings.TrimSpace(v)
-		}
+func firstNonEmpty(v, fallback string) string {
+	if strings.TrimSpace(v) == "" {
+		return fallback
 	}
-	return ""
+	return v
 }
 
-func parseControlRequest(r *http.Request) ControlRequest {
-	if r.Body == nil {
-		return ControlRequest{}
-	}
-	defer r.Body.Close()
-	buf, err := io.ReadAll(io.LimitReader(r.Body, 2048))
-	if err != nil || len(bytes.TrimSpace(buf)) == 0 {
-		return ControlRequest{}
-	}
-	var req ControlRequest
-	if err := json.Unmarshal(buf, &req); err != nil {
-		return ControlRequest{}
-	}
-	return req
+func escapeLabelValue(v string) string {
+	r := strings.ReplaceAll(v, "\\", "\\\\")
+	r = strings.ReplaceAll(r, "\"", "\\\"")
+	r = strings.ReplaceAll(r, "\n", "\\n")
+	return r
 }
 
-func writeJSON(w http.ResponseWriter, status int, payload interface{}) {
+func writeJSON(w http.ResponseWriter, statusCode int, payload any) {
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
+	w.WriteHeader(statusCode)
 	_ = json.NewEncoder(w).Encode(payload)
 }
 
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}
+
 func main() {
-	configPath := flag.String("config", "", "Path to sidecar config (yaml/json)")
+	var configPath string
+	flag.StringVar(&configPath, "config", "", "Path to sidecar YAML config")
 	flag.Parse()
 
-	cfg, err := loadConfig(*configPath)
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	cfg, err := loadConfig(configPath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "invalid config: %v\n", err)
+		logger.Error("invalid configuration", "error", err.Error())
 		os.Exit(2)
 	}
 
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
-	sidecar := newSupervisor(cfg, logger)
-
-	if err := sidecar.start(); err != nil {
-		logger.Error("failed to start sidecar", "error", err.Error())
+	obs := newObserver(cfg, logger)
+	if err := obs.start(); err != nil {
+		logger.Error("failed to start observer", "error", err.Error())
 		os.Exit(1)
 	}
 
@@ -1127,9 +865,11 @@ func main() {
 	defer stop()
 	<-signalCtx.Done()
 
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	if err := sidecar.stop(shutdownCtx); err != nil {
-		logger.Warn("sidecar shutdown completed with errors", "error", err.Error())
+	if err := obs.stop(shutdownCtx); err != nil {
+		logger.Error("observer shutdown error", "error", err.Error())
 	}
+
+	logger.Info("voice sidecar observer stopped", "go_version", runtime.Version())
 }

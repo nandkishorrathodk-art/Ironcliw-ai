@@ -2,36 +2,28 @@ listen:
   network: tcp
   address: 127.0.0.1:9860
 
+poll:
+  interval_ms: 1000
+  request_timeout_ms: 900
+
+python:
+  transport: unix
+  unix_socket_path: ~/.jarvis/locks/kernel.sock
+  status_url: http://127.0.0.1:8000/supervisor/status
+  health_url: http://127.0.0.1:8000/supervisor/health
+
 pressure:
   fail_closed: true
-  min_available_memory_mb: 3072
-  max_memory_percent: 85
-  max_cpu_percent: 90
-  monitor_interval_ms: 1000
-  sample_timeout_ms: 800
+  min_available_memory_mb: 2048
+  max_memory_percent: 90
+  max_cpu_percent: 95
 
-worker:
-  command:
-    - python3
-    - -m
-    - backend.voice.voice_worker_service
-  working_dir: /Users/djrussell23/Documents/repos/JARVIS-AI-Agent
-  env:
-    JARVIS_VOICE_WORKER_HOST: 127.0.0.1
-    JARVIS_VOICE_WORKER_PORT: "8790"
-  auto_start: false
-  auto_recover: true
-  stop_on_pressure: true
-  health_url: http://127.0.0.1:8790/health
-  health_timeout_ms: 1500
-  health_failure_limit: 3
-  startup_health_wait_ms: 15000
-  startup_health_poll_ms: 250
-  stop_timeout_ms: 5000
+advisory:
+  recovery_stuck_seconds: 180
+  mode_oscillation_window_sec: 120
+  mode_oscillation_limit: 6
 
 backoff:
-  initial_ms: 1000
-  max_ms: 30000
+  initial_ms: 500
+  max_ms: 10000
   multiplier: 2.0
-
-control_timeout_ms: 5000

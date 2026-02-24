@@ -1,11 +1,14 @@
 package main
 
 import (
+	"bufio"
 	"context"
+	"encoding/json"
 	"io"
 	"log/slog"
-	"strings"
-	"sync/atomic"
+	"net"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -14,98 +17,130 @@ func testLogger() *slog.Logger {
 	return slog.New(slog.NewJSONHandler(io.Discard, nil))
 }
 
-func TestMemoryPressureBlocksWorkerStart(t *testing.T) {
-	cfg := defaultConfig()
-	cfg.Worker.Command = []string{"/bin/sh", "-c", "sleep 5"}
-	cfg.Worker.AutoRecover = false
-	cfg.Pressure.FailClosed = true
-	cfg.Pressure.MinAvailableMemoryMB = 4096
-
-	s := newSupervisor(cfg, testLogger())
-	t.Cleanup(func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		defer cancel()
-		_ = s.stop(ctx)
-	})
-
-	s.samplePressureFn = func(context.Context) (PressureSnapshot, error) {
-		return PressureSnapshot{
-			Timestamp:         time.Now().UTC(),
-			CPUPercent:        10,
-			MemoryPercent:     95,
-			MemoryAvailableMB: 256,
-			MemoryTotalMB:     16384,
-			Valid:             true,
-		}, nil
+func TestExtractSignalsPrefersPythonStatus(t *testing.T) {
+	status := map[string]any{
+		"startup_modes": map[string]any{
+			"desired_mode":   "cloud_first",
+			"effective_mode": "sequential",
+		},
+		"memory_pressure_signal": map[string]any{
+			"status":              "elevated",
+			"recovery_state":      "cooldown",
+			"local_circuit_state": "open",
+		},
 	}
 
-	_ = s.refreshPressure(context.Background())
-
-	ctx, cancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
-	defer cancel()
-	err := s.startWorker(ctx, "test_low_memory")
-	if err == nil {
-		t.Fatalf("expected worker start to be blocked under pressure")
+	desired, effective, tier, recovery, circuit := extractSignals(status, PressureSnapshot{MemoryPercent: 15})
+	if desired != "cloud_first" {
+		t.Fatalf("desired mismatch: %s", desired)
 	}
-	if !strings.Contains(err.Error(), "blocked by pressure gate") {
-		t.Fatalf("expected pressure gate error, got: %v", err)
+	if effective != "sequential" {
+		t.Fatalf("effective mismatch: %s", effective)
 	}
-
-	_, _, allowed, _ := s.snapshotForResponse()
-	if allowed {
-		t.Fatalf("expected heavy-load gate to remain closed")
+	if tier != "elevated" {
+		t.Fatalf("tier mismatch: %s", tier)
+	}
+	if recovery != "cooldown" {
+		t.Fatalf("recovery mismatch: %s", recovery)
+	}
+	if circuit != "open" {
+		t.Fatalf("circuit mismatch: %s", circuit)
 	}
 }
 
-func TestCrashRecoveryWithBackoff(t *testing.T) {
+func TestHeavyLoadGateFailClosed(t *testing.T) {
 	cfg := defaultConfig()
-	cfg.Worker.Command = []string{"/bin/sh", "-c", "exit 1"}
-	cfg.Worker.AutoRecover = true
-	cfg.Worker.HealthURL = ""
-	cfg.Backoff.InitialMs = 20
-	cfg.Backoff.MaxMs = 60
-	cfg.Backoff.Multiplier = 2.0
 	cfg.Pressure.FailClosed = true
+	obs := newObserver(cfg, testLogger())
 
-	s := newSupervisor(cfg, testLogger())
-	t.Cleanup(func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		defer cancel()
-		_ = s.stop(ctx)
+	allowed, reason := obs.evaluateHeavyLoadGate(ObservedState{
+		Pressure: PressureSnapshot{Valid: false, Reason: "metrics unavailable"},
 	})
+	if allowed {
+		t.Fatalf("expected fail-closed gate to deny")
+	}
+	if reason == "" {
+		t.Fatalf("expected gate reason")
+	}
+}
 
-	s.samplePressureFn = func(context.Context) (PressureSnapshot, error) {
-		return PressureSnapshot{
-			Timestamp:         time.Now().UTC(),
-			CPUPercent:        5,
-			MemoryPercent:     40,
-			MemoryAvailableMB: 8192,
-			MemoryTotalMB:     16384,
-			Valid:             true,
-		}, nil
+func TestModeOscillationAdvisory(t *testing.T) {
+	cfg := defaultConfig()
+	cfg.Advisory.ModeOscillationLimit = 3
+	cfg.Advisory.ModeOscillationWindowSec = 600
+	obs := newObserver(cfg, testLogger())
+
+	pressure := PressureSnapshot{Valid: true}
+	for _, mode := range []string{"local_full", "cloud_first", "sequential", "cloud_first"} {
+		_ = obs.computeAdvisories("cloud_first", mode, "idle", pressure)
+		time.Sleep(2 * time.Millisecond)
 	}
 
-	_ = s.refreshPressure(context.Background())
-
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	if err := s.startWorker(ctx, "test_crash"); err != nil {
-		t.Fatalf("initial worker start failed: %v", err)
+	advisories := obs.computeAdvisories("cloud_first", "sequential", "idle", pressure)
+	found := false
+	for _, adv := range advisories {
+		if adv.Code == "mode_oscillation_risk" {
+			found = true
+			break
+		}
 	}
+	if !found {
+		t.Fatalf("expected mode_oscillation_risk advisory")
+	}
+}
 
-	deadline := time.Now().Add(900 * time.Millisecond)
-	for time.Now().Before(deadline) {
-		starts := atomic.LoadUint64(&s.metrics.StartRequests)
-		recoveries := atomic.LoadUint64(&s.metrics.CrashRecoveries)
-		crashes := atomic.LoadUint64(&s.metrics.CrashCount)
-		if starts >= 2 && recoveries >= 1 && crashes >= 1 {
+func TestFetchStatusViaUnix(t *testing.T) {
+	tmpDir := t.TempDir()
+	sock := filepath.Join(tmpDir, "observer-test.sock")
+
+	ln, err := net.Listen("unix", sock)
+	if err != nil {
+		t.Fatalf("listen unix: %v", err)
+	}
+	defer ln.Close()
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		conn, acceptErr := ln.Accept()
+		if acceptErr != nil {
 			return
 		}
-		time.Sleep(25 * time.Millisecond)
+		defer conn.Close()
+
+		_, _ = bufio.NewReader(conn).ReadBytes('\n')
+		resp := map[string]any{
+			"success": true,
+			"result": map[string]any{
+				"startup_modes": map[string]any{
+					"desired_mode":   "cloud_only",
+					"effective_mode": "sequential",
+				},
+			},
+		}
+		buf, _ := json.Marshal(resp)
+		_, _ = conn.Write(append(buf, '\n'))
+	}()
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	status, err := fetchStatusViaUnix(ctx, sock)
+	if err != nil {
+		t.Fatalf("fetch status: %v", err)
+	}
+	modes, ok := status["startup_modes"].(map[string]any)
+	if !ok {
+		t.Fatalf("missing startup_modes")
+	}
+	if modes["desired_mode"] != "cloud_only" {
+		t.Fatalf("unexpected desired mode: %v", modes["desired_mode"])
 	}
 
-	starts := atomic.LoadUint64(&s.metrics.StartRequests)
-	recoveries := atomic.LoadUint64(&s.metrics.CrashRecoveries)
-	crashes := atomic.LoadUint64(&s.metrics.CrashCount)
-	t.Fatalf("expected crash recovery activity, got starts=%d recoveries=%d crashes=%d", starts, recoveries, crashes)
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatalf("server goroutine did not finish")
+	}
+
+	_ = os.Remove(sock)
 }
