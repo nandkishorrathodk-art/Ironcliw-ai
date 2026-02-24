@@ -1,0 +1,150 @@
+{
+  "workflow_name": "CodeQL Security Analysis",
+  "workflow_url": "https://github.com/nandkishorrathodk-art/Ironcliw-ai/actions/runs/22336369952",
+  "branch": "main",
+  "commit_sha": "cfa7529",
+  "run_number": 44,
+  "failed_count": 1,
+  "fix_branch": "fix/ci/codeql-security-analysis-run44-20260224-043320",
+  "pr_title": "\ud83d\udea8 Fix CI/CD: CodeQL Security Analysis (Run #44)",
+  "analyses": [
+    {
+      "error_patterns": [
+        {
+          "pattern": "ERROR|Error|error",
+          "matches": [
+            {
+              "line_number": 22,
+              "content": "2026-02-24T04:16:16.7598796Z npm error code EJSONPARSE",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 23,
+              "content": "2026-02-24T04:16:16.7599814Z npm error path /home/runner/work/Ironcliw-ai/Ironcliw-ai/frontend/package.json",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 24,
+              "content": "2026-02-24T04:16:16.7601265Z npm error JSON.parse Unexpected token \",\" (0x2C) in JSON at position 207 while parsing near \"...y/react\\\": \\\"^16.3.2\\\",,\\n    \\\"@testing-libr...\"",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 25,
+              "content": "2026-02-24T04:16:16.7602349Z npm error JSON.parse Failed to parse JSON data.",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 26,
+              "content": "2026-02-24T04:16:16.7603204Z npm error JSON.parse Note: package.json must be actual JSON, not just JavaScript.",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 27,
+              "content": "2026-02-24T04:16:16.7611775Z npm error A complete log of this run can be found in: /home/runner/.npm/_logs/2026-02-24T04_16_16_141Z-debug-0.log",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 28,
+              "content": "2026-02-24T04:16:17.0623473Z npm error code EJSONPARSE",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 29,
+              "content": "2026-02-24T04:16:17.0625665Z npm error path /home/runner/work/Ironcliw-ai/Ironcliw-ai/frontend/package.json",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 30,
+              "content": "2026-02-24T04:16:17.0627463Z npm error JSON.parse Unexpected token \",\" (0x2C) in JSON at position 207 while parsing near \"...y/react\\\": \\\"^16.3.2\\\",,\\n    \\\"@testing-libr...\"",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 31,
+              "content": "2026-02-24T04:16:17.0629013Z npm error JSON.parse Failed to parse JSON data.",
+              "severity": "high",
+              "emoji": "\u274c"
+            }
+          ],
+          "count": 15
+        },
+        {
+          "pattern": "FAIL|Failed|failed",
+          "matches": [
+            {
+              "line_number": 25,
+              "content": "2026-02-24T04:16:16.7602349Z npm error JSON.parse Failed to parse JSON data.",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            },
+            {
+              "line_number": 31,
+              "content": "2026-02-24T04:16:17.0629013Z npm error JSON.parse Failed to parse JSON data.",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            },
+            {
+              "line_number": 61,
+              "content": "2026-02-24T04:16:18.3532712Z [command]/opt/hostedtoolcache/CodeQL/2.24.2/x64/codeql/codeql database export-diagnostics /home/runner/work/_temp/codeql_databases --db-cluster --format=sarif-latest --output=../codeql-failed-run.sarif --sarif-include-diagnostics -vvv --sarif-category /language:javascript-typescript",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            },
+            {
+              "line_number": 73,
+              "content": "2026-02-24T04:16:19.2497546Z Uploading failed SARIF file ../codeql-failed-run.sarif",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            },
+            {
+              "line_number": 74,
+              "content": "2026-02-24T04:16:19.2501773Z Post-processing sarif files: [\"../codeql-failed-run.sarif\"]",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            },
+            {
+              "line_number": 82,
+              "content": "2026-02-24T04:16:24.9988853Z Analysis upload status is failed.",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            },
+            {
+              "line_number": 97,
+              "content": "2026-02-24T04:16:25.2694062Z ##[warning]The process '/usr/bin/git' failed with exit code 128",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            }
+          ],
+          "count": 7
+        },
+        {
+          "pattern": "WARN|Warning|warning",
+          "matches": [
+            {
+              "line_number": 97,
+              "content": "2026-02-24T04:16:25.2694062Z ##[warning]The process '/usr/bin/git' failed with exit code 128",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            }
+          ],
+          "count": 1
+        }
+      ],
+      "suggested_fixes": [
+        "Consider increasing timeout values or optimizing slow operations",
+        "Review test cases and ensure code changes haven't broken existing functionality"
+      ],
+      "severity": "high",
+      "category": "test_failure",
+      "similar_failures": []
+    }
+  ],
+  "timestamp": "2026-02-24T04:33:20.002402"
+}
