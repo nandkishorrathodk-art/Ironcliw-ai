@@ -64132,7 +64132,7 @@ class JarvisSystemKernel:
         _oom_retry_timeout = _get_env_float("JARVIS_OOM_RETRY_TIMEOUT", 5.0)
         self._startup_memory_decision = None
         _oom_attempts = [_oom_preflight_timeout, _oom_retry_timeout]
-        _oom_succeeded = False
+        _oom_succeeded = False  # v266.3: Read by GCP probe to log bridge status
 
         for _oom_attempt_idx, _oom_timeout in enumerate(_oom_attempts):
             try:
@@ -64217,6 +64217,8 @@ class JarvisSystemKernel:
         self._gcp_probe_passed = False
         self._gcp_probe_task = None
         if _startup_desired_mode in ("cloud_first", "cloud_only"):
+            # v266.3: _startup_mode_now = effective mode (may be degraded by OOMBridge).
+            # Used for fallback logic within the probe; distinct from _startup_desired_mode.
             _startup_mode_now = os.environ.get("JARVIS_STARTUP_MEMORY_MODE", "local_full")
             _gcp_probe_timeout_base = _get_env_float("JARVIS_GCP_PROBE_TIMEOUT", 5.0)
             _gcp_probe_pressure_timeout = _get_env_float(

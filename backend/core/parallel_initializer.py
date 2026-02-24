@@ -845,13 +845,15 @@ class ParallelInitializer:
 
                 logger.info(f"Initializing priority {priority} components: {[c.name for c in group]}")
 
-                # Run group in parallel
+                # Run group in parallel (or sequentially if _force_sequential)
                 tasks = []
+                _task_comp_names = []  # v266.3: Track component names for sequential skip marking
                 for comp in group:
                     # v125.0: Enhanced dependency checking with failure propagation
                     dep_status = self._check_dependency_status(comp)
                     if dep_status == "ready":
                         tasks.append(self._init_component(comp.name))
+                        _task_comp_names.append(comp.name)
                     elif dep_status == "failed":
                         # v125.0: Dependencies failed - skip this component immediately
                         failed_deps = [
@@ -875,7 +877,8 @@ class ParallelInitializer:
                     if self._force_sequential:
                         # v266.3: Sequential init — one component at a time with
                         # memory check between each to prevent OOM cascade
-                        for _seq_task in tasks:
+                        _seq_completed_idx = len(tasks) - 1  # Assume all complete unless break
+                        for _seq_idx, _seq_task in enumerate(tasks):
                             try:
                                 await _seq_task
                             except Exception as _seq_err:
@@ -892,9 +895,16 @@ class ParallelInitializer:
                                         "— skipping remaining components in group",
                                         _post_avail_gb,
                                     )
+                                    _seq_completed_idx = _seq_idx
                                     break
                             except Exception:
                                 pass
+                        # v266.3: Mark unawaited components as skipped so watchdog
+                        # and dependency checker don't wait for them indefinitely
+                        for _skip_name in _task_comp_names[_seq_completed_idx + 1:]:
+                            await self._mark_skipped(
+                                _skip_name, "RAM critical — sequential init aborted"
+                            )
                     else:
                         await safe_gather(*tasks, return_exceptions=True)
 
