@@ -1,0 +1,65 @@
+{
+  "workflow_name": "Sync Learning Databases",
+  "workflow_url": "https://github.com/nandkishorrathodk-art/Ironcliw-ai/actions/runs/22351111340",
+  "branch": "main",
+  "commit_sha": "2c22880",
+  "run_number": 8,
+  "failed_count": 1,
+  "fix_branch": "fix/ci/sync-learning-databases-run8-20260224-123755",
+  "pr_title": "\ud83d\udea8 Fix CI/CD: Sync Learning Databases (Run #8)",
+  "analyses": [
+    {
+      "error_patterns": [
+        {
+          "pattern": "ERROR|Error|error",
+          "matches": [
+            {
+              "line_number": 53,
+              "content": "2026-02-24T12:36:50.3187795Z ##[error]google-github-actions/auth failed with: retry function failed after 4 attempts: the GitHub Action workflow must specify exactly one of \"workload_identity_provider\" or \"credentials_json\"! If you are specifying input values via GitHub secrets, ensure the secret is being injected into the environment. By default, secrets are not passed to workflows triggered from forks, including Dependabot.",
+              "severity": "high",
+              "emoji": "\u274c"
+            }
+          ],
+          "count": 1
+        },
+        {
+          "pattern": "FAIL|Failed|failed",
+          "matches": [
+            {
+              "line_number": 53,
+              "content": "2026-02-24T12:36:50.3187795Z ##[error]google-github-actions/auth failed with: retry function failed after 4 attempts: the GitHub Action workflow must specify exactly one of \"workload_identity_provider\" or \"credentials_json\"! If you are specifying input values via GitHub secrets, ensure the secret is being injected into the environment. By default, secrets are not passed to workflows triggered from forks, including Dependabot.",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            },
+            {
+              "line_number": 96,
+              "content": "2026-02-24T12:36:50.5548482Z ##[warning]The process '/usr/bin/git' failed with exit code 128",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            }
+          ],
+          "count": 2
+        },
+        {
+          "pattern": "WARN|Warning|warning",
+          "matches": [
+            {
+              "line_number": 96,
+              "content": "2026-02-24T12:36:50.5548482Z ##[warning]The process '/usr/bin/git' failed with exit code 128",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            }
+          ],
+          "count": 1
+        }
+      ],
+      "suggested_fixes": [
+        "Review the logs above for specific error messages"
+      ],
+      "severity": "high",
+      "category": "permission_error",
+      "similar_failures": []
+    }
+  ],
+  "timestamp": "2026-02-24T12:37:55.794517"
+}
