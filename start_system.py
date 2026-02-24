@@ -12143,38 +12143,46 @@ class AsyncSystemManager:
             # 3. CHECK KEYCHAIN PASSWORD (com.jarvis.voiceunlock)
             # ═══════════════════════════════════════════════════════════
             logger.info("[VOICE UNLOCK] 🔍 Checking Keychain password...")
-            try:
-                result = subprocess.run(
-                    ['security', 'find-generic-password', '-s', 'com.jarvis.voiceunlock', '-a', 'unlock_token', '-w'],
-                    capture_output=True,
-                    text=True,
-                    timeout=5
-                )
-                if result.returncode == 0:
-                    password = result.stdout.strip()
-                    status['keychain_password_stored'] = True
-                    status['detailed_checks']['keychain'] = {
-                        'stored': True,
-                        'service': 'com.jarvis.voiceunlock',
-                        'password_length': len(password)
-                    }
-                    logger.info(f"[VOICE UNLOCK] ✅ Keychain: Password stored ({len(password)} chars)")
-                else:
-                    status['keychain_password_stored'] = False
-                    status['detailed_checks']['keychain'] = {
-                        'stored': False,
-                        'error': 'Not found in Keychain'
-                    }
-                    status['issues'].append('Password not stored in Keychain (com.jarvis.voiceunlock)')
-                    logger.warning("[VOICE UNLOCK] ⚠️  Keychain: PASSWORD NOT FOUND")
-            except Exception as e:
+            if sys.platform == "win32":
                 status['keychain_password_stored'] = False
                 status['detailed_checks']['keychain'] = {
                     'stored': False,
-                    'error': str(e)
+                    'note': 'Windows - Keychain not available (macOS only)'
                 }
-                status['issues'].append(f'Keychain check failed: {str(e)}')
-                logger.error(f"[VOICE UNLOCK] ❌ Keychain: FAILED - {e}")
+                logger.info("[VOICE UNLOCK] ℹ️  Keychain: Skipped (Windows - not available)")
+            else:
+                try:
+                    result = subprocess.run(
+                        ['security', 'find-generic-password', '-s', 'com.jarvis.voiceunlock', '-a', 'unlock_token', '-w'],
+                        capture_output=True,
+                        text=True,
+                        timeout=5
+                    )
+                    if result.returncode == 0:
+                        password = result.stdout.strip()
+                        status['keychain_password_stored'] = True
+                        status['detailed_checks']['keychain'] = {
+                            'stored': True,
+                            'service': 'com.jarvis.voiceunlock',
+                            'password_length': len(password)
+                        }
+                        logger.info(f"[VOICE UNLOCK] ✅ Keychain: Password stored ({len(password)} chars)")
+                    else:
+                        status['keychain_password_stored'] = False
+                        status['detailed_checks']['keychain'] = {
+                            'stored': False,
+                            'error': 'Not found in Keychain'
+                        }
+                        status['issues'].append('Password not stored in Keychain (com.jarvis.voiceunlock)')
+                        logger.warning("[VOICE UNLOCK] ⚠️  Keychain: PASSWORD NOT FOUND")
+                except Exception as e:
+                    status['keychain_password_stored'] = False
+                    status['detailed_checks']['keychain'] = {
+                        'stored': False,
+                        'error': str(e)
+                    }
+                    status['issues'].append(f'Keychain check failed: {str(e)}')
+                    logger.error(f"[VOICE UNLOCK] ❌ Keychain: FAILED - {e}")
 
             # ═══════════════════════════════════════════════════════════
             # 4. CHECK PASSWORD TYPER FUNCTIONALITY

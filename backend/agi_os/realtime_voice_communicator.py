@@ -36,6 +36,7 @@ import asyncio
 import hashlib
 import os
 import subprocess
+import sys
 import logging
 import time
 import weakref
@@ -557,8 +558,9 @@ class RealTimeVoiceCommunicator:
                             return
                     except ImportError:
                         pass
-                # Legacy: kill say process
-                subprocess.run(['killall', 'say'], capture_output=True, timeout=2)
+                # Legacy: kill say process (macOS only)
+                if sys.platform != "win32":
+                    subprocess.run(['killall', 'say'], capture_output=True, timeout=2)
             except Exception as e:
                 logger.debug("Error stopping speech: %s", e)
 
@@ -694,8 +696,27 @@ class RealTimeVoiceCommunicator:
             except Exception as e:
                 logger.debug("AudioBus speak failed, falling back: %s", e)
 
-        # Legacy: direct macOS say
         config = self._mode_configs.get(message.mode, self._mode_configs[VoiceMode.NORMAL])
+
+        if sys.platform == "win32":
+            try:
+                import pyttsx3
+                loop = asyncio.get_event_loop()
+                def _speak_sync():
+                    _e = pyttsx3.init()
+                    voices = _e.getProperty('voices')
+                    if voices:
+                        _e.setProperty('voice', voices[0].id)
+                    _e.setProperty('rate', config.rate)
+                    _e.say(message.text)
+                    _e.runAndWait()
+                    _e.stop()
+                await loop.run_in_executor(None, _speak_sync)
+            except Exception as e:
+                logger.debug("pyttsx3 speak failed: %s", e)
+            return
+
+        # Legacy: direct macOS say
         cmd = [
             'say',
             '-v', config.voice,

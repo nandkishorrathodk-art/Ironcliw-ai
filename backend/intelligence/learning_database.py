@@ -5631,6 +5631,23 @@ class JARVISLearningDatabase:
             await self._increment_pattern_occurrence(cached_pattern["pattern_id"])
             return cached_pattern["pattern_id"]
 
+        # Check DB for existing pattern_hash (cache may be cold after restart)
+        try:
+            async with self._db_lock:
+                async with self.db.cursor() as cursor:
+                    await cursor.execute(
+                        "SELECT pattern_id FROM patterns WHERE pattern_hash = ?",
+                        (pattern_hash,)
+                    )
+                    existing = await cursor.fetchone()
+                    if existing:
+                        existing_id = existing[0]
+                        self.pattern_cache.set(pattern_hash, {"pattern_id": existing_id, **pattern})
+                        await self._increment_pattern_occurrence(existing_id)
+                        return existing_id
+        except Exception:
+            pass
+
         # Check for similar patterns if auto_merge enabled
         if auto_merge and "embedding" in pattern:
             similar = await self._find_similar_patterns(

@@ -970,7 +970,7 @@ class GCPReconciler:
                 "session_id": self._session_id,
                 "pid": os.getpid(),
                 "started_at": time.time(),
-                "hostname": os.uname().nodename,
+                "hostname": os.uname().nodename if hasattr(os, "uname") else os.environ.get("COMPUTERNAME", "unknown"),
             }
 
             with open(self._lock_file, "w") as f:

@@ -4223,6 +4223,11 @@ class SpeakerVerificationService:
         if self.current_model_dimension is not None:
             return self.current_model_dimension
 
+        if self.speechbrain_engine is None:
+            logger.warning("⚠️  Using fallback dimension: 192D (speechbrain_engine not available)")
+            self.current_model_dimension = 192
+            return self.current_model_dimension
+
         try:
             logger.info("🔍 Detecting current model embedding dimension...")
 
