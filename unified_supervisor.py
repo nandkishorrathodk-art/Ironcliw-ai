@@ -62246,6 +62246,27 @@ class JarvisSystemKernel:
         except Exception as e:
             self.logger.debug(f"[Kernel] Final task drain error: {e}")
 
+        # v266.2: Stop active services that hold background tasks / server sockets.
+        # These must stop BEFORE singleton resets (which clear module-level refs).
+        if hasattr(self, '_websocket_coordinator') and self._websocket_coordinator is not None:
+            try:
+                await asyncio.wait_for(self._websocket_coordinator.shutdown(), timeout=5.0)
+                self._websocket_coordinator = None
+                self.logger.debug("[Kernel] v266.2: WebSocketCoordinator shut down")
+            except asyncio.TimeoutError:
+                self.logger.debug("[Kernel] v266.2: WebSocketCoordinator shutdown timed out (5s)")
+            except Exception as _ws_err:
+                self.logger.debug(f"[Kernel] v266.2: WebSocketCoordinator shutdown error: {_ws_err}")
+
+        try:
+            from core.infrastructure_orchestrator import cleanup_infrastructure_on_shutdown
+            await asyncio.wait_for(cleanup_infrastructure_on_shutdown(), timeout=10.0)
+            self.logger.debug("[Kernel] v266.2: InfrastructureOrchestrator cleaned up")
+        except asyncio.TimeoutError:
+            self.logger.debug("[Kernel] v266.2: InfraOrch cleanup timed out (10s)")
+        except Exception as _io_err:
+            self.logger.debug(f"[Kernel] v266.2: InfraOrch cleanup error: {_io_err}")
+
         # v266.1: Reset stale singletons so next in-process startup gets fresh state.
         # Root cause: Module-level singletons (event bus, SSM, readiness gate) survive
         # across restart cycles. Stale handlers, dead asyncio primitives, and shutdown
