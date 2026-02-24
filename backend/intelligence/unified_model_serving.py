@@ -481,16 +481,23 @@ class PrimeLocalClient(ModelClient):
         """
         Attempt to auto-download a model from Hugging Face.
 
+        v266.3: Default policy changed from "false" to "auto".
+        - "auto" (default): Download if huggingface_hub is available and
+          no model exists on disk. Intelligent provisioning.
+        - "true": Always attempt download (same as legacy behavior).
+        - "false": Never download (explicit opt-out).
+
         Args:
             model_name: Name of the model to download
 
         Returns:
             Path to downloaded model, or None if download failed/disabled
         """
-        # Check if auto-download is enabled
-        auto_download = os.getenv("JARVIS_PRIME_AUTO_DOWNLOAD", "false").lower() == "true"
-        if not auto_download:
+        # v266.3: Three-state policy (auto/true/false) replaces binary flag
+        _policy = os.getenv("JARVIS_PRIME_AUTO_DOWNLOAD", "auto").lower().strip()
+        if _policy == "false":
             return None
+        # "auto" and "true" both proceed — "auto" is the new default
 
         # Get HF repo for this model
         repo_id = self.HF_MODEL_REPOS.get(model_name)
@@ -682,12 +689,15 @@ class PrimeLocalClient(ModelClient):
                 if model_path is None:
                     if not PrimeLocalClient._warned_missing_model:
                         PrimeLocalClient._warned_missing_model = True
+                        _policy = os.getenv(
+                            "JARVIS_PRIME_AUTO_DOWNLOAD", "auto"
+                        ).lower().strip()
                         self.logger.warning(
                             f"No suitable GGUF model found. "
                             f"Available RAM: {available_gb or 'unknown'}GB. "
-                            f"Set JARVIS_PRIME_AUTO_DOWNLOAD=true to enable "
-                            f"auto-download, or place a model in "
-                            f"{PRIME_MODELS_DIR}"
+                            f"Auto-download policy: {_policy}. "
+                            f"Place a model in {PRIME_MODELS_DIR} or "
+                            f"set JARVIS_PRIME_AUTO_DOWNLOAD=auto"
                         )
                     return False
 
@@ -1055,6 +1065,102 @@ class PrimeLocalClient(ModelClient):
 
         parts.append("Assistant: ")
         return "".join(parts)
+
+    async def background_provision_model(self) -> bool:
+        """
+        v266.3: Intelligent background model provisioning.
+
+        Selects the best GGUF model for available RAM, downloads it from
+        HuggingFace in a background thread (non-blocking), and marks Tier 2
+        as ready when complete. Called by supervisor at startup when no model
+        exists on disk and auto-download policy allows it.
+
+        Returns:
+            True if a model was successfully provisioned
+        """
+        _policy = os.getenv("JARVIS_PRIME_AUTO_DOWNLOAD", "auto").lower().strip()
+        if _policy == "false":
+            return False
+
+        try:
+            # Step 1: Determine available RAM
+            available_gb = None
+            try:
+                from backend.core.memory_quantizer import get_memory_quantizer
+                _mq = await get_memory_quantizer()
+                _metrics = _mq.get_current_metrics()
+                available_gb = _metrics.system_memory_available_gb
+            except Exception:
+                # Conservative fallback if MemoryQuantizer unavailable
+                try:
+                    import psutil
+                    available_gb = psutil.virtual_memory().available / (1024 ** 3)
+                except Exception:
+                    available_gb = 3.0  # Safe default for 16GB Mac
+
+            # Step 2: Find best downloadable model that fits RAM
+            _use_mmap = os.getenv(
+                "JARVIS_USE_MMAP", "true"
+            ).lower() in ("true", "1", "yes")
+            _mmap_factor = 0.65 if _use_mmap else 1.0
+
+            download_target = None
+            for entry in self.QUANT_CATALOG:
+                _effective_min = entry["min_ram_gb"] * _mmap_factor
+                if _effective_min <= available_gb:
+                    # Check if already on disk
+                    if self._discover_model(entry["filename"]) is not None:
+                        self.logger.info(
+                            f"[v266.3] Background provision: {entry['name']} "
+                            f"already on disk — Tier 2 ready"
+                        )
+                        return True
+                    # This is our download target (best quality that fits)
+                    if download_target is None:
+                        download_target = entry
+
+            if download_target is None:
+                self.logger.info(
+                    "[v266.3] Background provision: no model fits "
+                    f"available RAM ({available_gb:.1f}GB)"
+                )
+                return False
+
+            # Step 3: Download in background thread
+            self.logger.info(
+                f"[v266.3] Background provisioning: downloading "
+                f"{download_target['name']} ({download_target['filename']}) "
+                f"from {download_target['repo_id']}..."
+            )
+
+            model_path = await self._auto_download_model(
+                download_target["filename"]
+            )
+
+            if model_path is not None:
+                self.logger.info(
+                    f"[v266.3] Background provision complete: "
+                    f"{download_target['name']} ready at {model_path}. "
+                    f"Tier 2 local inference now available."
+                )
+                # Reset discovery flag so load_model() will find it
+                self._discovery_attempted = False
+                PrimeLocalClient._warned_missing_model = False
+                return True
+            else:
+                self.logger.warning(
+                    f"[v266.3] Background provision failed: "
+                    f"could not download {download_target['name']}"
+                )
+                return False
+
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            self.logger.warning(
+                f"[v266.3] Background provision error: {e}"
+            )
+            return False
 
     async def health_check(self) -> bool:
         """Check if the model is healthy."""
@@ -3043,6 +3149,47 @@ async def shutdown_model_serving() -> None:
             except Exception:
                 pass
             _model_serving = None
+
+
+async def start_background_model_provision() -> Optional[asyncio.Task]:
+    """
+    v266.3: Start background GGUF model provisioning if needed.
+
+    Called by supervisor at startup when no local model exists and
+    auto-download policy permits. Spawns a background task that downloads
+    the best-fit model without blocking startup.
+
+    Returns:
+        The background asyncio.Task if provisioning was started, None otherwise
+    """
+    try:
+        serving = await get_model_serving()
+        _local = serving._router._clients.get("prime_local")
+        if not _local or not isinstance(_local, PrimeLocalClient):
+            return None
+
+        async def _provision_worker():
+            try:
+                success = await _local.background_provision_model()
+                if success:
+                    logging.getLogger("UnifiedModelServing").info(
+                        "[v266.3] Background model provision succeeded — "
+                        "Tier 2 local inference is now available"
+                    )
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                logging.getLogger("UnifiedModelServing").debug(
+                    f"[v266.3] Background provision task error: {e}"
+                )
+
+        task = asyncio.create_task(
+            _provision_worker(),
+            name="model-background-provision"
+        )
+        return task
+    except Exception:
+        return None
 
 
 # =============================================================================

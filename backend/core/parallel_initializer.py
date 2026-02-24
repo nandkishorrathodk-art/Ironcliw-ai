@@ -1379,12 +1379,15 @@ class ParallelInitializer:
                 return
 
         # v3.2: Log soft dependency failures — component still runs but with context
+        # v266.3: Use INFO (not WARNING) for soft dep failures. These are DESIGNED
+        # graceful degradation paths (e.g. Cloud SQL → SQLite). WARNING misled
+        # operators into thinking something was broken when it was working as intended.
         failed_soft_deps = self._get_failed_soft_deps(comp)
         if failed_soft_deps:
             infra_ctx = self._get_infrastructure_failure_context(name)
-            logger.warning(
-                f"⚠️ {name}: soft dependencies failed {failed_soft_deps} — "
-                f"initializing with degraded functionality. Root cause: {infra_ctx}"
+            logger.info(
+                f"ℹ️  {name}: soft dependencies unavailable {failed_soft_deps} — "
+                f"initializing with fallback. Context: {infra_ctx}"
             )
 
         comp.phase = InitPhase.RUNNING

@@ -69023,27 +69023,52 @@ class JarvisSystemKernel:
                                 break
                         if not _any_found:
                             _auto = os.getenv(
-                                "JARVIS_PRIME_AUTO_DOWNLOAD", "false"
-                            )
+                                "JARVIS_PRIME_AUTO_DOWNLOAD", "auto"
+                            ).lower().strip()
                             # v236.0: Downgrade to INFO when GCP handles inference
                             _has_gcp = (
                                 self._invincible_node_ready
                                 or self._pending_gcp_endpoint
                                 or bool(os.environ.get("JARVIS_INVINCIBLE_NODE_IP"))
                             )
-                            _log_fn = self.logger.info if _has_gcp else self.logger.warning
-                            _suffix = (
-                                " (GCP InvincibleNode active — Tier 1 handles inference)"
-                                if _has_gcp else ""
-                            )
-                            _log_fn(
-                                "[Kernel] v234.2: Tier 2 local inference "
-                                "unavailable — no GGUF model found. "
-                                f"Auto-download: {_auto}. "
-                                "Set JARVIS_PRIME_AUTO_DOWNLOAD=true or "
-                                f"place a model in {PRIME_MODELS_DIR}"
-                                f"{_suffix}"
-                            )
+
+                            # v266.3: If policy allows, start background provisioning
+                            if _auto in ("auto", "true") and not _has_gcp:
+                                try:
+                                    from backend.intelligence.unified_model_serving import (
+                                        start_background_model_provision,
+                                    )
+                                    _provision_task = await start_background_model_provision()
+                                    if _provision_task is not None:
+                                        self.logger.info(
+                                            "[Kernel] v266.3: No GGUF model on disk — "
+                                            "background provisioning started "
+                                            f"(policy={_auto})"
+                                        )
+                                    else:
+                                        self.logger.info(
+                                            "[Kernel] v266.3: Background model "
+                                            "provisioning not needed or unavailable"
+                                        )
+                                except Exception as _prov_err:
+                                    self.logger.warning(
+                                        f"[Kernel] v266.3: Background provision "
+                                        f"setup failed: {_prov_err}"
+                                    )
+                            else:
+                                _log_fn = self.logger.info if _has_gcp else self.logger.warning
+                                _suffix = (
+                                    " (GCP InvincibleNode active — Tier 1 handles inference)"
+                                    if _has_gcp else ""
+                                )
+                                _log_fn(
+                                    "[Kernel] v234.2: Tier 2 local inference "
+                                    "unavailable — no GGUF model found. "
+                                    f"Auto-download: {_auto}. "
+                                    "Set JARVIS_PRIME_AUTO_DOWNLOAD=auto or "
+                                    f"place a model in {PRIME_MODELS_DIR}"
+                                    f"{_suffix}"
+                                )
 
                     # v236.0: Apply deferred GCP endpoint if InvincibleNode
                     # came up before Phase 4 (common with early boot)
