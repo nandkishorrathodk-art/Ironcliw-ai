@@ -690,11 +690,11 @@ class ModelHotSwapManager:
         """Initialize the hot-swap manager."""
         if self._redis:
             self._distributed_lock = DistributedLock(
+                name="model_swap",
                 redis_client=self._redis,
                 config=DistributedLockConfig(
                     default_timeout=self._lock_timeout,
-                    retry_delay=0.5,
-                    max_retries=10,
+                    retry_interval=0.5,
                 ),
             )
 
@@ -725,13 +725,13 @@ class ModelHotSwapManager:
         Returns:
             (success, error_message)
         """
-        lock_key = f"model_swap:{model_type}"
-
         # Acquire distributed lock
+        token: Optional[str] = None
         if self._distributed_lock:
-            acquired = await self._distributed_lock.acquire(lock_key)
-            if not acquired:
-                return False, "Could not acquire distributed lock"
+            try:
+                token = await self._distributed_lock.acquire_lock(timeout=self._lock_timeout)
+            except Exception as e:
+                return False, f"Could not acquire distributed lock: {e}"
 
         try:
             async with self._local_lock:
@@ -779,8 +779,11 @@ class ModelHotSwapManager:
             self._swap_in_progress[model_type] = False
             return False, str(e)
         finally:
-            if self._distributed_lock:
-                await self._distributed_lock.release(lock_key)
+            if self._distributed_lock and token:
+                try:
+                    await self._distributed_lock.release_lock(token)
+                except Exception as e:
+                    logger.warning(f"Distributed lock release failed: {e}")
 
     async def rollback(
         self,

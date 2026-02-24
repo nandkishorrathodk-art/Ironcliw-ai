@@ -800,7 +800,7 @@ class GCPHybridPrimeRouter:
         if self._vm_provisioning_enabled and _VM_LOCK_AVAILABLE and DistributedLock:
             try:
                 self._vm_provisioning_lock = DistributedLock(
-                    lock_name="gcp_vm_provisioning",
+                    name="gcp_vm_provisioning",
                     config=DistributedLockConfig(
                         # v93.0: Fixed parameter names to match DistributedLockConfig API
                         lock_ttl=VM_PROVISIONING_LOCK_TTL,  # Was ttl_seconds
