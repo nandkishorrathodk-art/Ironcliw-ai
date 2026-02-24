@@ -73616,10 +73616,13 @@ class JarvisSystemKernel:
                 try:
                     await asyncio.sleep(5.0)
                     if self._startup_watchdog and not heartbeat_stop.is_set():
-                        # Time-proportional: 66→79% over ~40% of the budget
+                        # v269.0: Square-root curve for perceived responsiveness.
+                        # Old linear approach: 13% over 900s = ~1% per 69s (feels stuck).
+                        # New sqrt curve: first 7% in ~120s, remaining 6% over rest of budget.
+                        # This gives immediate visual feedback while still reaching 79% by budget end.
                         elapsed_in_phase = time.time() - heartbeat_start
                         ratio = min(1.0, elapsed_in_phase / max(1.0, _heartbeat_budget))
-                        heartbeat_increment = 66 + int(ratio * 13)  # 13% range (66→79)
+                        heartbeat_increment = 66 + int((ratio ** 0.5) * 13)  # sqrt curve: 66→79
                         heartbeat_increment = min(heartbeat_increment, 79)
 
                         # Use maximum of current progress and our increment

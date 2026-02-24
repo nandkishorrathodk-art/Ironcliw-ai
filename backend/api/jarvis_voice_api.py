@@ -82,6 +82,11 @@ if backend_dir not in sys.path:
 
 logger = logging.getLogger(__name__)
 
+# Shared module router: used by standalone endpoints in this module.
+# JARVISVoiceAPI core routes are lazily attached via get_voice_router().
+router = APIRouter()
+_jarvis_core_routes_included = False
+
 # ============================================================================
 # WEBSOCKET CONNECTION TRACKING - For shutdown notifications
 # ============================================================================
@@ -4065,8 +4070,12 @@ def get_jarvis_api() -> Optional["JARVISVoiceAPI"]:
 
 def get_voice_router():
     """Lazy getter for the FastAPI router (depends on JARVISVoiceAPI)."""
+    global _jarvis_core_routes_included
     api = get_jarvis_api()
-    return api.router if api else None
+    if api and not _jarvis_core_routes_included:
+        router.include_router(api.router)
+        _jarvis_core_routes_included = True
+    return router
 
 
 # Backward-compatible module-level names.
@@ -4074,10 +4083,27 @@ def get_voice_router():
 # already use lazy imports inside function bodies.
 # New code should use get_jarvis_api() / get_voice_router().
 jarvis_api: Optional["JARVISVoiceAPI"] = None
-router = None
 
 # Initialize global CoreML engine (if available)
 coreml_engine: Optional[CoreMLVoiceEngineBridge] = None
+_coreml_worker_task: Optional[asyncio.Task] = None
+
+
+def _ensure_coreml_worker_started() -> None:
+    """Start CoreML async worker when a running event loop is available."""
+    global _coreml_worker_task
+
+    if coreml_engine is None:
+        return
+    if _coreml_worker_task is not None and not _coreml_worker_task.done():
+        return
+
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        return
+
+    _coreml_worker_task = loop.create_task(coreml_engine.process_voice_queue_worker())
 
 if COREML_AVAILABLE:
     try:
@@ -4134,10 +4160,22 @@ if COREML_AVAILABLE:
                 },
             )
 
-            # Start background queue worker
+            # Start background queue worker only when an event loop is active.
+            # Import-time execution can occur before asyncio startup.
             import asyncio
 
-            asyncio.create_task(coreml_engine.process_voice_queue_worker())
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                loop = None
+
+            if loop is not None:
+                _coreml_worker_task = loop.create_task(coreml_engine.process_voice_queue_worker())
+            else:
+                logger.info(
+                    "[CoreML] No running event loop during import; "
+                    "voice queue worker will start when loop is available"
+                )
 
             logger.info("[CoreML] CoreML Voice Engine initialized successfully")
             logger.info(f"[CoreML] VAD model: {vad_model_path}")
@@ -4188,6 +4226,7 @@ async def detect_voice_coreml(
         raise HTTPException(
             status_code=503, detail="CoreML engine not available - models not loaded"
         )
+    _ensure_coreml_worker_started()
 
     try:
         # Decode base64 audio
@@ -4227,6 +4266,7 @@ async def detect_vad_coreml(audio_data: str, priority: int = 0):
     """
     if not coreml_engine:
         raise HTTPException(status_code=503, detail="CoreML engine not available")
+    _ensure_coreml_worker_started()
 
     try:
         import base64
@@ -4259,6 +4299,7 @@ async def train_speaker_coreml(audio_data: str, is_user: bool = True):
     """
     if not coreml_engine:
         raise HTTPException(status_code=503, detail="CoreML engine not available")
+    _ensure_coreml_worker_started()
 
     try:
         import base64

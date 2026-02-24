@@ -3424,19 +3424,29 @@ class ParallelInitializer:
                 voice["enhanced_available"] = False
 
             try:
-                from api.jarvis_voice_api import jarvis_api, router as jarvis_voice_router
-                voice["jarvis_router"] = jarvis_voice_router
-                voice["jarvis_api"] = jarvis_api
-                voice["jarvis_available"] = True
+                from api.jarvis_voice_api import get_jarvis_api, get_voice_router
 
-                # Mount the JARVIS voice router if not already mounted
-                existing = any(
-                    hasattr(r, 'path') and '/voice/jarvis' in str(r.path)
-                    for r in self.app.routes
-                )
-                if not existing:
-                    self.app.include_router(jarvis_voice_router, prefix="/voice/jarvis", tags=["jarvis"])
-                    logger.info("   JARVIS voice router mounted at /voice/jarvis")
+                jarvis_api = get_jarvis_api()
+                jarvis_voice_router = get_voice_router()
+
+                if jarvis_api and jarvis_voice_router:
+                    voice["jarvis_router"] = jarvis_voice_router
+                    voice["jarvis_api"] = jarvis_api
+                    voice["jarvis_available"] = True
+
+                    # Mount the JARVIS voice router if not already mounted
+                    existing = any(
+                        hasattr(r, 'path') and '/voice/jarvis' in str(r.path)
+                        for r in self.app.routes
+                    )
+                    if not existing:
+                        self.app.include_router(
+                            jarvis_voice_router, prefix="/voice/jarvis", tags=["jarvis"]
+                        )
+                        logger.info("   JARVIS voice router mounted at /voice/jarvis")
+                else:
+                    voice["jarvis_available"] = False
+                    logger.warning("JARVIS Voice API lazy init returned None")
 
             except ImportError as e:
                 voice["jarvis_available"] = False
