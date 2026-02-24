@@ -483,6 +483,7 @@ class ParallelInitializer:
         self._watchdog_task: Optional[asyncio.Task] = None
         # v2.0: Track if interactive mode was announced
         self._interactive_announced = False
+        self._force_sequential: bool = False  # v266.3: Set when bridge unavailable + low RAM
 
         # Store references for cleanup
         self._tasks: List[asyncio.Task] = []
@@ -808,7 +809,29 @@ class ParallelInitializer:
                         logger.info("[OOM Prevention] 🔧 Note: GCP was auto-enabled for future use")
 
             except Exception as e:
-                logger.warning(f"[OOM Prevention] Check failed (non-fatal): {e}")
+                # v266.3: Fail-closed — force sequential init when bridge
+                # unavailable AND available RAM is below safe threshold.
+                try:
+                    import psutil
+                    _avail_gb = psutil.virtual_memory().available / (1024**3)
+                    if _avail_gb < 4.0:
+                        self._force_sequential = True
+                        logger.warning(
+                            "[OOM Prevention] Bridge unavailable + %.1fGB available "
+                            "— forcing sequential init", _avail_gb,
+                        )
+                    else:
+                        logger.warning(
+                            "[OOM Prevention] Bridge unavailable but %.1fGB available "
+                            "— parallel init OK", _avail_gb,
+                        )
+                except Exception:
+                    # psutil failed too — force sequential to be safe
+                    self._force_sequential = True
+                    logger.warning(
+                        "[OOM Prevention] Bridge + psutil unavailable "
+                        "— forcing sequential init (fail-closed)"
+                    )
         # =========================================================================
 
         try:
@@ -849,7 +872,31 @@ class ParallelInitializer:
                         await self._mark_skipped(comp.name, "Dependencies not ready")
 
                 if tasks:
-                    await safe_gather(*tasks, return_exceptions=True)
+                    if self._force_sequential:
+                        # v266.3: Sequential init — one component at a time with
+                        # memory check between each to prevent OOM cascade
+                        for _seq_task in tasks:
+                            try:
+                                await _seq_task
+                            except Exception as _seq_err:
+                                logger.warning(
+                                    "[Sequential Init] Component failed: %s", _seq_err
+                                )
+                            # Check RAM between components
+                            try:
+                                import psutil
+                                _post_avail_gb = psutil.virtual_memory().available / (1024**3)
+                                if _post_avail_gb < 2.0:
+                                    logger.warning(
+                                        "[Sequential Init] RAM critical (%.1fGB) "
+                                        "— skipping remaining components in group",
+                                        _post_avail_gb,
+                                    )
+                                    break
+                            except Exception:
+                                pass
+                    else:
+                        await safe_gather(*tasks, return_exceptions=True)
 
                 # Update progress
                 self._update_progress()
