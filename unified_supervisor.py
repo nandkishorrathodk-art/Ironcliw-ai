@@ -7061,11 +7061,16 @@ class SupervisorEventBus:
 
         If the async consumer loop hasn't started yet, delivers synchronously
         to all handlers (ignoring async handlers by closing their coroutines).
+
+        v266.1: Guard against post-stop emission — after stop(), the queue
+        exists but the consumer is dead, so events would accumulate without
+        delivery. Fall back to sync delivery or drop.
         """
         if not self._enabled:
             return
-        if self._queue is None:
-            self._deliver_sync(event)
+        if self._queue is None or not self._started:
+            if self._handlers:
+                self._deliver_sync(event)
             return
         try:
             if self._queue.full():
@@ -7107,6 +7112,7 @@ class SupervisorEventBus:
                 await asyncio.wait_for(self._consumer_task, timeout=3.0)
             except (asyncio.CancelledError, asyncio.TimeoutError):
                 pass
+            self._consumer_task = None
         # Drain remaining events
         if self._queue:
             while not self._queue.empty():
@@ -7114,6 +7120,7 @@ class SupervisorEventBus:
                     await self._deliver(self._queue.get_nowait())
                 except asyncio.QueueEmpty:
                     break
+            self._queue = None
 
     async def _consumer_loop(self) -> None:
         """Main consumer: dequeue events and deliver to all handlers."""
@@ -7161,6 +7168,31 @@ def get_event_bus() -> SupervisorEventBus:
     if _supervisor_event_bus is None:
         _supervisor_event_bus = SupervisorEventBus()
     return _supervisor_event_bus
+
+
+async def _reset_event_bus_singleton() -> None:
+    """
+    v266.1: Stop and reset the SupervisorEventBus singleton for clean restart.
+
+    Root cause: SupervisorEventBus uses double-layer singleton (class._instance
+    + module._supervisor_event_bus). On in-process restart, stale handlers,
+    cancelled consumer tasks, and dead asyncio.Queue references persist,
+    causing event delivery to silently fail or raise RuntimeError on wrong loop.
+
+    Both layers must be reset: class-level _instance AND module-level reference.
+    """
+    global _supervisor_event_bus
+    bus = _supervisor_event_bus
+    if bus is not None:
+        try:
+            if bus._started:
+                await bus.stop()
+        except Exception:
+            pass
+        # Reset class-level singleton
+        SupervisorEventBus._instance = None
+        # Reset module-level reference
+        _supervisor_event_bus = None
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -62746,6 +62778,35 @@ class JarvisSystemKernel:
         except Exception as e:
             self.logger.debug(f"[Kernel] Final task drain error: {e}")
 
+        # v266.1: Reset stale singletons so next in-process startup gets fresh state.
+        # Root cause: Module-level singletons (event bus, SSM, readiness gate) survive
+        # across restart cycles. Stale handlers, dead asyncio primitives, and shutdown
+        # flags from the previous run bleed into the new startup, causing silent failures:
+        # - Event bus: Dead consumer task → events silently dropped
+        # - SSM: Stale component registrations → waves skip or double-register
+        # - Readiness gate: shutting_down=True → instant SQLite fallback, never tries Cloud SQL
+        try:
+            await _reset_event_bus_singleton()
+            self.logger.debug("[Kernel] v266.1: SupervisorEventBus singleton reset")
+        except Exception as _eb_err:
+            self.logger.debug(f"[Kernel] v266.1: EventBus reset error: {_eb_err}")
+
+        try:
+            from backend.core.startup_state_machine import reset_startup_state_machine
+            reset_startup_state_machine()
+            self.logger.debug("[Kernel] v266.1: StartupStateMachine singleton reset")
+        except Exception as _ssm_err:
+            self.logger.debug(f"[Kernel] v266.1: SSM reset error: {_ssm_err}")
+
+        try:
+            from backend.intelligence.cloud_sql_connection_manager import reset_readiness_gate
+            await asyncio.wait_for(reset_readiness_gate(), timeout=5.0)
+            self.logger.debug("[Kernel] v266.1: ProxyReadinessGate singleton reset")
+        except asyncio.TimeoutError:
+            self.logger.debug("[Kernel] v266.1: ReadinessGate reset timed out (5s)")
+        except Exception as _rg_err:
+            self.logger.debug(f"[Kernel] v266.1: ReadinessGate reset error: {_rg_err}")
+
         self._state = KernelState.STOPPED
         self.logger.warning("[Kernel] ⚠️ Emergency shutdown complete")
 
@@ -62760,13 +62821,20 @@ class JarvisSystemKernel:
         Provides idempotent access to emergency shutdown for external callers
         (e.g., finally blocks, signal handlers, CLI commands).
         """
+        # v266.1: Atomic shutdown guard — prevent TOCTOU race where two
+        # concurrent callers both pass the existing-task check before either
+        # creates the task. Use _shutting_down flag as fast atomic gate.
+        if self._state in (KernelState.STOPPED, KernelState.SHUTTING_DOWN):
+            existing = self._emergency_shutdown_task
+            if existing and not existing.done():
+                self.logger.debug("[Kernel] Shutdown in progress; awaiting existing task")
+                await asyncio.shield(existing)
+            return
+
         existing = self._emergency_shutdown_task
         if existing and not existing.done():
             self.logger.debug("[Kernel] Emergency shutdown already in progress; awaiting existing task")
             await asyncio.shield(existing)
-            return
-
-        if self._state == KernelState.STOPPED:
             return
 
         self._emergency_shutdown_task = create_safe_task(
@@ -63995,17 +64063,32 @@ class JarvisSystemKernel:
 
         # v186.0: Start voice narrator queue processor for non-blocking speech
         # This MUST be started before any narrate_* calls to prevent blocking
+        # v266.1: Add timeout — narrator queue/TTS can hang indefinitely if
+        # audio device is held or TTS engine is stuck.
+        _narrator_init_timeout = _get_env_float("JARVIS_NARRATOR_INIT_TIMEOUT", 10.0)
         if self._narrator:
             try:
-                await self._narrator.start_queue_processor()
+                await asyncio.wait_for(
+                    self._narrator.start_queue_processor(),
+                    timeout=_narrator_init_timeout,
+                )
                 self.logger.debug("[Narrator] Queue processor started")
+            except asyncio.TimeoutError:
+                self.logger.warning(
+                    f"[Narrator] Queue processor start timed out ({_narrator_init_timeout:.0f}s)"
+                )
             except Exception as qp_err:
                 self.logger.debug(f"[Narrator] Queue processor failed to start: {qp_err}")
 
         # Voice narrator startup announcement
         if self._narrator:
             try:
-                await self._narrator.narrate_startup_begin()
+                await asyncio.wait_for(
+                    self._narrator.narrate_startup_begin(),
+                    timeout=_narrator_init_timeout,
+                )
+            except asyncio.TimeoutError:
+                self.logger.debug("[Narrator] Startup announcement timed out")
             except Exception as narr_err:
                 self.logger.debug(f"[Narrator] Startup announcement failed: {narr_err}")
 

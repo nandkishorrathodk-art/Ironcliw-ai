@@ -769,3 +769,18 @@ async def get_startup_state_machine() -> StartupStateMachine:
 def get_startup_state_machine_sync() -> Optional[StartupStateMachine]:
     """Get the startup state machine synchronously (may be None)"""
     return _startup_state_machine
+
+
+def reset_startup_state_machine() -> None:
+    """
+    v266.1: Reset the singleton for clean restart.
+
+    Root cause: Module-level _startup_state_machine persists across in-process
+    restarts. Stale component registrations, completed wave states, and failed
+    dependency records from the previous run bleed into the new startup, causing
+    components to appear already-registered or pre-failed.
+
+    Must be called during shutdown BEFORE the next startup cycle begins.
+    """
+    global _startup_state_machine
+    _startup_state_machine = None

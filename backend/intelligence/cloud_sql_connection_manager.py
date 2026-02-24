@@ -3941,6 +3941,36 @@ async def get_readiness_gate_async() -> ProxyReadinessGate:
     return get_readiness_gate()
 
 
+async def reset_readiness_gate() -> None:
+    """
+    v266.1: Shutdown and reset the ProxyReadinessGate singleton for clean restart.
+
+    Root cause: ProxyReadinessGate uses double-layer singleton (class._instance
+    + module._readiness_gate). On in-process restart, the gate retains stale
+    state (UNAVAILABLE from previous shutdown, dead asyncio primitives bound to
+    the old event loop, shutting_down=True flag). New startup code sees
+    UNAVAILABLE and immediately falls back to SQLite instead of attempting
+    Cloud SQL connection.
+
+    Both layers must be reset: class-level _instance AND module-level reference.
+    The shutdown() method is called first to unblock any waiters and cancel tasks.
+    """
+    global _readiness_gate
+    gate = _readiness_gate
+    if gate is not None:
+        try:
+            if not getattr(gate, '_shutting_down', False):
+                await gate.shutdown()
+        except Exception:
+            pass
+        # Reset class-level singleton
+        with ProxyReadinessGate._instance_lock:
+            ProxyReadinessGate._instance = None
+        # Reset module-level reference
+        with _readiness_gate_lock:
+            _readiness_gate = None
+
+
 # =============================================================================
 # Async-Safe Lock Implementation
 # =============================================================================
