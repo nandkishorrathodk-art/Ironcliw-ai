@@ -64123,81 +64123,85 @@ class JarvisSystemKernel:
         _skip_local_prewarm = False
         _skip_reason = ""
 
-        # v255.0: OOM Prevention Bridge — proactive memory check before heavy init.
+        # v255.0 / v266.3: OOM Prevention Bridge — proactive memory check before heavy init.
         # Uses auto_offload=False to avoid GCP network calls during pre-flight.
         # Only overrides JARVIS_STARTUP_MEMORY_MODE if OOM Bridge decision is MORE
         # severe than the current mode set by the ResourceOrchestrator (Step 1).
+        # v266.3: Single retry on failure, then unconditional degradation to local fallback.
         _oom_preflight_timeout = _get_env_float("JARVIS_OOM_PREFLIGHT_TIMEOUT", 3.0)
+        _oom_retry_timeout = _get_env_float("JARVIS_OOM_RETRY_TIMEOUT", 5.0)
         self._startup_memory_decision = None
-        try:
-            from core.gcp_oom_prevention_bridge import check_memory_before_heavy_init
-            _oom_result = await asyncio.wait_for(
-                check_memory_before_heavy_init(
-                    component="startup_pipeline",
-                    estimated_mb=3000,
-                    auto_offload=False,
-                ),
-                timeout=_oom_preflight_timeout,
-            )
-            self._startup_memory_decision = _oom_result
-            # Severity ordering: local_full < local_optimized < sequential < cloud_first < cloud_only < minimal
-            _SEVERITY = {
-                "local_full": 0, "local_optimized": 1, "sequential": 2,
-                "cloud_first": 3, "cloud_only": 4, "minimal": 5,
-            }
-            _current_mode = os.environ.get("JARVIS_STARTUP_MEMORY_MODE", "local_full")
-            _current_sev = _SEVERITY.get(_current_mode, 0)
+        _oom_attempts = [_oom_preflight_timeout, _oom_retry_timeout]
+        _oom_succeeded = False
 
-            if not _oom_result.can_proceed_locally:
-                _new_mode = "cloud_first"
-                if _SEVERITY.get(_new_mode, 0) > _current_sev:
-                    os.environ["JARVIS_STARTUP_MEMORY_MODE"] = _new_mode
-                _skip_local_prewarm = True
-                _skip_reason = (
-                    f"oom_bridge: {_oom_result.decision.value} "
-                    f"(avail={_oom_result.available_ram_gb:.1f}GB)"
+        for _oom_attempt_idx, _oom_timeout in enumerate(_oom_attempts):
+            try:
+                from core.gcp_oom_prevention_bridge import check_memory_before_heavy_init
+                _oom_result = await asyncio.wait_for(
+                    check_memory_before_heavy_init(
+                        component="startup_pipeline",
+                        estimated_mb=3000,
+                        auto_offload=False,
+                    ),
+                    timeout=_oom_timeout,
                 )
-            elif _oom_result.decision.value == "degraded":
-                _new_mode = "sequential"
-                if _SEVERITY.get(_new_mode, 0) > _current_sev:
-                    os.environ["JARVIS_STARTUP_MEMORY_MODE"] = _new_mode
-        except asyncio.CancelledError:
-            raise
-        except Exception as _oom_err:
-            _available_gb = _read_available_memory_gb()
-            _current_mode = os.environ.get("JARVIS_STARTUP_MEMORY_MODE", "local_full")
-            _guard_mode = _resolve_local_startup_mode_on_cloud_unavailable(
-                "cloud_only",
-                available_gb=_available_gb,
-            )
-            _mode_severity = {
-                "local_full": 0,
-                "local_optimized": 1,
-                "sequential": 2,
-                "cloud_first": 3,
-                "cloud_only": 4,
-                "minimal": 5,
-            }
+                self._startup_memory_decision = _oom_result
+                # Severity ordering: local_full < local_optimized < sequential < cloud_first < cloud_only < minimal
+                _SEVERITY = {
+                    "local_full": 0, "local_optimized": 1, "sequential": 2,
+                    "cloud_first": 3, "cloud_only": 4, "minimal": 5,
+                }
+                _current_mode = os.environ.get("JARVIS_STARTUP_MEMORY_MODE", "local_full")
+                _current_sev = _SEVERITY.get(_current_mode, 0)
 
-            if (
-                _current_mode in ("local_full", "local_optimized", "sequential", "minimal")
-                and _mode_severity.get(_guard_mode, 0) > _mode_severity.get(_current_mode, 0)
-            ):
+                if not _oom_result.can_proceed_locally:
+                    _new_mode = "cloud_first"
+                    if _SEVERITY.get(_new_mode, 0) > _current_sev:
+                        os.environ["JARVIS_STARTUP_MEMORY_MODE"] = _new_mode
+                    _skip_local_prewarm = True
+                    _skip_reason = (
+                        f"oom_bridge: {_oom_result.decision.value} "
+                        f"(avail={_oom_result.available_ram_gb:.1f}GB)"
+                    )
+                elif _oom_result.decision.value == "degraded":
+                    _new_mode = "sequential"
+                    if _SEVERITY.get(_new_mode, 0) > _current_sev:
+                        os.environ["JARVIS_STARTUP_MEMORY_MODE"] = _new_mode
+
+                _oom_succeeded = True
+                break  # Success — exit retry loop
+            except asyncio.CancelledError:
+                raise
+            except Exception as _oom_err:
+                if _oom_attempt_idx < len(_oom_attempts) - 1:
+                    _unified_logger.info(
+                        "[OOMBridge] Attempt %d failed (%s), retrying with %ds timeout...",
+                        _oom_attempt_idx + 1, _oom_err, int(_oom_retry_timeout),
+                    )
+                    continue
+                # Final attempt failed — unconditional degradation
+                _available_gb = _read_available_memory_gb()
+                _guard_mode = _resolve_local_startup_mode_on_cloud_unavailable(
+                    "cloud_only",
+                    available_gb=_available_gb,
+                )
+                # v266.3: OOMBridge is broken — cloud modes can't execute without it.
+                # Unconditionally degrade to local fallback regardless of current mode.
                 os.environ["JARVIS_STARTUP_MEMORY_MODE"] = _guard_mode
-                _current_mode = _guard_mode
 
-            _oom_msg = (
-                f"OOM pre-flight unavailable: {_oom_err} "
-                f"(startup_mode={_current_mode}"
-                + (f", avail={_available_gb:.1f}GB" if _available_gb is not None else "")
-                + ")"
-            )
-            _unified_logger.warning("[OOMBridge] %s", _oom_msg)
-            issue_collector.add_warning(
-                _oom_msg,
-                IssueCategory.SYSTEM,
-                suggestion="Verify core.gcp_oom_prevention_bridge dependencies and memory telemetry",
-            )
+                _oom_msg = (
+                    f"OOM pre-flight unavailable after {len(_oom_attempts)} attempts: "
+                    f"{_oom_err} "
+                    f"(degraded to {_guard_mode}"
+                    + (f", avail={_available_gb:.1f}GB" if _available_gb is not None else "")
+                    + ")"
+                )
+                _unified_logger.warning("[OOMBridge] %s", _oom_msg)
+                issue_collector.add_warning(
+                    _oom_msg,
+                    IssueCategory.SYSTEM,
+                    suggestion="Verify core.gcp_oom_prevention_bridge dependencies and memory telemetry",
+                )
 
         # =====================================================================
         # v258.3 (Gap 9): GCP AVAILABILITY PROBE
