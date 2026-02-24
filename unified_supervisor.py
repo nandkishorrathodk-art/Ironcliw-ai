@@ -8856,6 +8856,10 @@ class GCPInstanceManager(ResourceManagerBase):
         self.machine_type = os.getenv("GCP_MACHINE_TYPE", "e2-medium")
         self.credentials_path = os.getenv("GCP_CREDENTIALS_PATH", "")
         self.firewall_rule_prefix = os.getenv("GCP_FIREWALL_RULE_PREFIX", "jarvis-")
+        self.client_init_timeout = max(
+            5.0,
+            float(os.getenv("GCP_CLIENT_INIT_TIMEOUT", "20.0")),
+        )
 
         # State
         self.instance_status = GCPInstanceStatus.UNKNOWN
@@ -8901,29 +8905,50 @@ class GCPInstanceManager(ResourceManagerBase):
             return True  # Non-fatal - system can run without GCP
 
     async def _initialize_clients(self) -> None:
-        """Initialize GCP API clients."""
-        try:
-            # Try to import google-cloud libraries
+        """
+        Initialize GCP API clients.
+
+        Root hardening: client construction can block on credential discovery
+        (ADC, metadata probing, filesystem I/O). Build clients in a worker
+        thread behind an explicit timeout so startup remains deterministic.
+        """
+        def _build_clients_sync() -> Tuple[Any, Any]:
             from google.cloud import compute_v1
             from google.cloud import run_v2
 
-            # Initialize compute client
             if self.credentials_path and Path(self.credentials_path).exists():
-                self._compute_client = compute_v1.InstancesClient.from_service_account_json(
+                compute_client = compute_v1.InstancesClient.from_service_account_json(
                     self.credentials_path
                 )
             else:
-                self._compute_client = compute_v1.InstancesClient()
+                compute_client = compute_v1.InstancesClient()
 
-            # Initialize Cloud Run client if preferred
+            run_client = None
             if self.prefer_cloud_run:
                 if self.credentials_path and Path(self.credentials_path).exists():
-                    self._run_client = run_v2.ServicesClient.from_service_account_json(
+                    run_client = run_v2.ServicesClient.from_service_account_json(
                         self.credentials_path
                     )
                 else:
-                    self._run_client = run_v2.ServicesClient()
+                    run_client = run_v2.ServicesClient()
 
+            return compute_client, run_client
+
+        try:
+            compute_client, run_client = await asyncio.wait_for(
+                asyncio.to_thread(_build_clients_sync),
+                timeout=self.client_init_timeout,
+            )
+            self._compute_client = compute_client
+            self._run_client = run_client
+        except asyncio.CancelledError:
+            raise
+        except asyncio.TimeoutError as e:
+            self._compute_client = None
+            self._run_client = None
+            raise TimeoutError(
+                f"GCP client initialization timed out after {self.client_init_timeout:.1f}s"
+            ) from e
         except ImportError:
             self._logger.warning("Google Cloud libraries not installed, GCP features limited")
             # Add to startup issue collector for organized display
@@ -11237,6 +11262,7 @@ class ResourceManagerRegistry:
         completed = 0
         progress_per_manager = (end_progress - base_progress) / max(total, 1)
         start_monotonic = time.monotonic()
+        manager_start_times: Dict[str, float] = {}
 
         if manager_timeout is not None and manager_timeout <= 0:
             manager_timeout = None
@@ -11293,8 +11319,15 @@ class ResourceManagerRegistry:
 
         if parallel:
             pending_tasks: Dict[asyncio.Task, str] = {}
+            pending_log_interval = max(
+                5.0,
+                float(os.environ.get("JARVIS_RESOURCE_PENDING_LOG_INTERVAL", "15.0")),
+            )
+            last_pending_log = start_monotonic
 
             for name, manager in self._managers.items():
+                manager_start_times[name] = time.monotonic()
+                self._logger.info(f"[ResourceRegistry] Starting {name}...")
                 task = create_safe_task(
                     _initialize_manager(name, manager),
                     name=f"resource-init-{name}",
@@ -11314,6 +11347,14 @@ class ResourceManagerRegistry:
                         results[name] = False
                         await _emit_progress(name, "timeout")
                     break
+
+                if (now - last_pending_log) >= pending_log_interval and pending_tasks:
+                    pending_names = ", ".join(sorted(pending_tasks.values()))
+                    self._logger.info(
+                        f"[ResourceRegistry] Waiting on {len(pending_tasks)} manager(s): "
+                        f"{pending_names} (elapsed {now - start_monotonic:.1f}s)"
+                    )
+                    last_pending_log = now
 
                 wait_timeout: Optional[float] = None
                 if overall_deadline is not None:
@@ -11343,6 +11384,10 @@ class ResourceManagerRegistry:
                         results[name] = False
                         status = "error"
 
+                    elapsed_s = time.monotonic() - manager_start_times.get(name, start_monotonic)
+                    self._logger.info(
+                        f"[ResourceRegistry] {name} -> {status} ({elapsed_s:.1f}s)"
+                    )
                     await _emit_progress(name, status)
 
                 pending_tasks = {t: pending_tasks[t] for t in pending if t in pending_tasks}
@@ -11365,6 +11410,8 @@ class ResourceManagerRegistry:
                     break
 
                 try:
+                    manager_start_times[name] = time.monotonic()
+                    self._logger.info(f"[ResourceRegistry] Starting {name}...")
                     result = await _initialize_manager(name, manager)
                     result_bool = bool(result)
                     results[name] = result_bool
@@ -11374,6 +11421,10 @@ class ResourceManagerRegistry:
                     results[name] = False
                     status = "error"
 
+                elapsed_s = time.monotonic() - manager_start_times.get(name, start_monotonic)
+                self._logger.info(
+                    f"[ResourceRegistry] {name} -> {status} ({elapsed_s:.1f}s)"
+                )
                 await _emit_progress(name, status)
 
         for name in self._managers.keys():
@@ -64897,7 +64948,9 @@ class JarvisSystemKernel:
                                 from backend.core.prime_router import (
                                     notify_gcp_vm_ready,
                                 )
-                                notify_gcp_vm_ready(ip, _port)
+                                _notify_result = notify_gcp_vm_ready(ip, _port)
+                                if inspect.isawaitable(_notify_result):
+                                    await _notify_result
                             except ImportError:
                                 pass
 
