@@ -2093,6 +2093,7 @@ class ProgressAwareStartupController:
             "activity_source": "none",
             "subsystem_reasons": [],
             "stage": "startup",
+            "subsystem_progress_pct": 0.0,
         }
 
         try:
@@ -2106,6 +2107,7 @@ class ProgressAwareStartupController:
             activity_source = str(state.get("activity_source", "none") or "none")
             subsystem_reasons = state.get("active_subsystem_reasons") or []
             stage = str(state.get("stage", "startup") or "startup")
+            subsystem_progress_pct = float(state.get("subsystem_progress_pct", 0.0) or 0.0)
 
             if not isinstance(subsystem_reasons, list):
                 subsystem_reasons = [str(subsystem_reasons)]
@@ -2132,6 +2134,8 @@ class ProgressAwareStartupController:
                 "activity_source": activity_source,
                 "subsystem_reasons": subsystem_reasons,
                 "stage": stage,
+                # v267.1: Granular subsystem progress (e.g., model loading %)
+                "subsystem_progress_pct": max(0.0, min(100.0, subsystem_progress_pct)),
             }
         except Exception:
             return default_state
@@ -2169,6 +2173,11 @@ class ProgressAwareStartupController:
         self._last_progress_pct = 0.0
         self._extensions_granted = 0
         self._completion_seen_at = 0.0
+        # v267.1: Track subsystem-level progress (e.g., model loading %).
+        # When the overall progress_pct is flat (discrete milestone) but a
+        # subsystem's own progress is advancing, this prevents the hard cap
+        # from falsely killing a working startup.
+        self._last_subsystem_progress_pct = 0.0
 
         # Create the startup task
         task = asyncio.create_task(coro)
@@ -2198,6 +2207,16 @@ class ProgressAwareStartupController:
                 activity_source = progress_state["activity_source"]
                 subsystem_reasons = progress_state["subsystem_reasons"]
                 stage = progress_state["stage"]
+                subsystem_progress_pct = progress_state.get("subsystem_progress_pct", 0.0)
+
+                # v267.1: Detect subsystem-level progress advancement.
+                # When the overall progress_pct is flat (e.g., stuck at 75%
+                # during trinity phase) but a subsystem like model_loading is
+                # progressing (37%→38%→39%), treat it as real progress to
+                # prevent the hard cap from falsely killing active work.
+                if subsystem_progress_pct > self._last_subsystem_progress_pct + 0.5:
+                    self._last_progress_time = now
+                    self._last_subsystem_progress_pct = subsystem_progress_pct
 
                 # RULE 1: Detect REAL progress advancement (phase changes)
                 if progress_pct > self._last_progress_pct:
@@ -2353,6 +2372,7 @@ class ProgressAwareStartupController:
                                 f"[ProgressController] Phase hold at {progress_pct:.1f}% "
                                 f"for {time_since_progress:.0f}s "
                                 f"(subsystem active, stage={stage}, reasons={reasons}, "
+                                f"subsystem_pct={subsystem_progress_pct:.1f}%, "
                                 f"ETA: {eta_remaining:.0f}s)"
                             )
 
@@ -2360,11 +2380,16 @@ class ProgressAwareStartupController:
                         # has_active_subsystem=True from indefinitely suppressing
                         # stall detection. If we've been in phase hold for longer
                         # than the hard cap with NO progress, it's a stall regardless.
+                        # v267.1: Now also respects subsystem_progress_pct — the hard
+                        # cap only fires when BOTH overall AND subsystem progress are
+                        # flat for the full duration. Active model loading (37%→50%→65%)
+                        # resets the timer via subsystem progress tracking above.
                         if time_since_progress >= TRINITY_PHASE_HOLD_HARD_CAP:
                             self.logger.error(
                                 f"[ProgressController] PHASE HOLD HARD CAP ({TRINITY_PHASE_HOLD_HARD_CAP:.0f}s) "
                                 f"exceeded at {progress_pct:.1f}% — subsystem claims active but "
-                                f"zero progress for {time_since_progress:.0f}s. "
+                                f"zero progress for {time_since_progress:.0f}s "
+                                f"(subsystem_pct={subsystem_progress_pct:.1f}%). "
                                 f"Treating as TRUE STALL (likely leaked active flag)."
                             )
                             if progress_pct < 95:
@@ -62661,6 +62686,7 @@ class JarvisSystemKernel:
             model_active = False
             model_eta = 0
             model_elapsed = 0
+            model_progress_pct = 0.0  # v267.1: Expose for hard cap awareness
             try:
                 dashboard = _live_dashboard
                 if dashboard is not None:
@@ -62669,6 +62695,7 @@ class JarvisSystemKernel:
                         model_active = True
                         model_eta = ms.get("estimated_total_seconds", 0)
                         model_elapsed = ms.get("elapsed_seconds", 0)
+                        model_progress_pct = float(ms.get("progress_pct", 0) or 0)
             except Exception:
                 pass
 
@@ -62792,6 +62819,12 @@ class JarvisSystemKernel:
                 "activity_timestamp": activity_timestamp,
                 "activity_source": activity_source,
                 "start_time": started,
+                # v267.1: Granular subsystem progress for hard cap awareness.
+                # When model_loading is the active subsystem, this tracks the
+                # model's own loading percentage (0-100). The ProgressController
+                # uses this to distinguish genuine stalls (model stuck at 37%
+                # for 300s) from active work (37%→50%→65%).
+                "subsystem_progress_pct": model_progress_pct if model_active else 0.0,
             }
         
         self.logger.info(
@@ -64592,6 +64625,122 @@ class JarvisSystemKernel:
         # v266.0: Invincible Node eager prewarm REMOVED — VM creation is now
         # pressure-driven via GCPHybridPrimeRouter. The router provisions VMs
         # when memory pressure exceeds 85% sustained (3/5 readings).
+        #
+        # v267.1: EXCEPTION — Golden image + low-RAM (<=16GB) configs MUST
+        # start the VM proactively because local model loading takes 500-600s
+        # and is impractical on 16GB. Without this, the pressure-driven router
+        # triggers too late (after memory pressure builds) and the hard cap
+        # kills startup before the VM is ready.
+        if _skip_local_prewarm and self._early_prime_skipped_for_cloud:
+            _should_proactive_vm = (
+                os.getenv("JARVIS_GCP_USE_GOLDEN_IMAGE", "false").lower() == "true"
+                or os.getenv("GCP_ENABLED", "false").lower() == "true"
+                or os.getenv("GCP_VM_ENABLED", "false").lower() == "true"
+                or os.getenv("JARVIS_GCP_ENABLED", "false").lower() == "true"
+            )
+            if _should_proactive_vm:
+                self.logger.info(
+                    "[Kernel] v267.1: PROACTIVE GCP VM START — golden image + "
+                    "low-RAM cloud-only mode requires early VM provisioning"
+                )
+
+                async def _proactive_gcp_vm_start():
+                    """Start GCP VM early for golden-image cloud-only configs."""
+                    try:
+                        from backend.core.gcp_vm_manager import get_gcp_vm_manager
+
+                        update_dashboard_gcp_progress(
+                            phase=1,
+                            phase_name="Initiating",
+                            checkpoint="Proactive VM start (golden image + low RAM)",
+                            progress=5,
+                            status="starting",
+                            deployment_mode="golden-image",
+                        )
+
+                        manager = await get_gcp_vm_manager()
+                        if not manager.is_static_vm_mode:
+                            self.logger.info(
+                                "[ProactiveGCP] Not in static VM mode — "
+                                "deferring to pressure-driven lifecycle"
+                            )
+                            return
+
+                        self.logger.info("[ProactiveGCP] Waking cloud node...")
+                        update_dashboard_gcp_progress(
+                            phase=3,
+                            phase_name="Waking VM",
+                            checkpoint="Sending wake request",
+                            progress=20,
+                        )
+
+                        def _proactive_progress_cb(pct: int, phase: str, detail: str) -> None:
+                            dashboard_pct = 40 + int(pct * 0.6)
+                            _mode = "golden-image" if "golden" in (detail or "").lower() else "standard"
+                            update_dashboard_gcp_progress(
+                                phase=4,
+                                phase_name=phase.title()[:15] if phase else "Loading",
+                                checkpoint=(detail or "")[:60],
+                                progress=dashboard_pct,
+                                source="apars",
+                                deployment_mode=_mode,
+                            )
+
+                        _port = int(os.getenv(
+                            "TRINITY_JPRIME_PORT",
+                            os.getenv("JARVIS_PRIME_PORT", "8001"),
+                        ))
+                        _timeout = float(os.getenv(
+                            "JARVIS_GCP_RECOVERY_TIMEOUT", "450"
+                        ))
+                        success, ip, status_msg = await manager.ensure_static_vm_ready(
+                            port=_port,
+                            timeout=_timeout,
+                            progress_callback=_proactive_progress_cb,
+                        )
+
+                        if success and ip:
+                            self.logger.info(
+                                f"[ProactiveGCP] VM ready at {ip} — "
+                                f"setting Invincible Node env vars"
+                            )
+                            os.environ["INVINCIBLE_NODE_IP"] = ip
+                            os.environ["INVINCIBLE_NODE_READY"] = "true"
+                            self._invincible_node_ip = ip
+                            self._invincible_node_ready = True
+
+                            # Propagate to routing layer
+                            try:
+                                from backend.core.prime_router import (
+                                    notify_gcp_vm_ready,
+                                )
+                                notify_gcp_vm_ready(ip, _port)
+                            except ImportError:
+                                pass
+
+                            update_dashboard_gcp_progress(
+                                phase=6,
+                                phase_name="Ready",
+                                checkpoint=f"VM ready at {ip}",
+                                progress=100,
+                                status="ready",
+                                deployment_mode="golden-image",
+                            )
+                        else:
+                            self.logger.warning(
+                                f"[ProactiveGCP] VM start failed: {status_msg} — "
+                                f"will fall back to local or pressure-driven"
+                            )
+                    except Exception as e:
+                        self.logger.warning(
+                            f"[ProactiveGCP] Early VM start failed (non-fatal): {e}"
+                        )
+
+                self._proactive_gcp_task = create_safe_task(
+                    _proactive_gcp_vm_start(),
+                    name="proactive-gcp-vm-start",
+                )
+                self._background_tasks.append(self._proactive_gcp_task)
 
         try:
             # =================================================================
@@ -67208,7 +67357,7 @@ class JarvisSystemKernel:
             # This saves ~30-60s by not waiting sequentially.
             invincible_node_task: Optional[asyncio.Task] = None
             _reuse_early = False  # v233.4: Track if reusing early boot task
-            if self.config.invincible_node_enabled and self.config.invincible_node_static_ip_name:
+            if self.config.invincible_node_enabled and self.config.invincible_node_static_ip_name and not self._invincible_node_ready:
                 self.logger.info("[Kernel] Starting Invincible Node wake-up in parallel...")
                 
                 # v220.1: Update dashboard with GCP starting status
@@ -80629,21 +80778,30 @@ class JarvisSystemKernel:
                     if mem2.available / (1024 ** 3) >= required_gb * 0.75:
                         probe["memory_ok"] = True
 
-                # v265.2: Check speechbrain availability in thread executor.
-                # ROOT CAUSE FIX: This is the synchronous call that froze the
-                # event loop for 5-10+ seconds, defeating all timeout mechanisms.
-                # Running in a thread keeps the event loop responsive so that
-                # _timed_probe's asyncio.wait_for() can fire cancellation on time.
-                def _check_speechbrain_sync() -> bool:
+                # v268.0: Check speechbrain availability in SUBPROCESS.
+                # ROOT CAUSE FIX (v268.0): v265.2 ran the import in a thread
+                # executor, which kept the event loop responsive but loaded
+                # scipy/numpy/BLAS native C extensions in-process.  When
+                # AudioBus recovery concurrently starts PortAudio (also native),
+                # the two native init paths collide — crashing in a native
+                # thread with <no Python frame> (segfault).  Running the check
+                # in a subprocess completely isolates native code and makes the
+                # segfault impossible.
+                def _check_speechbrain_subprocess() -> bool:
                     try:
-                        import importlib
-                        importlib.import_module("speechbrain")
-                        return True
-                    except ImportError:
+                        _result = subprocess.run(
+                            [sys.executable, "-c", "import speechbrain; print('ok')"],
+                            capture_output=True,
+                            text=True,
+                            timeout=10,
+                            start_new_session=True,
+                        )
+                        return _result.returncode == 0 and "ok" in _result.stdout
+                    except Exception:
                         return False
 
                 _loop = asyncio.get_running_loop()
-                _sb_ok = await _loop.run_in_executor(None, _check_speechbrain_sync)
+                _sb_ok = await _loop.run_in_executor(None, _check_speechbrain_subprocess)
                 if _sb_ok:
                     probe["available"] = True
                 else:
