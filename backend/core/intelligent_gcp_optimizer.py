@@ -138,8 +138,8 @@ class IntelligentGCPOptimizer:
         # Adaptive thresholds (learned from history)
         self.thresholds = {
             "pressure_score_warning": 60.0,  # Start considering GCP
-            "pressure_score_critical": 75.0,  # Lowered from 80.0 for easier testing
-            "pressure_score_emergency": 85.0,  # Lowered from 95.0 for easier testing
+            "pressure_score_critical": 80.0,  # Strong recommendation
+            "pressure_score_emergency": 95.0,  # Urgent creation
             "min_vm_runtime_seconds": 300,  # Don't create VM for <5min workloads
             "vm_warmdown_seconds": 600,  # Keep VM alive 10min after pressure drops
             "max_vm_creates_per_day": 10,  # Prevent runaway costs
