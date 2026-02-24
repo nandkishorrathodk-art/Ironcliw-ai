@@ -92,7 +92,7 @@ jobs:
               }
             }' "$file"
 
-            return $counter
+            return 0
           }
 
           # Find all mermaid files and markdown files with mermaid diagrams
