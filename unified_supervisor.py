@@ -1727,7 +1727,6 @@ try:
         DeadManSwitch,
         RollbackManager,
         RollbackDecision,
-        get_rollback_manager,
     )
     from backend.core.supervisor.update_engine import UpdateEngine
     JARVIS_SUPERVISOR_AVAILABLE = True
@@ -1741,7 +1740,6 @@ except ImportError as _ie:
     DeadManSwitch = None
     RollbackManager = None
     RollbackDecision = None
-    get_rollback_manager = None
     UpdateEngine = None
 
 # =============================================================================
