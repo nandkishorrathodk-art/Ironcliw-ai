@@ -76,6 +76,7 @@ Version: 153.0.0
 from __future__ import annotations
 
 import asyncio
+import inspect
 import json
 import logging
 import os
@@ -184,6 +185,11 @@ EMERGENCY_OFFLOAD_HYSTERESIS = float(os.getenv("EMERGENCY_OFFLOAD_HYSTERESIS", "
 RECOVERY_STABILITY_THRESHOLD_PERCENT = float(os.getenv("EMERGENCY_RECOVERY_THRESHOLD_PERCENT", "75.0"))
 RECOVERY_STABILITY_DURATION_SEC = float(os.getenv("EMERGENCY_RECOVERY_STABILITY_SEC", "30.0"))
 RECOVERY_MAX_ATTEMPTS = int(os.getenv("EMERGENCY_RECOVERY_MAX_ATTEMPTS", "3"))
+RECOVERY_STABILITY_MIN_SEC = float(os.getenv("EMERGENCY_RECOVERY_STABILITY_MIN_SEC", "30.0"))
+RECOVERY_STABILITY_MAX_SEC = float(os.getenv("EMERGENCY_RECOVERY_STABILITY_MAX_SEC", "60.0"))
+RECOVERY_COOLDOWN_SEC = float(os.getenv("EMERGENCY_RECOVERY_COOLDOWN_SEC", "300.0"))
+RECOVERY_TREND_RISE_EPSILON = float(os.getenv("EMERGENCY_RECOVERY_TREND_RISE_EPSILON", "0.25"))
+RECOVERY_BACKOFF_SCHEDULE_SEC = [30.0, 60.0, 120.0]
 
 # Cross-repo signaling for memory pressure
 from pathlib import Path
@@ -787,6 +793,10 @@ class GCPHybridPrimeRouter:
         self._recovery_stable_since: float = 0.0  # When RAM first dropped below recovery threshold
         self._recovery_attempts: int = 0
         self._recovery_in_progress: bool = False  # Prevents concurrent reload attempts
+        self._recovery_cooldown_until: float = 0.0
+        self._recovery_task: Optional[asyncio.Task] = None
+        self._recovery_percent_history: Deque[Tuple[float, float]] = deque(maxlen=8)
+        self._local_circuit_state: str = "unknown"
 
         # Process tracking for emergency offload
         self._ml_loader_ref = None  # Reference to ProcessIsolatedMLLoader
@@ -799,15 +809,22 @@ class GCPHybridPrimeRouter:
         # Initialize VM provisioning lock if available
         if self._vm_provisioning_enabled and _VM_LOCK_AVAILABLE and DistributedLock:
             try:
-                self._vm_provisioning_lock = DistributedLock(
-                    name="gcp_vm_provisioning",
-                    config=DistributedLockConfig(
-                        # v93.0: Fixed parameter names to match DistributedLockConfig API
-                        lock_ttl=VM_PROVISIONING_LOCK_TTL,  # Was ttl_seconds
-                        default_timeout=30.0,  # Max wait time to acquire
-                        retry_interval=1.0,  # Was retry_delay
-                    ),
+                _lock_cfg = DistributedLockConfig(
+                    lock_ttl=VM_PROVISIONING_LOCK_TTL,
+                    default_timeout=30.0,
+                    retry_interval=1.0,
                 )
+                _ctor_params = set(inspect.signature(DistributedLock.__init__).parameters.keys())
+                _lock_kwargs: Dict[str, Any] = {"config": _lock_cfg}
+                if "name" in _ctor_params:
+                    _lock_kwargs["name"] = "gcp_vm_provisioning"
+                elif "lock_name" in _ctor_params:
+                    _lock_kwargs["lock_name"] = "gcp_vm_provisioning"
+                else:
+                    raise TypeError(
+                        "DistributedLock constructor missing both `name` and `lock_name`"
+                    )
+                self._vm_provisioning_lock = DistributedLock(**_lock_kwargs)
             except Exception as e:
                 self.logger.warning(f"VM provisioning lock initialization failed: {e}")
 
@@ -1117,6 +1134,7 @@ class GCPHybridPrimeRouter:
 
                 # v93.0: Update memory history for rate-of-change calculation
                 self._memory_history.append((timestamp, used_mb))
+                self._recovery_percent_history.append((timestamp, float(used_percent)))
 
                 # v93.0: Calculate memory growth rate (derivative)
                 memory_rate_mb_sec = self._calculate_memory_rate()
@@ -1170,6 +1188,7 @@ class GCPHybridPrimeRouter:
                                 self._model_needs_recovery = True
                                 self._recovery_stable_since = 0.0
                                 self._recovery_attempts = 0
+                                self._recovery_cooldown_until = 0.0
                             self.logger.info(
                                 f"[v266.2] RAM dropped to {used_percent:.1f}% — "
                                 f"hysteresis disarmed, escalation reset, "
@@ -1188,6 +1207,7 @@ class GCPHybridPrimeRouter:
                         self._pre_unload_percent = used_percent  # Baseline for verification
                         self._clean_unload_fired = True
                         self._clean_unload_verified = False
+                        self._local_circuit_state = "open"
 
                         # Fire COMPONENT_UNLOAD via MemoryQuantizer
                         try:
@@ -1300,6 +1320,16 @@ class GCPHybridPrimeRouter:
                 # Check if we should terminate VM (low usage, only in IDLE)
                 if current_state == VMLifecycleState.IDLE and used_percent < GCP_TRIGGER_RAM_PERCENT - 20:
                     await self._check_vm_termination()
+
+                # Keep recovery/circuit observability fresh while post-crisis recovery is active.
+                if self._model_needs_recovery or self._recovery_state() in {"reloading", "cooldown"}:
+                    signal_status = "critical" if used_percent >= CRITICAL_RAM_PERCENT else "elevated"
+                    await self._signal_memory_pressure_to_repos(
+                        status=signal_status,
+                        action="recover" if self._model_needs_recovery else None,
+                        used_percent=used_percent,
+                        rate_mb_sec=memory_rate_mb_sec,
+                    )
 
             except asyncio.CancelledError:
                 # Ensure processes are resumed on shutdown
@@ -1648,88 +1678,206 @@ class GCPHybridPrimeRouter:
             self._emergency_offload_hysteresis_armed = True
             return
 
-    async def _check_model_recovery(self, current_used_percent: float) -> None:
-        """v266.2: Check if conditions are right for post-crisis model reload.
+    def _recovery_state(self) -> str:
+        """Return normalized recovery state for observability and sidecar signals."""
+        if self._recovery_in_progress or (
+            self._recovery_task is not None and not self._recovery_task.done()
+        ):
+            return "reloading"
+        if self._recovery_cooldown_until > time.time():
+            return "cooldown"
+        if self._model_needs_recovery:
+            return "armed"
+        return "idle"
 
-        Called every monitoring poll when _model_needs_recovery is True.
-        Implements hybrid lazy+background warm-up:
-        - Waits for RAM to stabilize below RECOVERY_STABILITY_THRESHOLD_PERCENT
-        - After RECOVERY_STABILITY_DURATION_SEC sustained, starts background reload
-        - CLAUDE handles requests during reload (circuit breaker OPEN for LOCAL)
-        - On success: resets circuit breaker, clears recovery flag
-        - On failure: resets stability window, increments attempt counter
-        """
-        if self._recovery_in_progress:
-            return  # Reload already running in background
+    def _recovery_trend_percent_per_sec(self) -> float:
+        """Estimate memory trend for stability gating (non-rising requirement)."""
+        if len(self._recovery_percent_history) < 2:
+            return 0.0
+        start_ts, start_pct = self._recovery_percent_history[0]
+        end_ts, end_pct = self._recovery_percent_history[-1]
+        dt = max(0.001, end_ts - start_ts)
+        return (end_pct - start_pct) / dt
 
-        if self._recovery_attempts >= RECOVERY_MAX_ATTEMPTS:
-            self.logger.info(
-                f"[v266.2] Recovery exhausted ({RECOVERY_MAX_ATTEMPTS} attempts) "
-                f"— staying on CLAUDE until next crisis cycle"
+    def _recovery_backoff_seconds(self, attempts_after_failure: int) -> float:
+        idx = max(0, min(attempts_after_failure - 1, len(RECOVERY_BACKOFF_SCHEDULE_SEC) - 1))
+        return float(RECOVERY_BACKOFF_SCHEDULE_SEC[idx])
+
+    def _set_recovery_cooldown(self, delay_seconds: float, reason: str) -> None:
+        delay = max(0.0, float(delay_seconds))
+        until = time.time() + delay
+        self._recovery_cooldown_until = max(self._recovery_cooldown_until, until)
+        self.logger.info(
+            "[v266.4] Recovery cooldown armed for %.0fs (reason=%s, attempts=%d)",
+            delay,
+            reason,
+            self._recovery_attempts,
+        )
+
+    async def _run_model_recovery_attempt(
+        self,
+        attempt_number: int,
+        current_used_percent: float,
+    ) -> None:
+        """Run one background recovery attempt under singleflight ownership."""
+        self._recovery_in_progress = True
+        self._local_circuit_state = "open"
+        try:
+            if current_used_percent >= EMERGENCY_UNLOAD_RAM_PERCENT:
+                raise RuntimeError(
+                    f"memory_critical_before_reload:{current_used_percent:.1f}%"
+                )
+
+            from backend.intelligence.unified_model_serving import get_model_serving
+
+            model_serving = await asyncio.wait_for(get_model_serving(), timeout=10.0)
+            model_serving.force_open_local_circuit_breaker(reason="post_crisis_reload")
+            self._local_circuit_state = model_serving.get_local_circuit_state()
+
+            load_ok = await asyncio.wait_for(model_serving.load_model(), timeout=120.0)
+            if not load_ok:
+                raise RuntimeError("load_model returned false")
+
+            # Abort cleanly if memory regresses to CRITICAL during reload.
+            ram_after = await self._get_ram_info_with_mb()
+            if ram_after and ram_after.get("used_percent", 0.0) >= EMERGENCY_UNLOAD_RAM_PERCENT:
+                raise RuntimeError(
+                    f"memory_critical_during_reload:{ram_after.get('used_percent', 0.0):.1f}%"
+                )
+
+            smoke_ok = await asyncio.wait_for(
+                model_serving.smoke_test_local_model(timeout_seconds=20.0),
+                timeout=25.0,
             )
+            if not smoke_ok:
+                raise RuntimeError("smoke_test_local_model failed")
+
+            model_serving.reset_local_circuit_breaker()
+            self._local_circuit_state = model_serving.get_local_circuit_state()
+
             self._model_needs_recovery = False
+            self._recovery_attempts = 0
+            self._recovery_stable_since = 0.0
+            self._recovery_cooldown_until = 0.0
+            self.logger.warning(
+                "[v266.4] Post-crisis recovery COMPLETE "
+                "(attempt=%d, local_circuit=%s)",
+                attempt_number,
+                self._local_circuit_state,
+            )
+            await self._signal_memory_pressure_to_repos(
+                status="recovered",
+                action=None,
+                used_percent=current_used_percent,
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception as recovery_err:
+            self._recovery_attempts += 1
+            self._recovery_stable_since = 0.0
+            self._local_circuit_state = "open"
+            self.logger.warning(
+                "[v266.4] Post-crisis recovery failed "
+                "(attempt=%d/%d, error=%s)",
+                self._recovery_attempts,
+                RECOVERY_MAX_ATTEMPTS,
+                recovery_err,
+            )
+
+            cooldown = self._recovery_backoff_seconds(self._recovery_attempts)
+            if self._recovery_attempts >= RECOVERY_MAX_ATTEMPTS:
+                cooldown = max(cooldown, RECOVERY_COOLDOWN_SEC)
+                self.logger.warning(
+                    "[v266.4] Recovery attempt budget exhausted; entering cooldown %.0fs",
+                    cooldown,
+                )
+            self._set_recovery_cooldown(cooldown, reason=str(recovery_err))
+        finally:
+            self._recovery_in_progress = False
+
+    async def _check_model_recovery(self, current_used_percent: float) -> None:
+        """Check stability gate and singleflight launch for post-crisis reload."""
+        now = time.time()
+        stable_target = min(
+            max(RECOVERY_STABILITY_DURATION_SEC, RECOVERY_STABILITY_MIN_SEC),
+            RECOVERY_STABILITY_MAX_SEC,
+        )
+        trend = self._recovery_trend_percent_per_sec()
+        non_rising = trend <= RECOVERY_TREND_RISE_EPSILON
+
+        # Abort if pressure returns to CRITICAL.
+        if current_used_percent >= EMERGENCY_UNLOAD_RAM_PERCENT:
+            if self._recovery_stable_since > 0.0:
+                self.logger.warning(
+                    "[v266.4] Recovery stability window aborted: RAM returned to CRITICAL "
+                    "(%.1f%%)",
+                    current_used_percent,
+                )
+            self._recovery_stable_since = 0.0
+            if self._recovery_task is not None and not self._recovery_task.done():
+                self._recovery_task.cancel()
+            self._recovery_in_progress = False
+            self._set_recovery_cooldown(RECOVERY_BACKOFF_SCHEDULE_SEC[-1], "memory_returned_critical")
             return
 
-        # Check stability: RAM must be below threshold
-        if current_used_percent < RECOVERY_STABILITY_THRESHOLD_PERCENT:
+        if self._recovery_in_progress or (
+            self._recovery_task is not None and not self._recovery_task.done()
+        ):
+            return
+
+        if self._recovery_cooldown_until > now:
+            return
+
+        if self._recovery_attempts >= RECOVERY_MAX_ATTEMPTS:
+            # Keep candidate armed but avoid tight retry loops.
+            if self._recovery_cooldown_until > now:
+                return
+            self.logger.info(
+                "[v266.4] Recovery cooldown elapsed; resetting attempt budget"
+            )
+            self._recovery_attempts = 0
+            return
+
+        if current_used_percent <= RECOVERY_STABILITY_THRESHOLD_PERCENT and non_rising:
             if self._recovery_stable_since == 0.0:
-                self._recovery_stable_since = time.time()
+                self._recovery_stable_since = now
                 self.logger.info(
-                    f"[v266.2] RAM at {current_used_percent:.1f}% "
-                    f"(< {RECOVERY_STABILITY_THRESHOLD_PERCENT}%) — "
-                    f"stability window started"
+                    "[v266.4] Recovery stability gate opened "
+                    "(ram=%.1f%% trend=%.3f%%/s target=%.0fs)",
+                    current_used_percent,
+                    trend,
+                    stable_target,
                 )
                 return
 
-            elapsed = time.time() - self._recovery_stable_since
-            if elapsed < RECOVERY_STABILITY_DURATION_SEC:
-                return  # Still waiting for stability
+            elapsed = now - self._recovery_stable_since
+            if elapsed < stable_target:
+                return
 
-            # Stability window met — attempt background reload
+            attempt_number = self._recovery_attempts + 1
             self.logger.warning(
-                f"[v266.2] RAM stable at {current_used_percent:.1f}% "
-                f"for {elapsed:.0f}s — starting background model reload "
-                f"(attempt {self._recovery_attempts + 1}/{RECOVERY_MAX_ATTEMPTS})"
+                "[v266.4] Recovery launch singleflight "
+                "(attempt=%d/%d, ram=%.1f%%, stable=%.0fs, trend=%.3f%%/s)",
+                attempt_number,
+                RECOVERY_MAX_ATTEMPTS,
+                current_used_percent,
+                elapsed,
+                trend,
             )
-            self._recovery_in_progress = True
-            try:
-                from backend.intelligence.unified_model_serving import get_model_serving
-                model_serving = await asyncio.wait_for(get_model_serving(), timeout=10.0)
-                success = await asyncio.wait_for(model_serving.load_model(), timeout=120.0)
-                if success:
-                    model_serving.reset_local_circuit_breaker()
-                    self._model_needs_recovery = False
-                    self._recovery_attempts = 0
-                    self._recovery_stable_since = 0.0
-                    self.logger.warning(
-                        "[v266.2] Post-crisis recovery COMPLETE — "
-                        "local model reloaded, PRIME_LOCAL circuit breaker reset"
-                    )
-                    await self._signal_memory_pressure_to_repos(
-                        status="recovered", action=None,
-                        used_percent=current_used_percent,
-                    )
-                else:
-                    self._recovery_attempts += 1
-                    self._recovery_stable_since = 0.0
-                    self.logger.warning(
-                        f"[v266.2] Model reload failed (attempt {self._recovery_attempts}/"
-                        f"{RECOVERY_MAX_ATTEMPTS}) — waiting for next stability window"
-                    )
-            except Exception as e:
-                self._recovery_attempts += 1
-                self._recovery_stable_since = 0.0
-                self.logger.error(f"[v266.2] Recovery error: {e}")
-            finally:
-                self._recovery_in_progress = False
-        else:
-            # RAM climbed back up — reset stability window
-            if self._recovery_stable_since > 0.0:
-                self.logger.debug(
-                    f"[v266.2] RAM at {current_used_percent:.1f}% — "
-                    f"stability window reset"
-                )
-                self._recovery_stable_since = 0.0
+            self._recovery_task = asyncio.create_task(
+                self._run_model_recovery_attempt(attempt_number, current_used_percent),
+                name="post-crisis-model-recovery",
+            )
+            return
+
+        # Reset gate when pressure is above threshold or trend is rising.
+        if self._recovery_stable_since > 0.0:
+            self.logger.debug(
+                "[v266.4] Recovery stability reset (ram=%.1f%% trend=%.3f%%/s)",
+                current_used_percent,
+                trend,
+            )
+            self._recovery_stable_since = 0.0
 
     async def _release_emergency_offload(self, reason: str) -> None:
         """
@@ -2040,6 +2188,12 @@ class GCPHybridPrimeRouter:
                 },
                 "emergency_offload_active": self._emergency_offload_active,
                 "paused_processes_count": len(self._paused_processes),
+                "recovery_state": self._recovery_state(),
+                "recovery_attempts": self._recovery_attempts,
+                "recovery_cooldown_until": self._recovery_cooldown_until,
+                "recovery_stable_since": self._recovery_stable_since,
+                "recovery_memory_trend_pct_per_sec": self._recovery_trend_percent_per_sec(),
+                "local_circuit_state": self._local_circuit_state,
             }
 
             with open(MEMORY_PRESSURE_SIGNAL_FILE, "w") as f:
@@ -2586,6 +2740,13 @@ class GCPHybridPrimeRouter:
             self._monitoring_task.cancel()
             try:
                 await self._monitoring_task
+            except asyncio.CancelledError:
+                pass
+
+        if self._recovery_task:
+            self._recovery_task.cancel()
+            try:
+                await self._recovery_task
             except asyncio.CancelledError:
                 pass
 
@@ -3566,6 +3727,15 @@ class GCPHybridPrimeRouter:
             "degradation_reason": self._degradation_reason,
             "last_successful_tier": self._last_successful_tier.value if self._last_successful_tier else None,
             "tier_failure_counts": {tier.value: count for tier, count in self._tier_failure_counts.items()},
+            "post_crisis_recovery": {
+                "state": self._recovery_state(),
+                "needs_recovery": self._model_needs_recovery,
+                "attempts": self._recovery_attempts,
+                "cooldown_until": self._recovery_cooldown_until,
+                "stable_since": self._recovery_stable_since,
+                "local_circuit_state": self._local_circuit_state,
+                "trend_pct_per_sec": self._recovery_trend_percent_per_sec(),
+            },
             # v93.0: Predictive Memory Defense metrics
             "predictive_defense": {
                 "enabled": True,

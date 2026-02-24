@@ -24,7 +24,6 @@ class VoiceSidecarContractConfig:
     control_timeout: float
     health_timeout: float
     command: List[str]
-    manage_worker: bool
 
 
 class VoiceSidecarClient:
@@ -109,7 +108,7 @@ class VoiceSidecarClient:
         return await self._request("GET", "/v1/health", timeout=self.config.health_timeout)
 
     async def status(self) -> Dict[str, Any]:
-        return await self._request("GET", "/v1/control/status", timeout=self.config.health_timeout)
+        return await self._request("GET", "/v1/observer/state", timeout=self.config.health_timeout)
 
     async def heavy_load_gate(self) -> Dict[str, Any]:
         return await self._request(
@@ -118,17 +117,6 @@ class VoiceSidecarClient:
             timeout=self.config.health_timeout,
             allow_error_status={429},
         )
-
-    async def start_worker(self, reason: str) -> Dict[str, Any]:
-        return await self._request("POST", "/v1/control/start", payload={"reason": reason})
-
-    async def stop_worker(self, reason: str) -> Dict[str, Any]:
-        return await self._request("POST", "/v1/control/stop", payload={"reason": reason})
-
-    async def restart_worker(self, reason: str) -> Dict[str, Any]:
-        return await self._request("POST", "/v1/control/restart", payload={"reason": reason})
-
-
 
 def _env_bool(name: str, default: bool) -> bool:
     value = os.getenv(name)
@@ -160,7 +148,6 @@ def contract_config_from_env() -> VoiceSidecarContractConfig:
         control_timeout=float(os.getenv("JARVIS_VOICE_SIDECAR_CONTROL_TIMEOUT", "5.0")),
         health_timeout=float(os.getenv("JARVIS_VOICE_SIDECAR_HEALTH_TIMEOUT", "2.5")),
         command=_env_command("JARVIS_VOICE_SIDECAR_COMMAND"),
-        manage_worker=_env_bool("JARVIS_VOICE_SIDECAR_MANAGE_WORKER", True),
     )
 
 

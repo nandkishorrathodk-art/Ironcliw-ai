@@ -2415,6 +2415,61 @@ class UnifiedModelServing:
             "[v266.2] PRIME_LOCAL circuit breaker reset to CLOSED (post-crisis recovery)"
         )
 
+    def force_open_local_circuit_breaker(self, reason: str = "recovery_reload") -> None:
+        """Force PRIME_LOCAL circuit OPEN so routing stays on cloud during reload."""
+        _provider = ModelProvider.PRIME_LOCAL.value
+        for _ in range(CIRCUIT_BREAKER_FAILURE_THRESHOLD):
+            self._circuit_breaker.record_failure(_provider)
+        _state = self._circuit_breaker.get_state(_provider)
+        _state_name = (
+            _state.state.value
+            if hasattr(_state.state, "value")
+            else str(_state.state)
+        )
+        self.logger.info(
+            "[v266.4] PRIME_LOCAL circuit forced OPEN (reason=%s, state=%s)",
+            reason,
+            _state_name,
+        )
+
+    def get_local_circuit_state(self) -> str:
+        """Return normalized PRIME_LOCAL circuit state for observability."""
+        _state = self._circuit_breaker.get_state(ModelProvider.PRIME_LOCAL.value)
+        _raw = _state.state.value if hasattr(_state.state, "value") else str(_state.state)
+        return str(_raw).lower()
+
+    async def smoke_test_local_model(self, timeout_seconds: float = 20.0) -> bool:
+        """Run a minimal local inference smoke test after reload."""
+        _local = self._clients.get(ModelProvider.PRIME_LOCAL)
+        if _local is None:
+            self.logger.warning("[v266.4] Local smoke test skipped: PRIME_LOCAL client missing")
+            return False
+        if not await _local.health_check():
+            self.logger.warning("[v266.4] Local smoke test failed: health_check returned false")
+            return False
+
+        max_tokens = max(1, int(os.getenv("JARVIS_LOCAL_RECOVERY_SMOKE_MAX_TOKENS", "4")))
+        smoke_req = ModelRequest(
+            messages=[{"role": "user", "content": "Respond with OK."}],
+            max_tokens=max_tokens,
+            temperature=0.0,
+        )
+        try:
+            smoke_resp = await asyncio.wait_for(
+                _local.generate(smoke_req),
+                timeout=max(1.0, timeout_seconds),
+            )
+            if not getattr(smoke_resp, "success", False):
+                self.logger.warning(
+                    "[v266.4] Local smoke test failed: generation unsuccessful (%s)",
+                    getattr(smoke_resp, "error", "unknown"),
+                )
+                return False
+            return True
+        except Exception as smoke_err:
+            self.logger.warning(f"[v266.4] Local smoke test exception: {smoke_err}")
+            return False
+
     # ── v266.0: Component Unload (GCP-disabled escape valve) ─────────
 
     async def _handle_component_unload(self, tier) -> None:

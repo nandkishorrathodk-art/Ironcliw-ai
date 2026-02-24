@@ -747,6 +747,39 @@ class ParallelInitializer:
         self.app.state.gcp_offload_active = False
         self.app.state.gcp_vm_ip = None
         self.app.state.oom_degradation_active = False  # v132.0
+        self.app.state.oom_bridge_available = bool(OOM_PREVENTION_AVAILABLE)
+
+        def _force_sequential_on_bridge_unavailable(reason: str) -> None:
+            """Fail-closed when OOM bridge telemetry is unavailable under low RAM."""
+            self.app.state.oom_bridge_available = False
+            self.app.state.oom_bridge_reason = reason
+            try:
+                import psutil
+
+                _avail_gb = psutil.virtual_memory().available / (1024**3)
+                if _avail_gb < 4.0:
+                    self._force_sequential = True
+                    logger.warning(
+                        "[OOM Prevention] Bridge unavailable (%s) + %.1fGB available "
+                        "— forcing sequential init",
+                        reason,
+                        _avail_gb,
+                    )
+                else:
+                    logger.warning(
+                        "[OOM Prevention] Bridge unavailable (%s) but %.1fGB available "
+                        "— parallel init allowed",
+                        reason,
+                        _avail_gb,
+                    )
+            except Exception:
+                # psutil unavailable too → default to strict fail-closed mode.
+                self._force_sequential = True
+                logger.warning(
+                    "[OOM Prevention] Bridge unavailable (%s) and RAM telemetry unavailable "
+                    "— forcing sequential init",
+                    reason,
+                )
 
         if OOM_PREVENTION_AVAILABLE:
             try:
@@ -774,7 +807,20 @@ class ParallelInitializer:
                         logger.info(f"[OOM Prevention] ✅ GCP VM ready at {memory_result.gcp_vm_ip}")
                         logger.info(f"[OOM Prevention] Heavy components will be offloaded to cloud")
                     else:
-                        logger.error(f"[OOM Prevention] ❌ GCP VM not available - proceeding with risk")
+                        _avail_gb = float(getattr(memory_result, "available_ram_gb", 0.0) or 0.0)
+                        logger.error(
+                            "[OOM Prevention] ❌ GCP VM unavailable for CLOUD_REQUIRED "
+                            "(avail=%.1fGB) — degrading deterministically",
+                            _avail_gb,
+                        )
+                        if _avail_gb <= 0.0 or _avail_gb < 4.0:
+                            self._force_sequential = True
+                            logger.warning(
+                                "[OOM Prevention] CLOUD_REQUIRED fallback forcing sequential init "
+                                "(avail=%.1fGB)",
+                                _avail_gb,
+                            )
+                        self.app.state.oom_degradation_active = True
 
                 elif memory_result.decision == MemoryDecision.CLOUD:
                     logger.info(f"[OOM Prevention] ☁️ Cloud recommended (optional)")
@@ -782,6 +828,15 @@ class ParallelInitializer:
                         self.app.state.gcp_offload_active = True
                         self.app.state.gcp_vm_ip = memory_result.gcp_vm_ip
                         logger.info(f"[OOM Prevention] Using GCP VM at {memory_result.gcp_vm_ip}")
+                    else:
+                        _avail_gb = float(getattr(memory_result, "available_ram_gb", 0.0) or 0.0)
+                        if _avail_gb <= 0.0 or _avail_gb < 4.0:
+                            self._force_sequential = True
+                            logger.warning(
+                                "[OOM Prevention] CLOUD recommended but bridge reports low RAM "
+                                "(avail=%.1fGB) — forcing sequential init",
+                                _avail_gb,
+                            )
 
                 elif memory_result.decision == MemoryDecision.DEGRADED:
                     # v132.0: Graceful degradation - proceed with reduced functionality
@@ -809,29 +864,10 @@ class ParallelInitializer:
                         logger.info("[OOM Prevention] 🔧 Note: GCP was auto-enabled for future use")
 
             except Exception as e:
-                # v266.3: Fail-closed — force sequential init when bridge
-                # unavailable AND available RAM is below safe threshold.
-                try:
-                    import psutil
-                    _avail_gb = psutil.virtual_memory().available / (1024**3)
-                    if _avail_gb < 4.0:
-                        self._force_sequential = True
-                        logger.warning(
-                            "[OOM Prevention] Bridge unavailable + %.1fGB available "
-                            "— forcing sequential init", _avail_gb,
-                        )
-                    else:
-                        logger.warning(
-                            "[OOM Prevention] Bridge unavailable but %.1fGB available "
-                            "— parallel init OK", _avail_gb,
-                        )
-                except Exception:
-                    # psutil failed too — force sequential to be safe
-                    self._force_sequential = True
-                    logger.warning(
-                        "[OOM Prevention] Bridge + psutil unavailable "
-                        "— forcing sequential init (fail-closed)"
-                    )
+                _force_sequential_on_bridge_unavailable(str(e) or type(e).__name__)
+        else:
+            # Import failure is still an OOM-bridge outage. Fail-closed under low RAM.
+            _force_sequential_on_bridge_unavailable("bridge_import_unavailable")
         # =========================================================================
 
         try:
