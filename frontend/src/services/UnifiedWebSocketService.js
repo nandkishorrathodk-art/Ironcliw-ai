@@ -12,7 +12,7 @@
  */
 
 import React from 'react';
-import DynamicWebSocketClient, { ConnectionState as WSConnectionState } from './DynamicWebSocketClient';
+import DynamicWebSocketClient, { ConnectionState as _WSConnectionState } from './DynamicWebSocketClient';
 import configService from './DynamicConfigService';
 
 class UnifiedWebSocketService {
@@ -183,7 +183,7 @@ class UnifiedWebSocketService {
       const port = urlParams.get('port') ||
                    process.env.REACT_APP_BACKEND_PORT ||
                    localStorage.getItem('jarvis_backend_port') ||
-                   '8010';
+                   '8000';
 
       return {
         WS_BASE_URL: `${protocol}://${hostname}:${port}`,

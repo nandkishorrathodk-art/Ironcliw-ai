@@ -43,8 +43,15 @@ except ImportError:
     rust_vi = None
     RUST_AVAILABLE = False
 
-print("✨ JARVIS Vision Intelligence System initialized")
-if RUST_AVAILABLE:
-    print("  ✅ Rust acceleration available")
-else:
-    print("  ⚠️  Rust acceleration not available - run build.sh to enable")
+try:
+    print("\u2728 JARVIS Vision Intelligence System initialized")
+    if RUST_AVAILABLE:
+        print("  \u2705 Rust acceleration available")
+    else:
+        print("  \u26a0\ufe0f  Rust acceleration not available - run build.sh to enable")
+except UnicodeEncodeError:
+    print("JARVIS Vision Intelligence System initialized")
+    if RUST_AVAILABLE:
+        print("  Rust acceleration available")
+    else:
+        print("  Rust acceleration not available - run build.sh to enable")

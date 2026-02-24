@@ -97,7 +97,6 @@ class IntegrationOrchestrator:
         self.system_mode = SystemMode.NORMAL
         self.last_memory_check = time.time()
         self.memory_check_interval = float(os.getenv('MEMORY_CHECK_INTERVAL', '5.0'))
-        
         # Component references (lazy loaded)
         self.components = {
             # Intelligence Systems
@@ -110,6 +109,9 @@ class IntegrationOrchestrator:
             'anomaly_detection': None,
             'intervention_engine': None,
             'solution_bank': None,
+            'unified_orchestrator': None,
+            'enhanced_sai': None,
+            'continuous_learning': None,
             
             # Optimization Systems
             'quadtree': None,
@@ -584,23 +586,53 @@ class IntegrationOrchestrator:
             'activity': None,
             'goals': [],
             'patterns': [],
-            'anomalies': []
+            'anomalies': [],
+            'unified': None
         }
-        
-        # Activity recognition
-        if self.components['activity_recognition'] is None and self.system_mode == SystemMode.NORMAL:
-            try:
-                from .activity_recognition_engine import get_activity_recognizer
-                self.components['activity_recognition'] = get_activity_recognizer()
-            except Exception:
-                pass
 
-        if self.components['activity_recognition']:
+        # Prioritize UnifiedIntelligenceOrchestrator
+        if self.components['unified_orchestrator'] is None and self.system_mode == SystemMode.NORMAL:
             try:
-                activity = await self.components['activity_recognition'].recognize(state)
-                intelligence_result['activity'] = activity
-            except Exception:
-                pass
+                from backend.intelligence.intelligence_langgraph import UnifiedIntelligenceOrchestrator
+                self.components['unified_orchestrator'] = UnifiedIntelligenceOrchestrator()
+            except Exception as e:
+                logger.debug(f"Could not load UnifiedIntelligenceOrchestrator: {e}")
+
+        if self.components['enhanced_sai'] is None and self.system_mode == SystemMode.NORMAL:
+            try:
+                from backend.intelligence.enhanced_sai_orchestrator import get_enhanced_sai
+                self.components['enhanced_sai'] = get_enhanced_sai()
+            except Exception as e:
+                logger.debug(f"Could not load EnhancedSAIOrchestrator: {e}")
+
+        # If unified orchestrator is present, run it
+        if self.components['unified_orchestrator']:
+            try:
+                unified_result = await self.components['unified_orchestrator'].analyze_comprehensive(
+                    workspace_state=state,
+                    activity_data=state.get('temporal_context', {})
+                )
+                intelligence_result['unified'] = unified_result
+                if unified_result.get('cai_result'):
+                    intelligence_result['activity'] = unified_result['cai_result'].get('inferred_intent')
+            except Exception as e:
+                logger.debug(f"Unified intelligence processing failed: {e}")
+
+        # Activity recognition fallback if not populated by unified
+        if not intelligence_result['activity']:
+            if self.components['activity_recognition'] is None and self.system_mode == SystemMode.NORMAL:
+                try:
+                    from .activity_recognition_engine import get_activity_recognizer
+                    self.components['activity_recognition'] = get_activity_recognizer()
+                except Exception:
+                    pass
+
+            if self.components['activity_recognition']:
+                try:
+                    activity = await self.components['activity_recognition'].recognize(state)
+                    intelligence_result['activity'] = activity
+                except Exception:
+                    pass
 
         # Goal inference
         if self.components['goal_inference'] is None and self.system_mode == SystemMode.NORMAL:
@@ -613,6 +645,7 @@ class IntegrationOrchestrator:
         if self.components['goal_inference']:
             try:
                 goals = await self.components['goal_inference'].infer_goals(state)
+                # Keep unified goals prioritized
                 intelligence_result['goals'] = goals
             except Exception:
                 pass
@@ -744,6 +777,39 @@ class IntegrationOrchestrator:
             except Exception:
                 pass
         
+        # Continuous Learning Collection
+        if self.components['continuous_learning'] is None and self.system_mode == SystemMode.NORMAL:
+            try:
+                from backend.intelligence.continuous_learning_orchestrator import ContinuousLearningOrchestrator
+                # Use global instance if it exists, else new
+                global _learning_orchestrator
+                if '_learning_orchestrator' not in globals():
+                    globals()['_learning_orchestrator'] = ContinuousLearningOrchestrator()
+                    # Will be started lazily
+                self.components['continuous_learning'] = globals()['_learning_orchestrator']
+            except Exception as e:
+                logger.debug(f"Could not load ContinuousLearningOrchestrator: {e}")
+
+        if self.components['continuous_learning']:
+            try:
+                from backend.intelligence.continuous_learning_orchestrator import ExperienceType
+                cl_engine = self.components['continuous_learning']
+                if not getattr(cl_engine, '_running', False):
+                    # We can't await start here easily, but the engine handles queuing without being started
+                    pass
+
+                # Fire & forget experience collection for vision frame
+                import asyncio
+                asyncio.create_task(cl_engine.collect_experience(
+                    experience_type=ExperienceType.VISION,
+                    input_data={"state": result.get('state')},
+                    output_data={"intelligence": result.get('intelligence', {}).get('unified')},
+                    quality_score=result.get('intelligence', {}).get('confidence', 0.5),
+                    component="vision_pipeline"
+                ))
+            except Exception as e:
+                logger.debug(f"Failed to collect learning experience: {e}")
+
         return result
     
     def _generate_cache_key(self, frame: Optional[np.ndarray], intelligence: Dict[str, Any]) -> str:

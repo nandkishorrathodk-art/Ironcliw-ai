@@ -86,7 +86,7 @@ class IntelligenceMode(Enum):
     UNIFIED = "unified"    # Full UnifiedIntelligenceOrchestrator coordination
     REASONING_GRAPH = "reasoning_graph"  # Multi-branch reasoning with failure recovery
     VOICE_AUTH = "voice_auth"  # Voice biometric authentication with intelligent reasoning
-
+    AGI = "agi"            # Full Artificial General Intelligence Coordination
 
 # UAE/SAI/CAI Integration (lazy loaded)
 _uae_engine = None
@@ -102,8 +102,9 @@ _enhanced_sai = None
 _enhanced_cai = None
 _unified_orchestrator = None
 _reasoning_graph_engine = None
+_agi_orchestrator = None
 _tts_handler = None
-_intelligence_mode = IntelligenceMode.REASONING_GRAPH  # Multi-branch reasoning by default
+_intelligence_mode = IntelligenceMode.AGI  # Full orchestrated intelligence by default
 
 # Phase 3.1: Local LLM Integration (lazy loaded)
 _llm_inference = None
@@ -370,6 +371,28 @@ async def _get_unified_orchestrator():
         except Exception as e:
             logger.warning(f"UnifiedIntelligenceOrchestrator not available: {e}")
     return _unified_orchestrator
+
+
+async def _get_agi_orchestrator():
+    """Lazy load AGIOrchestrator for full cognitive reasoning.
+
+    The AGIOrchestrator coordinates all advanced cognitive processes
+    including meta-cognition, continuous learning, and multi-modal fusion.
+
+    Returns:
+        AGIOrchestrator or None: Orchestrator if available
+    """
+    global _agi_orchestrator
+    if _agi_orchestrator is None:
+        try:
+            from intelligence.agi_orchestrator import AGIOrchestrator
+
+            _agi_orchestrator = AGIOrchestrator()
+            await _agi_orchestrator.start()
+            logger.info("✅ AGIOrchestrator (Phase 5) loaded and started")
+        except Exception as e:
+            logger.warning(f"AGIOrchestrator not available: {e}")
+    return _agi_orchestrator
 
 
 async def _get_reasoning_graph_engine():
@@ -811,6 +834,42 @@ class HybridOrchestrator:
 
         # Check intelligence mode for chain-of-thought reasoning
         mode = get_intelligence_mode()
+
+        # ============== AGI MODE: Full Artificial General Intelligence Coordination ==============
+        if mode == IntelligenceMode.AGI:
+            agi = await _get_agi_orchestrator()
+            if agi:
+                try:
+                    # Input structure required by AGI Orchestrator
+                    from intelligence.agi_orchestrator import CognitiveInput
+                    
+                    # Convert hybrid request into a cognitive input
+                    cognitive_input = CognitiveInput(
+                        modality="multimodal" if context.get("audio_data") or context.get("vision_data") else "text",
+                        content=command,
+                        context={"rule": rule, "metadata": context},
+                        source="hybrid_orchestrator"
+                    )
+                    
+                    # Process through AGI
+                    agi_result = await agi.process_input(cognitive_input)
+                    
+                    context["agi"] = {
+                        "action": agi_result.action_plan,
+                        "confidence": agi_result.confidence,
+                        "explanation": agi_result.explanation,
+                        "emotion": agi_result.emotional_state,
+                        "requires_user_confirmation": agi_result.requires_user_confirmation
+                    }
+                    
+                    logger.debug(
+                        f"🧠 AGI orchestrated response: confidence={agi_result.confidence:.2f}, "
+                        f"action_items={len(agi_result.action_plan)}"
+                    )
+                    return context
+                except Exception as e:
+                    logger.warning(f"AGIOrchestrator failed, falling back to reasoning_graph: {e}")
+                    mode = IntelligenceMode.REASONING_GRAPH  # Fallback
 
         # ============== REASONING_GRAPH MODE: Multi-Branch with Failure Recovery ==============
         if mode == IntelligenceMode.REASONING_GRAPH:

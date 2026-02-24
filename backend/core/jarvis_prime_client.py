@@ -898,7 +898,7 @@ class JarvisPrimeClient:
             return None
 
         try:
-            from backend.intelligence.unified_model_serving import get_model_serving
+            from intelligence.unified_model_serving import get_model_serving
 
             self._unified_model_serving = await get_model_serving()
             self._unified_serving_initialized = True
@@ -1140,7 +1140,7 @@ class JarvisPrimeClient:
         unified_serving = await self._get_unified_model_serving()
         if unified_serving is not None:
             try:
-                from backend.intelligence.unified_model_serving import ModelRequest, TaskType
+                from intelligence.unified_model_serving import ModelRequest, TaskType
 
                 # Build messages list
                 msgs = []
@@ -1173,7 +1173,7 @@ class JarvisPrimeClient:
                         backend=f"unified:{response.provider.value}",
                         latency_ms=response.latency_ms,
                         tokens_used=response.tokens_used,
-                        cost_usd=response.estimated_cost_usd,
+                        cost_estimate=response.estimated_cost_usd,
                     )
 
                     if enrichment_metadata:
@@ -1600,13 +1600,46 @@ class JarvisPrimeClient:
             messages.append(ChatMessage(role="system", content=effective_system))
             messages.append(ChatMessage(role="user", content=query))
 
-            # v242.2: Try Claude API first (preferred fallback)
-            response = await self._execute_completion(
-                mode=RoutingMode.CLAUDE_API,
-                messages=messages,
-                max_tokens=max_tokens,
-                temperature=0.7,
-            )
+            # Try Fireworks AI first (primary provider - configured and tested)
+            _fireworks_key = os.getenv("FIREWORKS_API_KEY", "")
+            _fireworks_model = os.getenv("FIREWORKS_DEFAULT_MODEL", "accounts/fireworks/models/llama-v3p3-70b-instruct")
+            response = None
+            if _fireworks_key:
+                try:
+                    import aiohttp as _aiohttp
+                    _fw_msgs = [{"role": m.role, "content": m.content} for m in messages]
+                    async with _aiohttp.ClientSession() as _sess:
+                        async with _sess.post(
+                            "https://api.fireworks.ai/inference/v1/chat/completions",
+                            json={"model": _fireworks_model, "messages": _fw_msgs, "max_tokens": max_tokens, "temperature": 0.7},
+                            headers={"Authorization": f"Bearer {_fireworks_key}", "Content-Type": "application/json"},
+                            timeout=_aiohttp.ClientTimeout(total=30),
+                        ) as _resp:
+                            if _resp.status == 200:
+                                _data = await _resp.json()
+                                _fw_content = _data.get("choices", [{}])[0].get("message", {}).get("content", "")
+                                if _fw_content:
+                                    response = CompletionResponse(
+                                        success=True,
+                                        content=_fw_content,
+                                        backend=f"fireworks:{_fireworks_model}",
+                                        latency_ms=0.0,
+                                    )
+                                    logger.info("[v242] Brain vacuum: Fireworks AI responded successfully")
+                            else:
+                                logger.warning(f"[v242] Fireworks brain vacuum HTTP {_resp.status}")
+                except Exception as _fw_err:
+                    logger.warning(f"[v242] Fireworks brain vacuum error: {_fw_err}")
+
+            # v242.2: Try Claude API if Fireworks unavailable
+            if not response or not response.success:
+                logger.info("[v242] Trying Claude API brain vacuum fallback")
+                response = await self._execute_completion(
+                    mode=RoutingMode.CLAUDE_API,
+                    messages=messages,
+                    max_tokens=max_tokens,
+                    temperature=0.7,
+                )
             if not response.success:
                 # Claude failed -- fall back to Gemini as last resort
                 logger.warning(f"[v242.2] Claude brain vacuum failed ({response.error}), trying Gemini")
@@ -1632,7 +1665,7 @@ class JarvisPrimeClient:
                     suggested_actions=suggested_actions,
                     generator_model=response.backend,
                     generation_ms=int(response.latency_ms),
-                    source="claude_fallback",
+                    source="fireworks_fallback",
                 )
 
             logger.error(

@@ -23,7 +23,7 @@ import sys
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from backend.platform import get_platform, is_windows, get_platform_info
+from backend.platform_adapter import get_platform, is_windows, get_platform_info
 
 
 class MemoryProfiler:
@@ -108,7 +108,7 @@ class TestWindowsFullSystem:
     def test_platform_abstraction_imports(self):
         """Verify all platform abstractions import without errors"""
         try:
-            from backend.platform.windows import (
+            from backend.platform_adapter.windows import (
                 WindowsSystemControl,
                 WindowsAudioEngine,
                 WindowsVisionCapture,
@@ -329,7 +329,7 @@ class TestWindowsPerformance:
         """
         start_time = time.time()
         
-        from backend.platform.windows import (
+        from backend.platform_adapter.windows import (
             WindowsSystemControl,
             WindowsAudioEngine,
             WindowsVisionCapture,
@@ -359,3 +359,4 @@ def run_tests():
 
 if __name__ == "__main__":
     run_tests()
+

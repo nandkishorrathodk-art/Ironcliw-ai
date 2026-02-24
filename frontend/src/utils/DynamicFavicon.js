@@ -128,7 +128,7 @@ export function useDynamicFavicon(isProcessing, isListening) {
   }
 }
 
-export default {
+const DynamicFavicon = {
   init: initDynamicFavicon,
   setState: setFaviconState,
   getState: getFaviconState,
@@ -137,3 +137,5 @@ export default {
   setListening: setFaviconListening,
   STATES: FAVICON_STATES,
 };
+
+export default DynamicFavicon;

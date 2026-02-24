@@ -836,7 +836,7 @@ class AdvancedAsyncPipeline:
                     audio_data=audio_data,
                     speaker_name=speaker_name,
                 ),
-                timeout=30.0
+                timeout=60.0
             )
 
             logger.info(f"[PIPELINE] UnifiedCommandProcessor result: success={result.get('success', False)}")

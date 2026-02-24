@@ -103,6 +103,7 @@ class CommunicationContext:
     time_since_last_message: float
     pending_suggestions_count: int
     user_is_idle: bool = False
+    uae_context: Optional[Dict[str, Any]] = None
 
 
 # ============================================================================
@@ -314,6 +315,13 @@ class ProactiveIntelligenceEngine:
     async def _update_context(self):
         """Update current communication context"""
         try:
+            # Get current UAE context
+            if self.uae:
+                try:
+                    self.current_context.uae_context = self.uae.get_context()
+                except Exception as e:
+                    logger.debug(f"[PIE] Error getting UAE context: {e}")
+
             # Get current spatial context from Yabai
             if self.yabai and self.yabai.yabai_available:
                 focused_space = self.yabai.current_focused_space

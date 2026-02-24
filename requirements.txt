@@ -81,7 +81,7 @@ jsonschema-specifications==2025.9.1
 kubernetes==34.1.0
 lazy_loader==0.4
 librosa==0.11.0
-llama-cpp-python>=0.3.0
+# llama-cpp-python>=0.3.0  # Commented out - takes too long to build on Windows, install separately if needed
 llvmlite==0.43.0
 markdown-it-py==3.0.0
 MarkupSafe==3.0.3
@@ -158,8 +158,8 @@ threadpoolctl==3.6.0
 tiktoken==0.12.0
 tokenizers==0.15.2
 tomli==2.3.0
-torch==2.1.2
-torchaudio==2.1.2
+torch==2.2.0
+torchaudio==2.2.0
 tqdm==4.67.1
 transformers==4.36.0
 typer==0.20.0
@@ -167,7 +167,7 @@ typing-inspection==0.4.2
 typing_extensions==4.15.0
 urllib3==2.3.0
 uvicorn==0.38.0
-uvloop==0.22.1
+uvloop==0.22.1; platform_system != "Windows"
 watchdog==6.0.0
 watchfiles==1.1.1
 webrtcvad==2.0.10

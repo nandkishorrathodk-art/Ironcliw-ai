@@ -1,11 +1,9 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
-import axios from 'axios';
+import React, { useState, useEffect, useRef } from 'react';
 import './App.css';
 import JarvisVoice from './components/JarvisVoice';
 import VisionConnection from './components/VisionConnection';
 import WorkspaceMonitor from './components/WorkspaceMonitor';
 import ActionDisplay from './components/ActionDisplay';
-import ConfigDiagnostic from './components/ConfigDiagnostic';
 import MatrixBackground from './components/MatrixBackground';
 import MaintenanceOverlay from './components/MaintenanceOverlay';
 import UpdateNotificationBadge from './components/UpdateNotificationBadge';
@@ -14,40 +12,14 @@ function App() {
   const [input, setInput] = useState('');
   const [chat, setChat] = useState([]);
   const [visionData, setVisionData] = useState(null);
-  const [autonomousMode, setAutonomousMode] = useState(false);
-  const [visionStatus, setVisionStatus] = useState('disconnected');
+  const [autonomousMode, _setAutonomousMode] = useState(false);
+  const [_visionStatus, setVisionStatus] = useState('disconnected');
   const [autonomousActions, setAutonomousActions] = useState([]);
   const visionConnectionRef = useRef(null);
 
-  const handleSend = async () => {
-    if (!input.trim()) return;
 
-    // Append user's message to chat window
-    const newChat = [...chat, { sender: 'User', message: input }];
 
-    try {
-      // Send user input to the FastAPI backend
-      // Use backend's default port (8010)
-      const backendPort = process.env.REACT_APP_BACKEND_PORT || 8010;
-      const response = await axios.post(`http://127.0.0.1:${backendPort}/chat`, {
-        user_input: input,
-      });
-      const assistantReply = response.data?.response || response.data?.reply || 'Received.';
-      newChat.push({ sender: 'Assistant', message: assistantReply });
-    } catch (error) {
-      console.error('Error sending message:', error);
-      newChat.push({ sender: 'Assistant', message: 'Sorry, an error occurred.' });
-    }
 
-    setChat(newChat);
-    setInput('');
-  };
-
-  const handleKeyPress = (e) => {
-    if (e.key === 'Enter') {
-      handleSend();
-    }
-  };
 
   // Initialize Vision Connection
   useEffect(() => {
@@ -115,15 +87,7 @@ function App() {
     setChat(prev => [...prev, { sender: 'JARVIS Vision', message }]);
   };
 
-  const toggleAutonomousMode = () => {
-    setAutonomousMode(!autonomousMode);
-    if (!autonomousMode) {
-      addVisionMessage('Autonomous mode activated. I can now see and respond to your workspace.');
-    } else {
-      addVisionMessage('Autonomous mode deactivated.');
-      setVisionStatus('disconnected');
-    }
-  };
+
 
   return (
     <div className="App">

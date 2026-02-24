@@ -113,7 +113,7 @@ except ImportError:
 
 UNIFIED_MODEL_SERVING_AVAILABLE = False
 try:
-    from backend.intelligence.unified_model_serving import get_model_serving
+    from intelligence.unified_model_serving import get_model_serving
     UNIFIED_MODEL_SERVING_AVAILABLE = True
 except ImportError:
     try:

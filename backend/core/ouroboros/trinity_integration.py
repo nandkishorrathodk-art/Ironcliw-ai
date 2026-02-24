@@ -1391,7 +1391,7 @@ class TrinityModelClient:
         # Try UnifiedModelServing first (preferred)
         if TrinityConfig.USE_UNIFIED_MODEL_SERVING:
             try:
-                from backend.intelligence.unified_model_serving import (
+                from intelligence.unified_model_serving import (
                     get_unified_model_serving,
                 )
                 self._unified_serving = await get_unified_model_serving()
@@ -1506,7 +1506,7 @@ class TrinityModelClient:
     ) -> Optional[Tuple[str, str]]:
         """Generate via UnifiedModelServing."""
         try:
-            from backend.intelligence.unified_model_serving import (
+            from intelligence.unified_model_serving import (
                 ModelRequest,
                 TaskType,
             )
@@ -1702,7 +1702,7 @@ class TrinityHealthMonitor:
 
         # Check UnifiedModelServing
         try:
-            from backend.intelligence.unified_model_serving import get_unified_model_serving
+            from intelligence.unified_model_serving import get_unified_model_serving
             serving = await get_unified_model_serving()
             if serving:
                 self._health.unified_model_serving = ComponentHealth.HEALTHY

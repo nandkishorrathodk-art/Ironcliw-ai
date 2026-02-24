@@ -228,7 +228,7 @@ class WindowsWindowManager:
         # Try to load C# DLL for advanced features
         if PYTHONNET_AVAILABLE:
             try:
-                from backend.platform.windows.system_control import WindowsSystemControl
+                from backend.platform_adapter.windows.system_control import WindowsSystemControl
                 self._controller = WindowsSystemControl()
                 logger.info("[WIN-MGR] C# SystemControl DLL loaded")
             except Exception as e:
@@ -701,3 +701,4 @@ async def get_windows_automation_engine() -> WindowsAutomationEngine:
         await _automation_engine.initialize()
     
     return _automation_engine
+

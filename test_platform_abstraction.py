@@ -22,7 +22,7 @@ if sys.platform == "win32":
 # Add backend to path
 sys.path.insert(0, str(Path(__file__).parent))
 
-from backend.platform import get_platform
+from backend.platform_adapter import get_platform
 from backend.core.capabilities import get_capabilities
 from backend.core.path_manager import get_path_manager
 
@@ -189,3 +189,4 @@ async def test_platform_detection():
 if __name__ == "__main__":
     success = asyncio.run(test_platform_detection())
     sys.exit(0 if success else 1)
+

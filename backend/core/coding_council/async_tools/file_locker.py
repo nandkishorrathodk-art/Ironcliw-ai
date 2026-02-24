@@ -15,7 +15,6 @@ Author: JARVIS v77.0
 from __future__ import annotations
 
 import asyncio
-import fcntl
 import json
 import logging
 import os
@@ -26,6 +25,20 @@ from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from typing import Any, Callable, Coroutine, Dict, List, Optional, Set
+
+try:
+    import fcntl
+    _FCNTL_AVAILABLE = True
+except ImportError:
+    _FCNTL_AVAILABLE = False
+    class _FcntlStub:
+        LOCK_EX = 2
+        LOCK_SH = 4
+        LOCK_NB = 8
+        LOCK_UN = 8
+        def flock(self, fd, operation):
+            pass
+    fcntl = _FcntlStub()
 
 logger = logging.getLogger(__name__)
 

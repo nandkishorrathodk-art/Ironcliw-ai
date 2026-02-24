@@ -22,7 +22,7 @@ print("=" * 70)
 # Test 1: Platform detection
 print("\n[Test 1] Platform detection...")
 try:
-    from backend.platform import get_platform, is_windows, get_platform_info
+    from backend.platform_adapter import get_platform, is_windows, get_platform_info
     platform = get_platform()
     is_win = is_windows()
     info = get_platform_info()
@@ -66,3 +66,4 @@ except Exception as e:
 print("\n" + "=" * 70)
 print("[SUCCESS] ALL TESTS PASSED")
 print("=" * 70)
+

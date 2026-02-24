@@ -226,7 +226,7 @@ async def broadcast_event(event: BroadcastEvent) -> BroadcastResponse:
             }
         }
     """
-    logger.info(f"📡 Broadcast request: {event.event}")
+    logger.info(f"📡 Broadcast request: {sanitize_for_log(event.event, 64)}")
     
     # Build message to broadcast
     message = {

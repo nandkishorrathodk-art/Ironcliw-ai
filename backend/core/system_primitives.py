@@ -133,7 +133,7 @@ class SystemConfig:
 
     # File Operations
     ATOMIC_WRITE_FSYNC: bool = os.getenv("JARVIS_FSYNC_WRITES", "true").lower() == "true"
-    ATOMIC_WRITE_PERMS: int = int(os.getenv("JARVIS_FILE_PERMS", "0o644"), 8)
+    ATOMIC_WRITE_PERMS: int = int(os.getenv("JARVIS_FILE_PERMS", "0o600"), 8)
 
     # Locking
     LOCK_TIMEOUT: float = float(os.getenv("JARVIS_LOCK_TIMEOUT", "30.0"))

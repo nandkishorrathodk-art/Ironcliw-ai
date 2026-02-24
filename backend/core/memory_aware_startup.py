@@ -184,78 +184,32 @@ class MemoryAwareStartup:
 
     async def get_memory_status(self) -> MemoryStatus:
         """
-        Get current memory status using macOS vm_stat.
+        Get current memory status (cross-platform: psutil on Windows/Linux, vm_stat on macOS).
 
         Returns:
             MemoryStatus: Current memory status
         """
         try:
-            # Get vm_stat output
-            result = await asyncio.create_subprocess_exec(
-                "vm_stat",
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
-            )
-            stdout, _ = await result.communicate()
-            vm_stat_output = stdout.decode()
+            import sys as _sys
+            import psutil as _psutil
 
-            # Parse vm_stat (page size is 16384 bytes on Apple Silicon)
-            page_size = 16384
-            stats = {}
+            vm = _psutil.virtual_memory()
+            total_gb = vm.total / (1024**3)
+            available_gb = vm.available / (1024**3)
+            used_gb = (vm.total - vm.available) / (1024**3)
+            free_gb = vm.free / (1024**3)
+            memory_pressure = vm.percent
 
-            for line in vm_stat_output.split('\n'):
-                if ':' in line:
-                    key, value = line.split(':', 1)
-                    key = key.strip().lower().replace(' ', '_')
-                    value = value.strip().rstrip('.')
-                    try:
-                        stats[key] = int(value)
-                    except ValueError:
-                        pass
-
-            # Get total RAM
-            sysctl_result = await asyncio.create_subprocess_exec(
-                "sysctl", "-n", "hw.memsize",
-                stdout=asyncio.subprocess.PIPE
-            )
-            stdout, _ = await sysctl_result.communicate()
-            total_bytes = int(stdout.decode().strip())
-            total_gb = total_bytes / (1024**3)
-
-            # Calculate memory values
-            pages_free = stats.get('pages_free', 0)
-            pages_active = stats.get('pages_active', 0)
-            pages_inactive = stats.get('pages_inactive', 0)
-            pages_speculative = stats.get('pages_speculative', 0)
-            pages_wired = stats.get('pages_wired_down', 0)
-            pages_compressed = stats.get('pages_occupied_by_compressor', 0)
-            page_outs = stats.get('pageouts', 0)
-
-            free_bytes = pages_free * page_size
-            free_gb = free_bytes / (1024**3)
-
-            # Available = free + inactive + speculative (reclaimable)
-            available_bytes = (pages_free + pages_inactive + pages_speculative) * page_size
-            available_gb = available_bytes / (1024**3)
-
-            wired_bytes = pages_wired * page_size
-            wired_gb = wired_bytes / (1024**3)
-
-            compressed_bytes = pages_compressed * page_size
-            compressed_gb = compressed_bytes / (1024**3)
-
-            used_gb = total_gb - available_gb
-
-            # Calculate memory pressure (used / total, accounting for compression)
-            memory_pressure = ((total_gb - available_gb) / total_gb) * 100
+            swap = _psutil.swap_memory()
+            page_outs = getattr(swap, 'sout', 0)
 
             return MemoryStatus(
                 total_gb=total_gb,
                 used_gb=used_gb,
                 free_gb=free_gb,
                 available_gb=available_gb,
-                compressed_gb=compressed_gb,
-                wired_gb=wired_gb,
+                compressed_gb=0.0,
+                wired_gb=0.0,
                 page_outs=page_outs,
                 memory_pressure=memory_pressure,
             )

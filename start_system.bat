@@ -1,6 +1,10 @@
 @echo off
 REM Windows batch file for starting AI-Powered Chatbot System
 
+REM Set UTF-8 encoding for Python output (fixes emoji/Unicode errors on Windows)
+chcp 65001 >nul 2>&1
+set PYTHONIOENCODING=utf-8
+
 echo ====================================
 echo AI-Powered Chatbot System Launcher
 echo ====================================
@@ -123,16 +127,12 @@ echo Starting backend services...
 
 REM Start main API
 echo Starting main API on port 8000...
-cd backend
-start /b python main.py > ..\logs\main_api.log 2>&1
-cd ..
+start "JARVIS Main API" /B cmd /c "python -m backend.main > logs\main_api.log 2>&1"
 timeout /t 2 /nobreak >nul
 
 REM Start training API
 echo Starting training API on port 8001...
-cd backend
-start /b python training_interface.py > ..\logs\training_api.log 2>&1
-cd ..
+start "JARVIS Training API" /B cmd /c "python -m backend.training_interface > logs\training_api.log 2>&1"
 timeout /t 2 /nobreak >nul
 
 REM Start frontend if not backend-only

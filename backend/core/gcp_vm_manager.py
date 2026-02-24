@@ -3756,7 +3756,7 @@ class GCPVMManager:
 
         # Notify UnifiedModelServing (hot-swaps inference client)
         try:
-            from backend.intelligence.unified_model_serving import notify_gcp_endpoint_ready
+            from intelligence.unified_model_serving import notify_gcp_endpoint_ready
             success = await notify_gcp_endpoint_ready(url)
             if success:
                 logger.info(
@@ -3840,7 +3840,7 @@ class GCPVMManager:
 
         # Notify UnifiedModelServing to demote from GCP
         try:
-            from backend.intelligence.unified_model_serving import (
+            from intelligence.unified_model_serving import (
                 notify_gcp_endpoint_unhealthy,
             )
             await notify_gcp_endpoint_unhealthy()

@@ -214,42 +214,50 @@ class RealTimeVoiceCommunicator:
         logger.info("RealTimeVoiceCommunicator initialized with voice: %s", self._primary_voice)
 
     def _discover_voices(self) -> None:
-        """Discover available system voices."""
+        """Discover available system voices (cross-platform)."""
+        import sys as _sys
         try:
-            _voice_discover_timeout = float(os.getenv("JARVIS_VOICE_DISCOVER_TIMEOUT", "15"))
-            result = subprocess.run(
-                ['say', '-v', '?'],
-                capture_output=True,
-                text=True,
-                timeout=_voice_discover_timeout
-            )
+            if _sys.platform == 'darwin':
+                _voice_discover_timeout = float(os.getenv("JARVIS_VOICE_DISCOVER_TIMEOUT", "15"))
+                result = subprocess.run(
+                    ['say', '-v', '?'],
+                    capture_output=True,
+                    text=True,
+                    timeout=_voice_discover_timeout
+                )
+                for line in result.stdout.split('\n'):
+                    if line.strip():
+                        parts = line.split()
+                        if len(parts) >= 2:
+                            voice_name = parts[0]
+                            lang_desc = ' '.join(parts[1:])
+                            self._available_voices[voice_name] = lang_desc
+                            if any(ind in lang_desc for ind in ['en_GB', 'British', 'United Kingdom']):
+                                self._british_voices.append(voice_name)
+                            elif voice_name in ['Daniel', 'Oliver', 'Kate', 'Serena']:
+                                self._british_voices.append(voice_name)
+                if 'Daniel' in self._available_voices:
+                    self._primary_voice = 'Daniel'
+                elif self._british_voices:
+                    self._primary_voice = self._british_voices[0]
+            else:
+                try:
+                    import pyttsx3 as _pyttsx3
+                    _engine = _pyttsx3.init()
+                    for _v in _engine.getProperty('voices'):
+                        _name = _v.name or 'Unknown'
+                        self._available_voices[_name] = _v.id or ''
+                    _engine.stop()
+                except Exception:
+                    pass
+                self._primary_voice = next(iter(self._available_voices), 'default')
 
-            for line in result.stdout.split('\n'):
-                if line.strip():
-                    parts = line.split()
-                    if len(parts) >= 2:
-                        voice_name = parts[0]
-                        lang_desc = ' '.join(parts[1:])
-                        self._available_voices[voice_name] = lang_desc
-
-                        # Check for British voices
-                        if any(ind in lang_desc for ind in ['en_GB', 'British', 'United Kingdom']):
-                            self._british_voices.append(voice_name)
-                        elif voice_name in ['Daniel', 'Oliver', 'Kate', 'Serena']:
-                            self._british_voices.append(voice_name)
-
-            # Prioritize Daniel
-            if 'Daniel' in self._available_voices:
-                self._primary_voice = 'Daniel'
-            elif self._british_voices:
-                self._primary_voice = self._british_voices[0]
-
-            logger.debug("Discovered %d voices, %d British, using: %s",
-                        len(self._available_voices), len(self._british_voices), self._primary_voice)
+            logger.debug("Discovered %d voices, using: %s",
+                        len(self._available_voices), self._primary_voice)
 
         except Exception as e:
             logger.warning("Failed to discover voices: %s", e)
-            self._primary_voice = 'Daniel'  # Fallback
+            self._primary_voice = 'default'  # Fallback
 
     def register_transcript_hook(self, hook: Callable) -> None:
         """Register a hook called with each user utterance text before processing.

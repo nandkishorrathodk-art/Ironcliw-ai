@@ -10,7 +10,7 @@ print("JARVIS Platform Abstraction Layer - Windows Test")
 print("=" * 60)
 
 try:
-    from backend.platform import get_platform
+    from backend.platform_adapter import get_platform
     
     platform = get_platform()
     print(f"\n[OK] Platform loaded: {platform.__class__.__name__}")
@@ -94,3 +94,4 @@ except Exception as e:
     import traceback
     traceback.print_exc()
     sys.exit(1)
+

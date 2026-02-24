@@ -48,7 +48,6 @@ Author: JARVIS v78.0
 from __future__ import annotations
 
 import asyncio
-import fcntl
 import hashlib
 import json
 import logging
@@ -71,6 +70,20 @@ from typing import (
     Union,
 )
 from uuid import uuid4
+
+try:
+    import fcntl
+    _FCNTL_AVAILABLE = True
+except ImportError:
+    _FCNTL_AVAILABLE = False
+    class _FcntlStub:
+        LOCK_EX = 2
+        LOCK_SH = 4
+        LOCK_NB = 8
+        LOCK_UN = 8
+        def flock(self, fd, operation):
+            pass
+    fcntl = _FcntlStub()
 
 logger = logging.getLogger(__name__)
 
@@ -541,8 +554,8 @@ class AtomicCommandQueue:
                     f.flush()
                     os.fsync(f.fileno())
 
-                # Atomic rename
-                temp_file.rename(self.sequence_file)
+                # Atomic rename (os.replace works on all platforms including Windows)
+                os.replace(str(temp_file), str(self.sequence_file))
 
                 # Update in-memory cache
                 self._sequence_counter = new_value

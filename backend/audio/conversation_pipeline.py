@@ -633,7 +633,7 @@ class ConversationPipeline:
             return
 
         try:
-            from backend.intelligence.unified_model_serving import (
+            from intelligence.unified_model_serving import (
                 ModelRequest,
                 TaskType,
             )

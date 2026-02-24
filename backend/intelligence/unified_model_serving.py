@@ -1629,7 +1629,7 @@ class FireworksModelClient(ModelClient):
         try:
             result = await client.generate(
                 messages=request.messages,
-                model=request.model_override or FIREWORKS_DEFAULT_MODEL,
+                model=getattr(request, 'model_override', None) or FIREWORKS_DEFAULT_MODEL,
                 max_tokens=request.max_tokens,
                 temperature=request.temperature,
                 system_prompt=request.system_prompt,
@@ -1663,7 +1663,7 @@ class FireworksModelClient(ModelClient):
         try:
             async for chunk in client.generate_stream(
                 messages=request.messages,
-                model=request.model_override or FIREWORKS_DEFAULT_MODEL,
+                model=getattr(request, 'model_override', None) or FIREWORKS_DEFAULT_MODEL,
                 max_tokens=request.max_tokens,
                 temperature=request.temperature,
                 system_prompt=request.system_prompt,
@@ -1898,11 +1898,11 @@ class ModelRouter:
         # PRIME_LOCAL = Local GGUF via llama-cpp-python (Tier 2)
         # CLAUDE = Anthropic API fallback (Tier 3)
         self._task_preferences: Dict[TaskType, List[ModelProvider]] = {
-            TaskType.CHAT: [ModelProvider.PRIME_API, ModelProvider.PRIME_LOCAL, ModelProvider.PRIME_CLOUD_RUN, ModelProvider.CLAUDE],
-            TaskType.REASONING: [ModelProvider.PRIME_API, ModelProvider.PRIME_LOCAL, ModelProvider.PRIME_CLOUD_RUN, ModelProvider.CLAUDE],
+            TaskType.CHAT: [ModelProvider.PRIME_API, ModelProvider.PRIME_LOCAL, ModelProvider.PRIME_CLOUD_RUN, ModelProvider.FIREWORKS, ModelProvider.CLAUDE],
+            TaskType.REASONING: [ModelProvider.PRIME_API, ModelProvider.PRIME_LOCAL, ModelProvider.PRIME_CLOUD_RUN, ModelProvider.FIREWORKS, ModelProvider.CLAUDE],
             TaskType.VISION: [ModelProvider.PRIME_API, ModelProvider.PRIME_CLOUD_RUN, ModelProvider.PRIME_LOCAL, ModelProvider.CLAUDE],
-            TaskType.CODE: [ModelProvider.PRIME_API, ModelProvider.PRIME_LOCAL, ModelProvider.PRIME_CLOUD_RUN, ModelProvider.CLAUDE],
-            TaskType.TOOL_USE: [ModelProvider.CLAUDE, ModelProvider.PRIME_API, ModelProvider.PRIME_LOCAL],
+            TaskType.CODE: [ModelProvider.PRIME_API, ModelProvider.PRIME_LOCAL, ModelProvider.PRIME_CLOUD_RUN, ModelProvider.FIREWORKS, ModelProvider.CLAUDE],
+            TaskType.TOOL_USE: [ModelProvider.FIREWORKS, ModelProvider.CLAUDE, ModelProvider.PRIME_API, ModelProvider.PRIME_LOCAL],
             TaskType.EMBEDDING: [ModelProvider.PRIME_API, ModelProvider.PRIME_LOCAL, ModelProvider.PRIME_CLOUD_RUN],
         }
 
@@ -1911,6 +1911,7 @@ class ModelRouter:
             ModelProvider.PRIME_LOCAL: 1.0,      # Free (already-running machine)
             ModelProvider.PRIME_API: 0.9,        # GCP VM (~$0.02/hr amortized)
             ModelProvider.PRIME_CLOUD_RUN: 0.7,  # Cloud Run per-request pricing
+            ModelProvider.FIREWORKS: 0.6,        # $0.90/M tokens (Llama 3.3 70B)
             ModelProvider.CLAUDE: 0.3,           # $3/M input + $15/M output tokens
         }
 
@@ -2226,6 +2227,13 @@ class UnifiedModelServing:
                 self.logger.info("  ✓ Prime Cloud Run client ready")
             else:
                 self.logger.info("  ⚠️ Prime Cloud Run client not available")
+
+        if FIREWORKS_ENABLED and FIREWORKS_API_KEY:
+            client = FireworksModelClient()
+            self._clients[ModelProvider.FIREWORKS] = client
+            self.logger.info(f"  ✓ Fireworks AI client ready (model: {FIREWORKS_DEFAULT_MODEL})")
+        elif FIREWORKS_ENABLED and not FIREWORKS_API_KEY:
+            self.logger.info("  ⚠️ Fireworks AI enabled but FIREWORKS_API_KEY not set — skipping")
 
         if CLAUDE_ENABLED and CLAUDE_API_KEY:
             client = ClaudeClient()

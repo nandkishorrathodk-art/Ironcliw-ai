@@ -208,10 +208,10 @@ class CrossRepoSync:
                     "targets": [t.value for t in targets],
                 }
 
-                # Atomic write
+                # Atomic write (os.replace works on all platforms including Windows)
                 tmp = state_file.with_suffix(".tmp")
                 tmp.write_text(json.dumps(state, indent=2, default=str))
-                tmp.rename(state_file)
+                os.replace(str(tmp), str(state_file))
 
                 # Notify targets
                 for target in targets:
@@ -420,7 +420,7 @@ class CrossRepoSync:
         try:
             tmp = state_file.with_suffix(".tmp")
             tmp.write_text(json.dumps(state, indent=2))
-            tmp.rename(state_file)
+            os.replace(str(tmp), str(state_file))
         except Exception as e:
             logger.warning(f"[CrossRepoSync] Failed to write state: {e}")
 

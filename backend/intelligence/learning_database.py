@@ -1829,6 +1829,11 @@ class DatabaseConnectionWrapper:
         # Define primary keys for known tables (fully dynamic - easy to extend)
         if table_primary_keys is None:
             table_primary_keys = {
+                'goals': ['goal_id'],
+                'patterns': ['pattern_id'],
+                'context_embeddings': ['embedding_id'],
+                'learning_metrics': ['metric_id'],
+                'pattern_similarity_cache': ['cache_id'],
                 'workspace_usage': ['usage_id'],
                 'app_usage_patterns': ['pattern_id'],
                 'user_workflows': ['workflow_id'],
@@ -1874,11 +1879,10 @@ class DatabaseConnectionWrapper:
             # PostgreSQL: INSERT ... ON CONFLICT ... DO UPDATE
             pk_clause = ', '.join(pk_columns)
 
-            # Build UPDATE SET clause (all columns except auto-increment PKs)
+            # Build UPDATE SET clause (all columns except primary keys)
             update_pairs = []
             for i, col in enumerate(columns, start=1):
-                # Don't update auto-increment primary keys
-                if col not in pk_columns or not col.endswith('_id'):
+                if col not in pk_columns:
                     update_pairs.append(f"{col}=${i}")
 
             update_clause = ', '.join(update_pairs)
@@ -1895,8 +1899,7 @@ class DatabaseConnectionWrapper:
             # Build UPDATE SET clause using excluded
             update_pairs = []
             for col in columns:
-                # Don't update auto-increment primary keys
-                if col not in pk_columns or not col.endswith('_id'):
+                if col not in pk_columns:
                     update_pairs.append(f"{col}=excluded.{col}")
 
             update_clause = ', '.join(update_pairs)
@@ -2686,7 +2689,80 @@ class JARVISLearningDatabase:
                 )
             """
             )
+
+            await cursor.execute(
+                f"""
+                CREATE TABLE IF NOT EXISTS conversation_history (
+                    {auto_increment('interaction_id')},
+                    timestamp TIMESTAMP NOT NULL,
+                    session_id TEXT,
+                    user_query TEXT NOT NULL,
+                    jarvis_response TEXT NOT NULL,
+                    response_type TEXT,
+                    confidence_score REAL,
+                    execution_time_ms REAL,
+                    success BOOLEAN DEFAULT {bool_default(1)},
+                    user_feedback TEXT,
+                    feedback_score INTEGER,
+                    was_corrected BOOLEAN DEFAULT {bool_default(0)},
+                    correction_text TEXT,
+                    context_snapshot JSON,
+                    active_apps JSON,
+                    current_space TEXT,
+                    system_state JSON,
+                    embedding_id TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """
+            )
+
+            await cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS actions (
+                    action_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    action_type TEXT NOT NULL,
+                    action_name TEXT,
+                    parameters JSON,
+                    result JSON,
+                    success BOOLEAN DEFAULT 1,
+                    execution_time_ms REAL,
+                    interaction_id INTEGER,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """
+            )
+
             await db.commit()
+
+            if not is_cloud:
+                _migration_cols = [
+                    ("goals", "confidence", "REAL"),
+                    ("goals", "progress", "REAL DEFAULT 0.0"),
+                    ("goals", "predicted_duration", "REAL"),
+                    ("goals", "actual_duration", "REAL"),
+                    ("goals", "evidence", "JSON"),
+                    ("goals", "context_hash", "TEXT"),
+                    ("goals", "embedding_id", "TEXT"),
+                    ("goals", "metadata", "JSON"),
+                    ("actions", "execution_time_ms", "REAL"),
+                    ("actions", "interaction_id", "INTEGER"),
+                    ("actions", "timestamp", "TIMESTAMP"),
+                    ("actions", "target", "TEXT"),
+                    ("actions", "goal_id", "TEXT"),
+                    ("actions", "execution_time", "REAL"),
+                    ("actions", "retry_count", "INTEGER DEFAULT 0"),
+                    ("actions", "error_message", "TEXT"),
+                    ("actions", "params", "JSON"),
+                    ("actions", "context_hash", "TEXT"),
+                ]
+                for _tbl, _col, _coltype in _migration_cols:
+                    try:
+                        await cursor.execute(
+                            f"ALTER TABLE {_tbl} ADD COLUMN {_col} {_coltype}"
+                        )
+                        await db.commit()
+                    except Exception:
+                        pass
 
     async def _background_cloud_sql_upgrade(self):
         """
@@ -3491,6 +3567,35 @@ class JARVISLearningDatabase:
                 CREATE INDEX IF NOT EXISTS idx_retry_number ON query_retries(retry_number)
             """
             )
+
+            # Run inline migration before index creation: add columns that older schemas may lack
+            _inline_migrations = [
+                ("goals", "confidence", "REAL"),
+                ("goals", "progress", "REAL DEFAULT 0.0"),
+                ("goals", "predicted_duration", "REAL"),
+                ("goals", "actual_duration", "REAL"),
+                ("goals", "evidence", "JSON"),
+                ("goals", "context_hash", "TEXT"),
+                ("goals", "embedding_id", "TEXT"),
+                ("goals", "metadata", "JSON"),
+                ("actions", "confidence", "REAL"),
+                ("actions", "execution_time_ms", "REAL"),
+                ("actions", "interaction_id", "INTEGER"),
+                ("actions", "timestamp", "TIMESTAMP"),
+                ("actions", "target", "TEXT"),
+                ("actions", "goal_id", "TEXT"),
+                ("actions", "execution_time", "REAL"),
+                ("actions", "retry_count", "INTEGER DEFAULT 0"),
+                ("actions", "error_message", "TEXT"),
+                ("actions", "params", "JSON"),
+                ("actions", "context_hash", "TEXT"),
+            ]
+            for _tbl, _col, _coltype in _inline_migrations:
+                try:
+                    await cursor.execute(f"ALTER TABLE {_tbl} ADD COLUMN {_col} {_coltype}")
+                    await db.commit()
+                except Exception:
+                    pass
 
             # Performance indexes
             await cursor.execute("CREATE INDEX IF NOT EXISTS idx_goals_type ON goals(goal_type)")
@@ -8614,19 +8719,24 @@ class JARVISLearningDatabase:
                         # Age distribution
                         await cursor.execute(
                             """
-                            SELECT
-                                CASE
-                                    WHEN EXTRACT(EPOCH FROM (NOW() - timestamp)) / 86400 <= 7 THEN '0-7 days'
-                                    WHEN EXTRACT(EPOCH FROM (NOW() - timestamp)) / 86400 <= 14 THEN '8-14 days'
-                                    WHEN EXTRACT(EPOCH FROM (NOW() - timestamp)) / 86400 <= 30 THEN '15-30 days'
-                                    WHEN EXTRACT(EPOCH FROM (NOW() - timestamp)) / 86400 <= 60 THEN '31-60 days'
-                                    ELSE '60+ days'
-                                END as age_bracket,
-                                COUNT(*) as count,
-                                AVG(verification_confidence) as avg_confidence,
-                                AVG(quality_score) as avg_quality
-                            FROM voice_samples
-                            WHERE speaker_name = %s
+                            SELECT age_bracket,
+                                   COUNT(*) as count,
+                                   AVG(verification_confidence) as avg_confidence,
+                                   AVG(quality_score) as avg_quality
+                            FROM (
+                                SELECT
+                                    CASE
+                                        WHEN EXTRACT(EPOCH FROM (NOW() - timestamp)) / 86400 <= 7 THEN '0-7 days'
+                                        WHEN EXTRACT(EPOCH FROM (NOW() - timestamp)) / 86400 <= 14 THEN '8-14 days'
+                                        WHEN EXTRACT(EPOCH FROM (NOW() - timestamp)) / 86400 <= 30 THEN '15-30 days'
+                                        WHEN EXTRACT(EPOCH FROM (NOW() - timestamp)) / 86400 <= 60 THEN '31-60 days'
+                                        ELSE '60+ days'
+                                    END as age_bracket,
+                                    verification_confidence,
+                                    quality_score
+                                FROM voice_samples
+                                WHERE speaker_name = %s
+                            ) subq
                             GROUP BY age_bracket
                             ORDER BY
                                 CASE age_bracket

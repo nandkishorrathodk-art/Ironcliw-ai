@@ -29,7 +29,7 @@ import json
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from backend.platform import get_platform, get_platform_info
+from backend.platform_adapter import get_platform, get_platform_info
 
 
 class BenchmarkRunner:
@@ -57,7 +57,7 @@ class BenchmarkRunner:
         mem_before = self.process.memory_info().rss / 1024 / 1024
         
         start_time = time.time()
-        from backend.platform.windows import (
+        from backend.platform_adapter.windows import (
             WindowsSystemControl,
             WindowsAudioEngine,
             WindowsVisionCapture,
@@ -75,7 +75,7 @@ class BenchmarkRunner:
         warm_times = []
         for _ in range(iterations):
             start_time = time.time()
-            from backend.platform.windows import (
+            from backend.platform_adapter.windows import (
                 WindowsSystemControl,
                 WindowsAudioEngine,
                 WindowsVisionCapture,
@@ -115,7 +115,7 @@ class BenchmarkRunner:
         print("BENCHMARK: Platform Detection")
         print("="*60)
         
-        from backend.platform import get_platform, is_windows
+        from backend.platform_adapter import get_platform, is_windows
         
         # Time get_platform()
         times = []
@@ -328,3 +328,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

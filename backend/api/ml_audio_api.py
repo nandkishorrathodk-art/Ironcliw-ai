@@ -1323,7 +1323,7 @@ async def predict_audio_issue(data: AudioPrediction, request: Request):
     # Get client ID
     client_id = data.client_id or f"{request.client.host if request.client else 'anonymous'}_{datetime.now().timestamp()}"
     
-    logger.info(f"ML Audio prediction from {client_id} - format: {data.format}, size: {len(data.audio_data) if data.audio_data else 0}")
+    logger.info(f"ML Audio prediction from {client_id} - format: {sanitize_for_log(data.format, 32)}, size: {len(data.audio_data) if data.audio_data else 0}")
     
     # Check for preemptive healing opportunities
     device_fingerprint = _generate_device_fingerprint({

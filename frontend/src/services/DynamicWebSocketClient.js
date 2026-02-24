@@ -172,6 +172,9 @@ class CrossTabCoordinator {
           if (callback) callback(data);
         }
         break;
+
+      default:
+        break;
     }
   }
 

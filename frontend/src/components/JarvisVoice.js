@@ -9,7 +9,6 @@ import microphonePermissionManager from '../services/MicrophonePermissionManager
 import { getNetworkRecoveryManager } from '../utils/NetworkRecoveryManager'; // Advanced network recovery
 import WakeWordService from './WakeWordService'; // Wake word detection service
 import configService, {
-  getBackendState,
   onBackendState,
   onBackendReady,
   onStartupProgress,
@@ -47,7 +46,7 @@ let configReady = false;
 
 // Backend state tracking for real-time synchronization
 let backendStateListeners = [];
-let backendReady = false;
+let _backendReady = false;
 
 /**
  * Get dynamically inferred URLs based on current environment
@@ -57,8 +56,8 @@ const inferUrls = () => {
   const hostname = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
   const protocol = typeof window !== 'undefined' ? window.location.protocol.replace(':', '') : 'http';
   const wsProtocol = protocol === 'https' ? 'wss' : 'ws';
-  // IMPORTANT: Default port must match backend's BACKEND_PORT (8010)
-  const port = process.env.REACT_APP_BACKEND_PORT || 8010;
+  // IMPORTANT: Default port must match backend's BACKEND_PORT (8000)
+  const port = process.env.REACT_APP_BACKEND_PORT || 8000;
 
   return {
     API_BASE_URL: `${protocol}://${hostname}:${port}`,
@@ -110,7 +109,7 @@ const configPromise = new Promise(async (resolve) => {
 // Subscribe to backend state changes for real-time status sync
 onBackendState((state) => {
   console.log('[JarvisVoice] Backend state update:', state);
-  backendReady = state.ready || false;
+  _backendReady = state.ready || false;
 
   // Notify all registered listeners
   backendStateListeners.forEach(listener => {
@@ -125,7 +124,7 @@ onBackendState((state) => {
 // Subscribe to backend ready event
 onBackendReady((state) => {
   console.log('[JarvisVoice] Backend ready notification:', state);
-  backendReady = true;
+  _backendReady = true;
 });
 
 // Subscribe to startup progress for detailed tracking
@@ -425,7 +424,7 @@ class VisionConnection {
 }
 
 // Dynamic greeting generators
-const getStartupGreeting = () => {
+const _getStartupGreeting = () => {
   const hour = new Date().getHours();
   const dayName = new Date().toLocaleDateString('en-US', { weekday: 'long' });
 
@@ -501,7 +500,7 @@ const getStartupGreeting = () => {
  * Dynamic Wake Word Response Generator
  * Context-aware, personality-driven, Phase 4 enhanced
  */
-const getWakeWordResponse = (context = {}) => {
+const _getWakeWordResponse = (context = {}) => {
   const {
     timeOfDay = null,
     lastInteraction = null,
@@ -667,8 +666,8 @@ const JarvisVoice = () => {
   const [isWaitingForCommand, setIsWaitingForCommand] = useState(false);
   const [isJarvisSpeaking, setIsJarvisSpeaking] = useState(false);
   const [microphonePermission, setMicrophonePermission] = useState('checking');
-  const [visionConnected, setVisionConnected] = useState(false);
-  const [workspaceData, setWorkspaceData] = useState(null);
+  const [_visionConnected, setVisionConnected] = useState(false);
+  const [_workspaceData, setWorkspaceData] = useState(null);
   const [autonomousMode, setAutonomousMode] = useState(false);
   const [micStatus, setMicStatus] = useState('unknown');
   const [networkRetries, setNetworkRetries] = useState(0);
@@ -678,13 +677,13 @@ const JarvisVoice = () => {
   // Phase 4: Proactive Intelligence state
   const [proactiveSuggestions, setProactiveSuggestions] = useState([]);
   const [proactiveIntelligenceActive, setProactiveIntelligenceActive] = useState(false);
-  const [lastSuggestionTime, setLastSuggestionTime] = useState(null);
+  const [_lastSuggestionTime, setLastSuggestionTime] = useState(null);
 
   // User interaction state
   const [isTyping, setIsTyping] = useState(false);
-  const [lastUserInteraction, setLastUserInteraction] = useState(null);
-  const [showSTTDetails, setShowSTTDetails] = useState(true); // Show hybrid STT engine details
-  const [useHybridSTT, setUseHybridSTT] = useState(true); // Use hybrid STT instead of browser API
+  const [_lastUserInteraction, setLastUserInteraction] = useState(null);
+  const [_showSTTDetails, _setShowSTTDetails] = useState(true); // Show hybrid STT engine details
+  const [_useHybridSTT, _setUseHybridSTT] = useState(true); // Use hybrid STT instead of browser API
   const [detectedCommand, setDetectedCommand] = useState(null); // 🆕 Command detected by streaming safeguard
 
   // VBI (Voice Biometric Intelligence) Progress State - Real-time voice unlock tracking
@@ -734,15 +733,15 @@ const JarvisVoice = () => {
   // Real-time tracking of code evolution/generation from Coding Council
   // Enables visual feedback for: analysis → planning → generation → testing
   // ═══════════════════════════════════════════════════════════════════
-  const [evolutionProgress, setEvolutionProgress] = useState(null);
+  const [_evolutionProgress, setEvolutionProgress] = useState(null);
   // { taskId, stage, stageName, stageIcon, progress, message, details, error, timestamp }
-  const [evolutionHistory, setEvolutionHistory] = useState([]);
+  const [_evolutionHistory, setEvolutionHistory] = useState([]);
   // History of evolution stages for timeline display
-  const [evolutionApprovalRequest, setEvolutionApprovalRequest] = useState(null);
+  const [_evolutionApprovalRequest, setEvolutionApprovalRequest] = useState(null);
   // Pending approval request: { taskId, description, riskLevel, target, confidence }
   const evolutionTimeoutRef = useRef(null);
   // Auto-hide timeout for evolution progress
-  const [codingCouncilAnnouncements, setCodingCouncilAnnouncements] = useState([]);
+  const [_codingCouncilAnnouncements, setCodingCouncilAnnouncements] = useState([]);
   // Recent voice announcements from Coding Council
 
   const typingTimeoutRef = useRef(null);
@@ -1024,7 +1023,7 @@ const JarvisVoice = () => {
 
   // API URLs are defined globally at the top of the file
   // Ensure consistent WebSocket URL (fix port mismatch)
-  const JARVIS_WS_URL = WS_URL;  // Use same base URL as API
+  const _JARVIS_WS_URL = WS_URL;  // Use same base URL as API
 
   // 🆕 JarvisConnectionService integration - handles all connection state
   const jarvisConnectionServiceRef = useRef(null);
@@ -1119,6 +1118,7 @@ const JarvisVoice = () => {
       unsubscribeWsReconnect();
       clearInterval(wsSyncInterval);
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // 🎨 Dynamic Favicon - Changes based on JARVIS state
@@ -1335,6 +1335,7 @@ const JarvisVoice = () => {
         styleElement.parentNode.removeChild(styleElement);
       }
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Subscribe to backend state for real-time status synchronization
@@ -1441,6 +1442,7 @@ const JarvisVoice = () => {
       }, 1000);
       return () => clearTimeout(timer);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jarvisStatus, continuousListening]);
 
   const checkJarvisStatus = async () => {
@@ -1662,7 +1664,7 @@ const JarvisVoice = () => {
         setError(null);
         
         // Initialize Hybrid STT Client if enabled and not already initialized
-        if (useHybridSTT && !hybridSTTClientRef.current) {
+        if (_useHybridSTT && !hybridSTTClientRef.current) {
           try {
             hybridSTTClientRef.current = new HybridSTTClient(ws, {
               strategy: 'balanced',
@@ -1712,7 +1714,7 @@ const JarvisVoice = () => {
 
   // NOTE: Health monitoring is now handled by JarvisConnectionService/DynamicWebSocketClient.
   // These functions are kept as no-ops for backwards compatibility.
-  const startHealthMonitoring = () => {
+  const _startHealthMonitoring = () => {
     // Health monitoring delegated to JarvisConnectionService
   };
 
@@ -3095,7 +3097,7 @@ const JarvisVoice = () => {
 
       case 'evolution_complete': {
         // Evolution task completion notification
-        const taskId = data.task_id || data.taskId || '';
+        const _taskId = data.task_id || data.taskId || '';
         const success = data.success !== false;
         const filesModified = data.files_modified || data.filesModified || 0;
         const description = data.description || data.message || '';
@@ -3249,7 +3251,7 @@ const JarvisVoice = () => {
         // General evolution status update (similar to evolution_progress but more general)
         const status = data.status || 'unknown';
         const message = data.message || '';
-        const taskId = data.task_id || '';
+        const _taskId2 = data.task_id || '';
 
         console.log('%c[📊 Evolution Status]', 'color: #9b59b6',
           `[${status}] ${message}`);
@@ -3635,7 +3637,7 @@ const JarvisVoice = () => {
       console.log('⚠️ Environmental audio processing DISABLED to prevent echo/feedback');
 
       // Track if JARVIS is speaking to avoid self-triggering
-      let jarvisSpeaking = false;
+      let _jarvisSpeaking = false;
 
       recognitionRef.current.continuous = true;
       recognitionRef.current.interimResults = true;
@@ -4952,7 +4954,7 @@ const JarvisVoice = () => {
   const sendCommandViaDirectREST = async (command) => {
     try {
       // Try to get the API URL from multiple sources
-      const apiUrl = API_URL || configService.getApiUrl() || 'http://localhost:8010';
+      const apiUrl = API_URL || configService.getApiUrl() || 'http://localhost:8000';
       const url = `${apiUrl}/api/command`;
       
       console.log(`[TEXT-CMD] Direct REST fallback: ${url}`);
@@ -5485,7 +5487,7 @@ const JarvisVoice = () => {
     }
   };
 
-  const disableContinuousListening = () => {
+  const _disableContinuousListening = () => {
     setContinuousListening(false);
     continuousListeningRef.current = false;
     setIsListening(false);
@@ -5673,7 +5675,7 @@ const JarvisVoice = () => {
     await sendCommandViaDirectREST(text);
   };
 
-  const playAudioResponse_UNUSED = async (text) => {
+  const _playAudioResponse = async (text) => {
     console.log('Playing audio response:', text.substring(0, 100) + '...');
 
     try {
@@ -6005,7 +6007,7 @@ const JarvisVoice = () => {
     await speakResponseInternal(text, callback);
   };
 
-  const stopAllSpeech = () => {
+  const _stopAllSpeech = () => {
     console.log('[JARVIS Audio] Stopping all speech and clearing queue');
     // Clear the queue
     speechQueueRef.current = [];
@@ -6103,31 +6105,31 @@ const JarvisVoice = () => {
       return;
     }
 
+    // v237.0: Sanitize text for ALL TTS paths — not just browser fallback.
+    // Previously sanitizeForSpeech only ran inside the catch block (browser fallback),
+    // leaving "..." unsanitized for the primary backend TTS path.
+    const sanitizeForSpeech = (rawText) => {
+      let cleaned = rawText;
+      cleaned = cleaned.replace(/\.{2,}/g, ' ');        // "..." → " "
+      cleaned = cleaned.replace(/^[\s.!?,;:]+$/g, '');   // Pure punctuation → empty
+      cleaned = cleaned.replace(/\.\s*$/g, '');          // trailing "." → ""
+      try {
+        cleaned = cleaned.replace(/\p{Extended_Pictographic}/gu, '');
+        cleaned = cleaned.replace(/\u200D/g, '');
+        cleaned = cleaned.replace(/[\uFE00-\uFE0F]/g, '');
+      } catch (_e) {
+        cleaned = cleaned.replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE00}-\u{FE0F}]/gu, '');
+      }
+      cleaned = cleaned.replace(/[*_~`#]/g, '');
+      cleaned = cleaned.replace(/\s{2,}/g, ' ').trim();
+      return cleaned;
+    };
+
+    const sanitizedText = sanitizeForSpeech(text);
+
     try {
       console.log('[JARVIS Audio] Setting speaking state to true');
       console.log('[JARVIS Audio] Text to speak (exact):', text);
-
-      // v237.0: Sanitize text for ALL TTS paths — not just browser fallback.
-      // Previously sanitizeForSpeech only ran inside the catch block (browser fallback),
-      // leaving "..." unsanitized for the primary backend TTS path.
-      const sanitizeForSpeech = (rawText) => {
-        let cleaned = rawText;
-        cleaned = cleaned.replace(/\.{2,}/g, ' ');        // "..." → " "
-        cleaned = cleaned.replace(/^[\s.!?,;:]+$/g, '');   // Pure punctuation → empty
-        cleaned = cleaned.replace(/\.\s*$/g, '');          // trailing "." → ""
-        try {
-          cleaned = cleaned.replace(/\p{Extended_Pictographic}/gu, '');
-          cleaned = cleaned.replace(/\u200D/g, '');
-          cleaned = cleaned.replace(/[\uFE00-\uFE0F]/g, '');
-        } catch (_e) {
-          cleaned = cleaned.replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE00}-\u{FE0F}]/gu, '');
-        }
-        cleaned = cleaned.replace(/[*_~`#]/g, '');
-        cleaned = cleaned.replace(/\s{2,}/g, ' ').trim();
-        return cleaned;
-      };
-
-      const sanitizedText = sanitizeForSpeech(text);
 
       // v237.0: Guard against empty/whitespace-only text — prevents "full stop"
       // TTS artifacts from processing acks and stripped messages
@@ -6260,27 +6262,6 @@ const JarvisVoice = () => {
       if ('speechSynthesis' in window) {
         // Cancel any ongoing speech first
         window.speechSynthesis.cancel();
-
-        // Sanitize text for browser TTS to prevent literal punctuation reading
-        // (e.g., "..." read as "full stop" by British English Daniel voice)
-        const sanitizeForSpeech = (rawText) => {
-          let cleaned = rawText;
-          cleaned = cleaned.replace(/\.{2,}/g, ' ');        // "..." → " "
-          cleaned = cleaned.replace(/\.\s*$/g, '');          // trailing "." → ""
-          // Unicode Extended_Pictographic for comprehensive emoji stripping
-          // (covers ZWJ sequences, flags, supplemental symbols, future additions)
-          try {
-            cleaned = cleaned.replace(/\p{Extended_Pictographic}/gu, '');
-            cleaned = cleaned.replace(/\u200D/g, '');        // Zero-width joiners
-            cleaned = cleaned.replace(/[\uFE00-\uFE0F]/g, ''); // Variation selectors
-          } catch (_e) {
-            // Fallback for browsers without Unicode property escapes
-            cleaned = cleaned.replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE00}-\u{FE0F}]/gu, '');
-          }
-          cleaned = cleaned.replace(/[*_~`#]/g, '');         // markdown
-          cleaned = cleaned.replace(/\s{2,}/g, ' ').trim();
-          return cleaned;
-        };
 
         const utterance = new SpeechSynthesisUtterance(sanitizedText);
         utterance.rate = 0.7;   // Even slower rate for smooth, non-rushed speech

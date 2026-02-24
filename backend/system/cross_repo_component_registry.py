@@ -855,7 +855,7 @@ async def register_jarvis_components(registry: CrossRepoComponentRegistry) -> No
 
     # UnifiedModelServing
     try:
-        from backend.intelligence.unified_model_serving import (
+        from intelligence.unified_model_serving import (
             get_model_server,
             ModelServing,
         )

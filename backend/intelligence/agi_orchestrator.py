@@ -842,8 +842,8 @@ class AGIOrchestrator:
             from backend.core.trinity_event_bus import get_trinity_event_bus
             from backend.core.trinity_monitoring import get_trinity_monitoring
 
-            self._trinity_event_bus = get_trinity_event_bus()
-            self._trinity_monitoring = get_trinity_monitoring()
+            self._trinity_event_bus = await get_trinity_event_bus()
+            self._trinity_monitoring = await get_trinity_monitoring()
 
             # Subscribe to relevant events
             if self._trinity_event_bus:

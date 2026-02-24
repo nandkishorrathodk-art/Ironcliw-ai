@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 
 # Detect platform
 try:
-    from backend.platform import get_platform, is_windows, is_macos
+    from backend.platform_adapter import get_platform, is_windows, is_macos
     PLATFORM_DETECTION_AVAILABLE = True
 except ImportError:
     import platform
@@ -438,3 +438,4 @@ def reset_automation_engine() -> None:
     """Reset the global automation engine (for testing)"""
     global _automation_engine
     _automation_engine = None
+

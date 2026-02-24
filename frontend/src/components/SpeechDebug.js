@@ -37,8 +37,8 @@ const SpeechDebug = () => {
       // Fallback
       const hostname = window.location.hostname || 'localhost';
       const protocol = window.location.protocol.replace(':', '');
-      // Use backend's default port (8010)
-      const port = process.env.REACT_APP_BACKEND_PORT || 8010;
+      // Use backend's default port (8000)
+      const port = process.env.REACT_APP_BACKEND_PORT || 8000;
       const fallback = `${protocol}://${hostname}:${port}`;
       setApiUrl(fallback);
       return fallback;

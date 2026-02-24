@@ -3496,19 +3496,22 @@ class SpeakerVerificationService:
         # Create SpeechBrain engine but DON'T initialize it yet (deferred to background)
         # Lazy load the ML components
         _init_ml_components()
-        model_config = _ModelConfig(
-            name="speechbrain-wav2vec2",
-            engine=_STTEngine.SPEECHBRAIN,
-            disk_size_mb=380,
-            ram_required_gb=2.0,
-            vram_required_gb=1.8,
-            expected_accuracy=0.96,
-            avg_latency_ms=150,
-            supports_fine_tuning=True,
-            model_path="speechbrain/asr-wav2vec2-commonvoice-en",
-        )
-
-        self.speechbrain_engine = _SpeechBrainEngine(model_config)
+        if _STTEngine is not None and _ModelConfig is not None:
+            model_config = _ModelConfig(
+                name="speechbrain-wav2vec2",
+                engine=_STTEngine.SPEECHBRAIN,
+                disk_size_mb=380,
+                ram_required_gb=2.0,
+                vram_required_gb=1.8,
+                expected_accuracy=0.96,
+                avg_latency_ms=150,
+                supports_fine_tuning=True,
+                model_path="speechbrain/asr-wav2vec2-commonvoice-en",
+            )
+            self.speechbrain_engine = _SpeechBrainEngine(model_config)
+        else:
+            logger.warning("⚠️ [FAST-INIT] ML components not available (torchaudio/speechbrain missing) — skipping SpeechBrain engine")
+            self.speechbrain_engine = None
         # DON'T call initialize() here - defer to background thread
 
         # Load speaker profiles from database
@@ -3975,17 +3978,21 @@ class SpeakerVerificationService:
         # Initialize SpeechBrain engine for embeddings
         # Lazy load the ML components
         _init_ml_components()
-        model_config = _ModelConfig(
-            name="speechbrain-wav2vec2",
-            engine=_STTEngine.SPEECHBRAIN,
-            disk_size_mb=380,
-            ram_required_gb=2.0,
-            vram_required_gb=1.8,
-            expected_accuracy=0.96,
-            avg_latency_ms=150,
-            supports_fine_tuning=True,
-            model_path="speechbrain/asr-wav2vec2-commonvoice-en",
-        )
+        if _STTEngine is not None and _ModelConfig is not None:
+            model_config = _ModelConfig(
+                name="speechbrain-wav2vec2",
+                engine=_STTEngine.SPEECHBRAIN,
+                disk_size_mb=380,
+                ram_required_gb=2.0,
+                vram_required_gb=1.8,
+                expected_accuracy=0.96,
+                avg_latency_ms=150,
+                supports_fine_tuning=True,
+                model_path="speechbrain/asr-wav2vec2-commonvoice-en",
+            )
+        else:
+            logger.warning("⚠️ [INIT] ML components not available — skipping SpeechBrain engine setup")
+            model_config = None
 
         # =====================================================================
         # ML ENGINE REGISTRY INTEGRATION (v3.0 - Proactive ECAPA Loading)
@@ -4060,8 +4067,11 @@ class SpeakerVerificationService:
                 # ECAPA is ready - use registry encoder
                 # Still create SpeechBrain engine for other features (ASR, etc)
                 # but skip the encoder preload since registry already has it
-                self.speechbrain_engine = _SpeechBrainEngine(model_config)
-                await self.speechbrain_engine.initialize()
+                if model_config is not None:
+                    self.speechbrain_engine = _SpeechBrainEngine(model_config)
+                    await self.speechbrain_engine.initialize()
+                else:
+                    self.speechbrain_engine = None
                 # Load speaker profiles
                 await self._load_speaker_profiles()
                 logger.info(
@@ -4081,17 +4091,23 @@ class SpeakerVerificationService:
             logger.info("✅ ML Engine Registry has ECAPA-TDNN loaded - using singleton!")
             self._use_registry_encoder = True
             self._ecapa_load_source = "registry"
-            self.speechbrain_engine = _SpeechBrainEngine(model_config)
-            await self.speechbrain_engine.initialize()
+            if model_config is not None:
+                self.speechbrain_engine = _SpeechBrainEngine(model_config)
+                await self.speechbrain_engine.initialize()
+            else:
+                self.speechbrain_engine = None
             await self._load_speaker_profiles()
             logger.info("✅ Using registry ECAPA-TDNN - unlock will be instant!")
         else:
             # Fallback: Load our own engine if registry not available
-            self.speechbrain_engine = _SpeechBrainEngine(model_config)
+            self.speechbrain_engine = _SpeechBrainEngine(model_config) if model_config is not None else None
 
             # OPTIMIZED: Initialize engine and start encoder pre-load in PARALLEL
             # This significantly reduces startup time
-            if preload_encoder:
+            if self.speechbrain_engine is None:
+                logger.warning("⚠️ SpeechBrain engine unavailable (torchaudio/speechbrain missing) — loading profiles only")
+                await self._load_speaker_profiles()
+            elif preload_encoder:
                 logger.info("🚀 Starting parallel initialization (engine + encoder + profiles)...")
 
                 # Start encoder pre-loading in background (non-blocking)

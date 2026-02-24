@@ -232,6 +232,32 @@ import multiprocessing
 import os
 import sys
 
+# Set UTF-8 encoding for stdout/stderr on Windows to prevent emoji/Unicode errors
+if sys.platform == 'win32':
+    import codecs
+    if sys.stdout.encoding != 'utf-8':
+        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    if sys.stderr.encoding != 'utf-8':
+        sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+
+# CRITICAL: Import stdlib 'platform' FIRST before it can be shadowed by backend/platform
+import platform as _stdlib_platform
+# Make it available globally with the standard name for other libraries (aiohttp, etc.)
+sys.modules['platform'] = _stdlib_platform
+
+# Fix Python path to allow 'from core.' imports when run as module
+# Add backend dir to sys.path so 'core', 'utils', etc. can be imported
+# This WILL shadow stdlib 'platform', but we've already imported it above
+from pathlib import Path
+_backend_dir = Path(__file__).parent.resolve()
+_project_root = _backend_dir.parent
+# Add backend dir for 'from core.' imports
+if str(_backend_dir) not in sys.path:
+    sys.path.insert(0, str(_backend_dir))
+# Also add project root for 'from backend.' imports  
+if str(_project_root) not in sys.path:
+    sys.path.insert(0, str(_project_root))
+
 # v128.0: FIRST - Suppress resource_tracker semaphore warnings
 # This MUST be set BEFORE any multiprocessing imports/usage
 # The resource_tracker runs as a separate process and inherits PYTHONWARNINGS
@@ -521,23 +547,17 @@ from typing import Optional
 # This determines which platform-specific implementations to load.
 # =============================================================================
 try:
-    from backend.platform import (
-        get_platform,
-        is_windows,
-        is_macos,
-        is_linux,
-        get_platform_info,
-    )
-    JARVIS_PLATFORM = get_platform()
-    JARVIS_IS_WINDOWS = is_windows()
-    JARVIS_IS_MACOS = is_macos()
-    JARVIS_IS_LINUX = is_linux()
-    JARVIS_PLATFORM_INFO = get_platform_info()
-    print(f"[STARTUP] ✅ Platform detected: {JARVIS_PLATFORM} ({JARVIS_PLATFORM_INFO.os_release})")
+    from backend.core.platform_abstraction import PlatformDetector
+    _detector = PlatformDetector()
+    JARVIS_PLATFORM = _detector.get_platform().value
+    JARVIS_IS_WINDOWS = _detector.is_windows()
+    JARVIS_IS_MACOS = _detector.is_macos()
+    JARVIS_IS_LINUX = _detector.is_linux()
+    JARVIS_PLATFORM_INFO = _detector.get_platform_info()
+    print(f"[STARTUP] ✅ Platform detected: {JARVIS_PLATFORM} ({JARVIS_PLATFORM_INFO['system']} {JARVIS_PLATFORM_INFO['release']})")
 except ImportError as e:
     print(f"[STARTUP] ⚠️ Platform detection unavailable: {e}")
     # Fallback to sys.platform
-    import platform as _fallback_platform
     _sys_platform = sys.platform.lower()
     JARVIS_PLATFORM = 'macos' if _sys_platform == 'darwin' else ('windows' if _sys_platform == 'win32' else 'linux')
     JARVIS_IS_WINDOWS = JARVIS_PLATFORM == 'windows'
@@ -971,7 +991,7 @@ def import_vision_system():
         if JARVIS_IS_WINDOWS:
             # Windows: Use Windows platform capture
             try:
-                from backend.platform.windows.vision import WindowsVisionCapture
+                from backend.platform_adapter.windows.vision import WindowsVisionCapture
                 vision["video_capture"] = WindowsVisionCapture
                 vision["platform_available"] = True
                 vision["macos_available"] = False
@@ -1096,7 +1116,7 @@ def import_voice_system():
     # Platform-specific audio engine availability
     if JARVIS_IS_WINDOWS:
         try:
-            from backend.platform.windows.audio import WindowsAudioEngine
+            from backend.platform_adapter.windows.audio import WindowsAudioEngine
             voice["platform_audio"] = WindowsAudioEngine
             voice["platform_audio_available"] = True
             logger.info("  ✅ Windows audio engine available (WASAPI)")
@@ -1166,7 +1186,7 @@ def import_voice_unlock():
         # Windows MVP: Use bypass mode authentication
         logger.info("  🪟 Windows platform detected - using bypass authentication mode")
         try:
-            from backend.platform.windows.auth import WindowsAuthentication
+            from backend.platform_adapter.windows.auth import WindowsAuthentication
             voice_unlock["auth_class"] = WindowsAuthentication
             voice_unlock["bypass_mode"] = True
             voice_unlock["available"] = True
@@ -1761,6 +1781,21 @@ async def parallel_lifespan(app: FastAPI):
         except Exception as e:
             logger.warning(f"AI Loader initialization failed: {e}")
             app.state.ai_manager = None
+
+        # =================================================================
+        # PRE-WARM UnifiedModelServing (Fireworks AI)
+        # =================================================================
+        # Initializes the singleton BEFORE the first voice command arrives,
+        # so the pipeline does not pay the ~5s startup cost on first request.
+        async def _prewarm_model_serving():
+            try:
+                from intelligence.unified_model_serving import get_model_serving
+                serving = await get_model_serving()
+                logger.info("✅ UnifiedModelServing pre-warmed (Fireworks AI ready)")
+            except Exception as e:
+                logger.debug(f"UnifiedModelServing pre-warm skipped: {e}")
+
+        create_safe_task(_prewarm_model_serving(), name="prewarm_model_serving")
 
         # =================================================================
         # v78.0: Advanced Startup Orchestrator (Background Init)
@@ -3188,6 +3223,12 @@ async def lifespan(app: FastAPI):  # type: ignore[misc]
             logger.warning("⚠️ JARVIS factory not available for dependency injection")
     else:
         logger.warning("⚠️ Vision analyzer not available - vision features disabled")
+        try:
+            from api.jarvis_factory import set_app_state
+            set_app_state(app.state)
+            logger.info("✅ App state set in JARVIS factory (no vision analyzer)")
+        except ImportError:
+            pass
 
     # Initialize proactive monitoring components
     try:
@@ -4963,6 +5004,146 @@ async def lock_with_context(request: Request):
 
 logger.info("✅ Context-intelligent /lock-with-context endpoint registered (module-level)")
 
+
+# ═══════════════════════════════════════════════════════════════
+# OPENAI-COMPATIBLE CHAT COMPLETIONS ENDPOINT (MODULE-LEVEL)
+# Routes requests through UnifiedModelServing → Fireworks AI
+# ═══════════════════════════════════════════════════════════════
+@app.post("/v1/chat/completions")
+async def openai_chat_completions(request: Request):
+    """
+    OpenAI-compatible chat completions endpoint.
+    Routes through UnifiedModelServing (Fireworks AI primary provider).
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        from fastapi.responses import JSONResponse
+        return JSONResponse(status_code=400, content={"error": {"message": "Invalid JSON", "type": "invalid_request_error"}})
+
+    messages = body.get("messages", [])
+    model = body.get("model", "accounts/fireworks/models/llama-v3p3-70b-instruct")
+    max_tokens = body.get("max_tokens", 2048)
+    temperature = body.get("temperature", 0.7)
+    stream = body.get("stream", False)
+
+    try:
+        from intelligence.unified_model_serving import (
+            get_model_serving,
+            ModelRequest,
+            TaskType,
+        )
+        serving = await get_model_serving()
+
+        _JARVIS_SYSTEM_PROMPT = (
+            "You are JARVIS (Just A Rather Very Intelligent System), an advanced AI assistant "
+            "integrated into a sophisticated home/office automation system. You have access to "
+            "screen vision (you can see and analyze the user's current screen via screenshots), "
+            "voice interaction, system control, and real-time context awareness. "
+            "You run on Windows 11 and can control applications, monitor the display, assist "
+            "with tasks, answer questions, and provide proactive assistance. "
+            "Respond concisely and helpfully in the style of JARVIS from Iron Man - "
+            "intelligent, efficient, slightly formal but personable. "
+            "Address the user as 'Sir' unless instructed otherwise. "
+            "When asked about screen content, acknowledge that you have vision capabilities "
+            "and can analyze the screen when vision data is provided."
+        )
+
+        system_prompt = None
+        user_messages = []
+        for msg in messages:
+            role = msg.get("role", "user")
+            content = msg.get("content", "")
+            if role == "system":
+                system_prompt = content
+            else:
+                user_messages.append({"role": role, "content": content})
+
+        if not system_prompt:
+            system_prompt = _JARVIS_SYSTEM_PROMPT
+
+        req = ModelRequest(
+            messages=user_messages,
+            system_prompt=system_prompt,
+            task_type=TaskType.CHAT,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            stream=stream,
+        )
+
+        if stream:
+            from fastapi.responses import StreamingResponse
+
+            async def _stream_gen():
+                import json as _json
+                import time as _time
+                _id = f"chatcmpl-jarvis-{int(_time.time())}"
+                async for chunk in serving.generate_stream(req):
+                    data = {
+                        "id": _id,
+                        "object": "chat.completion.chunk",
+                        "model": model,
+                        "choices": [{"index": 0, "delta": {"content": chunk}, "finish_reason": None}],
+                    }
+                    yield f"data: {_json.dumps(data)}\n\n"
+                yield "data: [DONE]\n\n"
+
+            return StreamingResponse(_stream_gen(), media_type="text/event-stream")
+
+        response = await serving.generate(req)
+
+        if not response.success:
+            from fastapi.responses import JSONResponse
+            return JSONResponse(status_code=503, content={
+                "error": {"message": response.error or "Model unavailable", "type": "service_unavailable"}
+            })
+
+        import time as _time
+        return {
+            "id": f"chatcmpl-jarvis-{int(_time.time())}",
+            "object": "chat.completion",
+            "model": model,
+            "choices": [{
+                "index": 0,
+                "message": {"role": "assistant", "content": response.content},
+                "finish_reason": "stop",
+            }],
+            "usage": {
+                "prompt_tokens": 0,
+                "completion_tokens": response.tokens_used,
+                "total_tokens": response.tokens_used,
+            },
+        }
+
+    except Exception as e:
+        logger.error(f"[/v1/chat/completions] Error: {e}")
+        from fastapi.responses import JSONResponse
+        return JSONResponse(status_code=500, content={
+            "error": {"message": str(e), "type": "internal_error"}
+        })
+
+logger.info("✅ OpenAI-compatible /v1/chat/completions endpoint registered (Fireworks AI)")
+
+
+# ═══════════════════════════════════════════════════════════════
+# CAPABILITIES REGISTER STUB (for J-Prime compatibility)
+# ═══════════════════════════════════════════════════════════════
+_registered_capabilities: dict = {}
+
+@app.post("/v1/capabilities/register")
+async def capabilities_register(request: Request):
+    """Stub endpoint for J-Prime capability registration compatibility."""
+    try:
+        body = await request.json()
+        _registered_capabilities.update(body)
+        logger.debug(f"[capabilities] Registered {len(body)} capabilities")
+        return {"status": "ok", "registered": len(_registered_capabilities)}
+    except Exception:
+        return {"status": "ok", "registered": 0}
+
+logger.info("✅ /v1/capabilities/register stub endpoint registered")
+
+
 # ═══════════════════════════════════════════════════════════════
 # v149.0: WEBSOCKET PASS-THROUGH MIDDLEWARE
 # ═══════════════════════════════════════════════════════════════
@@ -6477,13 +6658,13 @@ async def health_check():
     }
     if JARVIS_PLATFORM_INFO:
         platform_info.update({
-            "os_release": JARVIS_PLATFORM_INFO.os_release,
-            "architecture": JARVIS_PLATFORM_INFO.architecture,
-            "python_version": JARVIS_PLATFORM_INFO.python_version,
-            "has_gpu": JARVIS_PLATFORM_INFO.has_gpu,
-            "has_directml": JARVIS_PLATFORM_INFO.has_directml if JARVIS_IS_WINDOWS else False,
-            "has_metal": JARVIS_PLATFORM_INFO.has_metal if JARVIS_IS_MACOS else False,
-            "has_cuda": JARVIS_PLATFORM_INFO.has_cuda,
+            "os_release": JARVIS_PLATFORM_INFO.get("release", "unknown"),
+            "architecture": JARVIS_PLATFORM_INFO.get("architecture", "unknown"),
+            "python_version": JARVIS_PLATFORM_INFO.get("python_version", sys.version),
+            "has_gpu": False,  # TODO: Implement GPU detection
+            "has_directml": False,  # TODO: Implement DirectML detection for Windows
+            "has_metal": False,  # TODO: Implement Metal detection for macOS
+            "has_cuda": False,  # TODO: Implement CUDA detection
         })
     
     return {
@@ -9465,3 +9646,4 @@ if __name__ == "__main__":
     else:
         # Fallback: standard uvicorn
         uvicorn.run(app, host="0.0.0.0", port=args.port)
+

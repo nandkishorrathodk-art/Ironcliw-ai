@@ -374,6 +374,8 @@ class MLAudioHandler {
             case 'metrics':
                 this.updateMetrics(data.metrics);
                 break;
+            default:
+                break;
         }
     }
 
@@ -662,7 +664,7 @@ class MLAudioHandler {
     }
 
     async requestPermissionWithRetry(params = {}) {
-        const { maxAttempts = 1 } = params;
+        const { maxAttempts: _maxAttempts = 1 } = params;
 
         // =============================================================
         // Use unified MicrophonePermissionManager for all permission requests

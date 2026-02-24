@@ -34,12 +34,12 @@ class TestPlatformDetection:
     
     def test_detect_platform(self):
         """Test platform detection returns 'windows'"""
-        from backend.platform import get_platform
+        from backend.platform_adapter import get_platform
         assert get_platform() == 'windows'
     
     def test_platform_info(self):
         """Test platform info retrieval"""
-        from backend.platform.detector import PlatformDetector
+        from backend.platform_adapter.detector import PlatformDetector
         info = PlatformDetector.get_platform_info()
         
         assert info.os_family == 'windows'
@@ -54,7 +54,7 @@ class TestSystemControl:
     @pytest.fixture
     def system_control(self):
         """Create system control instance"""
-        from backend.platform.windows import WindowsSystemControl
+        from backend.platform_adapter.windows import WindowsSystemControl
         return WindowsSystemControl()
     
     def test_get_window_list(self, system_control):
@@ -104,7 +104,7 @@ class TestAudioEngine:
     @pytest.fixture
     def audio_engine(self):
         """Create audio engine instance"""
-        from backend.platform.windows import WindowsAudioEngine
+        from backend.platform_adapter.windows import WindowsAudioEngine
         return WindowsAudioEngine()
     
     def test_list_devices(self, audio_engine):
@@ -149,7 +149,7 @@ class TestVisionCapture:
     @pytest.fixture
     def vision_capture(self):
         """Create vision capture instance"""
-        from backend.platform.windows import WindowsVisionCapture
+        from backend.platform_adapter.windows import WindowsVisionCapture
         return WindowsVisionCapture()
     
     def test_capture_screen(self, vision_capture):
@@ -201,7 +201,7 @@ class TestAuthentication:
     @pytest.fixture
     def auth(self):
         """Create authentication instance"""
-        from backend.platform.windows import WindowsAuthentication
+        from backend.platform_adapter.windows import WindowsAuthentication
         return WindowsAuthentication()
     
     def test_bypass_authentication(self, auth):
@@ -234,12 +234,12 @@ class TestPermissions:
     @pytest.fixture
     def permissions(self):
         """Create permissions instance"""
-        from backend.platform.windows import WindowsPermissions
+        from backend.platform_adapter.windows import WindowsPermissions
         return WindowsPermissions()
     
     def test_check_permissions(self, permissions):
         """Test permission checking"""
-        from backend.platform.base import PermissionType
+        from backend.platform_adapter.base import PermissionType
         
         has_mic = permissions.check_permission(PermissionType.MICROPHONE)
         assert isinstance(has_mic, bool)
@@ -259,7 +259,7 @@ class TestProcessManager:
     @pytest.fixture
     def process_manager(self):
         """Create process manager instance"""
-        from backend.platform.windows import WindowsProcessManager
+        from backend.platform_adapter.windows import WindowsProcessManager
         return WindowsProcessManager()
     
     def test_start_stop_process(self, process_manager):
@@ -298,7 +298,7 @@ class TestFileWatcher:
     def file_watcher(self):
         """Create file watcher instance"""
         try:
-            from backend.platform.windows import WindowsFileWatcher
+            from backend.platform_adapter.windows import WindowsFileWatcher
             return WindowsFileWatcher()
         except RuntimeError:
             pytest.skip("watchdog not installed")
@@ -339,3 +339,4 @@ class TestFileWatcher:
 
 if __name__ == '__main__':
     pytest.main([__file__, '-v'])
+

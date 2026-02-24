@@ -1545,17 +1545,19 @@ class UnifiedCommandProcessor:
             _jprime_ctx["speaker"] = speaker_name
         # Lightweight screen context (active app name, no screenshot)
         try:
-            import subprocess as _sp
-            _active_app_raw = await asyncio.to_thread(
-                _sp.check_output,
-                ["osascript", "-e",
-                 'tell application "System Events" to get name of first application process whose frontmost is true'],
-                timeout=1,
-                stderr=_sp.DEVNULL,
-            )
-            _active_app = _active_app_raw.decode().strip()
-            if _active_app:
-                _jprime_ctx["active_app"] = _active_app
+            import platform as _platform
+            if _platform.system() == "Darwin":
+                import subprocess as _sp
+                _active_app_raw = await asyncio.to_thread(
+                    _sp.check_output,
+                    ["osascript", "-e",
+                     'tell application "System Events" to get name of first application process whose frontmost is true'],
+                    timeout=1,
+                    stderr=_sp.DEVNULL,
+                )
+                _active_app = _active_app_raw.decode().strip()
+                if _active_app:
+                    _jprime_ctx["active_app"] = _active_app
         except Exception:
             pass
         # Last 5 conversation turns for continuity

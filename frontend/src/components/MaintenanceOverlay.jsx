@@ -24,7 +24,7 @@
  * Place at the root of your app (e.g., in App.js).
  */
 
-import React, { useEffect, useRef, useMemo } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { useUnifiedWebSocket } from '../services/UnifiedWebSocketService';
 import './MaintenanceOverlay.css';
 
@@ -44,7 +44,7 @@ const MaintenanceOverlay = () => {
         // v5.0: Hot Reload states
         hotReloadActive,
         hotReloadStatus,
-        devModeEnabled,
+        devModeEnabled: _devModeEnabled,
     } = useUnifiedWebSocket();
     const canvasRef = useRef(null);
     const animationRef = useRef(null);

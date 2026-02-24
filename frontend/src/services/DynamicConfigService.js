@@ -192,7 +192,7 @@ class DynamicConfigService {
     // Discovery configuration - dynamically inferred
     this.discoveryConfig = {
       // Priority-ordered ports - most likely first
-      // 8010 is the default BACKEND_PORT, followed by common alternatives
+      // 8000 is the default BACKEND_PORT, followed by common alternatives
       ports: this._inferPorts(),
       // Ports to skip (system services, loading servers)
       excludedPorts: new Set([5000, 5001, 3001, 8001]),
@@ -267,7 +267,9 @@ class DynamicConfigService {
     const envPort = typeof process !== 'undefined' && process.env?.REACT_APP_BACKEND_PORT;
     
     // Priority-ordered list - most likely ports first
-    const priorityPorts = [8010, 8000, 8080, 8888, 9000, 9090];
+    // Include JARVIS dynamic fallback range 8100-8130 for when primary ports are busy
+    const dynamicFallback = Array.from({ length: 31 }, (_, i) => 8100 + i);
+    const priorityPorts = [8000, 8010, 8080, 8888, 9000, 9090, ...dynamicFallback];
     
     if (envPort) {
       const port = parseInt(envPort, 10);
@@ -422,9 +424,9 @@ class DynamicConfigService {
     // Filter out excluded ports
     const portsToScan = ports.filter(p => !excludedPorts.has(p));
     
-    // PRIORITY: Try the primary port (8010) with retries first
+    // PRIORITY: Try the primary port (8000) with retries first
     // This handles the case where backend is still starting up
-    const primaryPort = portsToScan[0]; // 8010 is first in priority list
+    const primaryPort = portsToScan[0]; // 8000 is first in priority list
     if (primaryPort) {
       logger.debug(`[Discovery] Trying primary port ${primaryPort} with ${primaryPortRetries} retries...`);
       

@@ -19,15 +19,20 @@ Philosophy:
 """
 
 import asyncio
-import fcntl
 import json
 import logging
 import os
+import sys
 from collections import deque
 from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
+
+if sys.platform != "win32":
+    import fcntl
+else:
+    fcntl = None
 
 logger = logging.getLogger(__name__)
 
@@ -612,14 +617,16 @@ class IntelligentGCPOptimizer:
             # Open/create lock file
             self.lock_fd = os.open(str(self.lock_file), os.O_CREAT | os.O_RDWR)
 
-            # Try to acquire exclusive lock (non-blocking)
-            fcntl.flock(self.lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            # Try to acquire exclusive lock (non-blocking) — Unix only
+            if fcntl is not None:
+                fcntl.flock(self.lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
 
             # Write PID and timestamp to lock file
+            hostname = os.uname().nodename if hasattr(os, "uname") else os.environ.get("COMPUTERNAME", "unknown")
             lock_info = {
                 "pid": os.getpid(),
                 "timestamp": datetime.now().isoformat(),
-                "hostname": os.uname().nodename,
+                "hostname": hostname,
             }
             os.ftruncate(self.lock_fd, 0)  # Clear file first
             os.write(self.lock_fd, json.dumps(lock_info).encode())
@@ -652,7 +659,8 @@ class IntelligentGCPOptimizer:
         """Release VM creation lock"""
         if self.lock_fd is not None:
             try:
-                fcntl.flock(self.lock_fd, fcntl.LOCK_UN)
+                if fcntl is not None:
+                    fcntl.flock(self.lock_fd, fcntl.LOCK_UN)
                 os.close(self.lock_fd)
                 self.lock_fd = None
                 logger.info(f"🔓 Released VM creation lock (PID: {os.getpid()})")

@@ -32,6 +32,7 @@ const ConfigDiagnostic = () => {
       configService.off('config-updated', handleConfigUpdate);
       configService.off('discovery-failed', handleDiscoveryFailed);
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const updateConfig = () => {

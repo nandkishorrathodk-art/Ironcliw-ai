@@ -3115,7 +3115,7 @@ class GCPHybridPrimeRouter:
     async def _execute_cloud_claude(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         """Execute on Cloud Claude API."""
         try:
-            from backend.intelligence.unified_model_serving import get_model_server
+            from intelligence.unified_model_serving import get_model_server
             server = await get_model_server()
 
             # Use unified model serving for Claude

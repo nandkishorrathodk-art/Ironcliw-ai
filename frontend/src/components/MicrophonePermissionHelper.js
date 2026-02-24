@@ -112,7 +112,7 @@ const MicrophonePermissionHelper = ({ onPermissionGranted }) => {
       }
 
       // Get detailed device status
-      const status = await refreshDeviceStatus();
+      await refreshDeviceStatus();
 
       // Check permission status via Permissions API
       if (navigator.permissions && navigator.permissions.query) {

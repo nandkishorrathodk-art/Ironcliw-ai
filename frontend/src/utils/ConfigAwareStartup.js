@@ -247,8 +247,8 @@ class ConfigAwareStartup {
     const wsProtocol = protocol === 'https' ? 'wss' : 'ws';
     const hostname = window.location.hostname || 'localhost';
 
-    // Use backend's default port (8010)
-    const port = process.env?.REACT_APP_BACKEND_PORT || 8010;
+    // Use backend's default port (8000)
+    const port = process.env?.REACT_APP_BACKEND_PORT || 8000;
 
     return {
       API_BASE_URL: `${protocol}://${hostname}:${port}`,

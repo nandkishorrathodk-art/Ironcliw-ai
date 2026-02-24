@@ -11,8 +11,8 @@
  */
 
 import configService, {
-  getCircuitBreakerState,
-  onConfigReady
+  getCircuitBreakerState as _getCircuitBreakerState,
+  onConfigReady as _onConfigReady
 } from '../services/DynamicConfigService';
 
 // Circuit Breaker States
@@ -120,8 +120,8 @@ class NetworkRecoveryManager {
   _inferApiUrl() {
     const hostname = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
     const protocol = typeof window !== 'undefined' ? window.location.protocol.replace(':', '') : 'http';
-    // Use backend's default port (8010)
-    const port = process.env?.REACT_APP_BACKEND_PORT || 8010;
+    // Use backend's default port (8000)
+    const port = process.env?.REACT_APP_BACKEND_PORT || 8000;
     return `${protocol}://${hostname}:${port}`;
   }
 
@@ -133,8 +133,8 @@ class NetworkRecoveryManager {
     const protocol = typeof window !== 'undefined'
       ? (window.location.protocol === 'https:' ? 'wss' : 'ws')
       : 'ws';
-    // Use backend's default port (8010)
-    const port = process.env?.REACT_APP_BACKEND_PORT || 8010;
+    // Use backend's default port (8000)
+    const port = process.env?.REACT_APP_BACKEND_PORT || 8000;
     const base = `${protocol}://${hostname}:${port}`;
     return endpoint ? `${base}/${endpoint.replace(/^\//, '')}` : base;
   }
@@ -532,7 +532,7 @@ class NetworkRecoveryManager {
     }
 
     try {
-      const response = await fetch('https://www.google.com/generate_204', {
+      await fetch('https://www.google.com/generate_204', {
         method: 'HEAD',
         mode: 'no-cors',
         signal: AbortSignal.timeout(3000)

@@ -108,7 +108,7 @@ class PlatformVisionCapture:
     def _detect_platform(self) -> str:
         """Detect current platform"""
         try:
-            from backend.platform import get_platform
+            from backend.platform_adapter import get_platform
             return get_platform()
         except ImportError:
             import platform
@@ -143,7 +143,7 @@ class PlatformVisionCapture:
             logger.error(f"Failed to import WindowsVisionCapture: {e}")
             logger.info("Attempting fallback to platform.windows.vision...")
             try:
-                from backend.platform.windows.vision import WindowsVisionCapture as FallbackCapture
+                from backend.platform_adapter.windows.vision import WindowsVisionCapture as FallbackCapture
                 self._capturer = FallbackCapture()
                 logger.info("✅ Initialized Windows vision capturer (fallback)")
             except ImportError as e2:
@@ -481,3 +481,4 @@ def get_monitors() -> List[MonitorInfo]:
         List of MonitorInfo
     """
     return get_vision_capture().get_monitors()
+
