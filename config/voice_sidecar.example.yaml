@@ -1,0 +1,37 @@
+listen:
+  network: tcp
+  address: 127.0.0.1:9860
+
+pressure:
+  fail_closed: true
+  min_available_memory_mb: 3072
+  max_memory_percent: 85
+  max_cpu_percent: 90
+  monitor_interval_ms: 1000
+  sample_timeout_ms: 800
+
+worker:
+  command:
+    - python3
+    - -m
+    - backend.voice.voice_worker_service
+  working_dir: /Users/djrussell23/Documents/repos/JARVIS-AI-Agent
+  env:
+    JARVIS_VOICE_WORKER_HOST: 127.0.0.1
+    JARVIS_VOICE_WORKER_PORT: "8790"
+  auto_start: false
+  auto_recover: true
+  stop_on_pressure: true
+  health_url: http://127.0.0.1:8790/health
+  health_timeout_ms: 1500
+  health_failure_limit: 3
+  startup_health_wait_ms: 15000
+  startup_health_poll_ms: 250
+  stop_timeout_ms: 5000
+
+backoff:
+  initial_ms: 1000
+  max_ms: 30000
+  multiplier: 2.0
+
+control_timeout_ms: 5000

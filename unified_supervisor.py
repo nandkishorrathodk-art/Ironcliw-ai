@@ -577,6 +577,7 @@ import os
 import platform
 import random
 import re
+import shlex
 import shutil
 import signal
 import socket
@@ -2733,6 +2734,18 @@ def _get_env_float(key: str, default: float) -> float:
     except (ValueError, TypeError):
         return default
 
+def _get_env_command(key: str, default: Optional[List[str]] = None) -> List[str]:
+    """Parse a shell-style command from environment into argv tokens."""
+    if default is None:
+        default = []
+    raw = os.environ.get(key, "").strip()
+    if not raw:
+        return list(default)
+    try:
+        return shlex.split(raw)
+    except ValueError:
+        return list(default)
+
 def _allocate_ephemeral_port(host: str = "127.0.0.1") -> Optional[int]:
     """
     Ask the OS for an available ephemeral TCP port.
@@ -3354,6 +3367,16 @@ class SystemKernelConfig:
     narrator_enabled: bool = field(default_factory=lambda: _get_env_bool("STARTUP_NARRATOR_VOICE", True))
     wake_word_enabled: bool = field(default_factory=lambda: _get_env_bool("JARVIS_WAKE_WORD", True))
     ecapa_enabled: bool = field(default_factory=lambda: _get_env_bool("JARVIS_ECAPA_ENABLED", True))
+    voice_sidecar_enabled: bool = field(default_factory=lambda: _get_env_bool("JARVIS_VOICE_SIDECAR_ENABLED", False))
+    voice_sidecar_required: bool = field(default_factory=lambda: _get_env_bool("JARVIS_VOICE_SIDECAR_REQUIRED", False))
+    voice_sidecar_manage_worker: bool = field(default_factory=lambda: _get_env_bool("JARVIS_VOICE_SIDECAR_MANAGE_WORKER", True))
+    voice_sidecar_transport: str = field(default_factory=lambda: os.environ.get("JARVIS_VOICE_SIDECAR_TRANSPORT", "http").strip().lower() or "http")
+    voice_sidecar_base_url: str = field(default_factory=lambda: os.environ.get("JARVIS_VOICE_SIDECAR_BASE_URL", "http://127.0.0.1:9860").strip())
+    voice_sidecar_socket_path: str = field(default_factory=lambda: os.environ.get("JARVIS_VOICE_SIDECAR_SOCKET", "").strip())
+    voice_sidecar_command: List[str] = field(default_factory=lambda: _get_env_command("JARVIS_VOICE_SIDECAR_COMMAND"))
+    voice_sidecar_health_timeout: float = field(default_factory=lambda: _get_env_float("JARVIS_VOICE_SIDECAR_HEALTH_TIMEOUT", 2.5))
+    voice_sidecar_start_timeout: float = field(default_factory=lambda: _get_env_float("JARVIS_VOICE_SIDECAR_START_TIMEOUT", 20.0))
+    voice_sidecar_control_timeout: float = field(default_factory=lambda: _get_env_float("JARVIS_VOICE_SIDECAR_CONTROL_TIMEOUT", 5.0))
 
     # ═══════════════════════════════════════════════════════════════════════════
     # MEMORY / RESOURCES
@@ -3402,6 +3425,9 @@ class SystemKernelConfig:
             self.trinity_enabled = False
             self.hybrid_intelligence_enabled = False
 
+        if self.voice_sidecar_transport not in {"http", "unix"}:
+            self.voice_sidecar_transport = "http"
+
     @classmethod
     def from_environment(cls) -> "SystemKernelConfig":
         """Factory: Create config from environment variables."""
@@ -3426,6 +3452,12 @@ class SystemKernelConfig:
 
         if self.hot_reload_enabled and not self.dev_mode:
             warnings_list.append("hot_reload_enabled but dev_mode=False (hot reload will be disabled)")
+
+        if self.voice_sidecar_enabled and self.voice_sidecar_transport == "unix" and not self.voice_sidecar_socket_path:
+            warnings_list.append("voice sidecar unix transport selected but JARVIS_VOICE_SIDECAR_SOCKET is unset")
+
+        if self.voice_sidecar_enabled and not self.voice_sidecar_command:
+            warnings_list.append("voice sidecar enabled but JARVIS_VOICE_SIDECAR_COMMAND is empty; supervisor expects sidecar to already be running")
 
         return warnings_list
 
@@ -60734,6 +60766,8 @@ class JarvisSystemKernel:
         self._backend_process: Optional[asyncio.subprocess.Process] = None
         self._backend_server: Optional[Any] = None  # uvicorn.Server if in-process
         self._backend_server_task: Optional[asyncio.Task] = None  # uvicorn serve task
+        self._voice_sidecar_process: Optional[asyncio.subprocess.Process] = None
+        self._voice_sidecar_client: Optional[Any] = None
 
         # Frontend and loading server processes
         self._frontend_process: Optional[asyncio.subprocess.Process] = None
@@ -60770,6 +60804,7 @@ class JarvisSystemKernel:
             "visual_pipeline": {"status": "pending", "message": "Waiting to start"},  # v250.0: Visual Pipeline
             "audio_infrastructure": {"status": "pending", "message": "Waiting to start"},  # v238.0: Audio Bus
             "system_services": {"status": "pending", "message": "Waiting for flag"},  # v239.0: SSR
+            "voice_sidecar": {"status": "pending", "message": "Waiting for flag"},
             "frontend": {"status": "pending", "message": "Waiting to start"},
         }
 
@@ -62016,6 +62051,11 @@ class JarvisSystemKernel:
                 self.logger.info("[Kernel] Reactor Core pipeline stopped")
             except Exception:
                 pass
+
+        try:
+            await self._stop_voice_sidecar("emergency_shutdown")
+        except Exception:
+            pass
 
         # Stop backend deterministically (in-process first, then subprocess fallback)
         if self._backend_server or self._backend_server_task:
@@ -67069,6 +67109,227 @@ class JarvisSystemKernel:
 
             return True
 
+    async def _start_voice_sidecar(self) -> bool:
+        """
+        Start or attach to the Go voice sidecar control-plane service.
+
+        Contract: backend/core/voice_sidecar_contract.py
+        """
+        if not self.config.voice_sidecar_enabled:
+            return True
+
+        try:
+            try:
+                from backend.core.voice_sidecar_contract import (
+                    VoiceSidecarClient,
+                    VoiceSidecarContractConfig,
+                    wait_for_sidecar_health,
+                )
+            except ImportError:
+                from core.voice_sidecar_contract import (  # type: ignore
+                    VoiceSidecarClient,
+                    VoiceSidecarContractConfig,
+                    wait_for_sidecar_health,
+                )
+        except Exception as sidecar_import_err:
+            self.logger.error(
+                f"[VoiceSidecar] Contract import failed: {sidecar_import_err}"
+            )
+            self._update_component_status(
+                "voice_sidecar",
+                "error",
+                f"Contract import failed: {sidecar_import_err}",
+            )
+            return False
+
+        sidecar_cfg = VoiceSidecarContractConfig(
+            enabled=self.config.voice_sidecar_enabled,
+            required=self.config.voice_sidecar_required,
+            transport=self.config.voice_sidecar_transport,
+            base_url=self.config.voice_sidecar_base_url,
+            unix_socket_path=self.config.voice_sidecar_socket_path,
+            control_timeout=self.config.voice_sidecar_control_timeout,
+            health_timeout=self.config.voice_sidecar_health_timeout,
+            command=list(self.config.voice_sidecar_command),
+            manage_worker=self.config.voice_sidecar_manage_worker,
+        )
+        self._voice_sidecar_client = VoiceSidecarClient(sidecar_cfg)
+        self._update_component_status(
+            "voice_sidecar",
+            "running",
+            "Initializing voice sidecar",
+        )
+
+        if self._voice_sidecar_process is None and sidecar_cfg.command:
+            try:
+                env = os.environ.copy()
+                env.setdefault("JARVIS_VOICE_SIDECAR_TRANSPORT", sidecar_cfg.transport)
+                env.setdefault("JARVIS_VOICE_SIDECAR_BASE_URL", sidecar_cfg.base_url)
+                env.setdefault("JARVIS_VOICE_SIDECAR_SOCKET", sidecar_cfg.unix_socket_path)
+                env.setdefault(
+                    "JARVIS_VOICE_SIDECAR_CONTROL_TIMEOUT",
+                    str(sidecar_cfg.control_timeout),
+                )
+                env.setdefault(
+                    "JARVIS_VOICE_SIDECAR_HEALTH_TIMEOUT",
+                    str(sidecar_cfg.health_timeout),
+                )
+
+                self._voice_sidecar_process = await asyncio.create_subprocess_exec(
+                    *sidecar_cfg.command,
+                    cwd=str(self.config.project_root),
+                    env=env,
+                )
+                if self._voice_sidecar_process.pid:
+                    self._protected_pids.add(self._voice_sidecar_process.pid)
+                self.logger.info(
+                    "[VoiceSidecar] Spawned sidecar process "
+                    f"(pid={self._voice_sidecar_process.pid})"
+                )
+            except Exception as sidecar_spawn_err:
+                self.logger.error(
+                    f"[VoiceSidecar] Spawn failed: {sidecar_spawn_err}"
+                )
+                self._update_component_status(
+                    "voice_sidecar",
+                    "error",
+                    f"Spawn failed: {sidecar_spawn_err}",
+                )
+                return False
+
+        try:
+            await wait_for_sidecar_health(
+                self._voice_sidecar_client,
+                timeout_seconds=self.config.voice_sidecar_start_timeout,
+            )
+            self._update_component_status(
+                "voice_sidecar",
+                "complete",
+                "Voice sidecar healthy",
+            )
+            return True
+        except Exception as sidecar_health_err:
+            self.logger.warning(
+                f"[VoiceSidecar] Health check failed: {sidecar_health_err}"
+            )
+            self._update_component_status(
+                "voice_sidecar",
+                "error",
+                f"Health check failed: {sidecar_health_err}",
+            )
+            return False
+
+    async def _enforce_voice_sidecar_gate(self, phase_label: str) -> bool:
+        """
+        Fail-closed heavy-load admission gate from sidecar pressure policy.
+        """
+        if not self.config.voice_sidecar_enabled or self._voice_sidecar_client is None:
+            return True
+
+        try:
+            gate = await self._voice_sidecar_client.heavy_load_gate()
+            allowed = bool(gate.get("allowed", False))
+            reason = str(gate.get("reason", "unknown"))
+            if allowed:
+                self.logger.info(
+                    f"[VoiceSidecar] Heavy-load gate open ({phase_label})"
+                )
+                return True
+
+            os.environ["JARVIS_BACKEND_MINIMAL"] = "true"
+            os.environ["JARVIS_VOICE_SIDECAR_GATE"] = "closed"
+            self._update_component_status(
+                "voice_sidecar",
+                "degraded",
+                f"Gate closed ({phase_label}): {reason}",
+            )
+            self.logger.warning(
+                "[VoiceSidecar] Heavy-load gate closed (%s): %s",
+                phase_label,
+                reason,
+            )
+            return False
+        except Exception as gate_err:
+            if self.config.voice_sidecar_required:
+                self._update_component_status(
+                    "voice_sidecar",
+                    "error",
+                    f"Gate query failed: {gate_err}",
+                )
+                self.logger.error(f"[VoiceSidecar] Gate query failed: {gate_err}")
+                return False
+
+            self._update_component_status(
+                "voice_sidecar",
+                "degraded",
+                f"Gate query failed: {gate_err}",
+            )
+            self.logger.warning(f"[VoiceSidecar] Gate query failed: {gate_err}")
+            return True
+
+    async def _start_voice_worker_via_sidecar(self, reason: str) -> bool:
+        """Request deterministic worker startup through sidecar control endpoint."""
+        if not self.config.voice_sidecar_enabled:
+            return True
+        if not self.config.voice_sidecar_manage_worker:
+            return True
+        if self._voice_sidecar_client is None:
+            return not self.config.voice_sidecar_required
+
+        gate_open = await self._enforce_voice_sidecar_gate("voice_worker_start")
+        if not gate_open:
+            return False
+
+        try:
+            await self._voice_sidecar_client.start_worker(reason)
+            self.logger.info("[VoiceSidecar] Voice worker started")
+            self._update_component_status(
+                "voice_sidecar",
+                "complete",
+                "Voice worker supervised by sidecar",
+            )
+            return True
+        except Exception as worker_start_err:
+            self.logger.warning(
+                f"[VoiceSidecar] Voice worker start failed: {worker_start_err}"
+            )
+            self._update_component_status(
+                "voice_sidecar",
+                "degraded",
+                f"Worker start failed: {worker_start_err}",
+            )
+            return False
+
+    async def _stop_voice_sidecar(self, reason: str) -> None:
+        """Stop worker via contract and terminate sidecar process if owned."""
+        if self._voice_sidecar_client is not None and self.config.voice_sidecar_manage_worker:
+            try:
+                await self._voice_sidecar_client.stop_worker(reason)
+            except Exception:
+                pass
+
+        if self._voice_sidecar_process is not None:
+            proc = self._voice_sidecar_process
+            self._voice_sidecar_process = None
+            try:
+                if proc.pid in self._protected_pids:
+                    self._protected_pids.discard(proc.pid)
+                if proc.returncode is None:
+                    proc.terminate()
+                    try:
+                        await asyncio.wait_for(proc.wait(), timeout=5.0)
+                    except asyncio.TimeoutError:
+                        proc.kill()
+            except Exception:
+                pass
+
+        if self.config.voice_sidecar_enabled:
+            self._update_component_status(
+                "voice_sidecar",
+                "stopped",
+                f"Stopped ({reason})",
+            )
+
     async def _phase_resources(self) -> bool:
         """
         Phase 2: Initialize resource managers.
@@ -67149,6 +67410,17 @@ class JarvisSystemKernel:
                 os.environ["JARVIS_CAPABILITY_LOCAL_STORAGE"] = "deferred"
         except Exception as _gate2_err:
             self.logger.debug("[v266.2] Phase 2 memory gate error: %s", _gate2_err)
+
+        # Voice sidecar control-plane bootstrap (optional, config-driven).
+        if self.config.voice_sidecar_enabled:
+            sidecar_ready = await self._start_voice_sidecar()
+            if not sidecar_ready and self.config.voice_sidecar_required:
+                self.logger.error(
+                    "[VoiceSidecar] Required sidecar failed during resources phase"
+                )
+                return False
+            if sidecar_ready:
+                _ = await self._enforce_voice_sidecar_gate("phase_resources")
 
         # v188.0: Progress range for resource phase
         base_progress = 15
@@ -68191,6 +68463,26 @@ class JarvisSystemKernel:
                     os.environ["JARVIS_BACKEND_MINIMAL"] = "true"
         except Exception as _gate3_err:
             self.logger.debug("[v266.2] Phase 3 memory gate error: %s", _gate3_err)
+
+        # Voice sidecar deterministic worker admission before backend startup.
+        if self.config.voice_sidecar_enabled:
+            gate_open = await self._enforce_voice_sidecar_gate("phase_backend")
+            if not gate_open:
+                self.logger.warning(
+                    "[VoiceSidecar] Gate closed in backend phase — continuing in minimal backend mode"
+                )
+                os.environ["JARVIS_BACKEND_MINIMAL"] = "true"
+
+            worker_started = await self._start_voice_worker_via_sidecar(
+                reason="phase_backend"
+            )
+            if (
+                self.config.voice_sidecar_required
+                and self.config.voice_sidecar_manage_worker
+                and not worker_started
+            ):
+                self.logger.error("[VoiceSidecar] Required worker startup failed")
+                return False
 
         with self.logger.section_start(LogSection.BACKEND, "Zone 6.1 | Phase 3: Backend"):
             # v211.0: Mark backend as "running" while starting
@@ -79871,6 +80163,12 @@ class JarvisSystemKernel:
             except Exception as e:
                 self.logger.debug(f"[Kernel] GCP cleanup error: {e}")
 
+            # Stop voice sidecar (worker + sidecar process if owned).
+            try:
+                await self._stop_voice_sidecar("cleanup")
+            except Exception as _vs_cleanup_err:
+                self.logger.debug(f"[VoiceSidecar] Cleanup stop error: {_vs_cleanup_err}")
+
             # Stop frontend and loading server
             await self._stop_frontend()
             await self._stop_loading_server()
@@ -80149,6 +80447,21 @@ class JarvisSystemKernel:
             "status": self.invincible_node_status,
         }
 
+        status["voice_sidecar"] = {
+            "enabled": self.config.voice_sidecar_enabled,
+            "required": self.config.voice_sidecar_required,
+            "manage_worker": self.config.voice_sidecar_manage_worker,
+            "transport": self.config.voice_sidecar_transport,
+            "base_url": self.config.voice_sidecar_base_url,
+            "socket": self.config.voice_sidecar_socket_path,
+            "process_pid": (
+                self._voice_sidecar_process.pid
+                if self._voice_sidecar_process is not None
+                else None
+            ),
+            "component_status": self._component_status.get("voice_sidecar", {}),
+        }
+
         status["tier3_capabilities"] = self._collect_tier3_capabilities_status()
 
         return status
@@ -80175,6 +80488,20 @@ class JarvisSystemKernel:
                         if self._readiness_manager:
                             self._readiness_manager.mark_component_ready("backend", False)
                             self._readiness_manager.add_error("Backend process died")
+
+                if self._voice_sidecar_process:
+                    if self._voice_sidecar_process.returncode is not None:
+                        self.logger.error(
+                            f"[VoiceSidecar] Sidecar process exited with code "
+                            f"{self._voice_sidecar_process.returncode}"
+                        )
+                        self._voice_sidecar_process = None
+                        if self.config.voice_sidecar_enabled:
+                            self._update_component_status(
+                                "voice_sidecar",
+                                "error",
+                                "Sidecar process exited",
+                            )
                 
                 # v197.1: Update live dashboard with memory stats
                 try:
