@@ -1,0 +1,78 @@
+# CI/CD Failure Analysis Report
+
+## Executive Summary
+
+- **Workflow**: PR Automation & Validation
+- **Run Number**: #155
+- **Branch**: `dependabot/github_actions/github/codeql-action-4`
+- **Commit**: `85f0d11d22d90d8cb76a72c4dcb7f2f1d598ef71`
+- **Status**: ❌ FAILED
+- **Timestamp**: 2026-02-24T09:24:25Z
+- **Triggered By**: @dependabot[bot]
+- **Workflow URL**: [View Run](https://github.com/nandkishorrathodk-art/Ironcliw-ai/actions/runs/22344571429)
+
+## Failure Overview
+
+Total Failed Jobs: **1**
+
+| # | Job Name | Category | Severity | Duration |
+|---|----------|----------|----------|----------|
+| 1 | Validate PR Title | timeout | high | 6s |
+
+## Detailed Analysis
+
+### 1. Validate PR Title
+
+**Status**: ❌ failure
+**Category**: Timeout
+**Severity**: HIGH
+**Started**: 2026-02-24T09:33:50Z
+**Completed**: 2026-02-24T09:33:56Z
+**Duration**: 6 seconds
+**Job URL**: [View Logs](https://github.com/nandkishorrathodk-art/Ironcliw-ai/actions/runs/22344571429/job/64655741629)
+
+#### Failed Steps
+
+- **Step 2**: Validate Conventional Commits
+
+#### Error Analysis
+
+**Detected Error Patterns:**
+
+- Pattern: `ERROR|Error|error`
+  - Occurrences: 2
+  - Sample matches:
+    - Line 22: `2026-02-24T09:33:53.6750269Z   subjectPatternError: The PR title must start with a capital letter.`
+    - Line 34: `2026-02-24T09:33:54.3007919Z ##[error]The PR title must start with a capital letter.`
+
+- Pattern: `timeout|timed out`
+  - Occurrences: 2
+  - Sample matches:
+    - Line 26: `- fix: Resolve database connection timeout`
+    - Line 38: `- fix: Resolve database connection timeout`
+
+#### Suggested Fixes
+
+1. Consider increasing timeout values or optimizing slow operations
+2. Check service availability and network connectivity
+
+---
+
+## Action Items
+
+- [ ] Review detailed logs for each failed job
+- [ ] Implement suggested fixes
+- [ ] Add or update tests to prevent regression
+- [ ] Verify fixes locally before pushing
+- [ ] Update CI/CD configuration if needed
+
+## Additional Resources
+
+- [Workflow File](.github/workflows/)
+- [CI/CD Documentation](../../docs/ci-cd/)
+- [Troubleshooting Guide](../../docs/troubleshooting/)
+
+---
+
+📊 *Report generated on 2026-02-24T09:42:18.295431*
+🤖 *JARVIS CI/CD Auto-PR Manager*
