@@ -1022,6 +1022,23 @@ class PyTorchExecutor:
             except RuntimeError:
                 pass  # Already set
 
+            # v269.0: Ensure clean dispatch state on executor thread
+            # PyTorch 2.8+ decomposition dispatch can route through meta tensor
+            # kernels if dispatch state is contaminated. Force CPU default device
+            # and suppress dynamo errors on this thread.
+            _pt_ver = tuple(int(x) for x in torch.__version__.split('.')[:2])
+            if _pt_ver >= (2, 8):
+                if hasattr(torch, 'set_default_device'):
+                    try:
+                        torch.set_default_device('cpu')
+                    except Exception:
+                        pass
+                if hasattr(torch, '_dynamo'):
+                    try:
+                        torch._dynamo.config.suppress_errors = True
+                    except Exception:
+                        pass
+
             # Get memory info if available
             memory_info = ""
             try:

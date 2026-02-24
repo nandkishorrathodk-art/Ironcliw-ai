@@ -98,6 +98,30 @@ if _IS_APPLE_SILICON:
         # Already set by another module - that's fine
         pass
 
+# ============================================================================
+# v269.0: PyTorch 2.8+ Decomposition Dispatch Prevention
+# ============================================================================
+# Disable torch.compile/dynamo features that can route eager-mode operations
+# through the decomposition dispatch layer (torch._decomp), which under
+# memory pressure can activate meta tensor kernels causing:
+#   RuntimeError: Tensor on device meta is not on the expected device cpu!
+# ============================================================================
+_pytorch_version_tuple = tuple(int(x) for x in torch.__version__.split('.')[:2])
+if _pytorch_version_tuple >= (2, 8):
+    # Suppress dynamo errors and disable auto-tracing
+    if hasattr(torch, '_dynamo'):
+        try:
+            torch._dynamo.config.suppress_errors = True
+        except Exception:
+            pass
+
+    # Ensure default device is CPU (prevents meta device contamination)
+    if hasattr(torch, 'set_default_device'):
+        try:
+            torch.set_default_device('cpu')
+        except Exception:
+            pass
+
 # Import managed executor for clean shutdown
 try:
     from core.thread_manager import ManagedThreadPoolExecutor
@@ -626,6 +650,153 @@ _patch_speechbrain_parameter_transfer()
 _patch_speechbrain_meta_tensor_handling()
 
 
+# ============================================================================
+# v269.0: PYTORCH 2.8+ DECOMPOSITION DISPATCH GUARD
+# ============================================================================
+# PyTorch 2.8.0+ aggressively routes eager-mode operations through its
+# decomposition dispatch layer (torch._decomp). Under full-runtime memory/
+# thread pressure, stale dispatch state (FakeTensorMode, ProxyTorchDispatch,
+# or default-device contamination) on the serialized PyTorch executor thread
+# can cause F.linear() to route through _prim_elementwise_meta, which checks
+# device consistency and fails with:
+#   RuntimeError: Tensor on device meta is not on the expected device cpu!
+#
+# This context manager establishes a clean dispatch environment before model
+# loading, and provides a retry path that aggressively clears contamination.
+# ============================================================================
+
+import contextlib
+
+
+def _clear_pytorch_dispatch_contamination():
+    """v269.0: Clear all PyTorch dispatch state that could cause meta tensor routing."""
+    # 1. Force default device to CPU
+    if hasattr(torch, 'set_default_device'):
+        try:
+            torch.set_default_device('cpu')
+        except Exception:
+            pass
+
+    # 2. Reset dynamo state (clears stale JIT tracing)
+    if hasattr(torch, '_dynamo'):
+        try:
+            torch._dynamo.reset()
+        except Exception:
+            pass
+
+    # 3. Pop any active TorchDispatchMode from this thread
+    try:
+        from torch.utils._python_dispatch import _get_current_dispatch_mode_stack
+        stack = _get_current_dispatch_mode_stack()
+        if stack:
+            logger.warning(
+                f"   [v269.0] Found {len(stack)} stale dispatch mode(s): "
+                f"{[type(m).__name__ for m in stack]}"
+            )
+            # Clear by popping — each mode's __exit__ cleans up its state
+            while stack:
+                mode = stack[-1]
+                try:
+                    mode.__exit__(None, None, None)
+                except Exception:
+                    # Force-remove if __exit__ fails
+                    stack.pop()
+    except (ImportError, AttributeError):
+        pass
+
+    # 4. Force garbage collection to release mode references
+    import gc
+    gc.collect()
+
+
+@contextlib.contextmanager
+def _clean_pytorch_dispatch_for_load():
+    """v269.0: Context manager for clean PyTorch dispatch state during model loading.
+
+    Prevents meta tensor routing by:
+    1. Forcing default device to CPU
+    2. Resetting torch._dynamo state
+    3. Clearing stale dispatch modes from this thread
+    4. Running under torch.no_grad() to reduce dispatch complexity
+    """
+    old_default = None
+    try:
+        # Save and force default device to CPU
+        if hasattr(torch, 'set_default_device'):
+            if hasattr(torch, 'get_default_device'):
+                try:
+                    old_default = torch.get_default_device()
+                except Exception:
+                    old_default = None
+            torch.set_default_device('cpu')
+
+        # Reset dynamo
+        if hasattr(torch, '_dynamo'):
+            try:
+                torch._dynamo.reset()
+            except Exception:
+                pass
+
+        with torch.no_grad():
+            yield
+
+    finally:
+        # Restore default device
+        if hasattr(torch, 'set_default_device'):
+            try:
+                if old_default is not None:
+                    torch.set_default_device(old_default)
+                else:
+                    torch.set_default_device(None)
+            except Exception:
+                pass
+
+
+def _load_with_meta_tensor_recovery(load_fn, model_name: str, max_retries: int = 2):
+    """v269.0: Execute a model load function with meta tensor error recovery.
+
+    If the load fails with a meta-device RuntimeError, aggressively clears
+    dispatch state and retries. This handles cases where other components
+    in the runtime contaminate PyTorch's thread-local dispatch state.
+
+    Args:
+        load_fn: Callable that loads and returns a model
+        model_name: Name for logging
+        max_retries: Number of recovery attempts after meta tensor error
+
+    Returns:
+        The loaded model
+    """
+    last_error = None
+    for attempt in range(1 + max_retries):
+        try:
+            with _clean_pytorch_dispatch_for_load():
+                return load_fn()
+        except RuntimeError as e:
+            error_str = str(e)
+            if "meta" in error_str and ("expected device cpu" in error_str or "not on the expected device" in error_str):
+                last_error = e
+                if attempt < max_retries:
+                    logger.warning(
+                        f"   [v269.0] Meta tensor contamination detected loading {model_name} "
+                        f"(attempt {attempt + 1}/{1 + max_retries}), clearing dispatch state..."
+                    )
+                    _clear_pytorch_dispatch_contamination()
+                    # Brief pause for state to settle
+                    import time
+                    time.sleep(0.5)
+                else:
+                    logger.error(
+                        f"   [v269.0] Meta tensor error persisted after {max_retries} recovery "
+                        f"attempts for {model_name}. PyTorch dispatch state may be deeply "
+                        f"contaminated by another runtime component."
+                    )
+                    raise
+            else:
+                raise
+    raise last_error  # Should not reach here, but safety net
+
+
 @dataclass
 class StreamingChunk:
     """Represents a chunk of streaming audio with partial results.
@@ -1126,21 +1297,25 @@ class SpeechBrainEngine(BaseSTTEngine):
             load_fallback_ref = self._load_asr_fallback
 
             def _load_asr_model():
-                """Load ASR model with fallback for SpeechBrain 1.0 compatibility."""
-                # Use captured references instead of self attributes
-                if cache_dir_ref is None or model_config_name_ref is None:
-                    raise RuntimeError("Model config references became None during loading")
-                try:
-                    return EncoderDecoderASR.from_hparams(
-                        source=model_source,
-                        savedir=str(cache_dir_ref / model_config_name_ref),
-                        run_opts={"device": device_ref},
-                    )
-                except Exception as e:
-                    if "custom.py" in str(e) or "Entry Not Found" in str(e):
-                        logger.warning(f"   ⚠️ ASR model loading failed (missing custom.py), using fallback...")
-                        return load_fallback_ref(model_source, {"device": device_ref})
-                    raise
+                """Load ASR model with meta tensor dispatch guard (v269.0)."""
+                def _inner_load():
+                    # Use captured references instead of self attributes
+                    if cache_dir_ref is None or model_config_name_ref is None:
+                        raise RuntimeError("Model config references became None during loading")
+                    try:
+                        return EncoderDecoderASR.from_hparams(
+                            source=model_source,
+                            savedir=str(cache_dir_ref / model_config_name_ref),
+                            run_opts={"device": device_ref},
+                        )
+                    except Exception as e:
+                        if "custom.py" in str(e) or "Entry Not Found" in str(e):
+                            logger.warning(f"   ⚠️ ASR model loading failed (missing custom.py), using fallback...")
+                            return load_fallback_ref(model_source, {"device": device_ref})
+                        raise
+
+                # v269.0: Wrap with dispatch guard + meta tensor recovery
+                return _load_with_meta_tensor_recovery(_inner_load, "speechbrain_asr")
 
             # Use dedicated PyTorch executor for model loading
             # v117.0: Use op_type=MODEL_LOAD for proper timeout and retry
@@ -1268,7 +1443,7 @@ class SpeechBrainEngine(BaseSTTEngine):
             loading_lock_ref = self._model_loading_lock  # Thread-safe loading lock
 
             def _load_model_sync():
-                """Synchronous model loading function.
+                """Synchronous model loading with meta tensor dispatch guard (v269.0).
 
                 CRITICAL: Run on serialized PyTorch thread path to avoid segfaults
                 on macOS/Apple Silicon.
@@ -1297,21 +1472,27 @@ class SpeechBrainEngine(BaseSTTEngine):
 
                         logger.info(f"   Loading from thread: {threading.current_thread().name}")
 
-                        try:
-                            model = EncoderClassifier.from_hparams(
-                                source="speechbrain/spkrec-ecapa-voxceleb",
-                                savedir=str(cache_dir_ref / "speaker_encoder"),
-                                run_opts=run_opts,
-                            )
-                            logger.info("   ✅ Model loaded successfully in dedicated thread")
-                            return model
-                        except Exception as e:
-                            if "custom.py" in str(e) or "Entry Not Found" in str(e):
-                                logger.warning(
-                                    "   ⚠️ Standard loading failed (missing custom.py), using fallback loader..."
+                        # v269.0: Inner load wrapped with meta tensor recovery
+                        def _inner_encoder_load():
+                            try:
+                                model = EncoderClassifier.from_hparams(
+                                    source="speechbrain/spkrec-ecapa-voxceleb",
+                                    savedir=str(cache_dir_ref / "speaker_encoder"),
+                                    run_opts=run_opts,
                                 )
-                                return load_ecapa_fallback_ref(run_opts)
-                            raise
+                                logger.info("   ✅ Model loaded successfully in dedicated thread")
+                                return model
+                            except Exception as e:
+                                if "custom.py" in str(e) or "Entry Not Found" in str(e):
+                                    logger.warning(
+                                        "   ⚠️ Standard loading failed (missing custom.py), using fallback loader..."
+                                    )
+                                    return load_ecapa_fallback_ref(run_opts)
+                                raise
+
+                        return _load_with_meta_tensor_recovery(
+                            _inner_encoder_load, "speechbrain_ecapa_tdnn"
+                        )
                     finally:
                         if old_mps_fallback is not None:
                             os.environ['PYTORCH_MPS_HIGH_WATERMARK_RATIO'] = old_mps_fallback
