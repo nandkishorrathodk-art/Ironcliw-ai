@@ -86730,10 +86730,13 @@ async def async_main(args: argparse.Namespace) -> int:
             # v253.4: CancelledError fires here when a task is GC'd without being
             # awaited, or when _run_phase() times out and cancels inner tasks.
             # It's not a real error — just normal shutdown/timeout cleanup.
+            # v266.5: InvalidStateError from asyncpg TLS state machine during
+            # CloudSQL reconnection — internal asyncpg tasks we don't control.
             _is_transient = isinstance(exception, (
                 ConnectionError,       # Includes ConnectionResetError, BrokenPipeError
                 asyncio.TimeoutError,  # Background health checks, keepalive extensions
                 asyncio.CancelledError,  # Task cancellation (timeout, shutdown, GC)
+                asyncio.InvalidStateError,  # asyncpg TLS race during reconnection
             ))
 
             _emit_async_exception_log(

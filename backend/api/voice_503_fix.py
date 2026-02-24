@@ -46,13 +46,15 @@ async def process_queue():
                 # Throttle when CPU is high
                 await asyncio.sleep(0.5)
 
-            # Return success
-            request_data['future'].set_result({
-                'status': 'activated',
-                'message': 'JARVIS voice activated successfully',
-                'cpu_usage': f"{cpu:.1f}%",
-                'queue_size': request_queue.qsize()
-            })
+            # Return success — guard against caller timeout cancelling the future
+            future = request_data['future']
+            if not future.done():
+                future.set_result({
+                    'status': 'activated',
+                    'message': 'JARVIS voice activated successfully',
+                    'cpu_usage': f"{cpu:.1f}%",
+                    'queue_size': request_queue.qsize()
+                })
 
         except Exception as e:
             logger.error(f"Queue processing error: {e}")

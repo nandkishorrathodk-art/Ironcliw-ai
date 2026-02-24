@@ -2130,7 +2130,10 @@ class HybridDatabaseSync:
                     time_since_refresh = (datetime.now() - last_cache_refresh).seconds
                     if time_since_refresh > cache_refresh_interval:
                         logger.info("🔄 Periodic cache refresh triggered")
-                        task = asyncio.create_task(self._warm_cache_on_reconnection())
+                        task = asyncio.create_task(
+                            self._warm_cache_on_reconnection(),
+                            name="hybridsync-periodic-cache-refresh",
+                        )
                         self._background_tasks.add(task)
                         task.add_done_callback(self._background_tasks.discard)
                         last_cache_refresh = datetime.now()
@@ -2169,12 +2172,18 @@ class HybridDatabaseSync:
                         logger.info("✅ CloudSQL reconnected - warming cache and syncing")
 
                         # CRITICAL: Warm voice profile cache on reconnection
-                        task = asyncio.create_task(self._warm_cache_on_reconnection())
+                        task = asyncio.create_task(
+                            self._warm_cache_on_reconnection(),
+                            name="hybridsync-warm-cache-reconnect",
+                        )
                         self._background_tasks.add(task)
                         task.add_done_callback(self._background_tasks.discard)
 
                         # Trigger immediate sync of pending changes
-                        task2 = asyncio.create_task(self._reconcile_pending_syncs())
+                        task2 = asyncio.create_task(
+                            self._reconcile_pending_syncs(),
+                            name="hybridsync-reconcile-pending",
+                        )
                         self._background_tasks.add(task2)
                         task2.add_done_callback(self._background_tasks.discard)
 
