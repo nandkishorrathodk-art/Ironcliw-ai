@@ -1799,16 +1799,51 @@ def _register_early_shutdown_handlers() -> bool:
 _register_early_shutdown_handlers()
 
 # v233.0: Clean up backend_port.json on exit to prevent stale port state
+# v265.7: Extended to clean ALL stale state files that cause false crash recovery
 import atexit as _atexit
-def _cleanup_port_state_file():
-    """Remove backend_port.json so stale port info doesn't mislead next startup."""
+import glob as _glob
+
+
+def _cleanup_stale_state_on_exit():
+    """Remove stale state files on normal exit to prevent false crash recovery.
+
+    Root cause: emergency_shutdown() writes kernel_crash.marker on ALL exits
+    (even expected ones), and memory_pressure.json / cloud_lock.json persist
+    from previous sessions. On next startup, Clean Slate detects these with
+    high confidence and triggers unnecessary recovery, logging false warnings.
+
+    This atexit handler cleans all such files when the process exits normally
+    (atexit only fires on graceful interpreter shutdown, not SIGKILL).
+    """
+    _home = Path.home() / ".jarvis"
+    # Stale state files that mislead next startup's Clean Slate phase
+    _stale_files = [
+        _home / "backend_port.json",                          # Stale port info
+        _home / "locks" / "kernel_crash.marker",              # False crash detection
+        _home / "cross_repo" / "memory_pressure.json",        # Stale memory signal (router)
+        _home / "memory_pressure.json",                       # Stale memory signal (guard)
+        _home / "trinity" / "cloud_lock.json",                # Stale Trinity lock
+        _home / "trinity" / "state" / "system_phase.json",    # Stale phase
+    ]
+    for _sf in _stale_files:
+        try:
+            if _sf.exists():
+                _sf.unlink(missing_ok=True)
+        except Exception:
+            pass
+    # Clean signal files directory (transient coordination)
+    _signals_dir = str(_home / "signals")
     try:
-        _port_state = Path.home() / ".jarvis" / "backend_port.json"
-        if _port_state.exists():
-            _port_state.unlink(missing_ok=True)
+        for _sig_f in _glob.glob(_signals_dir + "/*.json"):
+            try:
+                Path(_sig_f).unlink(missing_ok=True)
+            except Exception:
+                pass
     except Exception:
-        pass  # Best-effort cleanup
-_atexit.register(_cleanup_port_state_file)
+        pass
+
+
+_atexit.register(_cleanup_stale_state_on_exit)
 
 # Intelligent Startup Narrator - phase-aware voice narration
 # Note: Import as BackendStartupPhase to avoid conflict with local StartupPhase enum
@@ -62210,65 +62245,74 @@ class JarvisSystemKernel:
         # v181.0: Write crash marker for next startup
         # v205.0: Use asyncio.to_thread to avoid blocking the event loop
         # v242.5: Enriched with diagnostic context (JSON) for crash forensics
-        try:
-            crash_marker = LOCKS_DIR / "kernel_crash.marker"
+        # v265.7: Only write marker for UNEXPECTED exits — expected exits clean up
+        # via atexit handler. Writing on expected exits caused false crash recovery
+        # on every startup (Clean Slate saw stale marker → triggered recovery).
+        if expected:
+            self.logger.debug(
+                "[Kernel] Expected shutdown — skipping crash marker write "
+                "(atexit will clean stale state)"
+            )
+        else:
+            try:
+                crash_marker = LOCKS_DIR / "kernel_crash.marker"
 
-            def _write_crash_marker() -> None:
-                """Sync helper for crash marker write — captures diagnostic snapshot."""
-                crash_marker.parent.mkdir(parents=True, exist_ok=True)
-                # v242.5: Capture diagnostic context for next-startup forensics
-                uptime = time.time() - self._started_at if self._started_at else 0.0
-                diag = {
-                    "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
-                    "epoch": time.time(),
-                    "pid": os.getpid(),
-                    "kernel_state": self._state.value if self._state else "unknown",
-                    "shutdown_mode": "emergency",
-                    "shutdown_reason": reason,
-                    "expected": bool(expected),
-                    "uptime_seconds": round(uptime, 1),
-                    "component_status": {},
-                }
-                # Capture component status snapshot (what was running/failed)
-                try:
-                    for comp_name, comp_info in (self._component_status or {}).items():
-                        diag["component_status"][comp_name] = comp_info.get("status", "unknown")
-                except Exception:
-                    pass
-                # Capture Trinity component states
-                try:
-                    if self._trinity and hasattr(self._trinity, "_components"):
-                        trinity_states = {}
-                        for name, comp in self._trinity._components.items():
-                            trinity_states[name] = {
-                                "running": getattr(comp, "is_running", False),
-                                "pid": getattr(comp, "pid", None),
-                            }
-                        diag["trinity_components"] = trinity_states
-                except Exception:
-                    pass
-                # Capture memory info if psutil available
-                try:
-                    import psutil
-                    proc = psutil.Process(os.getpid())
-                    mem = proc.memory_info()
-                    diag["memory_rss_mb"] = round(mem.rss / (1024 * 1024), 1)
-                    diag["memory_vms_mb"] = round(mem.vms / (1024 * 1024), 1)
-                    diag["system_memory_pct"] = round(psutil.virtual_memory().percent, 1)
-                except Exception:
-                    pass
-                try:
-                    crash_marker.write_text(json.dumps(diag, indent=2))
-                except Exception:
-                    # Fallback to plain text if JSON serialization fails
-                    crash_marker.write_text(
-                        f"Emergency shutdown at {time.strftime('%Y-%m-%d %H:%M:%S')} "
-                        f"(reason={reason}, expected={expected})"
-                    )
+                def _write_crash_marker() -> None:
+                    """Sync helper for crash marker write — captures diagnostic snapshot."""
+                    crash_marker.parent.mkdir(parents=True, exist_ok=True)
+                    # v242.5: Capture diagnostic context for next-startup forensics
+                    uptime = time.time() - self._started_at if self._started_at else 0.0
+                    diag = {
+                        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+                        "epoch": time.time(),
+                        "pid": os.getpid(),
+                        "kernel_state": self._state.value if self._state else "unknown",
+                        "shutdown_mode": "emergency",
+                        "shutdown_reason": reason,
+                        "expected": bool(expected),
+                        "uptime_seconds": round(uptime, 1),
+                        "component_status": {},
+                    }
+                    # Capture component status snapshot (what was running/failed)
+                    try:
+                        for comp_name, comp_info in (self._component_status or {}).items():
+                            diag["component_status"][comp_name] = comp_info.get("status", "unknown")
+                    except Exception:
+                        pass
+                    # Capture Trinity component states
+                    try:
+                        if self._trinity and hasattr(self._trinity, "_components"):
+                            trinity_states = {}
+                            for name, comp in self._trinity._components.items():
+                                trinity_states[name] = {
+                                    "running": getattr(comp, "is_running", False),
+                                    "pid": getattr(comp, "pid", None),
+                                }
+                            diag["trinity_components"] = trinity_states
+                    except Exception:
+                        pass
+                    # Capture memory info if psutil available
+                    try:
+                        import psutil
+                        proc = psutil.Process(os.getpid())
+                        mem = proc.memory_info()
+                        diag["memory_rss_mb"] = round(mem.rss / (1024 * 1024), 1)
+                        diag["memory_vms_mb"] = round(mem.vms / (1024 * 1024), 1)
+                        diag["system_memory_pct"] = round(psutil.virtual_memory().percent, 1)
+                    except Exception:
+                        pass
+                    try:
+                        crash_marker.write_text(json.dumps(diag, indent=2))
+                    except Exception:
+                        # Fallback to plain text if JSON serialization fails
+                        crash_marker.write_text(
+                            f"Emergency shutdown at {time.strftime('%Y-%m-%d %H:%M:%S')} "
+                            f"(reason={reason}, expected={expected})"
+                        )
 
-            await asyncio.to_thread(_write_crash_marker)
-        except Exception:
-            pass
+                await asyncio.to_thread(_write_crash_marker)
+            except Exception:
+                pass
 
         # v181.0/v206.0: Stop Trinity components FIRST (prevents orphaned processes)
         # v206.0: PILLAR 5 - Use tiered_stop() for idempotent, bounded, never-raises cleanup

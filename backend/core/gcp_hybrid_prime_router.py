@@ -2054,13 +2054,17 @@ class GCPHybridPrimeRouter:
             self.logger.warning(f"[v93.0] Failed to signal memory pressure: {e}")
 
     async def _clear_memory_pressure_signal(self) -> None:
-        """v93.0: Clear memory pressure signal when returning to normal."""
+        """v93.0: Clear memory pressure signal when returning to normal.
+        v265.7: DELETE the file instead of writing status=normal. A stale
+        memory_pressure.json with status=normal still triggers Clean Slate
+        detection (any existing file → confidence > 0). Deletion is the only
+        way to guarantee no false recovery on next startup.
+        """
         try:
             if MEMORY_PRESSURE_SIGNAL_FILE.exists():
-                await self._signal_memory_pressure_to_repos(
-                    status="normal",
-                    action=None,
-                    used_percent=0.0,
+                MEMORY_PRESSURE_SIGNAL_FILE.unlink(missing_ok=True)
+                self.logger.debug(
+                    "[v265.7] Deleted memory_pressure.json (pressure subsided)"
                 )
         except Exception as e:
             self.logger.warning(f"[v93.0] Failed to clear memory pressure signal: {e}")
