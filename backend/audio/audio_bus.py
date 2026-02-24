@@ -351,7 +351,12 @@ class AudioBus:
     """
 
     _instance: ClassVar[Optional["AudioBus"]] = None
-    _creation_lock: ClassVar[threading.Lock] = threading.Lock()
+    # v266.4: MUST be RLock (re-entrant), not Lock.
+    # get_instance() acquires this lock then calls cls() → __init__()
+    # which also acquires it. threading.Lock deadlocks on same-thread
+    # re-acquisition; RLock allows it. This was the root cause of the
+    # startup hang introduced in v267.0.
+    _creation_lock: ClassVar[threading.RLock] = threading.RLock()
 
     def __init__(self):
         # v267.0: Self-register as singleton on construction so that

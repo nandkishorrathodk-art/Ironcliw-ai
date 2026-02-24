@@ -63620,7 +63620,6 @@ class JarvisSystemKernel:
         self._print_startup_banner()
 
         self._started_at = time.time()
-
         # =====================================================================
         # v238.0: AUDIO BUS EARLY INIT (before narrator)
         # =====================================================================
@@ -63632,15 +63631,31 @@ class JarvisSystemKernel:
         if self._audio_bus_enabled:
             _ab_timeout = _get_env_float("JARVIS_AUDIO_BUS_INIT_TIMEOUT", 10.0)
             try:
-                from backend.audio.audio_bus import AudioBus
+                # v266.4: Import AudioBus in thread executor.
+                # The import chain triggers `import sounddevice` which
+                # calls Pa_Initialize() — a synchronous C call into
+                # CoreAudio that enumerates hardware devices. On macOS
+                # this can hang indefinitely (device busy, permission
+                # dialog, CoreAudio stall), freezing the event loop and
+                # defeating asyncio.wait_for() timeouts. Same root-cause
+                # pattern as ECAPA v265.2 and Zone 6 v265.2.
+                _loop = asyncio.get_running_loop()
+
+                def _import_audio_bus():
+                    from backend.audio.audio_bus import AudioBus as _AB
+                    return _AB
+
+                AudioBus = await asyncio.wait_for(
+                    _loop.run_in_executor(None, _import_audio_bus),
+                    timeout=_ab_timeout,
+                )
                 # v267.0: Use singleton factory so downstream consumers
                 # (UnifiedTTSEngine, TrinityVoiceCoordinator, etc.) can
                 # find the running bus via AudioBus.get_instance_safe().
-                # Previously AudioBus() was called directly, leaving
-                # _instance = None — the TTS pipeline fell through to
-                # raw afplay/sd.play(), opening a second audio stream
-                # alongside FullDuplexDevice → device contention → static.
                 self._audio_bus = AudioBus.get_instance()
+                # FullDuplexDevice.start() now runs PortAudio ops in
+                # run_in_executor() internally (v266.4), so wait_for
+                # can actually fire on timeout.
                 await asyncio.wait_for(self._audio_bus.start(), timeout=_ab_timeout)
                 self._component_status["audio_infrastructure"] = {
                     "status": "running",
