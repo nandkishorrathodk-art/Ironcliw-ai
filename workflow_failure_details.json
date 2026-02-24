@@ -1,0 +1,691 @@
+{
+  "workflow_name": "WebSocket Self-Healing Validation",
+  "workflow_url": "https://github.com/nandkishorrathodk-art/Ironcliw-ai/actions/runs/22336264778",
+  "branch": "main",
+  "commit_sha": "cfa7529",
+  "run_number": 3,
+  "failed_count": 6,
+  "fix_branch": "fix/ci/websocket-self-healing-validation-run3-20260224-041350",
+  "pr_title": "\ud83d\udea8 Fix CI/CD: WebSocket Self-Healing Validation (Run #3)",
+  "analyses": [
+    {
+      "error_patterns": [
+        {
+          "pattern": "ERROR|Error|error",
+          "matches": [
+            {
+              "line_number": 32,
+              "content": "2026-02-24T04:12:04.8418021Z   Getting requirements to build wheel: finished with status 'error'",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 33,
+              "content": "2026-02-24T04:12:04.8465908Z   error: subprocess-exited-with-error",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 54,
+              "content": "2026-02-24T04:12:04.8479455Z       ModuleNotFoundError: No module named 'pkg_resources'",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 57,
+              "content": "2026-02-24T04:12:04.8480331Z   note: This error originates from a subprocess, and is likely not a problem with pip.",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 58,
+              "content": "2026-02-24T04:12:04.8480989Z ERROR: Failed to build 'openai-whisper' when getting requirements to build wheel",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 59,
+              "content": "2026-02-24T04:12:04.9578141Z ##[error]Process completed with exit code 1.",
+              "severity": "high",
+              "emoji": "\u274c"
+            }
+          ],
+          "count": 6
+        },
+        {
+          "pattern": "FAIL|Failed|failed",
+          "matches": [
+            {
+              "line_number": 58,
+              "content": "2026-02-24T04:12:04.8480989Z ERROR: Failed to build 'openai-whisper' when getting requirements to build wheel",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            },
+            {
+              "line_number": 67,
+              "content": "2026-02-24T04:12:04.9648540Z \u001b[36;1m  echo \"\u274c Some tests failed - review logs\" >> $GITHUB_STEP_SUMMARY\u001b[0m",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            },
+            {
+              "line_number": 97,
+              "content": "2026-02-24T04:12:05.1256997Z ##[warning]The process '/usr/bin/git' failed with exit code 128",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            }
+          ],
+          "count": 3
+        },
+        {
+          "pattern": "WARN|Warning|warning",
+          "matches": [
+            {
+              "line_number": 97,
+              "content": "2026-02-24T04:12:05.1256997Z ##[warning]The process '/usr/bin/git' failed with exit code 128",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            }
+          ],
+          "count": 1
+        },
+        {
+          "pattern": "AssertionError|Exception",
+          "matches": [
+            {
+              "line_number": 1,
+              "content": "2026-02-24T04:12:01.6811961Z Successfully installed aiohappyeyeballs-2.6.1 aiohttp-3.13.3 aiosignal-1.4.0 async-timeout-5.0.1 attrs-25.4.0 backports-asyncio-runner-1.2.0 exceptiongroup-1.3.1 frozenlist-1.8.0 idna-3.11 iniconfig-2.3.0 multidict-6.7.1 packaging-26.0 pluggy-1.6.0 propcache-0.4.1 pygments-2.19.2 pytest-9.0.2 pytest-asyncio-1.3.0 tomli-2.4.0 typing-extensions-4.15.0 websocket-client-1.9.0 websockets-16.0 yarl-1.22.0",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            }
+          ],
+          "count": 1
+        },
+        {
+          "pattern": "timeout|timed out",
+          "matches": [
+            {
+              "line_number": 1,
+              "content": "2026-02-24T04:12:01.6811961Z Successfully installed aiohappyeyeballs-2.6.1 aiohttp-3.13.3 aiosignal-1.4.0 async-timeout-5.0.1 attrs-25.4.0 backports-asyncio-runner-1.2.0 exceptiongroup-1.3.1 frozenlist-1.8.0 idna-3.11 iniconfig-2.3.0 multidict-6.7.1 packaging-26.0 pluggy-1.6.0 propcache-0.4.1 pygments-2.19.2 pytest-9.0.2 pytest-asyncio-1.3.0 tomli-2.4.0 typing-extensions-4.15.0 websocket-client-1.9.0 websockets-16.0 yarl-1.22.0",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            }
+          ],
+          "count": 1
+        }
+      ],
+      "suggested_fixes": [
+        "Consider increasing timeout values or optimizing slow operations",
+        "Review test cases and ensure code changes haven't broken existing functionality"
+      ],
+      "severity": "high",
+      "category": "test_failure",
+      "similar_failures": []
+    },
+    {
+      "error_patterns": [
+        {
+          "pattern": "ERROR|Error|error",
+          "matches": [
+            {
+              "line_number": 32,
+              "content": "2026-02-24T04:12:16.7471077Z   Getting requirements to build wheel: finished with status 'error'",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 33,
+              "content": "2026-02-24T04:12:16.7517566Z   error: subprocess-exited-with-error",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 54,
+              "content": "2026-02-24T04:12:16.7532800Z       ModuleNotFoundError: No module named 'pkg_resources'",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 57,
+              "content": "2026-02-24T04:12:16.7533641Z   note: This error originates from a subprocess, and is likely not a problem with pip.",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 58,
+              "content": "2026-02-24T04:12:16.7534242Z ERROR: Failed to build 'openai-whisper' when getting requirements to build wheel",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 59,
+              "content": "2026-02-24T04:12:16.8722099Z ##[error]Process completed with exit code 1.",
+              "severity": "high",
+              "emoji": "\u274c"
+            }
+          ],
+          "count": 6
+        },
+        {
+          "pattern": "FAIL|Failed|failed",
+          "matches": [
+            {
+              "line_number": 58,
+              "content": "2026-02-24T04:12:16.7534242Z ERROR: Failed to build 'openai-whisper' when getting requirements to build wheel",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            },
+            {
+              "line_number": 67,
+              "content": "2026-02-24T04:12:16.8789474Z \u001b[36;1m  echo \"\u274c Some tests failed - review logs\" >> $GITHUB_STEP_SUMMARY\u001b[0m",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            },
+            {
+              "line_number": 97,
+              "content": "2026-02-24T04:12:17.0212519Z ##[warning]The process '/usr/bin/git' failed with exit code 128",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            }
+          ],
+          "count": 3
+        },
+        {
+          "pattern": "WARN|Warning|warning",
+          "matches": [
+            {
+              "line_number": 97,
+              "content": "2026-02-24T04:12:17.0212519Z ##[warning]The process '/usr/bin/git' failed with exit code 128",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            }
+          ],
+          "count": 1
+        },
+        {
+          "pattern": "AssertionError|Exception",
+          "matches": [
+            {
+              "line_number": 1,
+              "content": "2026-02-24T04:12:13.4931047Z Successfully installed aiohappyeyeballs-2.6.1 aiohttp-3.13.3 aiosignal-1.4.0 async-timeout-5.0.1 attrs-25.4.0 backports-asyncio-runner-1.2.0 exceptiongroup-1.3.1 frozenlist-1.8.0 idna-3.11 iniconfig-2.3.0 multidict-6.7.1 packaging-26.0 pluggy-1.6.0 propcache-0.4.1 pygments-2.19.2 pytest-9.0.2 pytest-asyncio-1.3.0 tomli-2.4.0 typing-extensions-4.15.0 websocket-client-1.9.0 websockets-16.0 yarl-1.22.0",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            }
+          ],
+          "count": 1
+        },
+        {
+          "pattern": "timeout|timed out",
+          "matches": [
+            {
+              "line_number": 1,
+              "content": "2026-02-24T04:12:13.4931047Z Successfully installed aiohappyeyeballs-2.6.1 aiohttp-3.13.3 aiosignal-1.4.0 async-timeout-5.0.1 attrs-25.4.0 backports-asyncio-runner-1.2.0 exceptiongroup-1.3.1 frozenlist-1.8.0 idna-3.11 iniconfig-2.3.0 multidict-6.7.1 packaging-26.0 pluggy-1.6.0 propcache-0.4.1 pygments-2.19.2 pytest-9.0.2 pytest-asyncio-1.3.0 tomli-2.4.0 typing-extensions-4.15.0 websocket-client-1.9.0 websockets-16.0 yarl-1.22.0",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            }
+          ],
+          "count": 1
+        }
+      ],
+      "suggested_fixes": [
+        "Consider increasing timeout values or optimizing slow operations",
+        "Review test cases and ensure code changes haven't broken existing functionality"
+      ],
+      "severity": "high",
+      "category": "test_failure",
+      "similar_failures": []
+    },
+    {
+      "error_patterns": [
+        {
+          "pattern": "ERROR|Error|error",
+          "matches": [
+            {
+              "line_number": 32,
+              "content": "2026-02-24T04:12:06.2216158Z   Getting requirements to build wheel: finished with status 'error'",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 33,
+              "content": "2026-02-24T04:12:06.2264656Z   error: subprocess-exited-with-error",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 54,
+              "content": "2026-02-24T04:12:06.2278720Z       ModuleNotFoundError: No module named 'pkg_resources'",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 57,
+              "content": "2026-02-24T04:12:06.2279687Z   note: This error originates from a subprocess, and is likely not a problem with pip.",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 58,
+              "content": "2026-02-24T04:12:06.2280401Z ERROR: Failed to build 'openai-whisper' when getting requirements to build wheel",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 59,
+              "content": "2026-02-24T04:12:06.3453919Z ##[error]Process completed with exit code 1.",
+              "severity": "high",
+              "emoji": "\u274c"
+            }
+          ],
+          "count": 6
+        },
+        {
+          "pattern": "FAIL|Failed|failed",
+          "matches": [
+            {
+              "line_number": 58,
+              "content": "2026-02-24T04:12:06.2280401Z ERROR: Failed to build 'openai-whisper' when getting requirements to build wheel",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            },
+            {
+              "line_number": 67,
+              "content": "2026-02-24T04:12:06.3522977Z \u001b[36;1m  echo \"\u274c Some tests failed - review logs\" >> $GITHUB_STEP_SUMMARY\u001b[0m",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            },
+            {
+              "line_number": 97,
+              "content": "2026-02-24T04:12:06.5069652Z ##[warning]The process '/usr/bin/git' failed with exit code 128",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            }
+          ],
+          "count": 3
+        },
+        {
+          "pattern": "WARN|Warning|warning",
+          "matches": [
+            {
+              "line_number": 97,
+              "content": "2026-02-24T04:12:06.5069652Z ##[warning]The process '/usr/bin/git' failed with exit code 128",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            }
+          ],
+          "count": 1
+        },
+        {
+          "pattern": "AssertionError|Exception",
+          "matches": [
+            {
+              "line_number": 1,
+              "content": "2026-02-24T04:12:02.9949074Z Successfully installed aiohappyeyeballs-2.6.1 aiohttp-3.13.3 aiosignal-1.4.0 async-timeout-5.0.1 attrs-25.4.0 backports-asyncio-runner-1.2.0 exceptiongroup-1.3.1 frozenlist-1.8.0 idna-3.11 iniconfig-2.3.0 multidict-6.7.1 packaging-26.0 pluggy-1.6.0 propcache-0.4.1 pygments-2.19.2 pytest-9.0.2 pytest-asyncio-1.3.0 tomli-2.4.0 typing-extensions-4.15.0 websocket-client-1.9.0 websockets-16.0 yarl-1.22.0",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            }
+          ],
+          "count": 1
+        },
+        {
+          "pattern": "timeout|timed out",
+          "matches": [
+            {
+              "line_number": 1,
+              "content": "2026-02-24T04:12:02.9949074Z Successfully installed aiohappyeyeballs-2.6.1 aiohttp-3.13.3 aiosignal-1.4.0 async-timeout-5.0.1 attrs-25.4.0 backports-asyncio-runner-1.2.0 exceptiongroup-1.3.1 frozenlist-1.8.0 idna-3.11 iniconfig-2.3.0 multidict-6.7.1 packaging-26.0 pluggy-1.6.0 propcache-0.4.1 pygments-2.19.2 pytest-9.0.2 pytest-asyncio-1.3.0 tomli-2.4.0 typing-extensions-4.15.0 websocket-client-1.9.0 websockets-16.0 yarl-1.22.0",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            }
+          ],
+          "count": 1
+        }
+      ],
+      "suggested_fixes": [
+        "Consider increasing timeout values or optimizing slow operations",
+        "Review test cases and ensure code changes haven't broken existing functionality"
+      ],
+      "severity": "high",
+      "category": "test_failure",
+      "similar_failures": []
+    },
+    {
+      "error_patterns": [
+        {
+          "pattern": "ERROR|Error|error",
+          "matches": [
+            {
+              "line_number": 32,
+              "content": "2026-02-24T04:12:22.4306608Z   Getting requirements to build wheel: finished with status 'error'",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 33,
+              "content": "2026-02-24T04:12:22.4356303Z   error: subprocess-exited-with-error",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 54,
+              "content": "2026-02-24T04:12:22.4378340Z       ModuleNotFoundError: No module named 'pkg_resources'",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 57,
+              "content": "2026-02-24T04:12:22.4379810Z   note: This error originates from a subprocess, and is likely not a problem with pip.",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 58,
+              "content": "2026-02-24T04:12:22.4380922Z ERROR: Failed to build 'openai-whisper' when getting requirements to build wheel",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 59,
+              "content": "2026-02-24T04:12:22.5904519Z ##[error]Process completed with exit code 1.",
+              "severity": "high",
+              "emoji": "\u274c"
+            }
+          ],
+          "count": 6
+        },
+        {
+          "pattern": "FAIL|Failed|failed",
+          "matches": [
+            {
+              "line_number": 58,
+              "content": "2026-02-24T04:12:22.4380922Z ERROR: Failed to build 'openai-whisper' when getting requirements to build wheel",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            },
+            {
+              "line_number": 67,
+              "content": "2026-02-24T04:12:22.5979267Z \u001b[36;1m  echo \"\u274c Some tests failed - review logs\" >> $GITHUB_STEP_SUMMARY\u001b[0m",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            },
+            {
+              "line_number": 97,
+              "content": "2026-02-24T04:12:22.7569196Z ##[warning]The process '/usr/bin/git' failed with exit code 128",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            }
+          ],
+          "count": 3
+        },
+        {
+          "pattern": "WARN|Warning|warning",
+          "matches": [
+            {
+              "line_number": 97,
+              "content": "2026-02-24T04:12:22.7569196Z ##[warning]The process '/usr/bin/git' failed with exit code 128",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            }
+          ],
+          "count": 1
+        },
+        {
+          "pattern": "AssertionError|Exception",
+          "matches": [
+            {
+              "line_number": 1,
+              "content": "2026-02-24T04:12:18.7153370Z Successfully installed aiohappyeyeballs-2.6.1 aiohttp-3.13.3 aiosignal-1.4.0 async-timeout-5.0.1 attrs-25.4.0 backports-asyncio-runner-1.2.0 exceptiongroup-1.3.1 frozenlist-1.8.0 idna-3.11 iniconfig-2.3.0 multidict-6.7.1 packaging-26.0 pluggy-1.6.0 propcache-0.4.1 pygments-2.19.2 pytest-9.0.2 pytest-asyncio-1.3.0 tomli-2.4.0 typing-extensions-4.15.0 websocket-client-1.9.0 websockets-16.0 yarl-1.22.0",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            }
+          ],
+          "count": 1
+        },
+        {
+          "pattern": "timeout|timed out",
+          "matches": [
+            {
+              "line_number": 1,
+              "content": "2026-02-24T04:12:18.7153370Z Successfully installed aiohappyeyeballs-2.6.1 aiohttp-3.13.3 aiosignal-1.4.0 async-timeout-5.0.1 attrs-25.4.0 backports-asyncio-runner-1.2.0 exceptiongroup-1.3.1 frozenlist-1.8.0 idna-3.11 iniconfig-2.3.0 multidict-6.7.1 packaging-26.0 pluggy-1.6.0 propcache-0.4.1 pygments-2.19.2 pytest-9.0.2 pytest-asyncio-1.3.0 tomli-2.4.0 typing-extensions-4.15.0 websocket-client-1.9.0 websockets-16.0 yarl-1.22.0",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            }
+          ],
+          "count": 1
+        }
+      ],
+      "suggested_fixes": [
+        "Consider increasing timeout values or optimizing slow operations",
+        "Review test cases and ensure code changes haven't broken existing functionality"
+      ],
+      "severity": "high",
+      "category": "test_failure",
+      "similar_failures": []
+    },
+    {
+      "error_patterns": [
+        {
+          "pattern": "ERROR|Error|error",
+          "matches": [
+            {
+              "line_number": 32,
+              "content": "2026-02-24T04:12:28.0177213Z   Getting requirements to build wheel: finished with status 'error'",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 33,
+              "content": "2026-02-24T04:12:28.0250435Z   error: subprocess-exited-with-error",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 54,
+              "content": "2026-02-24T04:12:28.0266172Z       ModuleNotFoundError: No module named 'pkg_resources'",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 57,
+              "content": "2026-02-24T04:12:28.0267123Z   note: This error originates from a subprocess, and is likely not a problem with pip.",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 58,
+              "content": "2026-02-24T04:12:28.0267817Z ERROR: Failed to build 'openai-whisper' when getting requirements to build wheel",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 59,
+              "content": "2026-02-24T04:12:28.2017963Z ##[error]Process completed with exit code 1.",
+              "severity": "high",
+              "emoji": "\u274c"
+            }
+          ],
+          "count": 6
+        },
+        {
+          "pattern": "FAIL|Failed|failed",
+          "matches": [
+            {
+              "line_number": 58,
+              "content": "2026-02-24T04:12:28.0267817Z ERROR: Failed to build 'openai-whisper' when getting requirements to build wheel",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            },
+            {
+              "line_number": 67,
+              "content": "2026-02-24T04:12:28.2091903Z \u001b[36;1m  echo \"\u274c Some tests failed - review logs\" >> $GITHUB_STEP_SUMMARY\u001b[0m",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            },
+            {
+              "line_number": 97,
+              "content": "2026-02-24T04:12:28.3718665Z ##[warning]The process '/usr/bin/git' failed with exit code 128",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            }
+          ],
+          "count": 3
+        },
+        {
+          "pattern": "WARN|Warning|warning",
+          "matches": [
+            {
+              "line_number": 97,
+              "content": "2026-02-24T04:12:28.3718665Z ##[warning]The process '/usr/bin/git' failed with exit code 128",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            }
+          ],
+          "count": 1
+        },
+        {
+          "pattern": "AssertionError|Exception",
+          "matches": [
+            {
+              "line_number": 1,
+              "content": "2026-02-24T04:12:24.1271381Z Successfully installed aiohappyeyeballs-2.6.1 aiohttp-3.13.3 aiosignal-1.4.0 async-timeout-5.0.1 attrs-25.4.0 backports-asyncio-runner-1.2.0 exceptiongroup-1.3.1 frozenlist-1.8.0 idna-3.11 iniconfig-2.3.0 multidict-6.7.1 packaging-26.0 pluggy-1.6.0 propcache-0.4.1 pygments-2.19.2 pytest-9.0.2 pytest-asyncio-1.3.0 tomli-2.4.0 typing-extensions-4.15.0 websocket-client-1.9.0 websockets-16.0 yarl-1.22.0",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            }
+          ],
+          "count": 1
+        },
+        {
+          "pattern": "timeout|timed out",
+          "matches": [
+            {
+              "line_number": 1,
+              "content": "2026-02-24T04:12:24.1271381Z Successfully installed aiohappyeyeballs-2.6.1 aiohttp-3.13.3 aiosignal-1.4.0 async-timeout-5.0.1 attrs-25.4.0 backports-asyncio-runner-1.2.0 exceptiongroup-1.3.1 frozenlist-1.8.0 idna-3.11 iniconfig-2.3.0 multidict-6.7.1 packaging-26.0 pluggy-1.6.0 propcache-0.4.1 pygments-2.19.2 pytest-9.0.2 pytest-asyncio-1.3.0 tomli-2.4.0 typing-extensions-4.15.0 websocket-client-1.9.0 websockets-16.0 yarl-1.22.0",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            }
+          ],
+          "count": 1
+        }
+      ],
+      "suggested_fixes": [
+        "Consider increasing timeout values or optimizing slow operations",
+        "Review test cases and ensure code changes haven't broken existing functionality"
+      ],
+      "severity": "high",
+      "category": "test_failure",
+      "similar_failures": []
+    },
+    {
+      "error_patterns": [
+        {
+          "pattern": "ERROR|Error|error",
+          "matches": [
+            {
+              "line_number": 32,
+              "content": "2026-02-24T04:12:13.1717742Z   Getting requirements to build wheel: finished with status 'error'",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 33,
+              "content": "2026-02-24T04:12:13.1771771Z   error: subprocess-exited-with-error",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 54,
+              "content": "2026-02-24T04:12:13.1793917Z       ModuleNotFoundError: No module named 'pkg_resources'",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 57,
+              "content": "2026-02-24T04:12:13.1795353Z   note: This error originates from a subprocess, and is likely not a problem with pip.",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 58,
+              "content": "2026-02-24T04:12:13.1796653Z ERROR: Failed to build 'openai-whisper' when getting requirements to build wheel",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 59,
+              "content": "2026-02-24T04:12:13.3402428Z ##[error]Process completed with exit code 1.",
+              "severity": "high",
+              "emoji": "\u274c"
+            }
+          ],
+          "count": 6
+        },
+        {
+          "pattern": "FAIL|Failed|failed",
+          "matches": [
+            {
+              "line_number": 58,
+              "content": "2026-02-24T04:12:13.1796653Z ERROR: Failed to build 'openai-whisper' when getting requirements to build wheel",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            },
+            {
+              "line_number": 67,
+              "content": "2026-02-24T04:12:13.3470973Z \u001b[36;1m  echo \"\u274c Some tests failed - review logs\" >> $GITHUB_STEP_SUMMARY\u001b[0m",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            },
+            {
+              "line_number": 97,
+              "content": "2026-02-24T04:12:13.5091077Z ##[warning]The process '/usr/bin/git' failed with exit code 128",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            }
+          ],
+          "count": 3
+        },
+        {
+          "pattern": "WARN|Warning|warning",
+          "matches": [
+            {
+              "line_number": 97,
+              "content": "2026-02-24T04:12:13.5091077Z ##[warning]The process '/usr/bin/git' failed with exit code 128",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            }
+          ],
+          "count": 1
+        },
+        {
+          "pattern": "AssertionError|Exception",
+          "matches": [
+            {
+              "line_number": 1,
+              "content": "2026-02-24T04:12:09.5544535Z Successfully installed aiohappyeyeballs-2.6.1 aiohttp-3.13.3 aiosignal-1.4.0 async-timeout-5.0.1 attrs-25.4.0 backports-asyncio-runner-1.2.0 exceptiongroup-1.3.1 frozenlist-1.8.0 idna-3.11 iniconfig-2.3.0 multidict-6.7.1 packaging-26.0 pluggy-1.6.0 propcache-0.4.1 pygments-2.19.2 pytest-9.0.2 pytest-asyncio-1.3.0 tomli-2.4.0 typing-extensions-4.15.0 websocket-client-1.9.0 websockets-16.0 yarl-1.22.0",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            }
+          ],
+          "count": 1
+        },
+        {
+          "pattern": "timeout|timed out",
+          "matches": [
+            {
+              "line_number": 1,
+              "content": "2026-02-24T04:12:09.5544535Z Successfully installed aiohappyeyeballs-2.6.1 aiohttp-3.13.3 aiosignal-1.4.0 async-timeout-5.0.1 attrs-25.4.0 backports-asyncio-runner-1.2.0 exceptiongroup-1.3.1 frozenlist-1.8.0 idna-3.11 iniconfig-2.3.0 multidict-6.7.1 packaging-26.0 pluggy-1.6.0 propcache-0.4.1 pygments-2.19.2 pytest-9.0.2 pytest-asyncio-1.3.0 tomli-2.4.0 typing-extensions-4.15.0 websocket-client-1.9.0 websockets-16.0 yarl-1.22.0",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            }
+          ],
+          "count": 1
+        }
+      ],
+      "suggested_fixes": [
+        "Consider increasing timeout values or optimizing slow operations",
+        "Review test cases and ensure code changes haven't broken existing functionality"
+      ],
+      "severity": "high",
+      "category": "test_failure",
+      "similar_failures": []
+    }
+  ],
+  "timestamp": "2026-02-24T04:13:50.760314"
+}
