@@ -2,4 +2,4 @@
 
 pub mod pool;
 
-pub use pool::{MemoryPool, PoolOptions};
+pub use pool::{MemoryPool, PoolOptions, SharedMemoryView};

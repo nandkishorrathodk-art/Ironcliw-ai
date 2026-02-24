@@ -133,7 +133,9 @@ impl VisionProcessor {
         
         Ok(features)
     }
-    
+}
+
+impl VisionProcessor {
     /// Fast resize using box sampling
     fn fast_resize(&self, data: &[u8], src_w: u32, src_h: u32, 
                    dst_w: u32, dst_h: u32) -> PyResult<Vec<u8>> {
