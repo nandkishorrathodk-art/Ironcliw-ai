@@ -64210,10 +64210,14 @@ class JarvisSystemKernel:
         # reachable BEFORE committing. Without this probe, the system commits
         # to cloud mode with no inference if GCP is down.
         # =====================================================================
-        _startup_mode_now = os.environ.get("JARVIS_STARTUP_MEMORY_MODE", "local_full")
+        # v266.3: Use desired_mode (operator intent) not effective_mode (runtime safety).
+        # If OOMBridge failed, effective_mode may be degraded to sequential, but
+        # operator intended cloud — GCP probe should still run for background recovery.
+        _startup_desired_mode = os.environ.get("JARVIS_STARTUP_DESIRED_MODE", "local_full")
         self._gcp_probe_passed = False
         self._gcp_probe_task = None
-        if _startup_mode_now in ("cloud_first", "cloud_only"):
+        if _startup_desired_mode in ("cloud_first", "cloud_only"):
+            _startup_mode_now = os.environ.get("JARVIS_STARTUP_MEMORY_MODE", "local_full")
             _gcp_probe_timeout_base = _get_env_float("JARVIS_GCP_PROBE_TIMEOUT", 5.0)
             _gcp_probe_pressure_timeout = _get_env_float(
                 "JARVIS_GCP_PROBE_PRESSURE_TIMEOUT",
