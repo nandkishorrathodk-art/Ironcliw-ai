@@ -47,14 +47,21 @@ async def test_audio_bus_starts_in_output_only_mode_without_mic_registration(mon
 
     monkeypatch.setattr(audio_bus_mod, "FullDuplexDevice", _FakeDevice)
 
-    bus = AudioBus()
-    await bus.start(DeviceConfig())
-    status = bus.get_status()
+    # Clear singleton state so test doesn't interfere with others
+    old_instance = AudioBus._instance
+    AudioBus._instance = None
 
-    assert status["running"] is True
-    assert status["input_enabled"] is False
-    assert bus.device is not None
-    assert bus.device._add_capture_calls == 0
+    try:
+        bus = AudioBus()
+        await bus.start(DeviceConfig())
+        status = bus.get_status()
 
-    await bus.stop()
+        assert status["running"] is True
+        assert status["input_enabled"] is False
+        assert bus.device is not None
+        assert bus.device._add_capture_calls == 0
+
+        await bus.stop()
+    finally:
+        AudioBus._instance = old_instance
 

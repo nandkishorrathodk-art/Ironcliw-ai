@@ -63633,13 +63633,20 @@ class JarvisSystemKernel:
             _ab_timeout = _get_env_float("JARVIS_AUDIO_BUS_INIT_TIMEOUT", 10.0)
             try:
                 from backend.audio.audio_bus import AudioBus
-                self._audio_bus = AudioBus()
+                # v267.0: Use singleton factory so downstream consumers
+                # (UnifiedTTSEngine, TrinityVoiceCoordinator, etc.) can
+                # find the running bus via AudioBus.get_instance_safe().
+                # Previously AudioBus() was called directly, leaving
+                # _instance = None — the TTS pipeline fell through to
+                # raw afplay/sd.play(), opening a second audio stream
+                # alongside FullDuplexDevice → device contention → static.
+                self._audio_bus = AudioBus.get_instance()
                 await asyncio.wait_for(self._audio_bus.start(), timeout=_ab_timeout)
                 self._component_status["audio_infrastructure"] = {
                     "status": "running",
                     "message": "AudioBus initialized",
                 }
-                self.logger.info("[Kernel] AudioBus started (v238.0)")
+                self.logger.info("[Kernel] AudioBus started (v267.0)")
             except asyncio.TimeoutError:
                 self.logger.warning(
                     f"[Kernel] AudioBus init timed out ({_ab_timeout:.0f}s) — scheduling recovery"
@@ -71758,7 +71765,8 @@ class JarvisSystemKernel:
 
                 if self._audio_bus is None:
                     from backend.audio.audio_bus import AudioBus
-                    self._audio_bus = AudioBus()
+                    # v267.0: Use singleton factory (same fix as early init)
+                    self._audio_bus = AudioBus.get_instance()
 
                 await asyncio.wait_for(self._audio_bus.start(), timeout=_effective_timeout)
                 self._component_status["audio_infrastructure"] = {
