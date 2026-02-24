@@ -532,7 +532,13 @@ class RealTimeVoiceCommunicator:
             self._fire_callbacks('speech_interrupted', self._current_message)
 
     async def stop_speaking(self) -> None:
-        """Stop any current speech immediately — flush AudioBus or kill say."""
+        """Stop any current speech immediately — flush AudioBus or kill say.
+
+        v267.0: Replaced global ``killall say`` with targeted process kill.
+        ``killall say`` killed ALL ``say`` processes system-wide, including
+        synthesis from other components (StartupNarrator, UnifiedTTSEngine),
+        truncating audio mid-playback and causing static/clicks.
+        """
         if self._is_speaking:
             try:
                 # Try AudioBus flush first
@@ -549,8 +555,13 @@ class RealTimeVoiceCommunicator:
                             return
                     except ImportError:
                         pass
-                # Legacy: kill say process
-                subprocess.run(['killall', 'say'], capture_output=True, timeout=2)
+                # v267.0: Kill only OUR say process, not all system-wide
+                if self._current_speech_process is not None:
+                    try:
+                        self._current_speech_process.kill()
+                    except ProcessLookupError:
+                        pass  # Already exited
+                    self._current_speech_process = None
             except Exception as e:
                 logger.debug("Error stopping speech: %s", e)
 
@@ -697,7 +708,8 @@ class RealTimeVoiceCommunicator:
         process = await asyncio.create_subprocess_exec(
             *cmd,
             stdout=asyncio.subprocess.DEVNULL,
-            stderr=asyncio.subprocess.DEVNULL
+            stderr=asyncio.subprocess.DEVNULL,
+            start_new_session=True,  # v267.0: isolate from parent signals
         )
         await process.wait()
 
@@ -1478,7 +1490,8 @@ class RealTimeVoiceCommunicator:
                         process = await asyncio.create_subprocess_exec(
                             *cmd,
                             stdout=asyncio.subprocess.DEVNULL,
-                            stderr=asyncio.subprocess.DEVNULL
+                            stderr=asyncio.subprocess.DEVNULL,
+                            start_new_session=True,  # v267.0: isolate from parent signals
                         )
                         self._current_speech_process = process
                         await asyncio.wait_for(process.wait(), timeout=timeout)
