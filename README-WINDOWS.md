@@ -17,11 +17,15 @@ JARVIS AI Assistant has been successfully adapted to run on Windows 10/11. This 
 
 - **Python 3.9+**: Download from [python.org](https://www.python.org/downloads/) or Microsoft Store
 - **Git**: Download from [git-scm.com](https://git-scm.com/download/win)
+- **.NET 8 SDK**: Required for Windows Native C# DLLs. Download from [dotnet.microsoft.com](https://dotnet.microsoft.com/en-us/download/dotnet/8.0)
+- **Rust (Cargo)**: Required for high-performance ML layers. Download from [rustup.rs](https://rustup.rs/)
 
 Verify installation:
 ```cmd
 python --version
 git --version
+dotnet --version
+cargo --version
 ```
 
 ### 2. Clone Repository
@@ -31,11 +35,28 @@ git clone https://github.com/drussell23/JARVIS
 cd JARVIS
 ```
 
-### 3. Install Dependencies
+### 3. Install Dependencies and Build Native Extensions
 
+First, install the Python requirements:
 ```cmd
 pip install -r requirements.txt
 pip install -r requirements-windows.txt
+# For high-quality Piper TTS (Recommended over pyttsx3)
+pip install piper-tts soundfile
+```
+
+Next, build the C# Windows Native DLLs:
+```cmd
+dotnet build backend/windows_native/JarvisWindowsNative.sln -c Release
+```
+
+Finally, verify the Rust high-performance libraries compile:
+```cmd
+cd backend/native_extensions/rust_processor
+cargo check
+cd ../../rust_performance
+cargo check
+cd ../../..
 ```
 
 ### 4. Configure Environment
@@ -152,7 +173,7 @@ JARVIS_LAZY_LOAD_MODELS=true
 JARVIS_SCREEN_CAPTURE_METHOD=mss
 
 # Text-to-speech
-JARVIS_TTS_ENGINE=pyttsx3
+JARVIS_TTS_ENGINE=piper
 
 # Window management
 JARVIS_WINDOW_MANAGER=win32gui
@@ -352,7 +373,7 @@ JARVIS_HOT_RELOAD=true
 | Screen Capture | ✅ mss | ✅ Swift | ✅ mss |
 | Automation | ✅ pyautogui | ✅ cliclick | ✅ xdotool |
 | Voice Biometric | ❌ Bypassed | ✅ Native | ❌ Bypassed |
-| TTS | ✅ pyttsx3 | ✅ Native | ✅ espeak |
+| TTS | ✅ piper (Recommended) / pyttsx3 | ✅ Native | ✅ espeak |
 | Notifications | ✅ win10toast | ✅ Native | ✅ notify-send |
 | GPU Acceleration | ⚠️ CUDA | ✅ Metal | ⚠️ CUDA/ROCm |
 | File Locking | ✅ msvcrt | ✅ fcntl | ✅ fcntl |
