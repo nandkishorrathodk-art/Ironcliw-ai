@@ -3026,6 +3026,25 @@ async def get_unified_model_serving() -> UnifiedModelServing:
     return await get_model_serving()
 
 
+async def shutdown_model_serving() -> None:
+    """v266.2: Shut down and reset the global UnifiedModelServing singleton.
+
+    Calls stop() to release executor threads, unload GGUF models, close
+    aiohttp sessions, and cancel the memory-pressure monitor.  Then clears
+    the module-level reference so the next get_model_serving() creates a
+    fresh instance.
+    """
+    global _model_serving
+
+    async with _lock:
+        if _model_serving is not None:
+            try:
+                await _model_serving.stop()
+            except Exception:
+                pass
+            _model_serving = None
+
+
 # =============================================================================
 # v234.0: GCP Endpoint Hot-Swap (called by unified_supervisor.py)
 # =============================================================================

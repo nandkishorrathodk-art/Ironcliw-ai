@@ -9424,6 +9424,32 @@ async def reset_gcp_vm_manager_singleton() -> None:
             logger.info("[GCPVMManager] v132.0: Singleton reset - will reinitialize with fresh config")
 
 
+async def shutdown_gcp_vm_manager() -> None:
+    """v266.2: Gracefully shut down and reset the GCP VM Manager singleton.
+
+    Stops the invincible node (if running) and marks GCP as shut down
+    so no new VMs are created.  Then clears the module-level reference
+    so the next get_gcp_vm_manager() creates a fresh instance.
+
+    NOTE: Does NOT call cleanup_all_vms() — running VMs are intentionally
+    kept alive across supervisor restarts to avoid cold-boot penalty.
+    """
+    global _gcp_vm_manager
+
+    async with _manager_lock:
+        if _gcp_vm_manager is not None:
+            try:
+                mark_gcp_shutdown()
+            except Exception:
+                pass
+            try:
+                await _gcp_vm_manager.stop_invincible_node()
+            except Exception:
+                pass
+            _gcp_vm_manager = None
+            logger.info("[GCPVMManager] v266.2: Singleton shut down and reset")
+
+
 async def get_gcp_vm_manager_with_force_enable() -> GCPVMManager:
     """
     v132.0: Get GCP VM Manager with forced enable.

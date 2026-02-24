@@ -62275,6 +62275,59 @@ class JarvisSystemKernel:
         except Exception as _rg_err:
             self.logger.debug(f"[Kernel] v266.1: ReadinessGate reset error: {_rg_err}")
 
+        # v266.2: Reset infrastructure singletons that were never cleaned up.
+        # Root cause: DLM, ModelServing, PrimeRouter, GCPVMManager, and TrinityEventBus
+        # module-level singletons survive across in-process restarts. Stale connections,
+        # dead background tasks, and closed aiohttp sessions bleed into the next cycle.
+        try:
+            from backend.core.distributed_lock_manager import shutdown_lock_manager
+            await asyncio.wait_for(shutdown_lock_manager(), timeout=5.0)
+            self.logger.debug("[Kernel] v266.2: DLM singleton shut down")
+        except asyncio.TimeoutError:
+            self.logger.debug("[Kernel] v266.2: DLM shutdown timed out (5s)")
+        except Exception as _dlm_err:
+            self.logger.debug(f"[Kernel] v266.2: DLM shutdown error: {_dlm_err}")
+
+        try:
+            from backend.intelligence.unified_model_serving import shutdown_model_serving
+            await asyncio.wait_for(shutdown_model_serving(), timeout=10.0)
+            self.logger.debug("[Kernel] v266.2: ModelServing singleton shut down")
+        except asyncio.TimeoutError:
+            self.logger.debug("[Kernel] v266.2: ModelServing shutdown timed out (10s)")
+        except Exception as _ms_err:
+            self.logger.debug(f"[Kernel] v266.2: ModelServing shutdown error: {_ms_err}")
+
+        try:
+            from backend.core.prime_router import close_prime_router
+            await asyncio.wait_for(close_prime_router(), timeout=5.0)
+            self.logger.debug("[Kernel] v266.2: PrimeRouter singleton closed")
+        except asyncio.TimeoutError:
+            self.logger.debug("[Kernel] v266.2: PrimeRouter close timed out (5s)")
+        except Exception as _pr_err:
+            self.logger.debug(f"[Kernel] v266.2: PrimeRouter close error: {_pr_err}")
+
+        try:
+            from backend.core.gcp_vm_manager import shutdown_gcp_vm_manager
+            await asyncio.wait_for(shutdown_gcp_vm_manager(), timeout=10.0)
+            self.logger.debug("[Kernel] v266.2: GCPVMManager singleton shut down")
+        except asyncio.TimeoutError:
+            self.logger.debug("[Kernel] v266.2: GCPVMManager shutdown timed out (10s)")
+        except Exception as _gvm_err:
+            self.logger.debug(f"[Kernel] v266.2: GCPVMManager shutdown error: {_gvm_err}")
+
+        # TrinityEventBus: already stopped earlier (line ~61934) via shutdown_trinity_event_bus().
+        # Reset the module-level reference to prevent stale singleton on restart.
+        try:
+            from backend.core.trinity_event_bus import shutdown_trinity_event_bus
+            # Safe to call again — shutdown_trinity_event_bus() is idempotent
+            # (checks _bus is not None under lock)
+            await asyncio.wait_for(shutdown_trinity_event_bus(), timeout=3.0)
+            self.logger.debug("[Kernel] v266.2: TrinityEventBus singleton reset")
+        except asyncio.TimeoutError:
+            self.logger.debug("[Kernel] v266.2: TrinityEventBus reset timed out (3s)")
+        except Exception as _teb_err:
+            self.logger.debug(f"[Kernel] v266.2: TrinityEventBus reset error: {_teb_err}")
+
         self._state = KernelState.STOPPED
         self.logger.warning("[Kernel] ⚠️ Emergency shutdown complete")
 
