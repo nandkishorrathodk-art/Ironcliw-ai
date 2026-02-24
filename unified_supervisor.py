@@ -64061,8 +64061,12 @@ class JarvisSystemKernel:
         # Only overrides JARVIS_STARTUP_MEMORY_MODE if OOM Bridge decision is MORE
         # severe than the current mode set by the ResourceOrchestrator (Step 1).
         # v266.3: Single retry on failure, then unconditional degradation to local fallback.
-        _oom_preflight_timeout = _get_env_float("JARVIS_OOM_PREFLIGHT_TIMEOUT", 3.0)
-        _oom_retry_timeout = _get_env_float("JARVIS_OOM_RETRY_TIMEOUT", 5.0)
+        # v270.0: Increased from 3/5s to 10/15s. On constrained memory (<=4GB available),
+        # credential discovery, module imports, and memory telemetry take 10-30s under
+        # I/O pressure. The old 8s total was the primary contributor to 28s+ startup
+        # delays (OOMBridge timed out → degrade → GCP probe → retry cascade).
+        _oom_preflight_timeout = _get_env_float("JARVIS_OOM_PREFLIGHT_TIMEOUT", 10.0)
+        _oom_retry_timeout = _get_env_float("JARVIS_OOM_RETRY_TIMEOUT", 15.0)
         self._startup_memory_decision = None
         _oom_attempts = [_oom_preflight_timeout, _oom_retry_timeout]
         _oom_succeeded = False  # v266.3: Read by GCP probe to log bridge status
@@ -65081,7 +65085,21 @@ class JarvisSystemKernel:
             self._emit_event(SupervisorEventType.PHASE_START, "Phase: Preflight", phase="preflight", correlation_id=_cid_pf)
 
             if _ssm: await _ssm.start_component("preflight")
-            if not await self._phase_preflight():
+            # v270.0: Outer timeout — bare await could hang indefinitely if any
+            # preflight sub-operation stalls (lock handover, zombie scan, IPC bind).
+            _preflight_timeout = _get_env_float("JARVIS_PREFLIGHT_TIMEOUT", 90.0)
+            try:
+                _preflight_ok = await asyncio.wait_for(
+                    self._phase_preflight(), timeout=_preflight_timeout
+                )
+            except asyncio.TimeoutError:
+                _preflight_ok = False
+                self.logger.error(
+                    "[Kernel] v270.0: Preflight timed out after %.0fs", _preflight_timeout
+                )
+            except asyncio.CancelledError:
+                raise
+            if not _preflight_ok:
                 if _ssm: await _ssm.complete_component("preflight", error="Preflight failed")
                 issue_collector.add_critical(
                     "Preflight phase failed - cannot continue startup",
@@ -65149,7 +65167,21 @@ class JarvisSystemKernel:
             self._emit_event(SupervisorEventType.PHASE_START, "Phase: Resources", phase="resources", correlation_id=_cid_rs)
 
             if _ssm: await _ssm.start_component("resources")
-            if not await self._phase_resources():
+            # v270.0: Outer timeout — resource managers (Docker, GCP, storage) can
+            # each stall on network or credential discovery. resource_timeout is
+            # already defined above (default 300s).
+            try:
+                _resources_ok = await asyncio.wait_for(
+                    self._phase_resources(), timeout=resource_timeout
+                )
+            except asyncio.TimeoutError:
+                _resources_ok = False
+                self.logger.error(
+                    "[Kernel] v270.0: Resources phase timed out after %.0fs", resource_timeout
+                )
+            except asyncio.CancelledError:
+                raise
+            if not _resources_ok:
                 if _ssm: await _ssm.complete_component("resources", error="Resource init failed")
                 issue_collector.add_critical(
                     "Resource initialization failed - cannot continue startup",
@@ -65208,7 +65240,21 @@ class JarvisSystemKernel:
             self._emit_event(SupervisorEventType.PHASE_START, "Phase: Backend", phase="backend", correlation_id=_cid_be)
 
             if _ssm: await _ssm.start_component("backend")
-            if not await self._phase_backend():
+            # v270.0: Outer timeout — backend startup includes subprocess spawning,
+            # health polling, and optional in-process uvicorn. backend_timeout is
+            # already defined above (default 300s).
+            try:
+                _backend_ok = await asyncio.wait_for(
+                    self._phase_backend(), timeout=backend_timeout
+                )
+            except asyncio.TimeoutError:
+                _backend_ok = False
+                self.logger.error(
+                    "[Kernel] v270.0: Backend phase timed out after %.0fs", backend_timeout
+                )
+            except asyncio.CancelledError:
+                raise
+            if not _backend_ok:
                 if _ssm: await _ssm.complete_component("backend", error="Backend failed to start")
                 issue_collector.add_critical(
                     "Backend server failed to start",
@@ -67055,10 +67101,24 @@ class JarvisSystemKernel:
                 handover_timeout=_takeover_timeout,
             )
 
-            takeover_result = await takeover.attempt_takeover(
-                force=self._force,
-                graceful_first=True,  # Try graceful handover before force
-            )
+            # v270.0: Takeover has internal timeouts but no outer deadline.
+            # Add an outer guard to prevent indefinite stall.
+            _takeover_outer_timeout = _takeover_timeout + 15.0  # handover + margin
+            try:
+                takeover_result = await asyncio.wait_for(
+                    takeover.attempt_takeover(
+                        force=self._force,
+                        graceful_first=True,
+                    ),
+                    timeout=_takeover_outer_timeout,
+                )
+            except asyncio.TimeoutError:
+                self.logger.error(
+                    "[Kernel] v270.0: Takeover timed out after %.0fs", _takeover_outer_timeout
+                )
+                return False
+            except asyncio.CancelledError:
+                raise
 
             # Root hardening: absorb short lock handover races during restarts.
             # If another supervisor is shutting down, give it a bounded window
@@ -67084,10 +67144,19 @@ class JarvisSystemKernel:
                     is_locked, _ = self._startup_lock.is_locked()
                     if not is_locked:
                         self.logger.info("[Kernel] Startup lock released - retrying takeover")
-                        takeover_result = await takeover.attempt_takeover(
-                            force=self._force,
-                            graceful_first=True,
-                        )
+                        try:
+                            takeover_result = await asyncio.wait_for(
+                                takeover.attempt_takeover(
+                                    force=self._force,
+                                    graceful_first=True,
+                                ),
+                                timeout=_takeover_outer_timeout,
+                            )
+                        except asyncio.TimeoutError:
+                            self.logger.error(
+                                "[Kernel] v270.0: Takeover retry timed out after %.0fs",
+                                _takeover_outer_timeout,
+                            )
 
             if not takeover_result.success:
                 # Report detailed failure info
@@ -67155,7 +67224,15 @@ class JarvisSystemKernel:
             # Initialize managers
             self._readiness_manager = ProgressiveReadinessManager(self.config, self.logger)
             self._readiness_manager.mark_tier(ReadinessTier.STARTING)
-            await self._readiness_manager.start_heartbeat_loop()
+            # v270.0: Heartbeat loop can stall on first filesystem write under I/O pressure.
+            try:
+                await asyncio.wait_for(
+                    self._readiness_manager.start_heartbeat_loop(), timeout=10.0
+                )
+            except asyncio.TimeoutError:
+                self.logger.warning("[Kernel] v270.0: Readiness heartbeat start timed out (10s)")
+            except asyncio.CancelledError:
+                raise
 
             self._process_manager = ProcessStateManager(self.config, self.logger)
 
@@ -67168,7 +67245,10 @@ class JarvisSystemKernel:
                 try:
                     self.logger.info("[Kernel] Running service registry pre-flight cleanup...")
                     registry = get_service_registry()
-                    cleanup_stats = await registry.pre_flight_cleanup()
+                    # v270.0: Registry scan can stall iterating dead PIDs under memory pressure.
+                    cleanup_stats = await asyncio.wait_for(
+                        registry.pre_flight_cleanup(), timeout=15.0
+                    )
 
                     total = cleanup_stats.get("total_entries", 0)
                     valid = cleanup_stats.get("valid_entries", 0)
@@ -67218,7 +67298,17 @@ class JarvisSystemKernel:
                 self.logger,
                 protected_pids=self._protected_pids,
             )
-            cleanup_result = await self._zombie_cleanup.run_comprehensive_cleanup()
+            # v270.0: Zombie scan enumerates all PIDs — can hang under memory pressure
+            # when the proc table is large or /proc is slow.
+            try:
+                cleanup_result = await asyncio.wait_for(
+                    self._zombie_cleanup.run_comprehensive_cleanup(), timeout=30.0
+                )
+            except asyncio.TimeoutError:
+                self.logger.warning("[Kernel] v270.0: Zombie cleanup timed out (30s) — continuing")
+                cleanup_result = {"zombies_killed": 0}
+            except asyncio.CancelledError:
+                raise
             if cleanup_result["zombies_killed"] > 0:
                 self.logger.info(f"[Kernel] Cleaned {cleanup_result['zombies_killed']} zombie processes")
 
@@ -67233,7 +67323,13 @@ class JarvisSystemKernel:
             self._signal_handler.register_callback(self._signal_shutdown)
 
             # Start IPC server
-            await self._ipc_server.start()
+            # v270.0: Socket bind can stall if address is in TIME_WAIT or under I/O pressure.
+            try:
+                await asyncio.wait_for(self._ipc_server.start(), timeout=10.0)
+            except asyncio.TimeoutError:
+                self.logger.warning("[Kernel] v270.0: IPC server start timed out (10s) — continuing without IPC")
+            except asyncio.CancelledError:
+                raise
             self._register_ipc_handlers()
 
             # =====================================================================
@@ -67266,7 +67362,9 @@ class JarvisSystemKernel:
             # v239.0: System Service Registry — Phase 1 activation (Observability, Health)
             if self._service_registry:
                 try:
-                    _ssr_r1 = await self._service_registry.activate_phase(1)
+                    _ssr_r1 = await asyncio.wait_for(
+                        self._service_registry.activate_phase(1), timeout=15.0
+                    )
                     self.logger.info(f"[Kernel] Phase 1 services: {_ssr_r1}")
 
                     # Wire 1: ObservabilityPipeline → UnifiedLogger metrics sink
@@ -67592,15 +67690,34 @@ class JarvisSystemKernel:
             self.logger.debug("[v266.2] Phase 2 memory gate error: %s", _gate2_err)
 
         # Voice sidecar control-plane bootstrap (optional, config-driven).
+        # v270.0: Add timeout — sidecar IPC/health handshake can stall.
+        _sidecar_timeout = _get_env_float("JARVIS_VOICE_SIDECAR_TIMEOUT", 30.0)
         if self.config.voice_sidecar_enabled:
-            sidecar_ready = await self._start_voice_sidecar()
+            try:
+                sidecar_ready = await asyncio.wait_for(
+                    self._start_voice_sidecar(), timeout=_sidecar_timeout
+                )
+            except asyncio.TimeoutError:
+                self.logger.warning(
+                    "[VoiceSidecar] v270.0: Sidecar start timed out (%.0fs)", _sidecar_timeout
+                )
+                sidecar_ready = False
+            except asyncio.CancelledError:
+                raise
             if not sidecar_ready and self.config.voice_sidecar_required:
                 self.logger.error(
                     "[VoiceSidecar] Required sidecar failed during resources phase"
                 )
                 return False
             if sidecar_ready:
-                _ = await self._enforce_voice_sidecar_gate("phase_resources")
+                try:
+                    _ = await asyncio.wait_for(
+                        self._enforce_voice_sidecar_gate("phase_resources"), timeout=10.0
+                    )
+                except asyncio.TimeoutError:
+                    self.logger.warning("[VoiceSidecar] v270.0: Gate enforcement timed out (10s)")
+                except asyncio.CancelledError:
+                    raise
 
         # v188.0: Progress range for resource phase
         base_progress = 15
@@ -67622,7 +67739,8 @@ class JarvisSystemKernel:
             if STARTUP_RESILIENCE_AVAILABLE and self._startup_resilience is None:
                 try:
                     self._startup_resilience = StartupResilience(logger=self.logger)
-                    await self._startup_resilience.start()
+                    # v270.0: Resilience coordinator probes Docker/Ollama — can stall.
+                    await asyncio.wait_for(self._startup_resilience.start(), timeout=15.0)
                     self.logger.info("[Kernel] Startup resilience coordinator initialized")
                 except Exception as e:
                     self.logger.warning(f"[Kernel] Failed to initialize startup resilience: {e}")
@@ -67958,9 +68076,33 @@ class JarvisSystemKernel:
             resource_manager_timeout = float(
                 os.environ.get("JARVIS_RESOURCE_MANAGER_TIMEOUT", "90.0")
             )
+            # v270.0: Force sequential init when effective mode is sequential/minimal
+            # or when available RAM < 4GB. Parallel gather under memory pressure causes
+            # multiple heavy imports (google-cloud, docker, etc.) to run concurrently,
+            # amplifying memory usage and risking OOM.
+            _effective_mode_for_parallel = os.environ.get(
+                "JARVIS_STARTUP_MEMORY_MODE", "local_full"
+            )
+            _force_sequential = _effective_mode_for_parallel in ("sequential", "minimal")
+            if not _force_sequential:
+                try:
+                    _avail_for_parallel = _read_available_memory_gb()
+                    if _avail_for_parallel is not None and _avail_for_parallel < 4.0:
+                        _force_sequential = True
+                        self.logger.info(
+                            "[v270.0] Forcing sequential resource init (avail=%.1fGB < 4.0GB)",
+                            _avail_for_parallel,
+                        )
+                except Exception:
+                    pass
+            _use_parallel = not _force_sequential
+            if _force_sequential:
+                self.logger.info(
+                    "[v270.0] Resource init: sequential (mode=%s)", _effective_mode_for_parallel
+                )
             try:
                 results = await self._resource_registry.initialize_all(
-                    parallel=True,
+                    parallel=_use_parallel,
                     base_progress=base_progress,
                     end_progress=end_progress,
                     manager_timeout=resource_manager_timeout,
@@ -68649,17 +68791,36 @@ class JarvisSystemKernel:
             self.logger.debug("[v266.2] Phase 3 memory gate error: %s", _gate3_err)
 
         # Voice sidecar deterministic worker admission before backend startup.
+        # v270.0: Add timeout to sidecar gate and worker start.
         if self.config.voice_sidecar_enabled:
-            gate_open = await self._enforce_voice_sidecar_gate("phase_backend")
+            try:
+                gate_open = await asyncio.wait_for(
+                    self._enforce_voice_sidecar_gate("phase_backend"), timeout=10.0
+                )
+            except asyncio.TimeoutError:
+                self.logger.warning("[VoiceSidecar] v270.0: Backend gate timed out (10s)")
+                gate_open = False
+            except asyncio.CancelledError:
+                raise
             if not gate_open:
                 self.logger.warning(
                     "[VoiceSidecar] Gate closed in backend phase — continuing in minimal backend mode"
                 )
                 os.environ["JARVIS_BACKEND_MINIMAL"] = "true"
 
-            worker_started = await self._start_voice_worker_via_sidecar(
-                reason="phase_backend"
-            )
+            _be_sidecar_timeout = _get_env_float("JARVIS_VOICE_SIDECAR_TIMEOUT", 30.0)
+            try:
+                worker_started = await asyncio.wait_for(
+                    self._start_voice_worker_via_sidecar(reason="phase_backend"),
+                    timeout=_be_sidecar_timeout,
+                )
+            except asyncio.TimeoutError:
+                self.logger.warning(
+                    "[VoiceSidecar] v270.0: Worker start timed out (%.0fs)", _be_sidecar_timeout
+                )
+                worker_started = False
+            except asyncio.CancelledError:
+                raise
             if (
                 self.config.voice_sidecar_required
                 and self.config.voice_sidecar_manage_worker
@@ -68680,15 +68841,50 @@ class JarvisSystemKernel:
                 )
                 self.config.in_process_backend = False
 
+            # v270.0: Backend launch (in-process or subprocess) can hang on port
+            # binding, model loading, or health polling. Use backend_timeout from
+            # env (default 300s) as outer deadline.
+            _be_launch_timeout = float(os.environ.get("JARVIS_BACKEND_STARTUP_TIMEOUT", "300.0"))
             if self.config.in_process_backend:
-                success = await self._start_backend_in_process()
+                try:
+                    success = await asyncio.wait_for(
+                        self._start_backend_in_process(), timeout=_be_launch_timeout
+                    )
+                except asyncio.TimeoutError:
+                    self.logger.warning(
+                        "[Kernel] v270.0: In-process backend timed out (%.0fs)", _be_launch_timeout
+                    )
+                    success = False
+                except asyncio.CancelledError:
+                    raise
                 if not success:
                     self.logger.warning(
                         "[Kernel] In-process backend failed, attempting subprocess fallback..."
                     )
-                    success = await self._start_backend_subprocess()
+                    try:
+                        success = await asyncio.wait_for(
+                            self._start_backend_subprocess(), timeout=_be_launch_timeout
+                        )
+                    except asyncio.TimeoutError:
+                        self.logger.error(
+                            "[Kernel] v270.0: Backend subprocess fallback timed out (%.0fs)",
+                            _be_launch_timeout,
+                        )
+                        success = False
+                    except asyncio.CancelledError:
+                        raise
             else:
-                success = await self._start_backend_subprocess()
+                try:
+                    success = await asyncio.wait_for(
+                        self._start_backend_subprocess(), timeout=_be_launch_timeout
+                    )
+                except asyncio.TimeoutError:
+                    self.logger.error(
+                        "[Kernel] v270.0: Backend subprocess timed out (%.0fs)", _be_launch_timeout
+                    )
+                    success = False
+                except asyncio.CancelledError:
+                    raise
 
             if success:
                 # v233.0: Write allocated backend port to well-known state file
@@ -68734,7 +68930,9 @@ class JarvisSystemKernel:
             # v239.0: System Service Registry — Phase 3 activation (TaskQueue)
             if self._service_registry:
                 try:
-                    _ssr_r3 = await self._service_registry.activate_phase(3)
+                    _ssr_r3 = await asyncio.wait_for(
+                        self._service_registry.activate_phase(3), timeout=15.0
+                    )
                     self.logger.info(f"[Kernel] Phase 3 services: {_ssr_r3}")
 
                     # Wire 6: TaskQueue → PersistentConversationMemoryAgent
