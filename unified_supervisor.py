@@ -190,7 +190,6 @@ with open({_result_path!r}, "w") as f:
 # Clean up early imports
 del _early_sys, _early_signal, _early_os, _cli_flags, _is_cli_mode
 
-
 # =============================================================================
 # CRITICAL: VENV AUTO-ACTIVATION (MUST BE BEFORE ANY IMPORTS)
 # =============================================================================
@@ -268,13 +267,11 @@ def _ensure_venv_python() -> None:
     # Re-execute with venv Python
     _os.execv(str(venv_python), [str(venv_python)] + _sys.argv) # This is the execv function to re-execute with the venv Python.
 
-
 # Execute venv check immediately
 _ensure_venv_python()
 
 # Clean up temporary imports
 del _os, _sys, _Path, _ensure_venv_python
-
 
 # =============================================================================
 # FAST EARLY-EXIT FOR RUNNING KERNEL
@@ -396,14 +393,12 @@ def _fast_kernel_check() -> bool:
 
     return True
 
-
 # Run fast check before heavy imports
 if _fast_kernel_check():
     import sys as _sys
     _sys.exit(0)
 
 del _fast_kernel_check
-
 
 # =============================================================================
 # PYTHON 3.9 COMPATIBILITY PATCH
@@ -435,7 +430,6 @@ if _sys.version_info < (3, 10):
         except Exception:
             pass
 del _sys
-
 
 # =============================================================================
 # PYTORCH/TRANSFORMERS COMPATIBILITY SHIM
@@ -494,13 +488,11 @@ def _apply_pytorch_compat() -> bool:
     _pytree.register_pytree_node = _noop_register
     return True
 
-
 # v253.0: Deferred — no longer called at module level.
 # Previously `import torch` here added 20-40s to every startup.
 # Now called once in _startup_impl() before backend Phase 2.
 # _apply_pytorch_compat()  # DEFERRED
 # del _apply_pytorch_compat  # Keep for deferred call
-
 
 # =============================================================================
 # TRANSFORMERS SECURITY CHECK BYPASS (CVE-2025-32434)
@@ -543,13 +535,11 @@ def _apply_transformers_security_bypass() -> bool:
     except Exception:
         return False
 
-
 # v253.0: Deferred — no longer called at module level.
 # Previously `import transformers` here added 5-15s to every startup.
 # Now called once in _startup_impl() before backend Phase 2.
 # _apply_transformers_security_bypass()  # DEFERRED
 # del _apply_transformers_security_bypass  # Keep for deferred call
-
 
 # ╔═══════════════════════════════════════════════════════════════════════════════╗
 # ║                                                                               ║
@@ -643,7 +633,6 @@ import importlib as _importlib
 _FAILED_IMPORTS: Dict[str, Dict[str, Any]] = {}
 _GUARDED_IMPORT_COUNT = 36  # Total guarded import blocks
 
-
 def _record_import_failure(
     flag_name: str,
     module_path: str,
@@ -676,7 +665,6 @@ def _record_import_failure(
         flag_name, module_path, error,
     )
 
-
 def _log_import_audit() -> None:
     """Log startup audit summary of all import statuses."""
     if not _FAILED_IMPORTS:
@@ -699,7 +687,6 @@ def _log_import_audit() -> None:
         "[ImportAudit] %d of %d guarded imports FAILED:\n%s",
         total, _GUARDED_IMPORT_COUNT, "\n".join(parts),
     )
-
 
 async def _retry_critical_imports(
     max_retries: int = 2,
@@ -759,7 +746,6 @@ async def _retry_critical_imports(
             recovered, len(retryable),
         )
     return recovered
-
 
 # =============================================================================
 # THIRD-PARTY IMPORTS (with graceful fallbacks)
@@ -1630,20 +1616,17 @@ def _use_modular_circuit_breaker() -> bool:
     # Environment variable to force inline implementation (for debugging)
     return not _get_env_bool("JARVIS_FORCE_INLINE_CIRCUIT_BREAKER", False)
 
-
 def _use_modular_browser_stability() -> bool:
     """Check if we should use the modular browser stability implementation."""
     if not MODULAR_BROWSER_STABILITY_AVAILABLE:
         return False
     return not _get_env_bool("JARVIS_FORCE_INLINE_BROWSER_STABILITY", False)
 
-
 def _use_modular_crash_recovery() -> bool:
     """Check if we should use the modular crash recovery implementation."""
     if not MODULAR_ORCHESTRATOR_AVAILABLE:
         return False
     return not _get_env_bool("JARVIS_FORCE_INLINE_CRASH_RECOVERY", False)
-
 
 # Log modular integration status at startup
 _integration_logger = logging.getLogger("unified_supervisor.integration")
@@ -1803,7 +1786,6 @@ _register_early_shutdown_handlers()
 import atexit as _atexit
 import glob as _glob
 
-
 def _cleanup_stale_state_on_exit():
     """Remove stale state files on normal exit to prevent false crash recovery.
 
@@ -1841,7 +1823,6 @@ def _cleanup_stale_state_on_exit():
                 pass
     except Exception:
         pass
-
 
 _atexit.register(_cleanup_stale_state_on_exit)
 
@@ -1982,7 +1963,6 @@ SMARTWATCHDOG_CONSECUTIVE_FAILURES = int(os.environ.get("JARVIS_WATCHDOG_CONSECU
 SMARTWATCHDOG_EXTENSION_BUFFER = float(os.environ.get("JARVIS_WATCHDOG_EXTENSION_BUFFER", "60.0"))
 SMARTWATCHDOG_LIVENESS_ENABLED = os.environ.get("JARVIS_WATCHDOG_LIVENESS_ENABLED", "true").lower() == "true"
 
-
 def _calculate_effective_startup_timeout(
     config_timeout: float,
     trinity_enabled: bool = False,
@@ -2036,7 +2016,6 @@ def _calculate_effective_startup_timeout(
         "max_timeout": max_timeout,
         "components": components,
     }
-
 
 # =============================================================================
 # v225.0: PROGRESS-AWARE STARTUP CONTROLLER
@@ -2482,13 +2461,11 @@ for _logger_name in [
     # when external modules reconfigure logging at runtime.
     _noisy_logger.propagate = False
 
-
 class _RegisteredCheckpointFilter(logging.Filter):
     """Suppress repetitive SpeechBrain checkpoint hook registration chatter."""
 
     def filter(self, record: logging.LogRecord) -> bool:
         return "registered checkpoint" not in record.getMessage().lower()
-
 
 if os.getenv("JARVIS_SUPPRESS_REGISTERED_CHECKPOINT_LOGS", "true").strip().lower() in (
     "1", "true", "yes", "on"
@@ -2537,10 +2514,8 @@ def _load_environment_files() -> List[str]:
 
     return loaded
 
-
 # Load environment files immediately
 _loaded_env_files = _load_environment_files()
-
 
 # =============================================================================
 # DYNAMIC DETECTION HELPERS
@@ -2560,7 +2535,6 @@ def _detect_best_port(start: int, end: int) -> int:
             continue
     return start  # Fallback to start of range
 
-
 def _discover_venv() -> Optional[Path]:
     """Discover virtual environment path."""
     candidates = [
@@ -2573,7 +2547,6 @@ def _discover_venv() -> Optional[Path]:
             return candidate
     return None
 
-
 def _discover_repo(names: List[str]) -> Optional[Path]:
     """Discover sibling repository by name."""
     parent = PROJECT_ROOT.parent
@@ -2583,16 +2556,13 @@ def _discover_repo(names: List[str]) -> Optional[Path]:
             return path
     return None
 
-
 def _discover_prime_repo() -> Optional[Path]:
     """Discover JARVIS-Prime repository."""
     return _discover_repo(["JARVIS-Prime", "jarvis-prime"])
 
-
 def _discover_reactor_repo() -> Optional[Path]:
     """Discover Reactor-Core repository."""
     return _discover_repo(["Reactor-Core", "reactor-core"])
-
 
 def _detect_gcp_credentials() -> bool:
     """Check if GCP credentials are available."""
@@ -2608,7 +2578,6 @@ def _detect_gcp_credentials() -> bool:
         return True
 
     return False
-
 
 def _detect_gcp_project() -> Optional[str]:
     """Detect GCP project ID."""
@@ -2632,7 +2601,6 @@ def _detect_gcp_project() -> Optional[str]:
         pass
 
     return None
-
 
 # =============================================================================
 # SAFE FILE I/O UTILITIES (v119.0)
@@ -2686,7 +2654,6 @@ def _safe_read_file(path: Path, default: str = "") -> str:
     except Exception:
         return default
 
-
 def _safe_read_json(path: Path, default: dict = None) -> dict:
     """
     v119.0: Robust JSON file reading with error handling.
@@ -2710,7 +2677,6 @@ def _safe_read_json(path: Path, default: dict = None) -> dict:
     except (json.JSONDecodeError, TypeError):
         return default
 
-
 def _calculate_memory_budget() -> float:
     """Calculate memory budget based on system RAM."""
     if not PSUTIL_AVAILABLE:
@@ -2721,7 +2687,6 @@ def _calculate_memory_budget() -> float:
 
     return round(total_gb * (target_percent / 100), 1)
 
-
 def _get_env_bool(key: str, default: bool = False) -> bool:
     """Get boolean from environment variable."""
     value = os.environ.get(key, "").lower()
@@ -2731,7 +2696,6 @@ def _get_env_bool(key: str, default: bool = False) -> bool:
         return False
     return default
 
-
 def _get_env_int(key: str, default: int) -> int:
     """Get integer from environment variable."""
     try:
@@ -2739,14 +2703,12 @@ def _get_env_int(key: str, default: int) -> int:
     except (ValueError, TypeError):
         return default
 
-
 def _get_env_float(key: str, default: float) -> float:
     """Get float from environment variable."""
     try:
         return float(os.environ.get(key, default))
     except (ValueError, TypeError):
         return default
-
 
 def _allocate_ephemeral_port(host: str = "127.0.0.1") -> Optional[int]:
     """
@@ -2765,7 +2727,6 @@ def _allocate_ephemeral_port(host: str = "127.0.0.1") -> Optional[int]:
     except Exception:
         return None
 
-
 def _read_available_memory_gb() -> Optional[float]:
     """Read available system memory in GB, if metrics are available."""
     if not PSUTIL_AVAILABLE:
@@ -2774,7 +2735,6 @@ def _read_available_memory_gb() -> Optional[float]:
         return float(psutil.virtual_memory().available / (1024 ** 3))
     except Exception:
         return None
-
 
 def _resolve_local_startup_mode_on_cloud_unavailable(
     current_mode: str,
@@ -2832,7 +2792,6 @@ def _resolve_local_startup_mode_on_cloud_unavailable(
         return "local_optimized"
     return "local_full"
 
-
 # =============================================================================
 # BACKEND LAUNCH DISCOVERY
 # =============================================================================
@@ -2842,7 +2801,6 @@ class BackendLaunchContext:
     project_root: Path
     backend_dir: Optional[Path]
     backend_script: Optional[Path]
-
 
 def _discover_backend_launch_context(
     primary_project_root: Optional[Path] = None,
@@ -2911,7 +2869,6 @@ def _discover_backend_launch_context(
         backend_script=None,
     )
 
-
 def _detect_backend_runtime_capabilities(
     context: BackendLaunchContext,
 ) -> Dict[str, bool]:
@@ -2930,7 +2887,6 @@ def _detect_backend_runtime_capabilities(
         "backend_script_available": script_present,
         "backend_module_possible": backend_module_available or script_present,
     }
-
 
 def _select_backend_launch_command(
     context: BackendLaunchContext,
@@ -3000,7 +2956,6 @@ def _select_backend_launch_command(
         "(neither backend/main.py nor backend.main module found)"
     )
 
-
 # =============================================================================
 # v258.4: TRINITY IPC SYSTEM PHASE PUBLISHER
 # =============================================================================
@@ -3050,7 +3005,6 @@ def _publish_system_phase_to_trinity(phase: str, extra: Optional[Dict[str, Any]]
             )
         except Exception:
             pass
-
 
 # =============================================================================
 # CLI BOX DRAWING UTILITY (v201.4)
@@ -3217,10 +3171,8 @@ class CLIBoxDrawing:
             suffix_len = 0
         return f"{self.SEP_L}{prefix}{self.H * suffix_len}{self.SEP_R}"
 
-
 # Global instance with default width
 _cli_box = CLIBoxDrawing(width=70)
-
 
 def get_cli_box(width: int = 70) -> CLIBoxDrawing:
     """Get a CLIBoxDrawing instance (cached for default width)."""
@@ -3228,7 +3180,6 @@ def get_cli_box(width: int = 70) -> CLIBoxDrawing:
     if width == 70:
         return _cli_box
     return CLIBoxDrawing(width=width)
-
 
 # =============================================================================
 # SYSTEM KERNEL CONFIGURATION
@@ -3481,7 +3432,6 @@ class SystemKernelConfig:
         ]
         return "\n".join(lines)
 
-
 # =============================================================================
 # ADD BACKEND TO PATH
 # =============================================================================
@@ -3489,7 +3439,6 @@ if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
-
 
 # ╔═══════════════════════════════════════════════════════════════════════════════╗
 # ║                                                                               ║
@@ -3517,7 +3466,6 @@ class LogLevel(Enum):
     SUCCESS = ("SUCCESS", "\033[92m")  # Bright Green
     PHASE = ("PHASE", "\033[94m")      # Bright Blue
 
-
 class LogSection(Enum):
     """Logical sections for organized log output."""
     BOOT = "BOOT"
@@ -3535,7 +3483,6 @@ class LogSection(Enum):
     STORAGE = "STORAGE"
     PROCESS = "PROCESS"
     DEV = "DEV"
-
 
 # =============================================================================
 # SECTION CONTEXT MANAGER
@@ -3563,7 +3510,6 @@ class SectionContext:
         duration_ms = (time.perf_counter() - self.start_time) * 1000
         self.logger._render_section_footer(self.section, duration_ms)
         return None
-
 
 # =============================================================================
 # PARALLEL TRACKER
@@ -3601,7 +3547,6 @@ class ParallelTracker:
             self._results[name] = (False, duration)
             self.logger.warning(f"  [{name}] failed in {duration:.0f}ms: {e}")
             raise
-
 
 # =============================================================================
 # UNIFIED LOGGER
@@ -3904,10 +3849,8 @@ class UnifiedLogger:
 
         print(f"{green}{'═' * 70}{reset}\n")
 
-
 # Global logger instance for use throughout the kernel
 _unified_logger = UnifiedLogger()
-
 
 # =============================================================================
 # STARTUP LOCK (Singleton Enforcement)
@@ -4124,7 +4067,6 @@ class StartupLock:
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:
         self.release()
 
-
 # =============================================================================
 # INTELLIGENT KERNEL TAKEOVER PROTOCOL (v192.0)
 # =============================================================================
@@ -4145,7 +4087,6 @@ class KernelHealthStatus(Enum):
     ZOMBIE = "zombie"             # PID exists but process is zombie
     DEAD = "dead"                 # Process not running
 
-
 @dataclass
 class KernelProcessInfo:
     """Information about a kernel process."""
@@ -4162,7 +4103,6 @@ class KernelProcessInfo:
     memory_mb: Optional[float] = None
     cpu_percent: Optional[float] = None
 
-
 @dataclass
 class TakeoverResult:
     """Result of a kernel takeover attempt."""
@@ -4173,7 +4113,6 @@ class TakeoverResult:
     errors: List[str] = field(default_factory=list)
     warnings: List[str] = field(default_factory=list)
     duration_ms: float = 0.0
-
 
 class IntelligentKernelTakeover:
     """
@@ -4852,7 +4791,6 @@ class IntelligentKernelTakeover:
         except (OSError, ProcessLookupError):
             return False
 
-
 # =============================================================================
 # CIRCUIT BREAKER STATE
 # =============================================================================
@@ -4867,7 +4805,6 @@ else:
         CLOSED = "closed"      # Normal operation
         OPEN = "open"          # Failing, reject requests
         HALF_OPEN = "half_open"  # Testing recovery
-
 
 # =============================================================================
 # CIRCUIT BREAKER
@@ -4968,7 +4905,6 @@ else:
                 self.record_failure()
                 raise
 
-
 # =============================================================================
 # RETRY WITH BACKOFF
 # =============================================================================
@@ -5041,7 +4977,6 @@ else:
                         await asyncio.sleep(delay)
 
             raise last_exception or RuntimeError(f"Retries exhausted for {operation_name}")
-
 
 # =============================================================================
 # TERMINAL UI HELPERS
@@ -5178,7 +5113,6 @@ class TerminalUI:
         if current >= total:
             print()  # New line when complete
 
-
 # =============================================================================
 # BENIGN WARNING FILTER
 # =============================================================================
@@ -5213,7 +5147,6 @@ class BenignWarningFilter(logging.Filter):
                 return False
         return True
 
-
 # Install benign warning filter on noisy loggers
 _benign_filter = BenignWarningFilter()
 for _logger_name in [
@@ -5225,7 +5158,6 @@ for _logger_name in [
 ]:
     logging.getLogger(_logger_name).addFilter(_benign_filter)
 logging.getLogger().addFilter(_benign_filter)
-
 
 # =============================================================================
 # SECRET REDACTION FILTER
@@ -5296,11 +5228,9 @@ class SecretRedactionFilter(logging.Filter):
 
         return True  # Always allow the record through
 
-
 # Install secret redaction filter globally
 _secret_filter = SecretRedactionFilter()
 logging.getLogger().addFilter(_secret_filter)
-
 
 # =============================================================================
 # ENHANCED TERMINAL UI (Live Spinners & Summary Table)
@@ -5389,7 +5319,6 @@ class LiveSpinner:
             idx += 1
             await asyncio.sleep(0.1)
 
-
 class StartupSummaryTable:
     """
     Collects and displays a summary table of startup phases.
@@ -5459,7 +5388,6 @@ class StartupSummaryTable:
 
         print(f"\n  Total: {total_ms:.0f}ms ({total_ms/1000:.2f}s) | Phases: {success_count}/{total_count} successful")
         print()
-
 
 class StartupProgressDisplay:
     """
@@ -5646,10 +5574,8 @@ class StartupProgressDisplay:
         print(f"  Phases: {summary['success']}✓ {summary['warning']}⚠ {summary['error']}✗")
         print("─" * 50)
 
-
 # Global startup display instance
 _startup_display: Optional[StartupProgressDisplay] = None
-
 
 def get_startup_display(enabled: bool = True) -> StartupProgressDisplay:
     """Get or create the global startup display instance."""
@@ -5657,7 +5583,6 @@ def get_startup_display(enabled: bool = True) -> StartupProgressDisplay:
     if _startup_display is None:
         _startup_display = StartupProgressDisplay(enabled=enabled)
     return _startup_display
-
 
 # =============================================================================
 # v197.1: LIVE PROGRESS DASHBOARD - Real-time multi-component status display
@@ -5670,7 +5595,6 @@ def get_startup_display(enabled: bool = True) -> StartupProgressDisplay:
 #
 # This replaces the log spam with a clean, real-time dashboard.
 # =============================================================================
-
 
 class ModelLoadingState(dict):
     """v242.4: Dict subclass that enforces model loading state invariants.
@@ -5711,7 +5635,6 @@ class ModelLoadingState(dict):
 
         if active and progress_pct is not None and progress_pct >= 100 and stage == "ready":
             super().__setitem__("active", False)
-
 
 class LiveProgressDashboard:
     """
@@ -6683,10 +6606,8 @@ class LiveProgressDashboard:
         empty = width - filled
         return f"[{self.PROGRESS_FULL * filled}{self.PROGRESS_EMPTY * empty}]"
 
-
 # Global live dashboard instance
 _live_dashboard: Optional[LiveProgressDashboard] = None
-
 
 def get_live_dashboard(enabled: bool = True) -> LiveProgressDashboard:
     """Get or create the global live dashboard instance."""
@@ -6695,12 +6616,10 @@ def get_live_dashboard(enabled: bool = True) -> LiveProgressDashboard:
         _live_dashboard = LiveProgressDashboard(enabled=enabled)
     return _live_dashboard
 
-
 # v226.2: Timestamp of last real (APARS-sourced) GCP progress update.
 # Used by _background_node_monitor to avoid overwriting real data with
 # synthetic time-based progress estimates.
 _last_real_gcp_progress_update: float = 0.0
-
 
 def update_dashboard_gcp_progress(
     phase: int = None,
@@ -6730,7 +6649,6 @@ def update_dashboard_gcp_progress(
             source=source,  # v233.2: Forward source for stall detection
             **kwargs
         )
-
 
 def update_dashboard_model_loading(
     active: bool = None,
@@ -6796,7 +6714,6 @@ def update_dashboard_model_loading(
             progress_source=progress_source,  # v233.1: Pass through progress source
         )
 
-
 def add_dashboard_log(message: str, level: str = "INFO") -> None:
     """
     v197.3: Add a log message to the dashboard buffer.
@@ -6810,7 +6727,6 @@ def add_dashboard_log(message: str, level: str = "INFO") -> None:
     """
     if _live_dashboard:
         _live_dashboard.add_log(message, level)
-
 
 class DashboardLogHandler(logging.Handler):
     """
@@ -6868,10 +6784,8 @@ class DashboardLogHandler(logging.Handler):
         except Exception:
             pass  # Never let logging errors crash the app
 
-
 # Global dashboard log handler
 _dashboard_log_handler: Optional[DashboardLogHandler] = None
-
 
 def get_dashboard_log_handler() -> DashboardLogHandler:
     """Get or create the global dashboard log handler."""
@@ -6879,7 +6793,6 @@ def get_dashboard_log_handler() -> DashboardLogHandler:
     if _dashboard_log_handler is None:
         _dashboard_log_handler = DashboardLogHandler()
     return _dashboard_log_handler
-
 
 def update_dashboard_component_status(
     component: str,
@@ -6900,7 +6813,6 @@ def update_dashboard_component_status(
     if _live_dashboard:
         _live_dashboard.update_component(component, status, detail)
 
-
 def update_dashboard_memory() -> None:
     """Helper to refresh memory stats on the dashboard (if available)."""
     if _live_dashboard:
@@ -6914,7 +6826,6 @@ def update_dashboard_memory() -> None:
             )
         except Exception:
             pass  # psutil may not be available
-
 
 # =============================================================================
 # v249.0: SUPERVISOR EVENT BUS & CLI PRESENTATION LAYER
@@ -6931,7 +6842,6 @@ def update_dashboard_memory() -> None:
 #   JARVIS_EVENT_BUS_QUEUE_SIZE = int               (default: 1000)
 #   JARVIS_EVENT_BUS_ENABLED    = true/false        (default: true)
 # =============================================================================
-
 
 class SupervisorEventType(Enum):
     """Categories of supervisor lifecycle events."""
@@ -6950,7 +6860,6 @@ class SupervisorEventType(Enum):
     SHUTDOWN_END = "shutdown_end"
     LOG = "log"
 
-
 class SupervisorEventSeverity(Enum):
     """Event severity levels."""
     DEBUG = "debug"
@@ -6959,7 +6868,6 @@ class SupervisorEventSeverity(Enum):
     ERROR = "error"
     CRITICAL = "critical"
     SUCCESS = "success"
-
 
 @dataclass(frozen=True)
 class SupervisorEvent:
@@ -7007,7 +6915,6 @@ class SupervisorEvent:
         if self.correlation_id:
             d["correlation_id"] = self.correlation_id
         return d
-
 
 class SupervisorEventBus:
     """
@@ -7158,9 +7065,7 @@ class SupervisorEventBus:
         """Number of registered handlers."""
         return len(self._handlers)
 
-
 _supervisor_event_bus: Optional[SupervisorEventBus] = None
-
 
 def get_event_bus() -> SupervisorEventBus:
     """Get the singleton SupervisorEventBus instance."""
@@ -7168,7 +7073,6 @@ def get_event_bus() -> SupervisorEventBus:
     if _supervisor_event_bus is None:
         _supervisor_event_bus = SupervisorEventBus()
     return _supervisor_event_bus
-
 
 async def _reset_event_bus_singleton() -> None:
     """
@@ -7194,7 +7098,6 @@ async def _reset_event_bus_singleton() -> None:
         # Reset module-level reference
         _supervisor_event_bus = None
 
-
 # ─────────────────────────────────────────────────────────────────────────────
 # CLI RENDERERS
 # ─────────────────────────────────────────────────────────────────────────────
@@ -7207,7 +7110,6 @@ async def _reset_event_bus_singleton() -> None:
 # events to whatever renderer is active. Renderer crashes are silenced —
 # they never affect the control plane.
 # ─────────────────────────────────────────────────────────────────────────────
-
 
 class CliRenderer(ABC):
     """Abstract base for CLI presentation renderers."""
@@ -7250,7 +7152,6 @@ class CliRenderer(ABC):
             ) or event.severity == SupervisorEventSeverity.CRITICAL
         # ops: everything except DEBUG
         return event.severity != SupervisorEventSeverity.DEBUG
-
 
 class RichCliRenderer(CliRenderer):
     """
@@ -7318,7 +7219,6 @@ class RichCliRenderer(CliRenderer):
         """Access the recorded phase timeline for post-startup summary."""
         return list(self._phase_timeline)
 
-
 class PlainCliRenderer(CliRenderer):
     """
     Text-only renderer. No ANSI codes, no Rich. CI/non-TTY safe.
@@ -7355,7 +7255,6 @@ class PlainCliRenderer(CliRenderer):
         except Exception:
             pass
 
-
 class JsonCliRenderer(CliRenderer):
     """
     JSON-lines renderer: one JSON object per line. Machine-readable.
@@ -7374,7 +7273,6 @@ class JsonCliRenderer(CliRenderer):
             )
         except Exception:
             pass
-
 
 def _create_cli_renderer(
     ui_mode: str,
@@ -7409,7 +7307,6 @@ def _create_cli_renderer(
     else:
         return RichCliRenderer(verbosity=verbosity, no_animation=no_animation)
 
-
 # =============================================================================
 # STARTUP ISSUE COLLECTOR & HEALTH REPORT
 # =============================================================================
@@ -7427,7 +7324,6 @@ class IssueSeverity(Enum):
     ERROR = ("error", "\033[31m", "✗")      # Red
     CRITICAL = ("critical", "\033[35m", "🔥")  # Magenta
 
-
 class IssueCategory(Enum):
     """Categories for organizing startup issues."""
     GCP = "GCP / Cloud"
@@ -7442,7 +7338,6 @@ class IssueCategory(Enum):
     CONFIG = "Configuration"
     SYSTEM = "System / Hardware"
     GENERAL = "General"
-
 
 @dataclass
 class StartupIssue:
@@ -7486,7 +7381,6 @@ class StartupIssue:
                 for line in tb_lines:
                     lines.append(f"      {line}")
         return '\n'.join(lines)
-
 
 class StartupIssueCollector:
     """
@@ -7879,12 +7773,10 @@ class StartupIssueCollector:
 
         print()
 
-
 # Global instance for easy access
 def get_startup_issue_collector() -> StartupIssueCollector:
     """Get the global startup issue collector instance."""
     return StartupIssueCollector.get_instance()
-
 
 # =============================================================================
 # ANIMATED PROGRESS BAR
@@ -8006,13 +7898,11 @@ class AnimatedProgressBar:
         sys.stdout.write(f"\r\033[K  {green}[{bar}]{reset} {bold}100%{reset} ✓ {message} ({elapsed:.1f}s)\n")
         sys.stdout.flush()
 
-
 # ╔═══════════════════════════════════════════════════════════════════════════════╗
 # ║                                                                               ║
 # ║   END OF ZONE 2                                                               ║
 # ║                                                                               ║
 # ╚═══════════════════════════════════════════════════════════════════════════════╝
-
 
 # ╔═══════════════════════════════════════════════════════════════════════════════╗
 # ║                                                                               ║
@@ -8032,7 +7922,6 @@ class AnimatedProgressBar:
 # ║   - TieredStorageManager: Hot/warm/cold tiering                               ║
 # ║                                                                               ║
 # ╚═══════════════════════════════════════════════════════════════════════════════╝
-
 
 # =============================================================================
 # RESOURCE MANAGER BASE CLASS
@@ -8210,7 +8099,6 @@ class ResourceManagerBase(ABC):
             self._health_status = "error"
             return False, f"Health check error: {e}"
 
-
 # =============================================================================
 # DOCKER DAEMON STATUS ENUM
 # =============================================================================
@@ -8222,7 +8110,6 @@ class DaemonStatus(Enum):
     STARTING = "starting"
     RUNNING = "running"
     ERROR = "error"
-
 
 # =============================================================================
 # DOCKER DAEMON HEALTH DATACLASS
@@ -8256,7 +8143,6 @@ class DaemonHealth:
             "error_message": self.error_message,
             "healthy": self.is_healthy(),
         }
-
 
 # =============================================================================
 # DOCKER DAEMON MANAGER
@@ -8819,7 +8705,6 @@ class DockerDaemonManager(ResourceManagerBase):
             self._logger.error(f"Error stopping Docker: {e}")
             return False
 
-
 # =============================================================================
 # GCP INSTANCE STATUS ENUM
 # =============================================================================
@@ -8835,7 +8720,6 @@ class GCPInstanceStatus(Enum):
     SUSPENDED = "suspended"
     TERMINATED = "terminated"
     ERROR = "error"
-
 
 # =============================================================================
 # GCP INSTANCE MANAGER
@@ -9157,7 +9041,6 @@ class GCPInstanceManager(ResourceManagerBase):
             "last_preemption_time": self._last_preemption_time,
         }
 
-
 # =============================================================================
 # v223.0: SMARTWATCHDOG - Enterprise-Grade Progress-Aware Component Monitor
 # =============================================================================
@@ -9169,7 +9052,6 @@ class SmartWatchdogResult(Enum):
     ERROR = "error"             # Component reported error
     TIMEOUT = "timeout"         # Hard timeout exceeded
     NETWORK_ERROR = "network"   # Consecutive network failures
-
 
 @dataclass
 class SmartWatchdogState:
@@ -9189,7 +9071,6 @@ class SmartWatchdogState:
     extensions_granted: int
     is_stalled: bool
     is_alive: bool
-
 
 class SmartWatchdog:
     """
@@ -9526,7 +9407,6 @@ class SmartWatchdog:
             response.get("current_step", ""),
         )
 
-
 # =============================================================================
 # COST TRACKER
 # =============================================================================
@@ -9548,7 +9428,6 @@ class SystemService(ABC):
     @abstractmethod
     async def cleanup(self) -> None:
         """Release resources. Called during shutdown."""
-
 
 class CostTracker(ResourceManagerBase, SystemService):
     """
@@ -9900,7 +9779,6 @@ class CostTracker(ResourceManagerBase, SystemService):
             "regular_rate": self.regular_vm_hourly,
         }
 
-
 # =============================================================================
 # SCALE TO ZERO COST OPTIMIZER
 # =============================================================================
@@ -10085,7 +9963,6 @@ class ScaleToZeroCostOptimizer(ResourceManagerBase):
             "estimated_cost_saved": round(self.estimated_cost_saved, 4),
             "monitoring_active": self._monitoring_task is not None and not self._monitoring_task.done(),
         }
-
 
 # =============================================================================
 # DYNAMIC PORT MANAGER
@@ -10460,7 +10337,6 @@ class DynamicPortManager(ResourceManagerBase):
         """Get the best available port (cached or primary)."""
         return self.selected_port or self.primary_port
 
-
 # =============================================================================
 # COORDINATED PORT ASSIGNMENT
 # =============================================================================
@@ -10472,7 +10348,6 @@ class PortAssignment(NamedTuple):
     frontend_port: int
     conflicts_resolved: int
     assignment_method: str  # "explicit", "environment", "dynamic"
-
 
 async def assign_all_ports(
     config: Optional["SystemKernelConfig"] = None,
@@ -10610,7 +10485,6 @@ async def assign_all_ports(
         conflicts_resolved=conflicts_resolved,
         assignment_method=assignment_method,
     )
-
 
 # =============================================================================
 # SEMANTIC VOICE CACHE MANAGER
@@ -10944,7 +10818,6 @@ class SemanticVoiceCacheManager(ResourceManagerBase):
             "last_cleanup_time": self._last_cleanup_time,
         }
 
-
 # =============================================================================
 # TIERED STORAGE MANAGER
 # =============================================================================
@@ -11190,7 +11063,6 @@ class TieredStorageManager(ResourceManagerBase):
             "bytes_migrated_warm": self._bytes_migrated_warm,
             "bytes_migrated_cold": self._bytes_migrated_cold,
         }
-
 
 # =============================================================================
 # RESOURCE MANAGER REGISTRY
@@ -11458,13 +11330,11 @@ class ResourceManagerRegistry:
         """Number of registered managers."""
         return len(self._managers)
 
-
 # =============================================================================
 # v239.0: SYSTEM SERVICE REGISTRY — Uniform lifecycle for dead-code activation
 # =============================================================================
 # NOTE: `SystemService` is declared earlier (before first subclass) to avoid
 # import-time base-class NameError from class ordering.
-
 
 @dataclass
 class ServiceDescriptor:
@@ -11479,7 +11349,6 @@ class ServiceDescriptor:
     error: Optional[str] = None
     init_time_ms: float = 0.0
     memory_delta_mb: float = 0.0
-
 
 class SystemServiceRegistry:
     """Manages lifecycle of system services in dependency-ordered waves.
@@ -11698,7 +11567,6 @@ class SystemServiceRegistry:
             "memory_mb": round(total_mem, 1),
             "init_time_ms": round(total_time, 0),
         }
-
 
 # =============================================================================
 # SPOT INSTANCE RESILIENCE HANDLER
@@ -11939,7 +11807,6 @@ class SpotInstanceResilienceHandler(ResourceManagerBase):
             "preemption_history_count": len(self.preemption_history),
             "polling_active": self._polling_active,
         }
-
 
 # =============================================================================
 # INTELLIGENT CACHE MANAGER
@@ -12246,7 +12113,6 @@ class IntelligentCacheManager(ResourceManagerBase):
             "preserve_patterns": self.preserve_patterns,
         }
 
-
 # =============================================================================
 # DYNAMIC RAM MONITOR - Advanced Memory Tracking
 # =============================================================================
@@ -12524,7 +12390,6 @@ class DynamicRAMMonitor:
 
         return (False, "MAINTAINING: GCP deployment active")
 
-
 # =============================================================================
 # LAZY ASYNC LOCK - Python 3.9 Compatibility
 # =============================================================================
@@ -12556,7 +12421,6 @@ class LazyAsyncLock:
         if self._lock is not None:
             self._lock.release()
         return False
-
 
 # =============================================================================
 # GLOBAL SESSION MANAGER - Session Tracking Singleton
@@ -12871,11 +12735,9 @@ class GlobalSessionManager:
             **self._stats,
         }
 
-
 # Module-level singleton accessor
 _global_session_manager: Optional[GlobalSessionManager] = None
 _session_manager_lock = threading.Lock()
-
 
 def get_session_manager() -> GlobalSessionManager:
     """Get the global session manager singleton."""
@@ -12885,7 +12747,6 @@ def get_session_manager() -> GlobalSessionManager:
             if _global_session_manager is None:
                 _global_session_manager = GlobalSessionManager()
     return _global_session_manager
-
 
 # =============================================================================
 # SUPERVISOR RESTART MANAGER - Cross-Repo Process Management
@@ -12902,7 +12763,6 @@ class SupervisorManagedProcess:
     port: Optional[int] = None
     enabled: bool = True
     exit_code: Optional[int] = None
-
 
 class SupervisorRestartManager:
     """
@@ -13065,7 +12925,6 @@ class SupervisorRestartManager:
                 "enabled": managed.enabled,
             }
         return status
-
 
 # =============================================================================
 # TRINITY LAUNCH CONFIG - Environment-Driven Configuration
@@ -13241,7 +13100,6 @@ class TrinityLaunchConfig:
         if not self.trinity_instance_id:
             self.trinity_instance_id = f"trinity_{uuid.uuid4().hex[:8]}"
 
-
 # =============================================================================
 # DYNAMIC REPO DISCOVERY - Intelligent Repository Finding
 # =============================================================================
@@ -13415,7 +13273,6 @@ class DynamicRepoDiscovery:
 
         return None
 
-
 # =============================================================================
 # ROBUST VENV DETECTOR - Python Environment Detection
 # =============================================================================
@@ -13542,7 +13399,6 @@ class RobustVenvDetector:
         """Alias for find_python."""
         return self.find_python(repo_path)
 
-
 # =============================================================================
 # TRINITY TRACE CONTEXT - Distributed Tracing
 # =============================================================================
@@ -13582,7 +13438,6 @@ class TrinityTraceContext:
             trace_flags=self.trace_flags,
         )
 
-
 # =============================================================================
 # ASYNC VOICE NARRATOR - Enterprise Voice Feedback for Lifecycle Events
 # =============================================================================
@@ -13592,7 +13447,6 @@ class VoicePriority(IntEnum):
     HIGH = 1      # Authentication events, phase completions
     MEDIUM = 2    # Zone transitions, service status
     LOW = 3       # Progress updates, informational
-
 
 class AsyncVoiceNarrator:
     """
@@ -14380,10 +14234,8 @@ class AsyncVoiceNarrator:
                     except ProcessLookupError:
                         pass  # v253.2: Exited between terminate and kill
 
-
 # Global narrator instance (lazy initialization)
 _global_narrator: Optional[AsyncVoiceNarrator] = None
-
 
 def get_voice_narrator() -> AsyncVoiceNarrator:
     """Get or create the global voice narrator instance."""
@@ -14391,7 +14243,6 @@ def get_voice_narrator() -> AsyncVoiceNarrator:
     if _global_narrator is None:
         _global_narrator = AsyncVoiceNarrator()
     return _global_narrator
-
 
 # =============================================================================
 # PHYSICS-AWARE STARTUP MANAGER - Voice Authentication
@@ -14511,7 +14362,6 @@ class PhysicsAwareStartupManager:
             "spoofs_detected": self.spoofs_detected,
         }
 
-
 # =============================================================================
 # RESOURCE STATUS - Enhanced Resource Metrics
 # =============================================================================
@@ -14552,7 +14402,6 @@ class ResourceStatus:
     @property
     def is_cloud_mode(self) -> bool:
         return self.startup_mode in ("cloud_first", "cloud_only")
-
 
 # =============================================================================
 # INTELLIGENT RESOURCE ORCHESTRATOR - Unified Resource Management
@@ -14873,7 +14722,6 @@ class IntelligentResourceOrchestrator:
         """Check if cloud mode was activated."""
         return self._cloud_activated
 
-
 # =============================================================================
 # VM SESSION TRACKER - Simplified VM Ownership Tracking
 # =============================================================================
@@ -15020,7 +14868,6 @@ class VMSessionTracker:
             return "unified_supervisor.py" in " ".join(cmdline) or "start_system.py" in " ".join(cmdline)
         except (psutil.NoSuchProcess, psutil.AccessDenied):
             return False
-
 
 # =============================================================================
 # CACHE STATISTICS TRACKER - Comprehensive Cache Metrics
@@ -15249,7 +15096,6 @@ class CacheStatisticsTracker:
             return 0.0
         return self._cache_misses / self._total_queries
 
-
 # =============================================================================
 # PROCESS RESTART MANAGER - Advanced Process Supervision
 # =============================================================================
@@ -15264,7 +15110,6 @@ class RestartableManagedProcess:
     max_restarts: int = 5
     port: Optional[int] = None
     exit_code: Optional[int] = None
-
 
 class ProcessRestartManager:
     """
@@ -15518,10 +15363,8 @@ class ProcessRestartManager:
             }
         return status
 
-
 # Global restart manager instance
 _restart_manager: Optional[ProcessRestartManager] = None
-
 
 def get_restart_manager() -> ProcessRestartManager:
     """Get the global process restart manager instance."""
@@ -15529,7 +15372,6 @@ def get_restart_manager() -> ProcessRestartManager:
     if _restart_manager is None:
         _restart_manager = ProcessRestartManager()
     return _restart_manager
-
 
 # =============================================================================
 # TRINITY CIRCUIT BREAKER (v100.1) - Persistent State Circuit Breaker
@@ -15540,7 +15382,6 @@ class TrinityCircuitBreakerState(Enum):
     CLOSED = "closed"      # Normal operation, requests pass through
     OPEN = "open"          # Circuit tripped, requests blocked
     HALF_OPEN = "half_open"  # Testing if service recovered
-
 
 class TrinityCircuitBreaker:
     """
@@ -15696,7 +15537,6 @@ class TrinityCircuitBreaker:
             "can_execute": self.can_execute(),
         }
 
-
 # =============================================================================
 # ASYNC RETRY UTILITY (v95.0) - Standalone Retry Function
 # =============================================================================
@@ -15793,7 +15633,6 @@ async def async_retry(
         raise last_exception
     raise RuntimeError(f"{operation_name} failed after {max_attempts} attempts")
 
-
 # =============================================================================
 # STARTUP PHASE ENUM - Phases of Supervisor Startup
 # =============================================================================
@@ -15811,7 +15650,6 @@ class StartupPhase(Enum):
     JARVIS_START = "jarvis_start"       # Full JARVIS system startup
     COMPLETE = "complete"               # Startup completed successfully
     FAILED = "failed"                   # Startup failed
-
 
 # =============================================================================
 # STABILIZED CHROME LAUNCHER - v197.4 Root Cause Fix for Code 5 Crashes
@@ -16008,7 +15846,6 @@ CDP_PORT_RANGE_START = int(os.environ.get("JARVIS_CDP_PORT_START", "9222"))
 CDP_PORT_RANGE_END = int(os.environ.get("JARVIS_CDP_PORT_END", "9232"))
 _current_cdp_port: Optional[int] = None  # Cached active CDP port
 
-
 def _is_port_available(port: int) -> bool:
     """Check if a TCP port is available for binding."""
     import socket
@@ -16019,7 +15856,6 @@ def _is_port_available(port: int) -> bool:
             return True
     except (OSError, socket.error):
         return False
-
 
 def _find_available_cdp_port(start: int = CDP_PORT_RANGE_START, end: int = CDP_PORT_RANGE_END) -> Optional[int]:
     """
@@ -16036,12 +15872,10 @@ def _find_available_cdp_port(start: int = CDP_PORT_RANGE_START, end: int = CDP_P
             return port
     return None
 
-
 def get_active_cdp_port() -> int:
     """Get the currently active CDP port (for external callers like background_actuator)."""
     global _current_cdp_port
     return _current_cdp_port or CDP_PORT_RANGE_START
-
 
 def get_chrome_stability_flags() -> List[str]:
     """
@@ -16071,7 +15905,6 @@ def get_chrome_stability_flags() -> List[str]:
         # Unknown platform, use minimal flags
         return CHROME_MINIMAL_STABILITY_FLAGS.copy()
 
-
 # Legacy alias for backward compatibility
 CHROME_STABILITY_FLAGS = get_chrome_stability_flags()
 
@@ -16094,7 +15927,6 @@ CHROME_BINARY_PATHS: Dict[str, List[str]] = {
         r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
     ],
 }
-
 
 class StabilizedChromeLauncher:
     """
@@ -16670,10 +16502,8 @@ class StabilizedChromeLauncher:
             "platform": sys.platform,  # v197.6
         }
 
-
 # Global stabilized chrome launcher instance
 _stabilized_chrome_launcher: Optional[StabilizedChromeLauncher] = None
-
 
 def get_stabilized_chrome_launcher() -> StabilizedChromeLauncher:
     """
@@ -16702,7 +16532,6 @@ def get_stabilized_chrome_launcher() -> StabilizedChromeLauncher:
         _stabilized_chrome_launcher = StabilizedChromeLauncher()
     return _stabilized_chrome_launcher
 
-
 # =============================================================================
 # INTELLIGENT CHROME INCOGNITO MANAGER - Browser Automation
 # =============================================================================
@@ -16713,19 +16542,16 @@ def get_stabilized_chrome_launcher() -> StabilizedChromeLauncher:
 _browser_opened_this_startup: bool = os.environ.get("JARVIS_BROWSER_OPENED", "").lower() == "true"
 _browser_lock: Optional[asyncio.Lock] = None
 
-
 def _mark_browser_opened():
     """Mark browser as opened both locally and in environment for cross-process coordination."""
     global _browser_opened_this_startup
     _browser_opened_this_startup = True
     os.environ["JARVIS_BROWSER_OPENED"] = "true"
 
-
 def _is_browser_opened() -> bool:
     """Check if browser was already opened (local flag OR environment variable)."""
     global _browser_opened_this_startup
     return _browser_opened_this_startup or os.environ.get("JARVIS_BROWSER_OPENED", "").lower() == "true"
-
 
 def _get_browser_lock() -> asyncio.Lock:
     """Get or create the global browser lock (lazy init for Python 3.9)."""
@@ -16733,7 +16559,6 @@ def _get_browser_lock() -> asyncio.Lock:
     if _browser_lock is None:
         _browser_lock = asyncio.Lock()
     return _browser_lock
-
 
 class IntelligentChromeIncognitoManager:
     """
@@ -17472,10 +17297,8 @@ class IntelligentChromeIncognitoManager:
             'patterns_loaded': len(self.JARVIS_URL_PATTERNS),
         }
 
-
 # Global Chrome manager singleton
 _chrome_manager: Optional[IntelligentChromeIncognitoManager] = None
-
 
 def get_chrome_manager() -> IntelligentChromeIncognitoManager:
     """Get the global Chrome incognito manager."""
@@ -17483,7 +17306,6 @@ def get_chrome_manager() -> IntelligentChromeIncognitoManager:
     if _chrome_manager is None:
         _chrome_manager = IntelligentChromeIncognitoManager()
     return _chrome_manager
-
 
 # =============================================================================
 # BROWSER CRASH MONITOR - v197.1 Intelligent Browser Crash Detection & Recovery
@@ -17504,7 +17326,6 @@ class BrowserCrashSeverity(Enum):
     HIGH = "high"         # Critical, requires intervention
     CRITICAL = "critical" # System-wide impact
 
-
 @dataclass
 class BrowserCrashEvent:
     """Record of a browser crash event."""
@@ -17518,7 +17339,6 @@ class BrowserCrashEvent:
     recovery_successful: bool = False
     error_message: str = ""
     stack_trace: Optional[str] = None
-
 
 class BrowserCrashMonitor:
     """
@@ -17910,10 +17730,8 @@ class BrowserCrashMonitor:
         
         return False
 
-
 # Global browser crash monitor singleton
 _browser_crash_monitor: Optional[BrowserCrashMonitor] = None
-
 
 def get_browser_crash_monitor() -> BrowserCrashMonitor:
     """
@@ -17943,7 +17761,6 @@ def get_browser_crash_monitor() -> BrowserCrashMonitor:
         _browser_crash_monitor = BrowserCrashMonitor()
     return _browser_crash_monitor
 
-
 # v210.0: NEW - Get the modular browser stability manager
 def get_browser_stability_manager():
     """
@@ -17967,12 +17784,10 @@ def get_browser_stability_manager():
             _logger.warning(f"[v210.0] Failed to get stability manager: {e}")
     return None
 
-
 # =============================================================================
 # NOTE: UnifiedTrinityConnector v1.0 (dead copy) removed in v241.0.
 # The active copy with Lamport clocks lives at line ~56528.
 # =============================================================================
-
 
 # =============================================================================
 # ADVANCED STARTUP BOOTSTRAPPER - Dynamic Environment Discovery
@@ -18357,10 +18172,8 @@ class AdvancedStartupBootstrapper:
             'telemetry_events': len(self._telemetry['events']),
         }
 
-
 # Global bootstrapper singleton
 _bootstrapper: Optional[AdvancedStartupBootstrapper] = None
-
 
 def get_bootstrapper() -> AdvancedStartupBootstrapper:
     """Get the global bootstrapper."""
@@ -18368,7 +18181,6 @@ def get_bootstrapper() -> AdvancedStartupBootstrapper:
     if _bootstrapper is None:
         _bootstrapper = AdvancedStartupBootstrapper()
     return _bootstrapper
-
 
 # =============================================================================
 # PROCESS INFO DATACLASS - Process Metadata
@@ -18382,7 +18194,6 @@ class ProcessInfo:
     age_seconds: float
     memory_mb: float = 0.0
     source: str = "scan"  # "pid_file", "scan", or "port_<N>"
-
 
 # =============================================================================
 # PARALLEL PROCESS CLEANER - Intelligent Process Cleanup
@@ -18916,7 +18727,6 @@ class ParallelProcessCleaner:
 
         return True
 
-
 # =============================================================================
 # ZOMBIE PROCESS INFO DATACLASS - Extended Process Metadata
 # =============================================================================
@@ -18935,7 +18745,6 @@ class ZombieProcessInfo:
     stale_connection_count: int = 0
     repo_origin: str = "unknown"  # jarvis, jarvis-prime, reactor-core
     detection_source: str = "scan"  # scan, port, registry, pid_file
-
 
 # =============================================================================
 # COMPREHENSIVE ZOMBIE CLEANUP - Cross-Repo Zombie Detection
@@ -19209,10 +19018,8 @@ class ComprehensiveZombieCleanup:
         """Get cleanup statistics."""
         return self._stats.copy()
 
-
 # Global process cleaner singleton
 _process_cleaner: Optional[ParallelProcessCleaner] = None
-
 
 def get_process_cleaner() -> ParallelProcessCleaner:
     """Get the global process cleaner."""
@@ -19221,12 +19028,10 @@ def get_process_cleaner() -> ParallelProcessCleaner:
         _process_cleaner = ParallelProcessCleaner()
     return _process_cleaner
 
-
 # =============================================================================
 # ZONE 3.7: INTELLIGENT CACHE MANAGER
 # =============================================================================
 # v110.0: Dynamic Python module and bytecode cache management
-
 
 class _Deprecated_IntelligentCacheManager:  # v239.0: superseded by IntelligentCacheManager(ResourceManagerBase) at line ~10879
     """
@@ -19584,10 +19389,8 @@ class _Deprecated_IntelligentCacheManager:  # v239.0: superseded by IntelligentC
         stats["bytes_freed_mb"] = stats["bytes_freed"] / (1024 * 1024)
         return stats
 
-
 # Global cache manager singleton
 _cache_manager: Optional[IntelligentCacheManager] = None
-
 
 def get_cache_manager() -> IntelligentCacheManager:
     """Get global Intelligent Cache Manager instance."""
@@ -19596,12 +19399,10 @@ def get_cache_manager() -> IntelligentCacheManager:
         _cache_manager = IntelligentCacheManager()
     return _cache_manager
 
-
 # =============================================================================
 # ZONE 3.8: PHYSICS-AWARE VOICE AUTHENTICATION MANAGER
 # =============================================================================
 # v109.0: Physics-based voice anti-spoofing and liveness detection
-
 
 class PhysicsAwareAuthManager:
     """
@@ -19866,12 +19667,10 @@ class PhysicsAwareAuthManager:
             "spoof_history_count": len(self._spoof_history),
         }
 
-
 # =============================================================================
 # ZONE 3.9: SPOT INSTANCE RESILIENCE HANDLER
 # =============================================================================
 # v109.0: GCP Spot VM preemption handling and automatic fallback
-
 
 class _Deprecated_SpotInstanceResilienceHandler:  # v239.0: superseded by SpotInstanceResilienceHandler(ResourceManagerBase) at line ~10638
     """
@@ -20162,12 +19961,10 @@ class _Deprecated_SpotInstanceResilienceHandler:  # v239.0: superseded by SpotIn
             "has_webhook": self.preemption_webhook is not None,
         }
 
-
 # =============================================================================
 # ZONE 3.10: INTELLIGENT MODEL MANAGER
 # =============================================================================
 # v109.0: Memory-aware model selection with auto-download from HuggingFace
-
 
 # Model catalog for available LLM models
 MODEL_CATALOG: Dict[str, Dict[str, Any]] = {
@@ -20212,7 +20009,6 @@ MODEL_CATALOG: Dict[str, Dict[str, Any]] = {
         "context_length": 8192,
     },
 }
-
 
 class IntelligentModelManager:
     """
@@ -20672,13 +20468,11 @@ class IntelligentModelManager:
             **self._stats,
         }
 
-
 # ╔═══════════════════════════════════════════════════════════════════════════════╗
 # ║                                                                               ║
 # ║   END OF ZONE 3                                                               ║
 # ║                                                                               ║
 # ╚═══════════════════════════════════════════════════════════════════════════════╝
-
 
 # ╔═══════════════════════════════════════════════════════════════════════════════╗
 # ║                                                                               ║
@@ -20698,7 +20492,6 @@ class IntelligentModelManager:
 # ║   - AdaptiveThresholdManager: NO hardcoded thresholds                         ║
 # ║                                                                               ║
 # ╚═══════════════════════════════════════════════════════════════════════════════╝
-
 
 # =============================================================================
 # INTELLIGENCE MANAGER BASE CLASS
@@ -20816,7 +20609,6 @@ class IntelligenceManagerBase(ABC):
         if len(self._observations) > self._max_observations:
             self._observations.pop(0)
 
-
 # =============================================================================
 # RAM STATE ENUM
 # =============================================================================
@@ -20827,7 +20619,6 @@ class RAMState(Enum):
     WARNING = "WARNING"
     CRITICAL = "CRITICAL"
     EMERGENCY = "EMERGENCY"
-
 
 # =============================================================================
 # ADAPTIVE THRESHOLD MANAGER
@@ -21042,7 +20833,6 @@ class AdaptiveThresholdManager:
             "observation_count": len(self._outcome_history),
             "min_observations": self.min_observations,
         }
-
 
 # =============================================================================
 # HYBRID LEARNING MODEL
@@ -21317,7 +21107,6 @@ class HybridLearningModel:
             },
         }
 
-
 # =============================================================================
 # SAI HYBRID INTEGRATION
 # =============================================================================
@@ -21385,7 +21174,6 @@ class SAIHybridIntegration:
         """Save learned model to persistent storage."""
         # This would persist to the SAI database
         pass
-
 
 # =============================================================================
 # HYBRID WORKLOAD ROUTER
@@ -22002,7 +21790,6 @@ echo "=== JARVIS GCP Instance Ready ===" | tee -a /var/log/jarvis-startup.log
             "thresholds": self.threshold_manager.get_all_thresholds(),
         }
 
-
 # =============================================================================
 # GOAL INFERENCE ENGINE
 # =============================================================================
@@ -22114,7 +21901,6 @@ class GoalInferenceEngine(IntelligenceManagerBase):
             "method": "rule_based",
             "meets_threshold": best_score >= self.confidence_threshold,
         }
-
 
 # =============================================================================
 # HYBRID INTELLIGENCE COORDINATOR
@@ -22318,7 +22104,6 @@ class HybridIntelligenceCoordinator(IntelligenceManagerBase):
             "decision_history_count": len(self._decision_history),
         }
 
-
 # =============================================================================
 # INTELLIGENCE REGISTRY
 # =============================================================================
@@ -22415,7 +22200,6 @@ class IntelligenceRegistry:
     def get_last_init_errors(self) -> Dict[str, str]:
         """Get per-manager initialization errors from the latest initialize_all call."""
         return dict(self._last_init_errors)
-
 
 class PersistentConversationMemoryAgent:
     """
@@ -23400,13 +23184,11 @@ class PersistentConversationMemoryAgent:
         tmp_file.write_text(json.dumps(snapshot, indent=2, default=str), encoding="utf-8")
         os.replace(tmp_file, self._state_file)
 
-
 # =============================================================================
 # ZONE 4.5: LEARNING GOALS DISCOVERY SYSTEM
 # =============================================================================
 # v108.0: Intelligent learning goals discovery with reactor-core integration
 # Analyzes experiences, logs, and corrections to discover what JARVIS needs to learn
-
 
 class DiscoverySource(Enum):
     """Sources of discovered learning topics."""
@@ -23417,7 +23199,6 @@ class DiscoverySource(Enum):
     UNKNOWN_TERM = "unknown_term"  # JARVIS didn't recognize a term
     TRENDING = "trending"  # Frequently mentioned topic
     MANUAL = "manual"  # Manually added topic
-
 
 @dataclass
 class DiscoveredTopic:
@@ -23474,7 +23255,6 @@ class DiscoveredTopic:
             scraped=data.get("scraped", False),
             pages_scraped=data.get("pages_scraped", 0),
         )
-
 
 class IntelligentLearningGoalsDiscovery:
     """
@@ -24175,13 +23955,11 @@ class IntelligentLearningGoalsDiscovery:
             "has_safe_scout": self._safe_scout is not None,
         }
 
-
 # =============================================================================
 # ZONE 4.8: COLLECTIVE AI INTELLIGENCE (CAI)
 # =============================================================================
 # v108.0: Emergent intelligence from all subsystems
 # Synthesizes insights across UAE, SAI, and other components
-
 
 @dataclass
 class InsightSource:
@@ -24191,7 +23969,6 @@ class InsightSource:
     confidence: float
     timestamp: float
     data: Dict[str, Any]
-
 
 @dataclass
 class CollectiveInsight:
@@ -24208,7 +23985,6 @@ class CollectiveInsight:
     aggregated_confidence: float = 0.0
     recommendations: List[str] = field(default_factory=list)
     created_at: float = field(default_factory=time.time)
-
 
 class CollectiveAI:
     """
@@ -24412,7 +24188,6 @@ class CollectiveAI:
             ),
             **self._metrics,
         }
-
 
 # =============================================================================
 # ZONE 4.9: ENTERPRISE INTEGRATION LAYER
@@ -24622,7 +24397,6 @@ class DataFlywheelManager:
             "running": self._running,
         }
 
-
 class TrainingOrchestrator:
     """
     Intelligent training orchestrator for the Reactor-Core pipeline.
@@ -24793,7 +24567,6 @@ class TrainingOrchestrator:
             "candidate_model": self._candidate_model,
             "ab_test_active": self._ab_test_active,
         }
-
 
 class TrinityHealthMonitor:
     """
@@ -25039,7 +24812,6 @@ class TrinityHealthMonitor:
             "overall_healthy": all(s["healthy"] for s in self._components.values()),
         }
 
-
 class GracefulDegradationManager(SystemService):
     """
     Resource-aware feature flag manager for graceful degradation.
@@ -25227,7 +24999,6 @@ class GracefulDegradationManager(SystemService):
 
     async def cleanup(self) -> None:
         await self.stop()
-
 
 class AGIOrchestrator:
     """
@@ -25500,7 +25271,6 @@ class AGIOrchestrator:
             "memory_size": len(self._long_term_memory),
             "stats": self._stats,
         }
-
 
 class OuroborosEngine:
     """
@@ -25905,7 +25675,6 @@ Respond in JSON format:
             "stats": self._stats,
         }
 
-
 class TrinityIPCHub:
     """
     Inter-Process Communication Hub for Trinity cross-repo coordination.
@@ -26200,7 +25969,6 @@ class TrinityIPCHub:
             "stats": self._stats,
         }
 
-
 class DistributedObservabilitySystem:
     """
     Enterprise-grade observability for the Trinity system.
@@ -26490,7 +26258,6 @@ class DistributedObservabilitySystem:
             "stats": self._stats,
         }
 
-
 class ResourceQuotaManager:
     """
     Resource quota management with ulimit protection.
@@ -26744,7 +26511,6 @@ class ResourceQuotaManager:
             "stats": self._stats,
         }
 
-
 class CrossRepoExperienceForwarder:
     """
     Forwards learning experiences to Reactor Core for training.
@@ -26943,7 +26709,6 @@ class CrossRepoExperienceForwarder:
             "stats": self._stats,
         }
 
-
 class ProcessHealthPredictor:
     """
     ML-based process health prediction using statistical analysis.
@@ -27120,7 +26885,6 @@ class ProcessHealthPredictor:
             "health_scores": self._health_scores,
             "stats": self._stats,
         }
-
 
 class SelfHealingOrchestrator:
     """
@@ -27307,7 +27071,6 @@ class SelfHealingOrchestrator:
             "recent_remediations": self._history[-5:],
             "stats": self._stats,
         }
-
 
 class DistributedStateCoordinator:
     """
@@ -27599,7 +27362,6 @@ class DistributedStateCoordinator:
             "vector_clock": self._vector_clock,
             "stats": self._stats,
         }
-
 
 class TrinityOrchestrationEngine:
     """
@@ -27969,7 +27731,6 @@ class TrinityOrchestrationEngine:
             "stats": self._stats,
         }
 
-
 class IntelligentWorkloadBalancer:
     """
     Intelligent workload distribution across JARVIS components.
@@ -28287,7 +28048,6 @@ class IntelligentWorkloadBalancer:
             "stats": self._stats,
         }
 
-
 class AdvancedCircuitBreaker:
     """
     Enterprise-grade circuit breaker with half-open state and sliding window.
@@ -28485,7 +28245,6 @@ class AdvancedCircuitBreaker:
             "time_in_state": time.time() - self._last_state_change,
             "stats": self._stats,
         }
-
 
 class CacheHierarchyManager(SystemService):
     """
@@ -28760,7 +28519,6 @@ class CacheHierarchyManager(SystemService):
             "stats": self._stats,
         }
 
-
 class TokenBucketRateLimiter(SystemService):
     """
     Token bucket rate limiter for API protection.
@@ -28927,7 +28685,6 @@ class TokenBucketRateLimiter(SystemService):
             "clients": len(self._buckets),
             "stats": self._stats,
         }
-
 
 class EventSourcingManager(SystemService):
     """
@@ -29214,7 +28971,6 @@ class EventSourcingManager(SystemService):
         self._events.clear()
         self._handlers.clear()
 
-
 class DynamicConfigurationManager:
     """
     Dynamic configuration with hot reload and validation.
@@ -29427,7 +29183,6 @@ class DynamicConfigurationManager:
             "stats": self._stats,
         }
 
-
 # =============================================================================
 # ZONE 4.10: DISTRIBUTED SYSTEMS INFRASTRUCTURE
 # =============================================================================
@@ -29439,7 +29194,6 @@ class DynamicConfigurationManager:
 # - AutoScalingController: Resource-aware automatic scaling
 # - SecretVaultManager: Secure credential storage and rotation
 # - AuditTrailRecorder: Compliance-ready audit logging
-
 
 class FencingToken:
     """
@@ -29484,7 +29238,6 @@ class FencingToken:
         token.resource_id = data.get("resource_id", "")
         token.metadata = data.get("metadata", {})
         return token
-
 
 class DistributedLockManager(SystemService):
     """
@@ -29833,7 +29586,6 @@ class DistributedLockManager(SystemService):
     async def cleanup(self) -> None:
         await self.stop()
 
-
 class ServiceEndpoint:
     """
     Represents a service endpoint in the service mesh.
@@ -29938,7 +29690,6 @@ class ServiceEndpoint:
             "metadata": self.metadata,
         }
 
-
 class RetryPolicy:
     """
     Retry policy for service mesh requests.
@@ -29996,7 +29747,6 @@ class RetryPolicy:
                     return True
 
         return False
-
 
 class ServiceMeshRouter:
     """
@@ -30408,7 +30158,6 @@ class ServiceMeshRouter:
             "stats": self._stats.copy(),
         }
 
-
 class TelemetryDataPoint:
     """Single telemetry data point."""
 
@@ -30435,7 +30184,6 @@ class TelemetryDataPoint:
             "labels": self.labels,
             "unit": self.unit,
         }
-
 
 class TraceSpan:
     """
@@ -30508,7 +30256,6 @@ class TraceSpan:
             "events": self.events,
         }
 
-
 class LogEntry:
     """Structured log entry."""
 
@@ -30539,7 +30286,6 @@ class LogEntry:
             "span_id": self.span_id,
             "attributes": self.attributes,
         }
-
 
 class ObservabilityPipeline(SystemService):
     """
@@ -31071,7 +30817,6 @@ class ObservabilityPipeline(SystemService):
             "stats": self._stats.copy(),
         }
 
-
 class TargetingRule:
     """
     Targeting rule for feature gates.
@@ -31152,7 +30897,6 @@ class TargetingRule:
             "start_time": self.start_time,
             "end_time": self.end_time,
         }
-
 
 class FeatureGate:
     """
@@ -31253,7 +30997,6 @@ class FeatureGate:
             "evaluation_count": self.evaluation_count,
             "enabled_count": self.enabled_count,
         }
-
 
 class FeatureGateManager:
     """
@@ -31549,7 +31292,6 @@ class FeatureGateManager:
             "stats": self._stats.copy(),
         }
 
-
 class ScalingDecision:
     """Represents an auto-scaling decision."""
 
@@ -31578,7 +31320,6 @@ class ScalingDecision:
             "metrics": self.metrics,
             "timestamp": self.timestamp,
         }
-
 
 class AutoScalingController:
     """
@@ -31898,7 +31639,6 @@ class AutoScalingController:
             "stats": self._stats.copy(),
         }
 
-
 class SecretEntry:
     """
     Represents a secret entry in the vault.
@@ -31963,7 +31703,6 @@ class SecretEntry:
         if include_value:
             result["value"] = self.value
         return result
-
 
 class SecretVaultManager:
     """
@@ -32250,7 +31989,6 @@ class SecretVaultManager:
             "stats": self._stats.copy(),
         }
 
-
 class AuditEvent:
     """Represents an audit event for compliance logging."""
 
@@ -32305,7 +32043,6 @@ class AuditEvent:
             f"resource={self.resource} "
             f"outcome={self.outcome}"
         )
-
 
 class AuditTrailRecorder:
     """
@@ -32621,7 +32358,6 @@ class AuditTrailRecorder:
             "stats": self._stats.copy(),
         }
 
-
 # =============================================================================
 # ZONE 4.11: WORKFLOW AND TASK ORCHESTRATION
 # =============================================================================
@@ -32634,7 +32370,6 @@ class AuditTrailRecorder:
 # - SchemaRegistry: Data validation and schema versioning
 # - APIGatewayManager: Request routing and transformation
 
-
 class WorkflowStepStatus(Enum):
     """Status of a workflow step."""
     PENDING = "pending"
@@ -32643,7 +32378,6 @@ class WorkflowStepStatus(Enum):
     FAILED = "failed"
     SKIPPED = "skipped"
     CANCELLED = "cancelled"
-
 
 class WorkflowStep:
     """
@@ -32704,7 +32438,6 @@ class WorkflowStep:
             "error": self.error,
             "metadata": self.metadata,
         }
-
 
 class WorkflowDefinition:
     """
@@ -32815,7 +32548,6 @@ class WorkflowDefinition:
             "created_at": self.created_at,
         }
 
-
 class WorkflowInstance:
     """
     Represents a running instance of a workflow.
@@ -32869,7 +32601,6 @@ class WorkflowInstance:
                 for k, v in self.definition.steps.items()
             },
         }
-
 
 class WorkflowEngine:
     """
@@ -33190,7 +32921,6 @@ class WorkflowEngine:
             "stats": self._stats.copy(),
         }
 
-
 class TaskPriority(Enum):
     """Task priority levels."""
     CRITICAL = 0
@@ -33198,7 +32928,6 @@ class TaskPriority(Enum):
     NORMAL = 2
     LOW = 3
     BACKGROUND = 4
-
 
 class QueuedTask:
     """
@@ -33264,7 +32993,6 @@ class QueuedTask:
             "error": self.error,
             "worker_id": self.worker_id,
         }
-
 
 class TaskQueueManager(SystemService):
     """
@@ -33614,7 +33342,6 @@ class TaskQueueManager(SystemService):
     async def cleanup(self) -> None:
         await self.stop()
 
-
 class StateTransition:
     """Represents a state machine transition."""
 
@@ -33631,7 +33358,6 @@ class StateTransition:
         self.event = event
         self.condition = condition
         self.action = action
-
 
 class StateMachineDefinition:
     """
@@ -33719,7 +33445,6 @@ class StateMachineDefinition:
             ],
         }
 
-
 class StateMachineInstance:
     """Represents a running state machine instance."""
 
@@ -33754,7 +33479,6 @@ class StateMachineInstance:
             "last_transition_at": self.last_transition_at,
             "transition_count": len(self.transition_history),
         }
-
 
 class StateMachineManager:
     """
@@ -33921,7 +33645,6 @@ class StateMachineManager:
             "stats": self._stats.copy(),
         }
 
-
 class BatchItem:
     """Represents an item in a batch operation."""
 
@@ -33936,7 +33659,6 @@ class BatchItem:
         self.result: Optional[Any] = None
         self.error: Optional[str] = None
         self.processed_at: Optional[float] = None
-
 
 class BatchProcessor:
     """
@@ -34115,7 +33837,6 @@ class BatchProcessor:
             "stats": self._stats.copy(),
         }
 
-
 class NotificationChannel(Enum):
     """Notification channels."""
     LOG = "log"
@@ -34125,14 +33846,12 @@ class NotificationChannel(Enum):
     WEBSOCKET = "websocket"
     VOICE = "voice"
 
-
 class NotificationPriority(Enum):
     """Notification priority levels."""
     CRITICAL = 0
     HIGH = 1
     NORMAL = 2
     LOW = 3
-
 
 class Notification:
     """Represents a notification."""
@@ -34172,7 +33891,6 @@ class Notification:
             "delivered_channels": self.delivered_channels,
             "failed_channels": self.failed_channels,
         }
-
 
 class NotificationDispatcher:
     """
@@ -34337,7 +34055,6 @@ class NotificationDispatcher:
             "stats": self._stats.copy(),
         }
 
-
 class SchemaVersion:
     """Represents a schema version."""
 
@@ -34352,7 +34069,6 @@ class SchemaVersion:
         self.schema = schema
         self.created_at = created_at
         self.description = description
-
 
 class SchemaRegistry:
     """
@@ -34539,7 +34255,6 @@ class SchemaRegistry:
             "stats": self._stats.copy(),
         }
 
-
 class APIRoute:
     """Represents an API route in the gateway."""
 
@@ -34603,7 +34318,6 @@ class APIRoute:
             "error_count": self.error_count,
             "avg_latency_ms": self.total_latency_ms / max(1, self.request_count),
         }
-
 
 class APIGatewayManager:
     """
@@ -34859,7 +34573,6 @@ class APIGatewayManager:
             "stats": self._stats.copy(),
         }
 
-
 # =============================================================================
 # ZONE 4.12: DEPLOYMENT AND INFRASTRUCTURE ORCHESTRATION
 # =============================================================================
@@ -34871,7 +34584,6 @@ class APIGatewayManager:
 # - CanaryReleaseManager: Progressive canary deployments
 # - RollbackCoordinator: Automated rollback with checkpoints
 # - InfrastructureProvisionerManager: Infrastructure provisioning
-
 
 class PooledConnection:
     """Represents a connection in the pool."""
@@ -34914,7 +34626,6 @@ class PooledConnection:
     def age_seconds(self) -> float:
         """Calculate connection age."""
         return time.time() - self.created_at
-
 
 class ConnectionPool:
     """
@@ -35170,7 +34881,6 @@ class ConnectionPool:
             "stats": self._stats.copy(),
         }
 
-
 class ConnectionPoolManager:
     """
     Manages multiple connection pools.
@@ -35265,13 +34975,11 @@ class ConnectionPoolManager:
             "stats": self._stats.copy(),
         }
 
-
 class HealthCheckType(Enum):
     """Types of health checks."""
     LIVENESS = "liveness"
     READINESS = "readiness"
     STARTUP = "startup"
-
 
 class HealthCheckResult:
     """Result of a health check."""
@@ -35305,7 +35013,6 @@ class HealthCheckResult:
             "timestamp": self.timestamp,
         }
 
-
 class HealthCheck:
     """Represents a health check definition."""
 
@@ -35332,7 +35039,6 @@ class HealthCheck:
         self.consecutive_successes = 0
         self.last_result: Optional[HealthCheckResult] = None
         self.healthy = True
-
 
 class HealthCheckOrchestrator:
     """
@@ -35579,7 +35285,6 @@ class HealthCheckOrchestrator:
             "stats": self._stats.copy(),
         }
 
-
 class DeploymentPhase(Enum):
     """Deployment phases."""
     PENDING = "pending"
@@ -35589,7 +35294,6 @@ class DeploymentPhase(Enum):
     COMPLETED = "completed"
     FAILED = "failed"
     ROLLED_BACK = "rolled_back"
-
 
 class Deployment:
     """Represents a deployment."""
@@ -35658,7 +35362,6 @@ class Deployment:
             "rollback_available": self.rollback_available,
             "phase_history": self.phase_history,
         }
-
 
 class DeploymentCoordinator:
     """
@@ -35932,7 +35635,6 @@ class DeploymentCoordinator:
             "stats": self._stats.copy(),
         }
 
-
 class BlueGreenState:
     """State for blue-green deployment."""
 
@@ -35945,7 +35647,6 @@ class BlueGreenState:
         self.blue_version: Optional[str] = None
         self.green_version: Optional[str] = None
         self.last_switch_at: Optional[float] = None
-
 
 class BlueGreenDeployer:
     """
@@ -36116,7 +35817,6 @@ class BlueGreenDeployer:
             "stats": self._stats.copy(),
         }
 
-
 class CanaryReleaseState:
     """State for canary release."""
 
@@ -36140,7 +35840,6 @@ class CanaryReleaseState:
         self.canary_errors = 0
         self.stable_requests = 0
         self.stable_errors = 0
-
 
 class CanaryReleaseManager:
     """
@@ -36386,7 +36085,6 @@ class CanaryReleaseManager:
             "stats": self._stats.copy(),
         }
 
-
 class RollbackCheckpoint:
     """Represents a rollback checkpoint."""
 
@@ -36413,7 +36111,6 @@ class RollbackCheckpoint:
             "created_at": self.created_at,
             "metadata": self.metadata,
         }
-
 
 class RollbackCoordinator:
     """
@@ -36603,7 +36300,6 @@ class RollbackCoordinator:
             "stats": self._stats.copy(),
         }
 
-
 class InfrastructureResource:
     """Represents an infrastructure resource."""
 
@@ -36638,7 +36334,6 @@ class InfrastructureResource:
             "error": self.error,
         }
 
-
 class InfrastructureStack:
     """Represents an infrastructure stack."""
 
@@ -36672,7 +36367,6 @@ class InfrastructureStack:
                 for rid, r in self.resources.items()
             },
         }
-
 
 class InfrastructureProvisionerManager:
     """
@@ -36841,7 +36535,6 @@ class InfrastructureProvisionerManager:
             "stats": self._stats.copy(),
         }
 
-
 # =============================================================================
 # ZONE 4.13: DATA PIPELINE AND MESSAGING INFRASTRUCTURE
 # =============================================================================
@@ -36853,7 +36546,6 @@ class InfrastructureProvisionerManager:
 # - WebhookDispatcher: Outgoing webhook management
 # - CacheInvalidationCoordinator: Distributed cache invalidation
 # - LoadSheddingController: Graceful degradation under load
-
 
 class PipelineStage:
     """Represents a stage in a data pipeline."""
@@ -36884,7 +36576,6 @@ class PipelineStage:
         if self.items_processed == 0:
             return 0.0
         return (self.total_processing_time / self.items_processed) * 1000
-
 
 class DataPipeline:
     """Represents a data pipeline definition."""
@@ -36936,7 +36627,6 @@ class DataPipeline:
             "created_at": self.created_at,
         }
 
-
 class PipelineRun:
     """Represents a pipeline execution run."""
 
@@ -36954,7 +36644,6 @@ class PipelineRun:
         self.items_output = 0
         self.current_stage: Optional[str] = None
         self.errors: List[Dict[str, Any]] = []
-
 
 class DataPipelineManager:
     """
@@ -37124,7 +36813,6 @@ class DataPipelineManager:
             "stats": self._stats.copy(),
         }
 
-
 class StreamEvent:
     """Represents an event in a stream."""
 
@@ -37154,7 +36842,6 @@ class StreamEvent:
             "metadata": self.metadata,
         }
 
-
 class StreamConsumerGroup:
     """Consumer group for stream processing."""
 
@@ -37177,7 +36864,6 @@ class StreamConsumerGroup:
     def remove_consumer(self, consumer_id: str) -> None:
         """Remove a consumer from the group."""
         self.consumers.discard(consumer_id)
-
 
 class StreamProcessor:
     """
@@ -37416,7 +37102,6 @@ class StreamProcessor:
             "stats": self._stats.copy(),
         }
 
-
 class Topic:
     """Represents a pub/sub topic."""
 
@@ -37430,7 +37115,6 @@ class Topic:
         self.created_at = time.time()
         self.subscribers: Dict[str, Callable[[Dict[str, Any]], Awaitable[None]]] = {}
         self.message_count = 0
-
 
 class MessageBroker(SystemService):
     """
@@ -37622,7 +37306,6 @@ class MessageBroker(SystemService):
         self._topics.clear()
         self._dead_letter.clear()
 
-
 class ScheduledJob:
     """Represents a scheduled job."""
 
@@ -37646,7 +37329,6 @@ class ScheduledJob:
         self.run_count = 0
         self.failure_count = 0
         self.last_error: Optional[str] = None
-
 
 class CronScheduler:
     """
@@ -37877,7 +37559,6 @@ class CronScheduler:
             "stats": self._stats.copy(),
         }
 
-
 class Webhook:
     """Represents a webhook endpoint."""
 
@@ -37901,7 +37582,6 @@ class Webhook:
         self.failure_count = 0
         self.last_delivery_at: Optional[float] = None
         self.last_failure_at: Optional[float] = None
-
 
 class WebhookDispatcher:
     """
@@ -38066,7 +37746,6 @@ class WebhookDispatcher:
             "stats": self._stats.copy(),
         }
 
-
 class CacheRegion:
     """Represents a cache region for invalidation coordination."""
 
@@ -38080,7 +37759,6 @@ class CacheRegion:
         self.keys: Set[str] = set()
         self.last_invalidation_at: Optional[float] = None
         self.invalidation_count = 0
-
 
 class CacheInvalidationCoordinator:
     """
@@ -38266,7 +37944,6 @@ class CacheInvalidationCoordinator:
             "stats": self._stats.copy(),
         }
 
-
 class LoadSheddingPolicy:
     """Load shedding policy configuration."""
 
@@ -38281,7 +37958,6 @@ class LoadSheddingPolicy:
         self.threshold = threshold
         self.action = action
         self.priority_threshold = priority_threshold
-
 
 class LoadSheddingController:
     """
@@ -38463,7 +38139,6 @@ class LoadSheddingController:
             "requests_degraded": self._requests_degraded,
             "stats": self._stats.copy(),
         }
-
 
 # ╔═══════════════════════════════════════════════════════════════════════════════╗
 # ║                                                                               ║
@@ -38672,7 +38347,6 @@ async def _test_zones_0_through_4():
     logger.print_startup_summary()
     TerminalUI.print_success("Zones 0-4 validation complete!")
 
-
 # =============================================================================
 # ZONE 4.14: ADVANCED SECURITY AND COMPLIANCE INFRASTRUCTURE
 # =============================================================================
@@ -38686,7 +38360,6 @@ async def _test_zones_0_through_4():
 # - IncidentResponseCoordinator: Handle security incidents
 # - ThreatIntelligenceManager: Integrate threat intelligence feeds
 # =============================================================================
-
 
 class SecurityPolicyViolation(Exception):
     """Exception raised when a security policy is violated."""
@@ -38703,7 +38376,6 @@ class SecurityPolicyViolation(Exception):
         self.severity = severity
         self.details = details or {}
         self.timestamp = datetime.now()
-
 
 @dataclass
 class SecurityPolicy:
@@ -38732,7 +38404,6 @@ class SecurityPolicy:
     updated_at: datetime = field(default_factory=datetime.now)
     metadata: Dict[str, Any] = field(default_factory=dict)
 
-
 @dataclass
 class PolicyEvaluationResult:
     """Result of evaluating a security policy."""
@@ -38742,7 +38413,6 @@ class PolicyEvaluationResult:
     enforcement_action: str
     evaluated_at: datetime = field(default_factory=datetime.now)
     context: Dict[str, Any] = field(default_factory=dict)
-
 
 class SecurityPolicyEngine:
     """
@@ -39117,7 +38787,6 @@ class SecurityPolicyEngine:
         """Get all registered policies."""
         return list(self._policies.values())
 
-
 @dataclass
 class ComplianceRequirement:
     """
@@ -39142,7 +38811,6 @@ class ComplianceRequirement:
     responsible_role: str = "security_team"
     metadata: Dict[str, Any] = field(default_factory=dict)
 
-
 @dataclass
 class ComplianceStatus:
     """Status of a compliance requirement."""
@@ -39153,7 +38821,6 @@ class ComplianceStatus:
     last_assessed: datetime
     next_assessment: datetime
     assessor: str = "automated"
-
 
 class ComplianceAuditor:
     """
@@ -39456,7 +39123,6 @@ class ComplianceAuditor:
         report["summary"]["by_status"] = status_counts
         return report
 
-
 @dataclass
 class DataClassification:
     """
@@ -39478,7 +39144,6 @@ class DataClassification:
     access_restrictions: List[str] = field(default_factory=list)
     metadata: Dict[str, Any] = field(default_factory=dict)
 
-
 @dataclass
 class ClassifiedData:
     """Represents classified data with its metadata."""
@@ -39490,7 +39155,6 @@ class ClassifiedData:
     created_at: datetime = field(default_factory=datetime.now)
     last_accessed: datetime = field(default_factory=datetime.now)
     access_count: int = 0
-
 
 class DataClassificationManager:
     """
@@ -39746,7 +39410,6 @@ class DataClassificationManager:
             ):
                 child.classification = parent.classification
 
-
 @dataclass
 class AccessPermission:
     """Defines an access permission."""
@@ -39754,7 +39417,6 @@ class AccessPermission:
     resource_type: str
     actions: List[str]  # read, write, delete, admin
     conditions: Dict[str, Any] = field(default_factory=dict)
-
 
 @dataclass
 class AccessRole:
@@ -39765,7 +39427,6 @@ class AccessRole:
     permissions: List[AccessPermission]
     inherits_from: List[str] = field(default_factory=list)
     metadata: Dict[str, Any] = field(default_factory=dict)
-
 
 @dataclass
 class AccessGrant:
@@ -39779,7 +39440,6 @@ class AccessGrant:
     expires_at: Optional[datetime] = None
     granted_by: str = "system"
     conditions: Dict[str, Any] = field(default_factory=dict)
-
 
 class AccessControlManager:
     """
@@ -40159,7 +39819,6 @@ class AccessControlManager:
 
         return entries[-limit:]
 
-
 @dataclass
 class EncryptionKey:
     """Represents an encryption key."""
@@ -40172,7 +39831,6 @@ class EncryptionKey:
     status: str = "active"  # active, rotated, revoked
     purpose: str = "general"  # general, data, auth, signing
     metadata: Dict[str, Any] = field(default_factory=dict)
-
 
 class EncryptionServiceManager:
     """
@@ -40392,7 +40050,6 @@ class EncryptionServiceManager:
 
         return needs_rotation
 
-
 @dataclass
 class AnomalyScore:
     """Score for an anomaly detection."""
@@ -40402,7 +40059,6 @@ class AnomalyScore:
     threshold: float
     is_anomaly: bool
     timestamp: datetime = field(default_factory=datetime.now)
-
 
 class AnomalyDetector:
     """
@@ -40615,7 +40271,6 @@ class AnomalyDetector:
 
         return entries[-limit:]
 
-
 @dataclass
 class SecurityIncident:
     """Represents a security incident."""
@@ -40632,7 +40287,6 @@ class SecurityIncident:
     evidence: List[Dict[str, Any]] = field(default_factory=list)
     remediation_steps: List[str] = field(default_factory=list)
     metadata: Dict[str, Any] = field(default_factory=dict)
-
 
 class IncidentResponseCoordinator:
     """
@@ -41007,7 +40661,6 @@ class IncidentResponseCoordinator:
                     return (resolve_time - incident.detected_at).total_seconds() / 60
         return None
 
-
 @dataclass
 class ThreatIndicator:
     """Represents a threat indicator (IOC)."""
@@ -41022,7 +40675,6 @@ class ThreatIndicator:
     last_seen: datetime = field(default_factory=datetime.now)
     tags: List[str] = field(default_factory=list)
     metadata: Dict[str, Any] = field(default_factory=dict)
-
 
 class ThreatIntelligenceManager:
     """
@@ -41281,7 +40933,6 @@ class ThreatIntelligenceManager:
 
         return rules
 
-
 # =============================================================================
 # ZONE 4.15: INTEGRATION AND API MANAGEMENT
 # =============================================================================
@@ -41295,7 +40946,6 @@ class ThreatIntelligenceManager:
 # - IntegrationBusManager: Message-based integration
 # - APIVersionManager: API versioning and deprecation
 # =============================================================================
-
 
 @dataclass
 class ServiceRegistration:
@@ -41313,7 +40963,6 @@ class ServiceRegistration:
     status: str = "healthy"  # healthy, unhealthy, unknown
     tags: List[str] = field(default_factory=list)
 
-
 @dataclass
 class ServiceQuery:
     """Query parameters for service discovery."""
@@ -41323,7 +40972,6 @@ class ServiceQuery:
     tags: Optional[List[str]] = None
     status: Optional[str] = None
     metadata_filters: Optional[Dict[str, Any]] = None
-
 
 class ServiceRegistryManager:
     """
@@ -41577,7 +41225,6 @@ class ServiceRegistryManager:
             "by_status": by_status
         }
 
-
 @dataclass
 class ConfigurationEntry:
     """A configuration entry."""
@@ -41590,7 +41237,6 @@ class ConfigurationEntry:
     updated_at: datetime = field(default_factory=datetime.now)
     metadata: Dict[str, Any] = field(default_factory=dict)
 
-
 @dataclass
 class ConfigurationChangeEvent:
     """Event for configuration changes."""
@@ -41600,7 +41246,6 @@ class ConfigurationChangeEvent:
     source: str
     changed_at: datetime = field(default_factory=datetime.now)
     changed_by: str = "system"
-
 
 class ConfigurationManager:
     """
@@ -41863,7 +41508,6 @@ class ConfigurationManager:
             history = [e for e in history if e.key == key]
         return history[-limit:]
 
-
 @dataclass
 class DependencyDefinition:
     """Definition of a dependency."""
@@ -41872,7 +41516,6 @@ class DependencyDefinition:
     scope: str = "singleton"  # singleton, transient, scoped
     dependencies: List[str] = field(default_factory=list)
     metadata: Dict[str, Any] = field(default_factory=dict)
-
 
 class DependencyContainer:
     """
@@ -42027,7 +41670,6 @@ class DependencyContainer:
         """Get list of registered dependency names."""
         return list(self._definitions.keys())
 
-
 @dataclass
 class Event:
     """Base event class for event sourcing."""
@@ -42040,7 +41682,6 @@ class Event:
     timestamp: datetime = field(default_factory=datetime.now)
     version: int = 1
 
-
 @dataclass
 class EventStream:
     """A stream of events for an aggregate."""
@@ -42048,7 +41689,6 @@ class EventStream:
     aggregate_type: str
     events: List[Event]
     version: int = 0
-
 
 class _Deprecated_EventSourcingManager:  # v239.0: superseded by EventSourcingManager at line ~27325
     """
@@ -42283,7 +41923,6 @@ class _Deprecated_EventSourcingManager:  # v239.0: superseded by EventSourcingMa
             await handler(event)
         return len(events)
 
-
 @dataclass
 class GraphNode:
     """A node in the graph."""
@@ -42292,7 +41931,6 @@ class GraphNode:
     properties: Dict[str, Any]
     created_at: datetime = field(default_factory=datetime.now)
     updated_at: datetime = field(default_factory=datetime.now)
-
 
 @dataclass
 class GraphEdge:
@@ -42303,7 +41941,6 @@ class GraphEdge:
     target_id: str
     properties: Dict[str, Any]
     created_at: datetime = field(default_factory=datetime.now)
-
 
 class GraphDatabaseManager:
     """
@@ -42625,7 +42262,6 @@ class GraphDatabaseManager:
             "edge_types": list(set(e.edge_type for e in self._edges.values()))
         }
 
-
 @dataclass
 class SearchDocument:
     """A document in the search index."""
@@ -42635,7 +42271,6 @@ class SearchDocument:
     metadata: Dict[str, Any] = field(default_factory=dict)
     indexed_at: datetime = field(default_factory=datetime.now)
 
-
 @dataclass
 class SearchResult:
     """A search result."""
@@ -42643,7 +42278,6 @@ class SearchResult:
     score: float
     highlights: List[str]
     document: SearchDocument
-
 
 class SearchEngineManager:
     """
@@ -42899,7 +42533,6 @@ class SearchEngineManager:
             ) / max(1, len(self._documents))
         }
 
-
 @dataclass
 class IntegrationMessage:
     """A message on the integration bus."""
@@ -42912,7 +42545,6 @@ class IntegrationMessage:
     timestamp: datetime = field(default_factory=datetime.now)
     correlation_id: Optional[str] = None
     reply_to: Optional[str] = None
-
 
 class IntegrationBusManager:
     """
@@ -43146,7 +42778,6 @@ class IntegrationBusManager:
         """Get dead letter messages."""
         return list(self._dead_letter)[-limit:]
 
-
 @dataclass
 class APIVersion:
     """An API version definition."""
@@ -43158,7 +42789,6 @@ class APIVersion:
     sunset_at: Optional[datetime] = None
     migration_guide: Optional[str] = None
     changes_from_previous: List[str] = field(default_factory=list)
-
 
 class APIVersionManager:
     """
@@ -43352,7 +42982,6 @@ class APIVersionManager:
             )
         }
 
-
 # =============================================================================
 # ZONE 4.16: RESOURCE MANAGEMENT AND MULTI-TENANCY
 # =============================================================================
@@ -43367,7 +42996,6 @@ class APIVersionManager:
 # - CostAccountingManager: Resource usage cost tracking
 # =============================================================================
 
-
 @dataclass
 class ResourceQuota:
     """Resource quota definition."""
@@ -43380,7 +43008,6 @@ class ResourceQuota:
     scope_id: Optional[str] = None
     metadata: Dict[str, Any] = field(default_factory=dict)
 
-
 @dataclass
 class ResourceUsage:
     """Current resource usage."""
@@ -43390,7 +43017,6 @@ class ResourceUsage:
     percentage: float
     last_updated: datetime = field(default_factory=datetime.now)
     history: List[Tuple[datetime, float]] = field(default_factory=list)
-
 
 class ResourceQuotaManager:
     """
@@ -43670,7 +43296,6 @@ class ResourceQuotaManager:
         forecast = usage.current_usage + (rate_per_second * hours_ahead * 3600)
         return max(0, forecast)
 
-
 @dataclass
 class Tenant:
     """A tenant in the multi-tenant system."""
@@ -43685,7 +43310,6 @@ class Tenant:
     status: str = "active"  # active, suspended, deleted
     metadata: Dict[str, Any] = field(default_factory=dict)
 
-
 @dataclass
 class TenantContext:
     """Context for the current tenant."""
@@ -43693,7 +43317,6 @@ class TenantContext:
     user_id: Optional[str] = None
     session_id: Optional[str] = None
     request_id: Optional[str] = None
-
 
 class TenantManager:
     """
@@ -43962,7 +43585,6 @@ class TenantManager:
 
         return tenants
 
-
 @dataclass
 class RateLimitRule:
     """A rate limiting rule."""
@@ -43974,7 +43596,6 @@ class RateLimitRule:
     burst_limit: Optional[int] = None
     metadata: Dict[str, Any] = field(default_factory=dict)
 
-
 @dataclass
 class RateLimitState:
     """Current state of rate limiting for a key."""
@@ -43983,7 +43604,6 @@ class RateLimitState:
     tokens: float
     last_update: datetime
     request_count: int = 0
-
 
 class RateLimiterManager:
     """
@@ -44235,7 +43855,6 @@ class RateLimiterManager:
             "algorithm": self._algorithm
         }
 
-
 @dataclass
 class CoalescedRequest:
     """A coalesced request waiting for result."""
@@ -44243,7 +43862,6 @@ class CoalescedRequest:
     key: str
     future: asyncio.Future
     created_at: datetime = field(default_factory=datetime.now)
-
 
 class RequestCoalescer:
     """
@@ -44389,7 +44007,6 @@ class RequestCoalescer:
             ) * 100
         }
 
-
 @dataclass
 class BackgroundJob:
     """A background job definition."""
@@ -44408,7 +44025,6 @@ class BackgroundJob:
     result: Optional[Any] = None
     error: Optional[str] = None
     attempts: int = 0
-
 
 class BackgroundJobManager:
     """
@@ -44644,7 +44260,6 @@ class BackgroundJobManager:
         await asyncio.gather(*self._workers, return_exceptions=True)
         self._logger.info("Background job manager shutdown complete")
 
-
 @dataclass
 class RetryPolicyDef:
     """Retry policy configuration (BPM-style, distinct from ServiceMesh RetryPolicy)."""
@@ -44656,7 +44271,6 @@ class RetryPolicyDef:
     jitter: bool = True
     retryable_exceptions: List[type] = field(default_factory=list)
     non_retryable_exceptions: List[type] = field(default_factory=list)
-
 
 class RetryPolicyManager:
     """
@@ -44810,7 +44424,6 @@ class RetryPolicyManager:
             return self._metrics.get(policy_id, {})
         return dict(self._metrics)
 
-
 @dataclass
 class PooledResource:
     """A resource in the pool."""
@@ -44820,7 +44433,6 @@ class PooledResource:
     last_used: datetime = field(default_factory=datetime.now)
     use_count: int = 0
     healthy: bool = True
-
 
 class ResourcePoolManager:
     """
@@ -45032,7 +44644,6 @@ class ResourcePoolManager:
 
         self._logger.info(f"Resource pool '{self.name}' shutdown complete")
 
-
 @dataclass
 class CostEntry:
     """A cost accounting entry."""
@@ -45045,7 +44656,6 @@ class CostEntry:
     user_id: Optional[str]
     timestamp: datetime = field(default_factory=datetime.now)
     metadata: Dict[str, Any] = field(default_factory=dict)
-
 
 class CostAccountingManager:
     """
@@ -45251,7 +44861,6 @@ class CostAccountingManager:
             "budget_usage_percent": round((total / budget) * 100, 2) if budget != float("inf") else None
         }
 
-
 # =============================================================================
 # ZONE 4.17: MONITORING, TESTING, AND RULES ENGINE
 # =============================================================================
@@ -45265,7 +44874,6 @@ class CostAccountingManager:
 # - TemplateEngine: Dynamic template rendering
 # - ReportGenerator: Dynamic report generation
 # =============================================================================
-
 
 @dataclass
 class AlertRule:
@@ -45285,7 +44893,6 @@ class AlertRule:
     tags: List[str] = field(default_factory=list)
     metadata: Dict[str, Any] = field(default_factory=dict)
 
-
 @dataclass
 class Alert:
     """An active or resolved alert."""
@@ -45301,7 +44908,6 @@ class Alert:
     status: str = "active"  # active, acknowledged, resolved
     acknowledged_by: Optional[str] = None
     metadata: Dict[str, Any] = field(default_factory=dict)
-
 
 class AlertingManager:
     """
@@ -45582,7 +45188,6 @@ class AlertingManager:
             "history_size": len(self._alert_history)
         }
 
-
 @dataclass
 class ProfileEntry:
     """A profiling entry."""
@@ -45595,7 +45200,6 @@ class ProfileEntry:
     memory_before: int = 0
     memory_after: int = 0
     metadata: Dict[str, Any] = field(default_factory=dict)
-
 
 class PerformanceProfiler:
     """
@@ -45763,7 +45367,6 @@ class PerformanceProfiler:
         """Set sampling rate (0.0 to 1.0)."""
         self._sample_rate = max(0.0, min(1.0, rate))
 
-
 @dataclass
 class Experiment:
     """An A/B test experiment."""
@@ -45780,7 +45383,6 @@ class Experiment:
     current_sample_size: int = 0
     metadata: Dict[str, Any] = field(default_factory=dict)
 
-
 @dataclass
 class ExperimentAssignment:
     """Assignment of a user to an experiment variant."""
@@ -45788,7 +45390,6 @@ class ExperimentAssignment:
     experiment_id: str
     variant: str
     assigned_at: datetime = field(default_factory=datetime.now)
-
 
 class ABTestingFramework:
     """
@@ -46066,7 +45667,6 @@ class ABTestingFramework:
         experiment.end_date = datetime.now()
         return True
 
-
 @dataclass
 class FeatureFlag:
     """A feature flag definition."""
@@ -46081,7 +45681,6 @@ class FeatureFlag:
     created_at: datetime = field(default_factory=datetime.now)
     updated_at: datetime = field(default_factory=datetime.now)
     metadata: Dict[str, Any] = field(default_factory=dict)
-
 
 class FeatureFlagManager:
     """
@@ -46298,7 +45897,6 @@ class FeatureFlagManager:
         """Get all feature flags."""
         return list(self._flags.values())
 
-
 @dataclass
 class Rule:
     """A business rule definition."""
@@ -46312,7 +45910,6 @@ class Rule:
     stop_on_match: bool = True
     metadata: Dict[str, Any] = field(default_factory=dict)
 
-
 @dataclass
 class RuleResult:
     """Result of rule evaluation."""
@@ -46321,7 +45918,6 @@ class RuleResult:
     actions_executed: List[str]
     data_modified: Dict[str, Any]
     execution_time_ms: float
-
 
 class RulesEngine:
     """
@@ -46537,7 +46133,6 @@ class RulesEngine:
                 return None
         return current
 
-
 @dataclass
 class ValidationRule:
     """A data validation rule."""
@@ -46545,7 +46140,6 @@ class ValidationRule:
     rule_type: str  # required, type, min, max, pattern, custom, etc.
     value: Any
     message: str
-
 
 @dataclass
 class ValidationError:
@@ -46555,14 +46149,12 @@ class ValidationError:
     message: str
     actual_value: Any
 
-
 @dataclass
 class ValidationResult:
     """Result of data validation."""
     valid: bool
     errors: List[ValidationError]
     validated_data: Dict[str, Any]
-
 
 class DataValidationManager:
     """
@@ -46770,7 +46362,6 @@ class DataValidationManager:
                 return None
         return current
 
-
 @dataclass
 class Template:
     """A template definition."""
@@ -46781,7 +46372,6 @@ class Template:
     created_at: datetime = field(default_factory=datetime.now)
     updated_at: datetime = field(default_factory=datetime.now)
     metadata: Dict[str, Any] = field(default_factory=dict)
-
 
 class TemplateEngine:
     """
@@ -46982,7 +46572,6 @@ class TemplateEngine:
             # Clean up temporary template
             self._templates.pop(temp_id, None)
 
-
 @dataclass
 class ReportSection:
     """A section in a report."""
@@ -46990,7 +46579,6 @@ class ReportSection:
     content: str
     data: Dict[str, Any] = field(default_factory=dict)
     charts: List[Dict[str, Any]] = field(default_factory=list)
-
 
 @dataclass
 class Report:
@@ -47001,7 +46589,6 @@ class Report:
     sections: List[ReportSection]
     summary: str
     metadata: Dict[str, Any]
-
 
 class ReportGenerator:
     """
@@ -47268,7 +46855,6 @@ class ReportGenerator:
 
         return None
 
-
 # =============================================================================
 # ZONE 4.18: PLUGIN SYSTEM AND EXTENDED SERVICES
 # =============================================================================
@@ -47282,7 +46868,6 @@ class ReportGenerator:
 # - CalendarService: Date/time and scheduling utilities
 # - CommandPatternManager: Command pattern implementation
 # =============================================================================
-
 
 @dataclass
 class Plugin:
@@ -47300,7 +46885,6 @@ class Plugin:
     metadata: Dict[str, Any] = field(default_factory=dict)
     hooks: Dict[str, List[Callable]] = field(default_factory=dict)
 
-
 @dataclass
 class PluginEvent:
     """An event in the plugin system."""
@@ -47308,7 +46892,6 @@ class PluginEvent:
     plugin_id: str
     data: Dict[str, Any]
     timestamp: datetime = field(default_factory=datetime.now)
-
 
 class PluginManager:
     """
@@ -47556,7 +47139,6 @@ class PluginManager:
             "event_log_size": len(self._event_log)
         }
 
-
 @dataclass
 class LocaleData:
     """Locale-specific data."""
@@ -47570,7 +47152,6 @@ class LocaleData:
     number_format: Dict[str, Any] = field(default_factory=dict)
     currency_code: str = "USD"
     currency_symbol: str = "$"
-
 
 class LocalizationManager:
     """
@@ -47830,7 +47411,6 @@ class LocalizationManager:
             return {locale: self._missing_translations.get(locale, set())}
         return dict(self._missing_translations)
 
-
 @dataclass
 class AuditEntry:
     """An audit trail entry."""
@@ -47846,7 +47426,6 @@ class AuditEntry:
     ip_address: Optional[str] = None
     user_agent: Optional[str] = None
     session_id: Optional[str] = None
-
 
 class AuditTrailManager:
     """
@@ -48089,7 +47668,6 @@ class AuditTrailManager:
             "top_actors": sorted(actor_counts.items(), key=lambda x: x[1], reverse=True)[:10]
         }
 
-
 @dataclass
 class NetworkEndpoint:
     """A network endpoint definition."""
@@ -48102,7 +47680,6 @@ class NetworkEndpoint:
     last_check: datetime = field(default_factory=datetime.now)
     response_time_ms: float = 0
     metadata: Dict[str, Any] = field(default_factory=dict)
-
 
 class NetworkManager:
     """
@@ -48282,7 +47859,6 @@ class NetworkManager:
         """Get all healthy endpoints."""
         return [e for e in self._endpoints.values() if e.healthy]
 
-
 @dataclass
 class FileMetadata:
     """Metadata for a file."""
@@ -48295,7 +47871,6 @@ class FileMetadata:
     is_directory: bool
     permissions: str
     checksum: Optional[str] = None
-
 
 class FileSystemManager:
     """
@@ -48572,7 +48147,6 @@ class FileSystemManager:
             except Exception as e:
                 self._logger.error(f"Watcher callback error: {e}")
 
-
 @dataclass
 class ExternalService:
     """An external service definition."""
@@ -48588,7 +48162,6 @@ class ExternalService:
     last_request: Optional[datetime] = None
     request_count: int = 0
     error_count: int = 0
-
 
 class ExternalServiceRegistry:
     """
@@ -48894,7 +48467,6 @@ class ExternalServiceRegistry:
             "last_request": service.last_request.isoformat() if service.last_request else None
         }
 
-
 @dataclass
 class ScheduledEvent:
     """A scheduled calendar event."""
@@ -48904,7 +48476,6 @@ class ScheduledEvent:
     end_time: datetime
     recurrence: Optional[str] = None  # daily, weekly, monthly, yearly
     metadata: Dict[str, Any] = field(default_factory=dict)
-
 
 class CalendarService:
     """
@@ -49147,7 +48718,6 @@ class CalendarService:
 
         return occurrences
 
-
 @dataclass
 class Command:
     """A command for the command pattern."""
@@ -49160,7 +48730,6 @@ class Command:
     executed_at: Optional[datetime] = None
     result: Optional[Any] = None
     undone: bool = False
-
 
 class CommandPatternManager:
     """
@@ -49351,7 +48920,6 @@ class CommandPatternManager:
             "recording": self._recording_macro is not None
         }
 
-
 # =============================================================================
 # ZONE 4.19: ADVANCED ENTERPRISE PATTERNS AND OPERATIONS
 # =============================================================================
@@ -49366,7 +48934,6 @@ class CommandPatternManager:
 # - Consent Management: GDPR/privacy compliance
 # - Digital Signatures: Document signing and verification
 # =============================================================================
-
 
 # -----------------------------------------------------------------------------
 # 4.19.1: MLOps Model Registry
@@ -49384,7 +48951,6 @@ class ModelArtifact(NamedTuple):
     created_at: float
     metadata: Dict[str, Any]
 
-
 class ModelVersion(NamedTuple):
     """Model version with artifacts and metrics."""
     version_id: str
@@ -49398,7 +48964,6 @@ class ModelVersion(NamedTuple):
     created_at: float
     created_by: str
     description: str
-
 
 class RegisteredModel(NamedTuple):
     """Registered ML model in the registry."""
@@ -49415,7 +48980,6 @@ class RegisteredModel(NamedTuple):
     owner: str
     tags: List[str]
 
-
 class ModelExperiment(NamedTuple):
     """ML experiment tracking."""
     experiment_id: str
@@ -49429,7 +48993,6 @@ class ModelExperiment(NamedTuple):
     artifacts: List[str]
     logs: List[str]
     tags: List[str]
-
 
 class MLOpsModelRegistry:
     """
@@ -49821,7 +49384,6 @@ class MLOpsModelRegistry:
             "active_deployments": sum(1 for d in self._deployments.values() if d.get("status") == "deployed"),
         }
 
-
 # -----------------------------------------------------------------------------
 # 4.19.2: Workflow Orchestration Engine
 # -----------------------------------------------------------------------------
@@ -49838,13 +49400,11 @@ class WorkflowTaskDef(NamedTuple):
     retry_policy: Dict[str, Any]
     conditions: List[str]  # Conditional expressions
 
-
 class WorkflowTransition(NamedTuple):
     """Transition between workflow tasks."""
     from_task: str
     to_task: str
     condition: Optional[str]  # Transition condition expression
-
 
 class BPMWorkflowDef(NamedTuple):
     """BPMN workflow process definition (distinct from WorkflowEngine's WorkflowDefinition)."""
@@ -49860,7 +49420,6 @@ class BPMWorkflowDef(NamedTuple):
     created_at: float
     updated_at: float
 
-
 class WorkflowTaskInstance(NamedTuple):
     """Running workflow task instance."""
     instance_id: str
@@ -49872,7 +49431,6 @@ class WorkflowTaskInstance(NamedTuple):
     outputs: Dict[str, Any]
     error: Optional[str]
     retry_count: int
-
 
 class BPMWorkflowInst(NamedTuple):
     """Running BPMN workflow instance (distinct from WorkflowEngine's WorkflowInstance)."""
@@ -49886,7 +49444,6 @@ class BPMWorkflowInst(NamedTuple):
     task_instances: Dict[str, WorkflowTaskInstance]
     variables: Dict[str, Any]
     parent_instance_id: Optional[str]  # For sub-workflows
-
 
 class WorkflowOrchestrator:
     """
@@ -50283,7 +49840,6 @@ class WorkflowOrchestrator:
             "instance_status": status_counts,
         }
 
-
 # -----------------------------------------------------------------------------
 # 4.19.3: Document Management System
 # -----------------------------------------------------------------------------
@@ -50298,7 +49854,6 @@ class DocumentVersion(NamedTuple):
     created_at: float
     created_by: str
     change_summary: str
-
 
 class Document(NamedTuple):
     """Document with version history."""
@@ -50317,7 +49872,6 @@ class Document(NamedTuple):
     updated_at: float
     owner: str
 
-
 class Folder(NamedTuple):
     """Document folder."""
     folder_id: str
@@ -50329,7 +49883,6 @@ class Folder(NamedTuple):
     created_at: float
     updated_at: float
     owner: str
-
 
 class DocumentManagementSystem:
     """
@@ -50753,7 +50306,6 @@ class DocumentManagementSystem:
             "index_terms": len(self._search_index),
         }
 
-
 # -----------------------------------------------------------------------------
 # 4.19.4: Notification Hub
 # -----------------------------------------------------------------------------
@@ -50768,7 +50320,6 @@ class NotificationChannel(NamedTuple):
     rate_limit: int  # Max notifications per hour
     created_at: float
 
-
 class NotificationTemplate(NamedTuple):
     """Notification template."""
     template_id: str
@@ -50779,7 +50330,6 @@ class NotificationTemplate(NamedTuple):
     variables: List[str]
     created_at: float
     updated_at: float
-
 
 class Notification(NamedTuple):
     """Notification record."""
@@ -50798,7 +50348,6 @@ class Notification(NamedTuple):
     metadata: Dict[str, Any]
     created_at: float
 
-
 class NotificationPreference(NamedTuple):
     """User notification preferences."""
     user_id: str
@@ -50806,7 +50355,6 @@ class NotificationPreference(NamedTuple):
     quiet_hours: Optional[Tuple[int, int]]  # (start_hour, end_hour) in UTC
     frequency_limit: Dict[str, int]  # notification_type -> max per day
     opt_outs: List[str]  # List of notification types to not receive
-
 
 class NotificationHub:
     """
@@ -51258,7 +50806,6 @@ class NotificationHub:
             "user_preferences": len(self._preferences),
         }
 
-
 # -----------------------------------------------------------------------------
 # 4.19.5: Session Management
 # -----------------------------------------------------------------------------
@@ -51275,14 +50822,12 @@ class Session(NamedTuple):
     data: Dict[str, Any]
     is_valid: bool
 
-
 class SessionStore(NamedTuple):
     """Session store configuration."""
     store_id: str
     store_type: str  # memory, redis, database
     config: Dict[str, Any]
     default_ttl: float
-
 
 class SessionManager:
     """
@@ -51588,7 +51133,6 @@ class SessionManager:
             "max_sessions_per_user": self._max_sessions_per_user,
         }
 
-
 # -----------------------------------------------------------------------------
 # 4.19.6: Data Lake Manager
 # -----------------------------------------------------------------------------
@@ -51604,7 +51148,6 @@ class DataPartition(NamedTuple):
     row_count: int
     created_at: float
     metadata: Dict[str, Any]
-
 
 class Dataset(NamedTuple):
     """Data lake dataset."""
@@ -51622,7 +51165,6 @@ class Dataset(NamedTuple):
     owner: str
     tags: List[str]
 
-
 class DataCatalogEntry(NamedTuple):
     """Data catalog entry for discovery."""
     entry_id: str
@@ -51634,7 +51176,6 @@ class DataCatalogEntry(NamedTuple):
     lineage: List[str]  # Source dataset IDs
     quality_score: float
     last_updated: float
-
 
 class DataLakeManager:
     """
@@ -52022,7 +51563,6 @@ class DataLakeManager:
             "catalog_entries": len(self._catalog),
         }
 
-
 # -----------------------------------------------------------------------------
 # 4.19.7: Streaming Analytics Engine
 # -----------------------------------------------------------------------------
@@ -52034,7 +51574,6 @@ class StreamWindow(NamedTuple):
     slide_seconds: Optional[float]  # For sliding windows
     gap_seconds: Optional[float]  # For session windows
 
-
 class StreamAggregation(NamedTuple):
     """Stream aggregation specification."""
     aggregation_id: str
@@ -52043,7 +51582,6 @@ class StreamAggregation(NamedTuple):
     group_by: List[str]
     aggregations: Dict[str, str]  # output_field -> agg_expression
     filter_expr: Optional[str]
-
 
 class StreamEvent(NamedTuple):
     """Streaming event."""
@@ -52054,7 +51592,6 @@ class StreamEvent(NamedTuple):
     data: Dict[str, Any]
     partition_key: Optional[str]
 
-
 class StreamState(NamedTuple):
     """Stateful stream processing state."""
     state_id: str
@@ -52064,7 +51601,6 @@ class StreamState(NamedTuple):
     group_key: str
     values: Dict[str, Any]
     count: int
-
 
 class StreamingAnalyticsEngine:
     """
@@ -52365,7 +51901,6 @@ class StreamingAnalyticsEngine:
             "registered_handlers": len(self._output_handlers),
         }
 
-
 # -----------------------------------------------------------------------------
 # 4.19.8: Consent Management System
 # -----------------------------------------------------------------------------
@@ -52382,7 +51917,6 @@ class ConsentPurpose(NamedTuple):
     required: bool  # Required for service
     created_at: float
 
-
 class ConsentRecord(NamedTuple):
     """Individual consent record."""
     consent_id: str
@@ -52396,7 +51930,6 @@ class ConsentRecord(NamedTuple):
     user_agent: Optional[str]
     proof: Optional[str]  # Signature or token
 
-
 class DataSubjectRequest(NamedTuple):
     """GDPR data subject request."""
     request_id: str
@@ -52408,7 +51941,6 @@ class DataSubjectRequest(NamedTuple):
     completed_at: Optional[float]
     notes: str
     data_delivered: Optional[str]
-
 
 class ConsentManagementSystem:
     """
@@ -52755,7 +52287,6 @@ class ConsentManagementSystem:
             "policy_version": self._policy_version,
         }
 
-
 # -----------------------------------------------------------------------------
 # 4.19.9: Digital Signature Service
 # -----------------------------------------------------------------------------
@@ -52767,7 +52298,6 @@ class SignatureAlgorithm(NamedTuple):
     hash_algorithm: str
     key_type: str
     key_size: int
-
 
 class SigningKey(NamedTuple):
     """Signing key."""
@@ -52781,7 +52311,6 @@ class SigningKey(NamedTuple):
     owner: str
     status: str  # active, revoked, expired
 
-
 class DigitalSignature(NamedTuple):
     """Digital signature record."""
     signature_id: str
@@ -52794,7 +52323,6 @@ class DigitalSignature(NamedTuple):
     certificate_chain: Optional[List[str]]
     metadata: Dict[str, Any]
 
-
 class SignatureVerification(NamedTuple):
     """Signature verification result."""
     is_valid: bool
@@ -52803,7 +52331,6 @@ class SignatureVerification(NamedTuple):
     timestamp: float
     algorithm: str
     reason: str
-
 
 class DigitalSignatureService:
     """
@@ -53108,7 +52635,6 @@ class DigitalSignatureService:
             "supported_algorithms": list(self._algorithms.keys()),
         }
 
-
 # =============================================================================
 # ZONE 4.20: FINAL UTILITIES AND SYSTEM INTEGRATION
 # =============================================================================
@@ -53119,7 +52645,6 @@ class DigitalSignatureService:
 # - Graceful degradation management
 # - Resource cleanup coordination
 # =============================================================================
-
 
 # -----------------------------------------------------------------------------
 # 4.20.1: Health Aggregator
@@ -53136,7 +52661,6 @@ class SubsystemHealth(NamedTuple):
     details: Dict[str, Any]
     dependencies: List[str]
 
-
 class HealthCheckResult(NamedTuple):
     """Result of a health check."""
     overall_status: str
@@ -53145,7 +52669,6 @@ class HealthCheckResult(NamedTuple):
     degraded_count: int
     unhealthy_count: int
     total_response_time_ms: float
-
 
 class HealthAggregator(SystemService):
     """
@@ -53436,7 +52959,6 @@ class HealthAggregator(SystemService):
             "alert_callbacks": len(self._alert_callbacks),
         }
 
-
 # -----------------------------------------------------------------------------
 # 4.20.2: System Telemetry Collector
 # -----------------------------------------------------------------------------
@@ -53451,7 +52973,6 @@ class TelemetryMetric(NamedTuple):
     tags: Dict[str, str]
     aggregation: str  # gauge, counter, histogram
 
-
 class TelemetryEvent(NamedTuple):
     """Telemetry event record."""
     event_id: str
@@ -53460,7 +52981,6 @@ class TelemetryEvent(NamedTuple):
     data: Dict[str, Any]
     severity: str
     source: str
-
 
 class SystemTelemetryCollector:
     """
@@ -53721,7 +53241,6 @@ class SystemTelemetryCollector:
             "flush_interval": self._flush_interval,
         }
 
-
 # -----------------------------------------------------------------------------
 # 4.20.3: Graceful Degradation Manager
 # -----------------------------------------------------------------------------
@@ -53735,7 +53254,6 @@ class DegradationLevel(NamedTuple):
     reduced_capacity: Dict[str, float]  # feature -> capacity multiplier
     description: str
 
-
 class DegradationState(NamedTuple):
     """Current degradation state."""
     current_level: str
@@ -53743,7 +53261,6 @@ class DegradationState(NamedTuple):
     disabled_features: List[str]
     capacity_limits: Dict[str, float]
     reason: str
-
 
 class _Deprecated_GracefulDegradationManager:  # v239.0: superseded by GracefulDegradationManager at line ~23485
     """
@@ -53973,7 +53490,6 @@ class _Deprecated_GracefulDegradationManager:  # v239.0: superseded by GracefulD
             "disabled_features_count": len(self._current_state.disabled_features) if self._current_state else 0,
         }
 
-
 # -----------------------------------------------------------------------------
 # 4.20.4: Resource Cleanup Coordinator
 # -----------------------------------------------------------------------------
@@ -53987,7 +53503,6 @@ class CleanupTask(NamedTuple):
     timeout_seconds: float
     critical: bool  # If True, failure stops cleanup
 
-
 class CleanupResult(NamedTuple):
     """Result of a cleanup task."""
     task_id: str
@@ -53995,7 +53510,6 @@ class CleanupResult(NamedTuple):
     success: bool
     duration_ms: float
     error: Optional[str]
-
 
 class CleanupReport(NamedTuple):
     """Complete cleanup report."""
@@ -54007,7 +53521,6 @@ class CleanupReport(NamedTuple):
     skipped: int
     results: List[CleanupResult]
     overall_success: bool
-
 
 class ResourceCleanupCoordinator:
     """
@@ -54219,7 +53732,6 @@ class ResourceCleanupCoordinator:
             "last_cleanup_success": self._last_report.overall_success if self._last_report else None,
         }
 
-
 # =============================================================================
 # =============================================================================
 #
@@ -54243,7 +53755,6 @@ class ResourceCleanupCoordinator:
 #
 # =============================================================================
 # =============================================================================
-
 
 # =============================================================================
 # ZONE 5.1: UNIFIED SIGNAL HANDLER
@@ -54281,7 +53792,6 @@ def get_modular_signal_protector():
             pass
     return None
 
-
 def get_modular_shutdown_coordinator():
     """
     v210.0: Get the modular ShutdownCoordinator for graceful shutdown.
@@ -54300,7 +53810,6 @@ def get_modular_shutdown_coordinator():
         except Exception:
             pass
     return None
-
 
 class UnifiedSignalHandler:
     """
@@ -54556,10 +54065,8 @@ class UnifiedSignalHandler:
             if self._shutdown_event is not None:
                 self._shutdown_event.clear()
 
-
 # Global signal handler singleton
 _unified_signal_handler: Optional[UnifiedSignalHandler] = None
-
 
 def get_unified_signal_handler() -> UnifiedSignalHandler:
     """
@@ -54572,7 +54079,6 @@ def get_unified_signal_handler() -> UnifiedSignalHandler:
     if _unified_signal_handler is None:
         _unified_signal_handler = UnifiedSignalHandler()
     return _unified_signal_handler
-
 
 # =============================================================================
 # ZONE 5.2: ZOMBIE PROCESS DETECTION DATA STRUCTURES
@@ -54592,7 +54098,6 @@ class ZombieProcessInfo:
     is_zombie_like: bool = False
     stale_connection_count: int = 0
     detection_source: str = ""
-
 
 # =============================================================================
 # ZONE 5.3: COMPREHENSIVE ZOMBIE CLEANUP SYSTEM
@@ -55136,7 +54641,6 @@ class ComprehensiveZombieCleanup:
 
         return freed_ports
 
-
 # =============================================================================
 # ZONE 5.4: PROCESS STATE MANAGER
 # =============================================================================
@@ -55150,7 +54654,6 @@ class ProcessState(Enum):
     STOPPED = "stopped"
     FAILED = "failed"
     CRASHED = "crashed"
-
 
 @dataclass
 class ManagedProcess:
@@ -55177,7 +54680,6 @@ class ManagedProcess:
     def is_running(self) -> bool:
         """Check if process is in running state."""
         return self.state == ProcessState.RUNNING
-
 
 class ProcessStateManager:
     """
@@ -55358,7 +54860,6 @@ class ProcessStateManager:
             }
         }
 
-
 # =============================================================================
 # ZONE 5.5: HOT RELOAD WATCHER
 # =============================================================================
@@ -55371,7 +54872,6 @@ class ProcessStateManager:
 # - Smart debouncing and cooldown
 # =============================================================================
 
-
 class FileTypeCategory(Enum):
     """Categories of file types for intelligent restart decisions."""
     BACKEND_CODE = "backend_code"       # Python, Rust - requires backend restart
@@ -55383,7 +54883,6 @@ class FileTypeCategory(Enum):
     BUILD = "build"                     # Cargo.toml, package.json - build configs
     UNKNOWN = "unknown"
 
-
 @dataclass
 class FileTypeInfo:
     """Information about a file type for hot reload."""
@@ -55392,7 +54891,6 @@ class FileTypeInfo:
     requires_restart: bool = True
     restart_target: str = "backend"  # backend, frontend, native, all, none
     description: str = ""
-
 
 class IntelligentFileTypeRegistry:
     """
@@ -55600,7 +55098,6 @@ class IntelligentFileTypeRegistry:
             lines.append(f"  ... and {len(sorted_types) - 15} more types")
 
         return "\n".join(lines)
-
 
 class HotReloadWatcher:
     """
@@ -56027,7 +55524,6 @@ class HotReloadWatcher:
                 self.logger.error(f"Hot reload monitor error: {e}")
                 await asyncio.sleep(self.check_interval)
 
-
 # =============================================================================
 # ZONE 5.6: PROGRESSIVE READINESS MANAGER
 # =============================================================================
@@ -56041,7 +55537,6 @@ class ReadinessTier(Enum):
     INTERACTIVE = "interactive"  # API ready, basic endpoints functional
     WARMUP = "warmup"  # Frontend ready, optional components loading
     FULLY_READY = "fully_ready"  # Complete system ready
-
 
 @dataclass
 class ReadinessState:
@@ -56060,7 +55555,6 @@ class ReadinessState:
     def get_tier_duration(self, tier: ReadinessTier) -> Optional[float]:
         """Get time when a tier was reached."""
         return self.tier_reached_at.get(tier.value)
-
 
 class ProgressiveReadinessManager:
     """
@@ -56213,7 +55707,6 @@ class ProgressiveReadinessManager:
         target_idx = tier_order.index(tier)
         return current_idx >= target_idx
 
-
 # =============================================================================
 # ZONE 5.6: STARTUP WATCHDOG (v188.0 - Dead Man's Switch)
 # =============================================================================
@@ -56242,7 +55735,6 @@ class PhaseConfig:
     progress_start: int
     progress_end: int
     recovery_action: str  # "warn", "diagnostic", "restart", "rollback"
-
 
 class StartupWatchdog:
     """
@@ -57109,7 +56601,6 @@ class StartupWatchdog:
         else:
             return "rollback"
 
-
 # =============================================================================
 # ZONE 5.7: TRINITY INTEGRATOR
 # =============================================================================
@@ -57135,7 +56626,6 @@ class TrinityComponent:
         """Check if component is running."""
         return self.state in ("running", "healthy")
 
-
 # =============================================================================
 # v190.0: SEMANTIC READINESS DETECTION SYSTEM
 # =============================================================================
@@ -57143,13 +56633,11 @@ class TrinityComponent:
 # simple HTTP 200 checks to understand actual operational state.
 # =============================================================================
 
-
 class ComponentType(Enum):
     """Trinity component types with their readiness semantics."""
     PRIME = "prime"      # LLM inference engine (requires model_loaded, ready_for_inference)
     REACTOR = "reactor"  # Training/data engine (requires training_ready, trinity_connected)
     GENERIC = "generic"  # Unknown component (HTTP 200 only)
-
 
 class ComponentReadinessState(Enum):
     """Semantic readiness states for Trinity components."""
@@ -57160,7 +56648,6 @@ class ComponentReadinessState(Enum):
     DEGRADED = "degraded"         # Partially ready (some features unavailable)
     READY = "ready"               # Fully operational and ready for requests
     ERROR = "error"               # Component in error state
-
 
 @dataclass
 class SemanticReadinessResult:
@@ -57218,7 +56705,6 @@ class SemanticReadinessResult:
             return "retry_connection"  # Network issue, retry
         else:
             return "unknown"
-
 
 class SemanticReadinessChecker:
     """
@@ -57608,7 +57094,6 @@ class SemanticReadinessChecker:
 
         # Unknown or error - don't estimate
         return None
-
 
 class TrinityIntegrator:
     """
@@ -60204,7 +59689,6 @@ class TrinityIntegrator:
 
         return start_ok
 
-
 # =============================================================================
 # ZONE 5.8: UNIFIED TRINITY CONNECTOR (Enhanced Cross-Repo Orchestration)
 # =============================================================================
@@ -60767,10 +60251,8 @@ class UnifiedTrinityConnector:
 
         return status
 
-
 # Global Trinity connector singleton
 _trinity_connector: Optional[UnifiedTrinityConnector] = None
-
 
 def get_trinity_connector() -> UnifiedTrinityConnector:
     """
@@ -60808,7 +60290,6 @@ def get_trinity_connector() -> UnifiedTrinityConnector:
     
     return _trinity_connector
 
-
 # v210.0: NEW - Direct access to modular orchestrator components
 def get_service_registry():
     """
@@ -60829,7 +60310,6 @@ def get_service_registry():
             pass
     return None
 
-
 def get_health_coordinator():
     """
     v210.0: Get the modular HealthCoordinator for cross-service health monitoring.
@@ -60848,7 +60328,6 @@ def get_health_coordinator():
         except Exception:
             pass
     return None
-
 
 def get_crash_recovery_coordinator():
     """
@@ -60869,7 +60348,6 @@ def get_crash_recovery_coordinator():
             pass
     return None
 
-
 async def initialize_trinity_connector(
     websocket_manager: Any = None,
     voice_system: Any = None,
@@ -60885,14 +60363,12 @@ async def initialize_trinity_connector(
         event_bus=event_bus,
     )
 
-
 async def shutdown_trinity_connector() -> None:
     """Shutdown the Trinity connector."""
     global _trinity_connector
     if _trinity_connector:
         await _trinity_connector.shutdown()
         _trinity_connector = None
-
 
 # =============================================================================
 # ZONE 5 SELF-TEST FUNCTION
@@ -60963,7 +60439,6 @@ async def _test_zone5():
     logger.print_startup_summary()
     TerminalUI.print_success("Zone 5 validation complete!")
 
-
 # =============================================================================
 # =============================================================================
 #
@@ -60987,7 +60462,6 @@ async def _test_zone5():
 # =============================================================================
 # =============================================================================
 
-
 # =============================================================================
 # ZONE 6.1: KERNEL STATE AND STARTUP LOCK
 # =============================================================================
@@ -61005,9 +60479,7 @@ class KernelState(Enum):
     STOPPED = "stopped"
     FAILED = "failed"
 
-
 # NOTE: StartupLock is defined in Zone 2 (Core Utilities)
-
 
 # =============================================================================
 # ZONE 6.2: IPC SERVER
@@ -61021,13 +60493,11 @@ class IPCCommand(Enum):
     RESTART = "restart"
     RELOAD = "reload"
 
-
 @dataclass
 class IPCRequest:
     """IPC request from a client."""
     command: IPCCommand
     args: Dict[str, Any] = field(default_factory=dict)
-
 
 @dataclass
 class IPCResponse:
@@ -61035,7 +60505,6 @@ class IPCResponse:
     success: bool
     result: Any = None
     error: Optional[str] = None
-
 
 class IPCServer:
     """
@@ -61159,7 +60628,6 @@ class IPCServer:
             await writer.drain()
         except Exception:
             pass
-
 
 # =============================================================================
 # ZONE 6.3: JARVIS SYSTEM KERNEL
@@ -63625,6 +63093,59 @@ class JarvisSystemKernel:
         self.logger.info("════════════════════════════════════════════════════════════════════════")
         self.logger.info("")
 
+    # ─────────────────────────────────────────────────────────────────────
+    # v266.1: Safe startup helpers — bounded await wrappers
+    # ─────────────────────────────────────────────────────────────────────
+    # Root cause: 30+ bare `await` calls in _startup_impl() can hang
+    # indefinitely on TTS engine freeze, audio device lock, network
+    # stall, or WebSocket listener unavailability. Each stalls the
+    # entire startup pipeline with no recourse.
+    #
+    # Fix: Centralized helpers that wrap every call with a configurable
+    # timeout and exception swallow. Narration and progress broadcasts
+    # are NEVER worth blocking startup.
+    # ─────────────────────────────────────────────────────────────────────
+
+    async def _safe_narrate(self, coro, label: str = "narrate") -> None:
+        """
+        Await a narrator coroutine with timeout. Never blocks startup.
+
+        Args:
+            coro: Awaitable from self._narrator.narrate_*()
+            label: Short description for logging on timeout/error
+        """
+        if not self._narrator:
+            return
+        _timeout = _get_env_float("JARVIS_NARRATOR_CALL_TIMEOUT", 10.0)
+        try:
+            await asyncio.wait_for(coro, timeout=_timeout)
+        except asyncio.TimeoutError:
+            self.logger.debug(f"[Narrator] {label} timed out ({_timeout:.0f}s)")
+        except asyncio.CancelledError:
+            raise
+        except Exception as _narr_err:
+            self.logger.debug(f"[Narrator] {label} error: {_narr_err}")
+
+    async def _safe_broadcast(
+        self, stage: str, message: str, progress: int,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """
+        Broadcast startup progress with timeout. Never blocks startup.
+        """
+        _timeout = _get_env_float("JARVIS_BROADCAST_CALL_TIMEOUT", 5.0)
+        try:
+            await asyncio.wait_for(
+                self._broadcast_startup_progress(stage, message, progress, metadata),
+                timeout=_timeout,
+            )
+        except asyncio.TimeoutError:
+            self.logger.debug(f"[Broadcast] {stage}/{progress}% timed out ({_timeout:.0f}s)")
+        except asyncio.CancelledError:
+            raise
+        except Exception as _bc_err:
+            self.logger.debug(f"[Broadcast] {stage}/{progress}% error: {_bc_err}")
+
     async def _startup_impl(self) -> int:
         """
         Internal startup implementation (wrapped by timeout in startup()).
@@ -65063,8 +64584,7 @@ class JarvisSystemKernel:
             # v187.0: Update DMS at phase START to fix timeout tracking
             if self._startup_watchdog:
                 self._startup_watchdog.update_phase("preflight", 5)
-            if self._narrator:
-                await self._narrator.narrate_phase_start("preflight")
+                await self._safe_narrate(self._narrator.narrate_phase_start("preflight"), "phase_start(preflight)")
 
             # v249.0: Phase event emission
             _cid_pf = f"phase-preflight-{uuid.uuid4().hex[:8]}"
@@ -65132,8 +64652,7 @@ class JarvisSystemKernel:
             resource_timeout = float(os.environ.get("JARVIS_RESOURCE_TIMEOUT", "300.0"))
             if self._startup_watchdog:
                 self._startup_watchdog.update_phase("resources", 15, operational_timeout=resource_timeout)
-            if self._narrator:
-                await self._narrator.narrate_phase_start("resources")
+                await self._safe_narrate(self._narrator.narrate_phase_start("resources"), "phase_start(resources)")
 
             # v249.0: Phase event emission
             _cid_rs = f"phase-resources-{uuid.uuid4().hex[:8]}"
@@ -65148,13 +64667,11 @@ class JarvisSystemKernel:
                     IssueCategory.GENERAL,
                     suggestion="Check Docker, GCP, and port availability"
                 )
-                if self._narrator:
-                    await self._narrator.narrate_error("Resource initialization failed", critical=True)
+                await self._safe_narrate(self._narrator.narrate_error("Resource initialization failed", critical=True), "error")
                 issue_collector.print_health_report()
                 return 1
             if _ssm: await _ssm.complete_component("resources")
-            if self._narrator:
-                await self._narrator.narrate_zone_complete(3, success=True)
+            await self._safe_narrate(self._narrator.narrate_zone_complete(3, success=True), "zone_complete")
 
             self._emit_event(
                 SupervisorEventType.PHASE_END, "Phase: Resources complete",
@@ -65194,8 +64711,7 @@ class JarvisSystemKernel:
             backend_timeout = float(os.environ.get("JARVIS_BACKEND_STARTUP_TIMEOUT", "300.0"))
             if self._startup_watchdog:
                 self._startup_watchdog.update_phase("backend", 30, operational_timeout=backend_timeout)
-            if self._narrator:
-                await self._narrator.narrate_phase_start("backend")
+                await self._safe_narrate(self._narrator.narrate_phase_start("backend"), "phase_start(backend)")
 
             # v249.0: Phase event emission
             _cid_be = f"phase-backend-{uuid.uuid4().hex[:8]}"
@@ -65210,8 +64726,7 @@ class JarvisSystemKernel:
                     IssueCategory.NETWORK,
                     suggestion="Check if port is already in use or backend code has errors"
                 )
-                if self._narrator:
-                    await self._narrator.narrate_error("Backend server failed to start", critical=True)
+                await self._safe_narrate(self._narrator.narrate_error("Backend server failed to start", critical=True), "error")
                 issue_collector.print_health_report()
                 return 1
             if _ssm: await _ssm.complete_component("backend")
@@ -65316,8 +64831,7 @@ class JarvisSystemKernel:
             intelligence_timeout = _get_env_float("JARVIS_INTELLIGENCE_TIMEOUT", 120.0)
             if self._startup_watchdog:
                 self._startup_watchdog.update_phase("intelligence", 50, operational_timeout=intelligence_timeout)
-            if self._narrator:
-                await self._narrator.narrate_phase_start("intelligence")
+                await self._safe_narrate(self._narrator.narrate_phase_start("intelligence"), "phase_start(intelligence)")
 
             # v249.0: Phase event emission
             _cid_in = f"phase-intelligence-{uuid.uuid4().hex[:8]}"
@@ -65357,11 +64871,9 @@ class JarvisSystemKernel:
                     IssueCategory.INTELLIGENCE,
                     suggestion="Check ML model availability and Python dependencies"
                 )
-                if self._narrator:
-                    await self._narrator.narrate_zone_complete(4, success=False)
+                await self._safe_narrate(self._narrator.narrate_zone_complete(4, success=False), "zone_complete")
             else:
-                if self._narrator:
-                    await self._narrator.narrate_zone_complete(4, success=True)
+                await self._safe_narrate(self._narrator.narrate_zone_complete(4, success=True), "zone_complete")
 
             # v242.3: Defensive cleanup — ensure model loading state is cleared
             # before entering Two-Tier Security phase. If EarlyPrime or InvincibleNode
@@ -65528,12 +65040,33 @@ class JarvisSystemKernel:
                     )
                     self._schedule_audio_bus_recovery("phase4_audio_bus_missing")
                 else:
-                    await self._attempt_wire_audio_pipeline(context="startup")
+                    # v266.1: Timeout guard — audio device init can hang if device held
+                    _audio_wire_timeout = _get_env_float("JARVIS_AUDIO_WIRE_TIMEOUT", 15.0)
+                    try:
+                        await asyncio.wait_for(
+                            self._attempt_wire_audio_pipeline(context="startup"),
+                            timeout=_audio_wire_timeout,
+                        )
+                    except asyncio.TimeoutError:
+                        self.logger.warning(
+                            f"[Kernel] Audio pipeline wiring timed out ({_audio_wire_timeout:.0f}s)"
+                        )
+                    except asyncio.CancelledError:
+                        raise
+                    except Exception as _awp_err:
+                        self.logger.debug(f"[Kernel] Audio pipeline wiring error: {_awp_err}")
 
             # v258.3 (Gap GCP-2): Re-evaluate startup mode after Intelligence phase.
             # At this point, backend is loaded + intelligence systems initialized.
             # Memory may have changed significantly from the pre-Phase-0 measurement.
-            await _reevaluate_startup_mode("post-intelligence")
+            try:
+                await asyncio.wait_for(_reevaluate_startup_mode("post-intelligence"), timeout=5.0)
+            except asyncio.TimeoutError:
+                self.logger.debug("[Kernel] Post-intelligence mode re-evaluation timed out")
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                pass
 
             # =====================================================================
             # v200.0: TWO-TIER SECURITY INITIALIZATION
@@ -65673,7 +65206,7 @@ class JarvisSystemKernel:
             if self._startup_watchdog:
                 self._startup_watchdog.update_phase("two_tier", 65)
 
-            await self._broadcast_startup_progress(
+            await self._safe_broadcast(
                 stage="two_tier",
                 message="Two-Tier Security ready - connecting Trinity components...",
                 progress=65,
@@ -65964,7 +65497,7 @@ class JarvisSystemKernel:
                 duration_ms=(time.time() - _t0_tr) * 1000, correlation_id=_cid_tr,
             )
 
-            await self._broadcast_startup_progress(
+            await self._safe_broadcast(
                 stage="trinity",
                 message="Trinity connected - starting enterprise services...",
                 progress=80,
@@ -66047,8 +65580,7 @@ class JarvisSystemKernel:
             enterprise_timeout = float(os.environ.get("JARVIS_ENTERPRISE_TIMEOUT", "90.0"))
             if self._startup_watchdog:
                 self._startup_watchdog.update_phase("enterprise", 80, operational_timeout=enterprise_timeout)
-            if self._narrator:
-                await self._narrator.narrate_phase_start("enterprise")
+                await self._safe_narrate(self._narrator.narrate_phase_start("enterprise"), "phase_start(enterprise)")
 
             # v249.0: Phase event emission
             _cid_en = f"phase-enterprise-{uuid.uuid4().hex[:8]}"
@@ -66080,8 +65612,7 @@ class JarvisSystemKernel:
             except asyncio.CancelledError:
                 raise
             if _ssm: await _ssm.complete_component("enterprise_services")
-            if self._narrator:
-                await self._narrator.narrate_zone_complete(6, success=True)
+            await self._safe_narrate(self._narrator.narrate_zone_complete(6, success=True), "zone_complete")
 
             self._emit_event(
                 SupervisorEventType.PHASE_END, "Phase: Enterprise Services complete",
@@ -66089,7 +65620,7 @@ class JarvisSystemKernel:
                 duration_ms=(time.time() - _t0_en) * 1000, correlation_id=_cid_en,
             )
 
-            await self._broadcast_startup_progress(
+            await self._safe_broadcast(
                 stage="enterprise",
                 message="Enterprise services online - initializing Ghost Display...",
                 progress=85,
@@ -66149,7 +65680,7 @@ class JarvisSystemKernel:
                 self.logger.warning(f"[Permissions] Startup permission check error: {e}")
                 if _ssm: await _ssm.complete_component("permissions", error=str(e))
 
-            await self._broadcast_startup_progress(
+            await self._safe_broadcast(
                 stage="permissions",
                 message="Permissions checked — initializing Ghost Display...",
                 progress=85,
@@ -66215,7 +65746,7 @@ class JarvisSystemKernel:
                     else:
                         await _ssm.complete_component("ghost_display")
 
-            await self._broadcast_startup_progress(
+            await self._safe_broadcast(
                 stage="ghost_display",
                 message=(
                     "Ghost Display initializing in background — initializing AGI OS..."
@@ -66383,7 +65914,7 @@ class JarvisSystemKernel:
                     "AGI OS unavailable — initializing Visual Pipeline..."
                 )
 
-            await self._broadcast_startup_progress(
+            await self._safe_broadcast(
                 stage="agi_os",
                 message=_agi_message,
                 progress=90,
@@ -66465,7 +65996,7 @@ class JarvisSystemKernel:
                     suggestion="Check Ghost Hands Orchestrator and N-Optic Nerve availability"
                 )
 
-            await self._broadcast_startup_progress(
+            await self._safe_broadcast(
                 stage="visual_pipeline",
                 message="Visual Pipeline ready — launching frontend...",
                 progress=93,
@@ -66574,7 +66105,7 @@ class JarvisSystemKernel:
                 duration_ms=(time.time() - _t0_fe) * 1000, correlation_id=_cid_fe,
             )
 
-            await self._broadcast_startup_progress(
+            await self._safe_broadcast(
                 stage="complete",
                 message="JARVIS is ready!",
                 progress=100,
@@ -66613,9 +66144,27 @@ class JarvisSystemKernel:
             # This ensures FULLY_READY is only marked when components are healthy.
             # =====================================================================
             issue_collector.set_current_phase("Service Verification")
-            verification = await self._verify_all_services(
-                timeout=self._get_verification_timeout()
+            # v266.1: Outer timeout guard — _verify_all_services has internal
+            # per-service timeouts but the overall call can still hang if
+            # network probing stalls at a lower level.
+            _verify_outer_timeout = _get_env_float(
+                "JARVIS_VERIFY_OUTER_TIMEOUT",
+                self._get_verification_timeout() + 15.0,
             )
+            try:
+                verification = await asyncio.wait_for(
+                    self._verify_all_services(
+                        timeout=self._get_verification_timeout()
+                    ),
+                    timeout=_verify_outer_timeout,
+                )
+            except asyncio.TimeoutError:
+                self.logger.warning(
+                    f"[Kernel] Service verification outer timeout ({_verify_outer_timeout:.0f}s)"
+                )
+                verification = {"all_healthy": False, "services": {}, "timed_out": True}
+            except asyncio.CancelledError:
+                raise
 
             # Collect unhealthy services for reporting
             unhealthy_services: List[str] = []
@@ -66735,7 +66284,7 @@ class JarvisSystemKernel:
                 pass
 
             # Send final 100% progress to loading page
-            await self._broadcast_startup_progress(
+            await self._safe_broadcast(
                 stage="complete",
                 message="JARVIS startup complete!",
                 progress=100,
@@ -67414,7 +66963,7 @@ class JarvisSystemKernel:
                 self._update_component_status("resources", "running", message, sub_progress=sub)
 
                 # Broadcast intermediate progress to loading server
-                await self._broadcast_startup_progress(
+                await self._safe_broadcast(
                     stage="resources",
                     message=message,
                     progress=progress,
@@ -67472,7 +67021,7 @@ class JarvisSystemKernel:
                     self._startup_watchdog.update_phase("resources", docker_progress)
                 
                 # Broadcast to loading server
-                await self._broadcast_startup_progress(
+                await self._safe_broadcast(
                     stage="resources",
                     message=f"Docker: {message}",
                     progress=docker_progress,
@@ -67531,7 +67080,7 @@ class JarvisSystemKernel:
                         self._startup_watchdog.update_phase("resources", heartbeat_progress[0])
                     
                     # Broadcast heartbeat to loading server
-                    await self._broadcast_startup_progress(
+                    await self._safe_broadcast(
                         stage="resources",
                         message=f"Initializing resources... ({tick_count * 15}s)",
                         progress=heartbeat_progress[0],
@@ -67821,7 +67370,7 @@ class JarvisSystemKernel:
                             status="healthy"
                         )
                         
-                        await self._broadcast_startup_progress(
+                        await self._safe_broadcast(
                             stage="resources",
                             message=f"Cloud Node ready: {node_ip}",
                             progress=end_progress - 1,
@@ -83808,7 +83357,6 @@ class JarvisSystemKernel:
             self.logger.error(f"[Trinity] Failed to start {name}: {e}")
             return False
 
-
 # =============================================================================
 # ZONE 6 SELF-TEST FUNCTION
 # =============================================================================
@@ -83856,7 +83404,6 @@ async def _test_zone6():
     logger.print_startup_summary()
     TerminalUI.print_success("Zone 6 validation complete!")
 
-
 # =============================================================================
 # =============================================================================
 #
@@ -83878,13 +83425,11 @@ async def _test_zone6():
 # =============================================================================
 # =============================================================================
 
-
 # =============================================================================
 # ZONE 7.1: UNIFIED CLI ARGUMENT PARSER
 # =============================================================================
 
 import argparse
-
 
 def create_argument_parser() -> argparse.ArgumentParser:
     """
@@ -84217,7 +83762,6 @@ def create_argument_parser() -> argparse.ArgumentParser:
         help="Display J-Prime component status dashboard",
     )
 
-
     trinity.add_argument(
         "--monitor-reactor",
         action="store_true",
@@ -84346,7 +83890,6 @@ def create_argument_parser() -> argparse.ArgumentParser:
 
     return parser
 
-
 # =============================================================================
 # ZONE 7.2: CLI COMMAND HANDLERS
 # =============================================================================
@@ -84406,8 +83949,6 @@ async def _direct_health_check(host: str, port: int, timeout: float = 5.0) -> Di
         result["status"] = f"error: {type(e).__name__}"
 
     return result
-
-
 
 async def handle_status() -> int:
     """Handle --status command."""
@@ -84470,7 +84011,6 @@ async def handle_status() -> int:
         print(f"\n❌ Error: {e}")
         return 1
 
-
 async def handle_shutdown() -> int:
     """Handle --shutdown command."""
     # v201.4: Suppress shutdown diagnostics for CLI-only commands
@@ -84513,7 +84053,6 @@ async def handle_shutdown() -> int:
         print(f"\n❌ Error sending shutdown: {e}")
         return 1
 
-
 async def handle_cleanup() -> int:
     """Handle --cleanup command."""
     # v201.4: Suppress shutdown diagnostics for CLI-only commands
@@ -84539,7 +84078,6 @@ async def handle_cleanup() -> int:
     print("="*60 + "\n")
 
     return 0 if result["success"] else 1
-
 
 async def handle_check_only(args: argparse.Namespace) -> int:
     """
@@ -84865,7 +84403,6 @@ async def handle_check_only(args: argparse.Namespace) -> int:
 
     return 0 if all_passed else 1
 
-
 # =============================================================================
 # CLOUD MONITOR HANDLERS (v199.0)
 # =============================================================================
@@ -85049,7 +84586,6 @@ async def handle_cloud_monitor() -> int:
     print()
     return 0
 
-
 async def handle_cloud_monitor_logs() -> int:
     """
     Handle --monitor-logs command: Stream logs from Invincible Node.
@@ -85113,13 +84649,11 @@ async def handle_cloud_monitor_logs() -> int:
         print(f"\033[91m⚠  Error streaming logs: {e}\033[0m")
         return 1
 
-
 # =============================================================================
 # v224.0: GOLDEN IMAGE MANAGEMENT COMMANDS
 # =============================================================================
 # Enterprise-grade custom VM image management for ~30-60 second startup.
 # =============================================================================
-
 
 async def handle_create_golden_image() -> int:
     """
@@ -85198,7 +84732,6 @@ async def handle_create_golden_image() -> int:
         print(f"\033[91m⚠  Error creating golden image: {e}\033[0m")
         return 1
 
-
 async def handle_list_golden_images() -> int:
     """
     Handle --list-golden-images command: List all available golden images.
@@ -85250,7 +84783,6 @@ async def handle_list_golden_images() -> int:
     except Exception as e:
         print(f"\033[91m⚠  Error listing golden images: {e}\033[0m")
         return 1
-
 
 async def handle_check_golden_image() -> int:
     """
@@ -85327,7 +84859,6 @@ async def handle_check_golden_image() -> int:
         print(f"\033[91m⚠  Error checking golden image status: {e}\033[0m")
         return 1
 
-
 async def handle_cleanup_golden_images(keep_count: int) -> int:
     """
     Handle --cleanup-golden-images command: Clean up old golden images.
@@ -85383,7 +84914,6 @@ async def handle_cleanup_golden_images(keep_count: int) -> int:
     except Exception as e:
         print(f"\033[91m⚠  Error cleaning up golden images: {e}\033[0m")
         return 1
-
 
 # =============================================================================
 # DASHBOARD COMMAND (v201.2) - Comprehensive System Status
@@ -85463,7 +84993,6 @@ async def _fetch_lock_status_readonly() -> Dict[str, Any]:
 
     return result
 
-
 async def _fetch_kernel_status_ipc(timeout: float = 5.0) -> Dict[str, Any]:
     """
     Fetch kernel status via IPC socket.
@@ -85529,7 +85058,6 @@ async def _fetch_kernel_status_ipc(timeout: float = 5.0) -> Dict[str, Any]:
         result["error"] = str(e)
 
     return result
-
 
 async def _fetch_preflight_status() -> Dict[str, Any]:
     """
@@ -85642,7 +85170,6 @@ async def _fetch_preflight_status() -> Dict[str, Any]:
 
     return result
 
-
 async def _fetch_invincible_status_direct(timeout: float = 10.0) -> Dict[str, Any]:
     """
     Fetch Invincible Node status directly from GCP.
@@ -85708,7 +85235,6 @@ async def _fetch_invincible_status_direct(timeout: float = 10.0) -> Dict[str, An
         result["error"] = str(e)
 
     return result
-
 
 def _format_dashboard_output(
     lock_status: Dict[str, Any],
@@ -85994,7 +85520,6 @@ def _format_dashboard_output(
 
     return lines
 
-
 async def handle_dashboard() -> int:
     """
     Handle --dashboard command: Comprehensive system status dashboard.
@@ -86073,7 +85598,6 @@ async def handle_dashboard() -> int:
     if kernel_status.get("running") and preflight_status.get("passed", False):
         return 0
     return 0  # Dashboard always succeeds (informational command)
-
 
 async def _show_startup_dashboard() -> None:
     """
@@ -86206,7 +85730,6 @@ async def _show_startup_dashboard() -> None:
         print(f"\n  {YELLOW}Kernel may already be running - use --status to check{RESET}")
     else:
         print(f"\n  {YELLOW}Some checks failed - proceeding anyway{RESET}")
-
 
 async def handle_monitor_prime() -> int:
     """
@@ -86341,7 +85864,6 @@ async def handle_monitor_prime() -> int:
 
     return 0
 
-
 async def handle_monitor_reactor() -> int:
     """
     ⚛️  Handle --monitor-reactor command: Display Reactor-Core status dashboard.
@@ -86468,12 +85990,6 @@ async def handle_monitor_reactor() -> int:
     print()
 
     return 0
-
-
-
-
-
-
 
 async def handle_monitor_trinity() -> int:
     """
@@ -86611,7 +86127,6 @@ async def handle_monitor_trinity() -> int:
 
     return 0
 
-
 async def handle_single_task(
     task_goal: str,
     task_mode: str,
@@ -86729,7 +86244,6 @@ async def handle_single_task(
         print(f"\n❌ Error: Task execution failed: {e}")
         return 1
 
-
 # =============================================================================
 # ZONE 7.3: CONFIGURATION FROM CLI ARGS
 # =============================================================================
@@ -86835,7 +86349,6 @@ def apply_cli_to_config(args: argparse.Namespace, config: SystemKernelConfig) ->
     if args.verbose:
         config.verbose = True
 
-
 # =============================================================================
 # ZONE 7.4: MAIN FUNCTION
 # =============================================================================
@@ -86869,7 +86382,6 @@ async def handle_test(test_suite: str) -> int:
         import traceback
         traceback.print_exc()
         return 1
-
 
 async def async_main(args: argparse.Namespace) -> int:
     """
@@ -87341,7 +86853,6 @@ async def async_main(args: argparse.Namespace) -> int:
         except Exception as final_err:
             print(f"[Kernel] Error in finally cleanup: {final_err}")
 
-
 def _generate_launchd_plist() -> str:
     """v239.0: Generate launchd plist with dynamically resolved paths."""
     project_root = Path(__file__).parent.resolve()
@@ -87381,7 +86892,6 @@ def _generate_launchd_plist() -> str:
     </dict>
 </dict>
 </plist>"""
-
 
 def main() -> int:
     """
@@ -87462,7 +86972,6 @@ def main() -> int:
         pass  # If we can't enumerate threads, just return normally
 
     return exit_code
-
 
 # =============================================================================
 # ZONE 7.5: ENTRY POINT
