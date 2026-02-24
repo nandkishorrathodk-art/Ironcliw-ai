@@ -710,20 +710,57 @@ class RealTimeVoiceCommunicator:
 
         if sys.platform == "win32":
             try:
-                import pyttsx3
-                loop = asyncio.get_event_loop()
-                def _speak_sync():
-                    _e = pyttsx3.init()
-                    voices = _e.getProperty('voices')
-                    if voices:
-                        _e.setProperty('voice', voices[0].id)
-                    _e.setProperty('rate', config.rate)
-                    _e.say(message.text)
-                    _e.runAndWait()
-                    _e.stop()
-                await loop.run_in_executor(None, _speak_sync)
+                import edge_tts as _edge_tts
+                import tempfile
+                import os as _os
+                import ctypes
+                import aiohttp.resolver as _ar
+                import aiohttp.connector as _ac
+                _ar.DefaultResolver = _ar.ThreadedResolver
+                _ac.DefaultResolver = _ar.ThreadedResolver
+
+                _JARVIS_VOICE = "en-GB-RyanNeural"
+                _base_wpm = 175
+                _pct = round((config.rate - _base_wpm) / _base_wpm * 100)
+                _rate_str = f"+{_pct}%" if _pct >= 0 else f"{_pct}%"
+
+                communicate = _edge_tts.Communicate(message.text, voice=_JARVIS_VOICE, rate=_rate_str)
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as _f:
+                    _tmp = _f.name
+                try:
+                    await communicate.save(_tmp)
+                    _loop = asyncio.get_event_loop()
+
+                    def _mci_play(path):
+                        _mci = ctypes.windll.winmm.mciSendStringW
+                        _buf = ctypes.create_unicode_buffer(256)
+                        _mci(f'open "{path}" type mpegvideo alias jarvis_tts', _buf, 256, None)
+                        _mci('play jarvis_tts wait', _buf, 256, None)
+                        _mci('close jarvis_tts', _buf, 256, None)
+
+                    await _loop.run_in_executor(None, _mci_play, _tmp)
+                finally:
+                    try:
+                        _os.unlink(_tmp)
+                    except Exception:
+                        pass
             except Exception as e:
-                logger.debug("pyttsx3 speak failed: %s", e)
+                logger.debug("edge-tts speak failed: %s — falling back to pyttsx3", e)
+                try:
+                    import pyttsx3
+                    _loop = asyncio.get_event_loop()
+                    def _pyttsx3_speak():
+                        _e = pyttsx3.init()
+                        voices = _e.getProperty('voices')
+                        if voices:
+                            _e.setProperty('voice', voices[0].id)
+                        _e.setProperty('rate', config.rate)
+                        _e.say(message.text)
+                        _e.runAndWait()
+                        _e.stop()
+                    await _loop.run_in_executor(None, _pyttsx3_speak)
+                except Exception as e2:
+                    logger.debug("pyttsx3 fallback failed: %s", e2)
             return
 
         # Legacy: direct macOS say
