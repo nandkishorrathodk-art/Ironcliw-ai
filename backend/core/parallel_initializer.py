@@ -221,10 +221,37 @@ class AdaptiveThresholdCalculator:
         except OSError as e:
             logger.debug(f"[AdaptiveThreshold] Failed to save history: {e}")
 
+    def _get_cpu_pressure_factor(self) -> float:
+        """
+        v3.3: Query current CPU utilization and return a dynamic multiplier.
+
+        Under CPU pressure, components take proportionally longer because they
+        get fewer CPU cycles. The adaptive threshold must extend to prevent
+        premature cancellation (which causes cascade failures).
+
+        Returns:
+            Multiplier >= 1.0. At 99% CPU → 2.5x. At 95% → 1.5x. Below 90% → 1.0x.
+        """
+        try:
+            import psutil
+            # interval=None returns instant cached reading (non-blocking)
+            cpu = psutil.cpu_percent(interval=None)
+        except Exception:
+            return 1.0
+
+        if cpu < 90.0:
+            return 1.0
+        # Linear interpolation: 90% → 1.0x, 100% → 3.0x
+        # At 95% → 1.5x, at 99% → 2.8x
+        return 1.0 + (cpu - 90.0) / 10.0 * 2.0
+
     def get_threshold(self, name: str, static_default: float) -> float:
         """
         Get adaptive threshold for a component, falling back to static default
         if no history exists.
+
+        v3.3: CPU-pressure-aware — extends thresholds dynamically when CPU
+        is saturated. Prevents premature cancellation under resource contention.
 
         Args:
             name: Component name
@@ -242,6 +269,13 @@ class AdaptiveThresholdCalculator:
             except (ValueError, TypeError):
                 pass
 
+        # v3.3: CPU-pressure multiplier — under heavy load, everything takes
+        # longer. The EMA was measured under historical (often lighter) load.
+        # Without this, 99.8% CPU → components take 2-5x longer than EMA →
+        # premature cancellation → cascade failure (cloud_sql_proxy → learning_db
+        # → TwoTier → 80s wasted timeout).
+        cpu_factor = self._get_cpu_pressure_factor()
+
         entry = self._history.get(name)
         if entry and entry.get("count", 0) >= 3:
             # Have enough samples — use EMA-based threshold
@@ -251,16 +285,28 @@ class AdaptiveThresholdCalculator:
             ema_var = entry.get("ema_var", 0.0)
             stddev = max(ema_var, 0.0) ** 0.5
             adaptive = ema * self._safety_factor + 2.0 * stddev
+            # v3.3: Apply CPU pressure factor BEFORE floor guards
+            adaptive *= cpu_factor
             # v3.1: Also respect peak — never set threshold below the all-time max
             # (a component that once took 80s shouldn't be killed at 30s)
             peak = entry.get("peak", 0.0)
             adaptive = max(adaptive, peak * 1.1)  # 10% headroom above peak
             # Floor guards
             adaptive = max(adaptive, self._minimum_floor)
-            adaptive = max(adaptive, static_default * 0.6)
+            # v3.3: Raised floor from 0.6 → 0.8 of static_default.
+            # At 0.6, cloud_sql_proxy (45s static) floored at 27s — below its
+            # internal ensure_timeout (40s). The watchdog killed it before its
+            # own timeout could fire.
+            adaptive = max(adaptive, static_default * 0.8)
+            if cpu_factor > 1.0:
+                logger.debug(
+                    f"[AdaptiveThreshold] {name}: {adaptive:.1f}s "
+                    f"(CPU pressure ×{cpu_factor:.1f})"
+                )
             return adaptive
 
-        return static_default
+        # v3.3: Even static defaults get CPU pressure extension
+        return static_default * cpu_factor
 
     def record_duration(self, name: str, duration_seconds: float) -> None:
         """
@@ -437,6 +483,7 @@ class ParallelInitializer:
         self._watchdog_task: Optional[asyncio.Task] = None
         # v2.0: Track if interactive mode was announced
         self._interactive_announced = False
+        self._force_sequential: bool = False  # v266.3: Set when bridge unavailable + low RAM
 
         # Store references for cleanup
         self._tasks: List[asyncio.Task] = []
@@ -445,6 +492,7 @@ class ParallelInitializer:
         # Maps component name → asyncio.Task running its initializer.
         # When watchdog marks SKIPPED, it CANCELS the task — no more zombies.
         self._component_tasks: Dict[str, asyncio.Task] = {}
+        self._recovery_tasks: Dict[str, asyncio.Task] = {}
 
         # v3.0: Dependency-failure events for instant cascade propagation.
         # When a component fails/skips, its event is set. Dependents race
@@ -527,13 +575,15 @@ class ParallelInitializer:
         # + background DB verification. Keep at 45s — proxy itself is fast, the
         # verify_db_level_readiness background task has its own lifecycle.
         self._add_component("cloud_sql_proxy", priority=10, stale_threshold=45.0)
-        # Learning DB depends on cloud_sql_proxy for DB-level readiness
-        # v3.0: Increased from 40→60s. Init path: gate wait (15s) + retry (20s) +
-        # SQLite fallback (20s) = 55s worst case. With dependency-failure propagation,
-        # this timeout only fires if the gate is CHECKING the entire time (rare).
-        # The common failure path (Cloud SQL UNAVAILABLE) now cascades instantly via
-        # dep-failure events from cloud_sql_proxy.
-        self._add_component("learning_database", priority=12, stale_threshold=60.0, dependencies=["cloud_sql_proxy"])
+        # Learning DB should still initialize when Cloud SQL is degraded/unavailable
+        # because it has a first-class SQLite fallback path. Keep Cloud SQL as a
+        # soft dependency for context logging, not as a hard startup gate.
+        self._add_component(
+            "learning_database",
+            priority=12,
+            stale_threshold=60.0,
+            soft_dependencies=["cloud_sql_proxy"],
+        )
 
         # Phase 2: ML Infrastructure (parallel, non-blocking)
         # All these can start simultaneously
@@ -697,6 +747,39 @@ class ParallelInitializer:
         self.app.state.gcp_offload_active = False
         self.app.state.gcp_vm_ip = None
         self.app.state.oom_degradation_active = False  # v132.0
+        self.app.state.oom_bridge_available = bool(OOM_PREVENTION_AVAILABLE)
+
+        def _force_sequential_on_bridge_unavailable(reason: str) -> None:
+            """Fail-closed when OOM bridge telemetry is unavailable under low RAM."""
+            self.app.state.oom_bridge_available = False
+            self.app.state.oom_bridge_reason = reason
+            try:
+                import psutil
+
+                _avail_gb = psutil.virtual_memory().available / (1024**3)
+                if _avail_gb < 4.0:
+                    self._force_sequential = True
+                    logger.warning(
+                        "[OOM Prevention] Bridge unavailable (%s) + %.1fGB available "
+                        "— forcing sequential init",
+                        reason,
+                        _avail_gb,
+                    )
+                else:
+                    logger.warning(
+                        "[OOM Prevention] Bridge unavailable (%s) but %.1fGB available "
+                        "— parallel init allowed",
+                        reason,
+                        _avail_gb,
+                    )
+            except Exception:
+                # psutil unavailable too → default to strict fail-closed mode.
+                self._force_sequential = True
+                logger.warning(
+                    "[OOM Prevention] Bridge unavailable (%s) and RAM telemetry unavailable "
+                    "— forcing sequential init",
+                    reason,
+                )
 
         if OOM_PREVENTION_AVAILABLE:
             try:
@@ -724,7 +807,20 @@ class ParallelInitializer:
                         logger.info(f"[OOM Prevention] ✅ GCP VM ready at {memory_result.gcp_vm_ip}")
                         logger.info(f"[OOM Prevention] Heavy components will be offloaded to cloud")
                     else:
-                        logger.error(f"[OOM Prevention] ❌ GCP VM not available - proceeding with risk")
+                        _avail_gb = float(getattr(memory_result, "available_ram_gb", 0.0) or 0.0)
+                        logger.error(
+                            "[OOM Prevention] ❌ GCP VM unavailable for CLOUD_REQUIRED "
+                            "(avail=%.1fGB) — degrading deterministically",
+                            _avail_gb,
+                        )
+                        if _avail_gb <= 0.0 or _avail_gb < 4.0:
+                            self._force_sequential = True
+                            logger.warning(
+                                "[OOM Prevention] CLOUD_REQUIRED fallback forcing sequential init "
+                                "(avail=%.1fGB)",
+                                _avail_gb,
+                            )
+                        self.app.state.oom_degradation_active = True
 
                 elif memory_result.decision == MemoryDecision.CLOUD:
                     logger.info(f"[OOM Prevention] ☁️ Cloud recommended (optional)")
@@ -732,6 +828,15 @@ class ParallelInitializer:
                         self.app.state.gcp_offload_active = True
                         self.app.state.gcp_vm_ip = memory_result.gcp_vm_ip
                         logger.info(f"[OOM Prevention] Using GCP VM at {memory_result.gcp_vm_ip}")
+                    else:
+                        _avail_gb = float(getattr(memory_result, "available_ram_gb", 0.0) or 0.0)
+                        if _avail_gb <= 0.0 or _avail_gb < 4.0:
+                            self._force_sequential = True
+                            logger.warning(
+                                "[OOM Prevention] CLOUD recommended but bridge reports low RAM "
+                                "(avail=%.1fGB) — forcing sequential init",
+                                _avail_gb,
+                            )
 
                 elif memory_result.decision == MemoryDecision.DEGRADED:
                     # v132.0: Graceful degradation - proceed with reduced functionality
@@ -759,7 +864,10 @@ class ParallelInitializer:
                         logger.info("[OOM Prevention] 🔧 Note: GCP was auto-enabled for future use")
 
             except Exception as e:
-                logger.warning(f"[OOM Prevention] Check failed (non-fatal): {e}")
+                _force_sequential_on_bridge_unavailable(str(e) or type(e).__name__)
+        else:
+            # Import failure is still an OOM-bridge outage. Fail-closed under low RAM.
+            _force_sequential_on_bridge_unavailable("bridge_import_unavailable")
         # =========================================================================
 
         try:
@@ -773,13 +881,15 @@ class ParallelInitializer:
 
                 logger.info(f"Initializing priority {priority} components: {[c.name for c in group]}")
 
-                # Run group in parallel
+                # Run group in parallel (or sequentially if _force_sequential)
                 tasks = []
+                _task_comp_names = []  # v266.3: Track component names for sequential skip marking
                 for comp in group:
                     # v125.0: Enhanced dependency checking with failure propagation
                     dep_status = self._check_dependency_status(comp)
                     if dep_status == "ready":
                         tasks.append(self._init_component(comp.name))
+                        _task_comp_names.append(comp.name)
                     elif dep_status == "failed":
                         # v125.0: Dependencies failed - skip this component immediately
                         failed_deps = [
@@ -800,7 +910,39 @@ class ParallelInitializer:
                         await self._mark_skipped(comp.name, "Dependencies not ready")
 
                 if tasks:
-                    await safe_gather(*tasks, return_exceptions=True)
+                    if self._force_sequential:
+                        # v266.3: Sequential init — one component at a time with
+                        # memory check between each to prevent OOM cascade
+                        _seq_completed_idx = len(tasks) - 1  # Assume all complete unless break
+                        for _seq_idx, _seq_task in enumerate(tasks):
+                            try:
+                                await _seq_task
+                            except Exception as _seq_err:
+                                logger.warning(
+                                    "[Sequential Init] Component failed: %s", _seq_err
+                                )
+                            # Check RAM between components
+                            try:
+                                import psutil
+                                _post_avail_gb = psutil.virtual_memory().available / (1024**3)
+                                if _post_avail_gb < 2.0:
+                                    logger.warning(
+                                        "[Sequential Init] RAM critical (%.1fGB) "
+                                        "— skipping remaining components in group",
+                                        _post_avail_gb,
+                                    )
+                                    _seq_completed_idx = _seq_idx
+                                    break
+                            except Exception:
+                                pass
+                        # v266.3: Mark unawaited components as skipped so watchdog
+                        # and dependency checker don't wait for them indefinitely
+                        for _skip_name in _task_comp_names[_seq_completed_idx + 1:]:
+                            await self._mark_skipped(
+                                _skip_name, "RAM critical — sequential init aborted"
+                            )
+                    else:
+                        await safe_gather(*tasks, return_exceptions=True)
 
                 # Update progress
                 self._update_progress()
@@ -1158,6 +1300,14 @@ class ParallelInitializer:
                                 f"(threshold: {comp.stale_threshold_seconds:.0f}s) — "
                                 f"CANCELLING task"
                             )
+                            # v3.3: Record the cancelled duration to prevent
+                            # survivorship bias. Without this, only fast
+                            # successes update the EMA → threshold erodes
+                            # downward → more premature cancellations → more
+                            # fast-only samples → vicious cycle.
+                            self._adaptive_calc.record_duration(
+                                name, running_secs
+                            )
                             await self._mark_skipped(
                                 name,
                                 f"Stale after {running_secs:.0f}s (watchdog — task cancelled)"
@@ -1265,12 +1415,15 @@ class ParallelInitializer:
                 return
 
         # v3.2: Log soft dependency failures — component still runs but with context
+        # v266.3: Use INFO (not WARNING) for soft dep failures. These are DESIGNED
+        # graceful degradation paths (e.g. Cloud SQL → SQLite). WARNING misled
+        # operators into thinking something was broken when it was working as intended.
         failed_soft_deps = self._get_failed_soft_deps(comp)
         if failed_soft_deps:
             infra_ctx = self._get_infrastructure_failure_context(name)
-            logger.warning(
-                f"⚠️ {name}: soft dependencies failed {failed_soft_deps} — "
-                f"initializing with degraded functionality. Root cause: {infra_ctx}"
+            logger.info(
+                f"ℹ️  {name}: soft dependencies unavailable {failed_soft_deps} — "
+                f"initializing with fallback. Context: {infra_ctx}"
             )
 
         comp.phase = InitPhase.RUNNING
@@ -1287,6 +1440,19 @@ class ParallelInitializer:
         # No more hardcoded heavy_components dict with 60/120s.
         # The stale threshold is the single source of truth (adaptive or env-configured).
         timeout = comp.stale_threshold_seconds
+
+        # v266.0: Cloud SQL is non-interactive infrastructure with first-class
+        # degraded-mode fallback. Cap blocking startup wait and recover in background.
+        if name == "cloud_sql_proxy":
+            try:
+                _cloudsql_timeout_cap = float(
+                    os.environ.get("JARVIS_CLOUDSQL_STARTUP_BLOCKING_TIMEOUT", "45.0")
+                )
+            except (TypeError, ValueError):
+                _cloudsql_timeout_cap = 45.0
+            if _cloudsql_timeout_cap <= 0:
+                _cloudsql_timeout_cap = 45.0
+            timeout = min(timeout, _cloudsql_timeout_cap)
 
         try:
             initializer = getattr(self, f"_init_{name}", None)
@@ -1330,6 +1496,8 @@ class ParallelInitializer:
                             f"task cancelled, continuing degraded"
                         )
                         await self._mark_skipped(name, error_msg)
+                        if name == "cloud_sql_proxy":
+                            self._schedule_cloud_sql_timeout_recovery()
                         return
                 except asyncio.CancelledError:
                     # v3.1: Acquire phase lock for atomic check+transition
@@ -1365,6 +1533,8 @@ class ParallelInitializer:
                 logger.warning(f"⚠️ Non-critical component {name} failed: {error_context}")
             async with self._phase_lock:
                 await self._mark_failed(name, error_context)
+            if name == "cloud_sql_proxy":
+                self._schedule_cloud_sql_timeout_recovery()
 
     async def _race_init_vs_deps(
         self,
@@ -1525,6 +1695,170 @@ class ParallelInitializer:
             if task and not task.done():
                 task.cancel()
                 logger.debug(f"[v3.0] Cancelled zombie task for {name}")
+
+    async def _mark_recovered(self, name: str, detail: str) -> None:
+        """
+        Promote a previously skipped/failed component to COMPLETE after
+        asynchronous recovery.
+        """
+        comp = self.components.get(name)
+        if not comp:
+            return
+
+        async with self._phase_lock:
+            previous = comp.phase
+            if previous == InitPhase.COMPLETE:
+                return
+            comp.phase = InitPhase.COMPLETE
+            comp.end_time = time.time()
+            comp.error = None
+            self.app.state.components_ready.add(name)
+            if name in self.app.state.components_failed:
+                self.app.state.components_failed.discard(name)
+
+        logger.info(
+            f"[RECOVERED] {name}: {detail} (was {previous.value})"
+        )
+        _signal_dms_heartbeat(name)
+
+        try:
+            broadcaster = get_startup_broadcaster()
+            await asyncio.wait_for(
+                broadcaster.broadcast_component_complete(
+                    component=name,
+                    message=f"{name.replace('_', ' ').title()} recovered",
+                    duration_ms=None,
+                ),
+                timeout=2.0,
+            )
+        except Exception:
+            pass
+
+    def _schedule_cloud_sql_timeout_recovery(self) -> None:
+        """
+        Schedule background Cloud SQL recovery after startup timeout.
+        Runs once at a time; subsequent calls are no-ops while active.
+        """
+        existing = self._recovery_tasks.get("cloud_sql_proxy")
+        if existing and not existing.done():
+            return
+
+        task = safe_create_task(
+            self._cloud_sql_timeout_recovery_loop(),
+            name="cloudsql-timeout-recovery",
+        )
+        self._recovery_tasks["cloud_sql_proxy"] = task
+        self._tasks.append(task)
+        logger.info(
+            "[Recovery] Scheduled Cloud SQL background recovery after startup timeout"
+        )
+
+    async def _cloud_sql_timeout_recovery_loop(self) -> None:
+        """
+        Retry Cloud SQL initialization in the background after timeout so startup
+        can remain degraded-but-responsive while infrastructure heals.
+        """
+        initial_delay = float(
+            os.environ.get("JARVIS_CLOUDSQL_RECOVERY_INITIAL_DELAY", "5.0")
+        )
+        max_attempts = int(
+            os.environ.get("JARVIS_CLOUDSQL_RECOVERY_ATTEMPTS", "3")
+        )
+        attempt_timeout = float(
+            os.environ.get("JARVIS_CLOUDSQL_RECOVERY_ATTEMPT_TIMEOUT", "120.0")
+        )
+        base_backoff = float(
+            os.environ.get("JARVIS_CLOUDSQL_RECOVERY_BACKOFF", "20.0")
+        )
+        max_backoff = float(
+            os.environ.get("JARVIS_CLOUDSQL_RECOVERY_MAX_BACKOFF", "120.0")
+        )
+
+        try:
+            if initial_delay > 0:
+                await asyncio.sleep(initial_delay)
+
+            for attempt in range(1, max_attempts + 1):
+                if self._get_shutdown_event().is_set():
+                    return
+
+                logger.info(
+                    f"[Recovery] Cloud SQL retry {attempt}/{max_attempts} "
+                    f"(timeout={attempt_timeout:.0f}s)"
+                )
+
+                try:
+                    await asyncio.wait_for(
+                        self._init_cloud_sql_proxy(),
+                        timeout=attempt_timeout,
+                    )
+                except asyncio.TimeoutError:
+                    logger.warning(
+                        f"[Recovery] Cloud SQL retry {attempt}/{max_attempts} "
+                        f"timed out ({attempt_timeout:.0f}s)"
+                    )
+                except asyncio.CancelledError:
+                    raise
+                except Exception as e:
+                    logger.warning(
+                        f"[Recovery] Cloud SQL retry {attempt}/{max_attempts} "
+                        f"failed: {e}"
+                    )
+
+                ready = False
+                failure_reason = None
+                gate_state = "unknown"
+                try:
+                    try:
+                        from intelligence.cloud_sql_connection_manager import (
+                            get_connection_manager,
+                            get_readiness_gate,
+                            ReadinessState,
+                        )
+                    except ImportError:
+                        from backend.intelligence.cloud_sql_connection_manager import (
+                            get_connection_manager,
+                            get_readiness_gate,
+                            ReadinessState,
+                        )
+
+                    conn_mgr = get_connection_manager()
+                    gate = get_readiness_gate()
+                    gate_state = gate.state.value
+                    failure_reason = gate.get_status().get("failure_reason")
+                    ready = bool(conn_mgr.is_proxy_ready()) or (
+                        gate.state == ReadinessState.READY
+                    )
+                except Exception as e:
+                    logger.debug(f"[Recovery] Cloud SQL readiness probe error: {e}")
+
+                if ready:
+                    await self._mark_recovered(
+                        "cloud_sql_proxy",
+                        f"Cloud SQL READY after retry {attempt}/{max_attempts}",
+                    )
+                    return
+
+                if failure_reason == "credentials":
+                    logger.warning(
+                        "[Recovery] Cloud SQL recovery stopped early: credential "
+                        "failure requires operator intervention"
+                    )
+                    return
+
+                if attempt < max_attempts:
+                    backoff = min(base_backoff * (2 ** (attempt - 1)), max_backoff)
+                    logger.info(
+                        f"[Recovery] Cloud SQL still {gate_state}; "
+                        f"next retry in {backoff:.0f}s"
+                    )
+                    await asyncio.sleep(backoff)
+
+            logger.warning(
+                "[Recovery] Cloud SQL recovery exhausted retries; remaining in degraded mode"
+            )
+        finally:
+            self._recovery_tasks.pop("cloud_sql_proxy", None)
 
     def _signal_dependency_failure(self, name: str) -> None:
         """
@@ -2364,21 +2698,52 @@ class ParallelInitializer:
                 # Check gate state to decide whether to raise (trigger cascade)
                 # or proceed (degraded mode).
                 _gate_state = readiness_gate.state
-                if _gate_state == ReadinessState.UNAVAILABLE:
-                    raise RuntimeError(
-                        f"Cloud SQL UNAVAILABLE: {gate_err}"
+                _gate_status = readiness_gate.get_status()
+                _gate_reason = _gate_status.get("failure_reason")
+                _gate_message = _gate_status.get("message")
+
+                if _gate_state == ReadinessState.READY:
+                    conn_mgr.set_proxy_ready(True)
+                    logger.info(
+                        "   Cloud SQL gate converged to READY after transient error "
+                        f"({gate_err}); reason={_gate_reason or 'none'}"
                     )
-                # DEGRADED_SQLITE or other — proceed, dependents check gate
-                logger.info(
-                    f"   Cloud SQL gate: {_gate_state.value} after error "
-                    f"({gate_err}) — proceeding in degraded mode"
-                )
+                elif _gate_state == ReadinessState.UNAVAILABLE:
+                    conn_mgr.set_proxy_ready(False)
+                    raise RuntimeError(
+                        f"Cloud SQL UNAVAILABLE: {gate_err} "
+                        f"(reason={_gate_reason or 'unknown'})"
+                    )
+                elif _gate_state == ReadinessState.DEGRADED_SQLITE:
+                    conn_mgr.set_proxy_ready(False)
+                    logger.info(
+                        "   Cloud SQL gate: degraded_sqlite after error "
+                        f"({gate_err}) — message={_gate_message or 'n/a'}"
+                    )
+                else:
+                    conn_mgr.set_proxy_ready(False)
+                    logger.info(
+                        f"   Cloud SQL gate: {_gate_state.value} after error "
+                        f"({gate_err}) — proceeding in degraded mode"
+                    )
 
             configured_port = proxy_manager.config.get('cloud_sql', {}).get('port', 5432)
-            logger.info(
-                f"   Cloud SQL proxy bootstrap initialized on 127.0.0.1:{configured_port} "
-                f"(authoritative DB verification pending)"
-            )
+            _final_gate_state = readiness_gate.state
+            if _final_gate_state == ReadinessState.READY:
+                logger.info(
+                    f"   Cloud SQL proxy bootstrap complete on 127.0.0.1:{configured_port} "
+                    f"(DB-level readiness verified)"
+                )
+            elif _final_gate_state == ReadinessState.DEGRADED_SQLITE:
+                logger.info(
+                    f"   Cloud SQL bootstrap completed in SQLite fallback mode "
+                    f"(port 127.0.0.1:{configured_port})"
+                )
+            else:
+                logger.info(
+                    f"   Cloud SQL proxy bootstrap initialized on 127.0.0.1:{configured_port} "
+                    f"(authoritative DB verification pending)"
+                )
 
         except ImportError as e:
             # Handle case where cloud_sql_connection_manager doesn't have new APIs yet
@@ -3095,19 +3460,29 @@ class ParallelInitializer:
                 voice["enhanced_available"] = False
 
             try:
-                from api.jarvis_voice_api import jarvis_api, router as jarvis_voice_router
-                voice["jarvis_router"] = jarvis_voice_router
-                voice["jarvis_api"] = jarvis_api
-                voice["jarvis_available"] = True
+                from api.jarvis_voice_api import get_jarvis_api, get_voice_router
 
-                # Mount the JARVIS voice router if not already mounted
-                existing = any(
-                    hasattr(r, 'path') and '/voice/jarvis' in str(r.path)
-                    for r in self.app.routes
-                )
-                if not existing:
-                    self.app.include_router(jarvis_voice_router, prefix="/voice/jarvis", tags=["jarvis"])
-                    logger.info("   JARVIS voice router mounted at /voice/jarvis")
+                jarvis_api = get_jarvis_api()
+                jarvis_voice_router = get_voice_router()
+
+                if jarvis_api and jarvis_voice_router:
+                    voice["jarvis_router"] = jarvis_voice_router
+                    voice["jarvis_api"] = jarvis_api
+                    voice["jarvis_available"] = True
+
+                    # Mount the JARVIS voice router if not already mounted
+                    existing = any(
+                        hasattr(r, 'path') and '/voice/jarvis' in str(r.path)
+                        for r in self.app.routes
+                    )
+                    if not existing:
+                        self.app.include_router(
+                            jarvis_voice_router, prefix="/voice/jarvis", tags=["jarvis"]
+                        )
+                        logger.info("   JARVIS voice router mounted at /voice/jarvis")
+                else:
+                    voice["jarvis_available"] = False
+                    logger.warning("JARVIS Voice API lazy init returned None")
 
             except ImportError as e:
                 voice["jarvis_available"] = False

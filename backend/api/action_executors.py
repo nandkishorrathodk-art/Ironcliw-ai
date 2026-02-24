@@ -13,6 +13,7 @@ from datetime import datetime
 import logging
 import pyautogui
 from abc import ABC, abstractmethod
+from pathlib import Path
 
 from .workflow_parser import WorkflowAction, ActionType
 from .workflow_engine import ExecutionContext
@@ -242,6 +243,266 @@ class ApplicationLauncherExecutor(BaseActionExecutor):
             if result.returncode == 0:
                 return
             await asyncio.sleep(0.5)
+
+
+class NavigationExecutor(BaseActionExecutor):
+    """Executor for navigation targets (URLs, repositories, local paths)."""
+
+    _REPO_ENV_KEYS = (
+        "JARVIS_REPO_PATH",
+        "JARVIS_PRIME_PATH",
+        "REACTOR_CORE_PATH",
+    )
+
+    _REPO_HINT_KEYWORDS = ("repo", "repository", "jarvis", "prime", "reactor")
+
+    async def execute(self, action: WorkflowAction, context: ExecutionContext) -> Any:
+        """Navigate to a URL, repository, or local filesystem target."""
+        target = (
+            action.parameters.get("destination")
+            or action.target
+            or action.description
+            or ""
+        ).strip()
+
+        if not target:
+            return {
+                "status": "skipped",
+                "message": "No navigation target was provided.",
+            }
+
+        # URL navigation (explicit URL or domain-like target)
+        if self._looks_like_url(target):
+            url = self._normalize_url(target)
+            return await self._open_url(url, context)
+
+        # Local filesystem path navigation
+        expanded_path = Path(target).expanduser()
+        if expanded_path.exists():
+            return await self._open_path(expanded_path, context)
+
+        # Repository-aware navigation (JARVIS / Prime / Reactor / dynamic repo names)
+        resolved_repo = self._resolve_repository(target)
+        if resolved_repo:
+            remote_url = self._get_git_remote_url(resolved_repo)
+            if remote_url:
+                result = await self._open_url(remote_url, context)
+                result["repository_path"] = str(resolved_repo)
+                return result
+            return await self._open_path(resolved_repo, context)
+
+        # Graceful fallback: unresolved navigation target should not crash workflow.
+        return {
+            "status": "skipped",
+            "message": f"Could not resolve navigation target '{target}'.",
+            "target": target,
+        }
+
+    def _looks_like_url(self, target: str) -> bool:
+        lower_target = target.strip().lower()
+        if lower_target.startswith(("http://", "https://")):
+            return True
+
+        # Accept domain-like targets (e.g., github.com/drussell23/JARVIS-AI-Agent).
+        return "." in lower_target and " " not in lower_target
+
+    def _normalize_url(self, target: str) -> str:
+        stripped = target.strip()
+        if stripped.lower().startswith(("http://", "https://")):
+            return stripped
+        return f"https://{stripped}"
+
+    async def _open_url(self, url: str, context: ExecutionContext) -> Dict[str, Any]:
+        browser = context.get_variable("preferred_browser", os.getenv("JARVIS_DEFAULT_BROWSER", "Safari"))
+
+        try:
+            subprocess.run(["open", "-a", browser, url], check=True)
+        except Exception:
+            # Fallback to system default browser if requested browser is unavailable.
+            subprocess.run(["open", url], check=True)
+
+        context.set_variable("last_navigation_url", url)
+        return {
+            "status": "success",
+            "message": f"Opened {url}",
+            "destination": url,
+        }
+
+    async def _open_path(self, path: Path, context: ExecutionContext) -> Dict[str, Any]:
+        subprocess.run(["open", str(path)], check=True)
+        context.set_variable("last_navigation_path", str(path))
+        return {
+            "status": "success",
+            "message": f"Opened {path}",
+            "destination": str(path),
+        }
+
+    def _resolve_repository(self, target: str) -> Optional[Path]:
+        normalized_target = target.strip().lower()
+        if not normalized_target:
+            return None
+
+        if not any(keyword in normalized_target for keyword in self._REPO_HINT_KEYWORDS):
+            return None
+
+        discovered = self._discover_repositories()
+        if not discovered:
+            return None
+
+        best_match: Optional[Path] = None
+        best_score = 0
+
+        for alias, repo_path in discovered.items():
+            score = self._score_repository_match(normalized_target, alias, repo_path)
+            if score > best_score:
+                best_score = score
+                best_match = repo_path
+
+        return best_match
+
+    def _score_repository_match(self, normalized_target: str, alias: str, repo_path: Path) -> int:
+        alias_norm = alias.lower()
+        repo_name = repo_path.name.lower()
+        score = 0
+
+        priority_terms = ("jarvis prime", "reactor core", "jarvis")
+        for term in priority_terms:
+            if term in normalized_target:
+                term_compact = term.replace(" ", "")
+                if term_compact in alias_norm.replace("_", "").replace("-", ""):
+                    score += 8
+                if term.split()[0] in repo_name:
+                    score += 4
+
+        # Generic token matching for dynamic repo names
+        for token in normalized_target.replace("-", " ").replace("_", " ").split():
+            if len(token) < 3:
+                continue
+            if token in alias_norm:
+                score += 2
+            if token in repo_name:
+                score += 2
+
+        if "repo" in normalized_target or "repository" in normalized_target:
+            score += 1
+
+        # Prefer the current JARVIS repo for generic "jarvis repo" requests.
+        if "jarvis" in normalized_target and "prime" not in normalized_target and "reactor" not in normalized_target:
+            current_repo = self._find_git_root(Path(__file__).resolve())
+            if current_repo and repo_path == current_repo:
+                score += 5
+
+        return score
+
+    def _discover_repositories(self) -> Dict[str, Path]:
+        discovered: Dict[str, Path] = {}
+
+        def register_repo(path: Path, alias_hint: Optional[str] = None):
+            repo_root = self._find_git_root(path)
+            if not repo_root:
+                return
+            alias_candidates = {
+                repo_root.name.lower(),
+                repo_root.name.lower().replace("-", "_"),
+            }
+            if alias_hint:
+                alias_candidates.add(alias_hint.lower())
+
+            repo_name = repo_root.name.lower()
+            if "jarvis" in repo_name and "prime" not in repo_name:
+                alias_candidates.add("jarvis")
+            if "prime" in repo_name:
+                alias_candidates.update({"jarvis_prime", "prime"})
+            if "reactor" in repo_name:
+                alias_candidates.update({"reactor_core", "reactor"})
+
+            for alias in alias_candidates:
+                discovered[alias] = repo_root
+
+        current_repo = self._find_git_root(Path(__file__).resolve())
+        if current_repo:
+            register_repo(current_repo, alias_hint="jarvis")
+
+        for env_key in self._REPO_ENV_KEYS:
+            raw_path = os.getenv(env_key, "").strip()
+            if raw_path:
+                register_repo(Path(raw_path), alias_hint=env_key.lower().replace("_path", ""))
+
+        # Optional shared repo registry used by supervisor.
+        registry_path = Path.home() / ".jarvis" / "repos.json"
+        if registry_path.exists():
+            try:
+                with registry_path.open("r", encoding="utf-8") as f:
+                    repo_registry = json.load(f)
+                if isinstance(repo_registry, dict):
+                    for alias, raw_path in repo_registry.items():
+                        if isinstance(raw_path, str) and raw_path.strip():
+                            register_repo(Path(raw_path), alias_hint=str(alias))
+            except Exception as e:
+                logger.debug(f"Failed to parse repository registry {registry_path}: {e}")
+
+        # Discover sibling Trinity repos in common locations.
+        search_roots = []
+        if current_repo:
+            search_roots.append(current_repo.parent)
+        search_roots.extend([
+            Path.home() / "Documents" / "repos",
+            Path.home() / "repos",
+        ])
+
+        seen_roots = set()
+        for root in search_roots:
+            root_key = str(root.resolve()) if root.exists() else str(root)
+            if root_key in seen_roots or not root.exists() or not root.is_dir():
+                continue
+            seen_roots.add(root_key)
+
+            try:
+                for child in root.iterdir():
+                    if not child.is_dir():
+                        continue
+                    lowered = child.name.lower()
+                    if "jarvis" in lowered or "reactor" in lowered:
+                        register_repo(child)
+            except Exception as e:
+                logger.debug(f"Repository scan skipped for {root}: {e}")
+
+        return discovered
+
+    def _find_git_root(self, path: Path) -> Optional[Path]:
+        current = path if path.is_dir() else path.parent
+        for candidate in [current, *current.parents]:
+            if (candidate / ".git").exists():
+                return candidate
+        return None
+
+    def _get_git_remote_url(self, repo_path: Path) -> Optional[str]:
+        try:
+            result = subprocess.run(
+                ["git", "-C", str(repo_path), "remote", "get-url", "origin"],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if result.returncode != 0:
+                return None
+
+            remote = result.stdout.strip()
+            if not remote:
+                return None
+
+            # Convert SSH remotes into browser-navigable HTTPS URLs.
+            if remote.startswith("git@github.com:"):
+                remote = remote.replace("git@github.com:", "https://github.com/", 1)
+            if remote.startswith("ssh://git@github.com/"):
+                remote = remote.replace("ssh://git@github.com/", "https://github.com/", 1)
+            if remote.endswith(".git"):
+                remote = remote[:-4]
+
+            return remote
+        except Exception as e:
+            logger.debug(f"Failed to resolve git remote for {repo_path}: {e}")
+            return None
 
 
 class SearchExecutor(BaseActionExecutor):
@@ -859,6 +1120,11 @@ async def unlock_system(action: WorkflowAction, context: ExecutionContext) -> An
 async def open_application(action: WorkflowAction, context: ExecutionContext) -> Any:
     """Factory function for opening applications"""
     executor = ApplicationLauncherExecutor()
+    return await executor.execute(action, context)
+
+async def navigate_to_target(action: WorkflowAction, context: ExecutionContext) -> Any:
+    """Factory function for navigation actions"""
+    executor = NavigationExecutor()
     return await executor.execute(action, context)
 
 async def perform_search(action: WorkflowAction, context: ExecutionContext) -> Any:

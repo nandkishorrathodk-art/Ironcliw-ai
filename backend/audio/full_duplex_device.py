@@ -148,7 +148,18 @@ class FullDuplexDevice:
         return self._playback_buffer
 
     async def start(self) -> None:
-        """Open the full-duplex stream."""
+        """
+        Open the full-duplex stream.
+
+        v266.4: ALL PortAudio operations (device validation, profile checks,
+        stream creation, stream start) are synchronous C calls into CoreAudio
+        on macOS. Running these on the event loop freezes it — defeating
+        asyncio.wait_for() timeouts. Same root-cause pattern as ECAPA v265.2
+        (speechbrain import) and Zone 6 v265.2 (chromadb import).
+
+        Fix: run the entire synchronous PortAudio initialization in a thread
+        executor so the event loop stays responsive and timeouts actually fire.
+        """
         if self._running:
             logger.warning("[FullDuplexDevice] Already running")
             return
@@ -156,6 +167,20 @@ class FullDuplexDevice:
         if sd is None:
             raise ImportError("sounddevice is not installed")
 
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(None, self._open_stream_sync)
+
+        # These touch asyncio primitives — must stay on event loop thread.
+        self._started_event.set()
+
+    def _open_stream_sync(self) -> None:
+        """
+        Synchronous PortAudio initialization — runs in thread executor.
+
+        Handles device validation, profile building, stream creation and start.
+        On success, sets self._running = True and populates self._stream.
+        On failure, raises RuntimeError with details.
+        """
         try:
             if os.getenv("JARVIS_AUDIO_VALIDATE_DEVICES", "true").lower() in (
                 "1",
@@ -165,7 +190,6 @@ class FullDuplexDevice:
             ):
                 self._validate_device_selection()
         except Exception:
-            # Validation errors are terminal and should surface as-is.
             raise
 
         startup_profiles = self._build_startup_profiles()
@@ -198,7 +222,6 @@ class FullDuplexDevice:
                 )
                 self._stream.start()
                 self._running = True
-                self._started_event.set()
                 self._startup_silence_frames = max(
                     0,
                     int(self.config.sample_rate * self.config.startup_silence_ms / 1000),
@@ -233,7 +256,6 @@ class FullDuplexDevice:
                 self._safe_close_stream()
                 continue
 
-        self._started_event.clear()
         self._running = False
         joined_errors = " | ".join(startup_errors[-5:])
         raise RuntimeError(

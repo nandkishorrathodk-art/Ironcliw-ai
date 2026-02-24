@@ -1202,9 +1202,23 @@ class ConversationPipeline:
                             )
                             sample_rate = file_sr
                         except Exception:
-                            # Raw int16 PCM fallback (no WAV header)
+                            # v267.0: Validate before raw PCM fallback.
+                            # If audio_bytes has a RIFF/WAV header but sf.read
+                            # failed, strip the 44-byte header so we don't
+                            # interpret header bytes as int16 audio (causes
+                            # pops/clicks).  If it's truly headerless raw PCM,
+                            # use the bytes as-is.
+                            _pcm_bytes = audio_bytes
+                            if (
+                                len(audio_bytes) > 44
+                                and audio_bytes[:4] == b'RIFF'
+                                and audio_bytes[8:12] == b'WAVE'
+                            ):
+                                # WAV header present — skip standard 44-byte
+                                # header to reach raw PCM data section
+                                _pcm_bytes = audio_bytes[44:]
                             audio_np = np.frombuffer(
-                                audio_bytes, dtype=np.int16,
+                                _pcm_bytes, dtype=np.int16,
                             ).astype(np.float32) / 32767.0
 
                         if not cancel_event.is_set():

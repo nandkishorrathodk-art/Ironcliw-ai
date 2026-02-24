@@ -232,9 +232,8 @@ import multiprocessing
 import os
 import sys
 
-# Set UTF-8 encoding for stdout/stderr on Windows to prevent emoji/Unicode errors
+# Windows: Set UTF-8 encoding for stdout/stderr to prevent emoji/Unicode errors
 if sys.platform == 'win32':
-    import codecs
     if sys.stdout.encoding != 'utf-8':
         sys.stdout.reconfigure(encoding='utf-8', errors='replace')
     if sys.stderr.encoding != 'utf-8':
@@ -242,21 +241,26 @@ if sys.platform == 'win32':
 
 # CRITICAL: Import stdlib 'platform' FIRST before it can be shadowed by backend/platform
 import platform as _stdlib_platform
-# Make it available globally with the standard name for other libraries (aiohttp, etc.)
 sys.modules['platform'] = _stdlib_platform
 
-# Fix Python path to allow 'from core.' imports when run as module
-# Add backend dir to sys.path so 'core', 'utils', etc. can be imported
-# This WILL shadow stdlib 'platform', but we've already imported it above
-from pathlib import Path
-_backend_dir = Path(__file__).parent.resolve()
-_project_root = _backend_dir.parent
-# Add backend dir for 'from core.' imports
-if str(_backend_dir) not in sys.path:
-    sys.path.insert(0, str(_backend_dir))
-# Also add project root for 'from backend.' imports  
-if str(_project_root) not in sys.path:
-    sys.path.insert(0, str(_project_root))
+# Ensure both package-style (backend.*) and legacy top-level (api.*, core.*)
+# imports resolve regardless of launch context (repo root, backend dir, uvicorn).
+def _bootstrap_import_paths() -> None:
+    from pathlib import Path as _Path
+
+    backend_dir = _Path(__file__).resolve().parent
+    project_root = backend_dir.parent
+
+    normalized = {os.path.abspath(p) for p in sys.path if p}
+    desired_order = [str(backend_dir), str(project_root)]
+
+    for path in reversed(desired_order):
+        if os.path.abspath(path) not in normalized:
+            sys.path.insert(0, path)
+            normalized.add(os.path.abspath(path))
+
+
+_bootstrap_import_paths()
 
 # v128.0: FIRST - Suppress resource_tracker semaphore warnings
 # This MUST be set BEFORE any multiprocessing imports/usage
@@ -1100,12 +1104,18 @@ def import_voice_system():
         voice["enhanced_available"] = False
 
     try:
-        from api.jarvis_voice_api import jarvis_api
-        from api.jarvis_voice_api import router as jarvis_voice_router
+        # v265.6: Use lazy getters — module-level instantiation deferred to first use
+        from api.jarvis_voice_api import get_jarvis_api, get_voice_router
 
-        voice["jarvis_router"] = jarvis_voice_router
-        voice["jarvis_api"] = jarvis_api
-        voice["jarvis_available"] = True
+        jarvis_api = get_jarvis_api()
+        jarvis_voice_router = get_voice_router()
+        if jarvis_api and jarvis_voice_router:
+            voice["jarvis_router"] = jarvis_voice_router
+            voice["jarvis_api"] = jarvis_api
+            voice["jarvis_available"] = True
+        else:
+            logger.warning("JARVIS Voice API lazy init returned None")
+            voice["jarvis_available"] = False
     except ImportError as e:
         logger.exception(f"Failed to import JARVIS Voice API: {e}")
         voice["jarvis_available"] = False
@@ -3232,8 +3242,12 @@ async def lifespan(app: FastAPI):  # type: ignore[misc]
 
     # Initialize proactive monitoring components
     try:
-        # Set JARVIS API in vision command handler for voice integration
-        from api.vision_command_handler import vision_command_handler
+        # v265.6: Use lazy getter — defers VisionCommandHandler construction
+        from api.vision_command_handler import get_vision_command_handler
+
+        vision_command_handler = get_vision_command_handler()
+        if vision_command_handler is None:
+            raise RuntimeError("VisionCommandHandler initialization failed")
 
         voice = components.get("voice", {})
         if voice.get("jarvis_api"):
@@ -5713,6 +5727,39 @@ except Exception as e:
 
 
 # ═══════════════════════════════════════════════════════════════
+# WAKE WORD API - Mount at module level to prevent startup-time 404s
+# ═══════════════════════════════════════════════════════════════
+# Frontend probes /api/wake-word/status during activation, so route
+# registration must happen before background initialization begins.
+try:
+    from api.wake_word_api import router as wake_word_router
+
+    _existing_wake_routes = [
+        getattr(r, "path", "")
+        for r in app.routes
+        if hasattr(r, "path") and "/api/wake-word" in getattr(r, "path", "")
+    ]
+    if _existing_wake_routes:
+        logger.info(
+            f"ℹ️  Wake Word API already mounted (module level): {len(_existing_wake_routes)} routes"
+        )
+    else:
+        app.include_router(wake_word_router)
+        _mounted_wake_routes = [
+            getattr(r, "path", "")
+            for r in app.routes
+            if hasattr(r, "path") and "/api/wake-word" in getattr(r, "path", "")
+        ]
+        logger.info(
+            f"✅ Wake Word API mounted at /api/wake-word (module level, routes={len(_mounted_wake_routes)})"
+        )
+except ImportError as e:
+    logger.warning(f"⚠️  Wake Word API not available at module level: {e}")
+except Exception as e:
+    logger.error(f"❌ Failed to mount Wake Word API at module level: {e}")
+
+
+# ═══════════════════════════════════════════════════════════════
 # TRINITY HEALTH API - Monitor JARVIS-Prime and Reactor-Core
 # ═══════════════════════════════════════════════════════════════
 try:
@@ -7734,9 +7781,19 @@ def mount_routers():
     try:
         from api.wake_word_api import router as wake_word_router
 
-        # Router already has prefix="/api/wake-word", don't add it again
-        app.include_router(wake_word_router)
-        logger.info("✅ Wake Word API mounted at /api/wake-word")
+        existing_wake_routes = [
+            getattr(r, "path", "")
+            for r in app.routes
+            if hasattr(r, "path") and "/api/wake-word" in getattr(r, "path", "")
+        ]
+        if existing_wake_routes:
+            logger.info(
+                f"ℹ️  Wake Word API already mounted: {len(existing_wake_routes)} routes"
+            )
+        else:
+            # Router already has prefix="/api/wake-word", don't add it again
+            app.include_router(wake_word_router)
+            logger.info("✅ Wake Word API mounted at /api/wake-word")
 
         # Check if the full service is available
         wake_word = components.get("wake_word", {})
@@ -8168,7 +8225,22 @@ def mount_routers():
 @app.post("/api/command")
 async def process_command(request: dict):
     """Simple command endpoint for testing"""
-    command = request.get("command", "")
+    if not isinstance(request, dict):
+        logger.warning(
+            f"Command endpoint received non-object payload: {type(request).__name__}"
+        )
+        return {
+            "error": "invalid_request",
+            "message": "Request body must be a JSON object with a 'command' field.",
+        }
+
+    raw_command = request.get("command", "")
+    if raw_command is None:
+        command = ""
+    elif isinstance(raw_command, str):
+        command = raw_command.strip()
+    else:
+        command = str(raw_command).strip()
 
     # Trigger intelligent preloading (Phase 2) if available
     if hasattr(app.state, "component_manager") and app.state.component_manager:
@@ -8990,32 +9062,83 @@ def _get_diagnostic_recommendation(checks: dict) -> str:
 # Audio endpoints for frontend compatibility - Robust, async, intelligent TTS
 
 
-async def _try_jarvis_api_tts(jarvis_api, request):
-    """v241.0: TTS Strategy 1 — JARVIS Voice API with 4s individual timeout."""
+def _get_tts_timeout_seconds(env_var: str, default: float) -> float:
+    """
+    Parse a positive timeout value from environment with safe fallback.
+
+    Keeps TTS timing policy configurable without hardcoding brittle values.
+    """
+    raw = os.getenv(env_var, "")
+    if not raw:
+        return default
     try:
-        result = await asyncio.wait_for(jarvis_api.speak(request), timeout=4.0)
+        value = float(raw)
+        if value > 0:
+            return value
+    except (TypeError, ValueError):
+        pass
+    logger.warning(
+        f"[TTS] Invalid {env_var}={raw!r}; using default {default:.1f}s"
+    )
+    return default
+
+
+_TTS_JARVIS_TIMEOUT_SECONDS = _get_tts_timeout_seconds(
+    "JARVIS_TTS_JARVIS_TIMEOUT_SECONDS",
+    5.0,
+)
+_TTS_ASYNC_TIMEOUT_SECONDS = _get_tts_timeout_seconds(
+    "JARVIS_TTS_ASYNC_TIMEOUT_SECONDS",
+    7.5,
+)
+_TTS_GLOBAL_TIMEOUT_SECONDS = _get_tts_timeout_seconds(
+    "JARVIS_TTS_GLOBAL_TIMEOUT_SECONDS",
+    8.0,
+)
+# Global timeout must cover the slowest candidate timeout plus small scheduling slack.
+_TTS_GLOBAL_TIMEOUT_SECONDS = max(
+    _TTS_GLOBAL_TIMEOUT_SECONDS,
+    _TTS_JARVIS_TIMEOUT_SECONDS + 0.5,
+    _TTS_ASYNC_TIMEOUT_SECONDS + 0.5,
+)
+
+
+async def _try_jarvis_api_tts(jarvis_api, request):
+    """v241.0: TTS Strategy 1 — JARVIS Voice API."""
+    try:
+        result = await asyncio.wait_for(
+            jarvis_api.speak(request), timeout=_TTS_JARVIS_TIMEOUT_SECONDS
+        )
         # v242.0: Inject X-TTS-Status header into response from jarvis_api.speak()
         if result is not None and hasattr(result, 'headers'):
             result.headers["X-TTS-Status"] = "ok"
             result.headers["Access-Control-Expose-Headers"] = "X-TTS-Status"
         return result
+    except asyncio.TimeoutError:
+        logger.warning(
+            f"[TTS] JARVIS Voice API timed out after {_TTS_JARVIS_TIMEOUT_SECONDS:.1f}s"
+        )
+        return None
     except asyncio.CancelledError:
         logger.debug("[TTS] JARVIS Voice API cancelled (race lost)")
         raise  # Re-raise so asyncio.wait() handles it
     except Exception as e:
-        logger.debug(f"[TTS] JARVIS Voice API failed: {e}")
+        logger.warning(
+            f"[TTS] JARVIS Voice API failed: {type(e).__name__}: {e}"
+        )
         return None
 
 
 async def _try_async_tts(text):
-    """v241.0: TTS Strategy 2 — Async TTS Handler (cached macOS say) with 4.5s timeout."""
+    """v241.0: TTS Strategy 2 — Async TTS Handler (cached macOS say)."""
     _tmp_path = None
     try:
         from api.async_tts_handler import generate_speech_async
         from fastapi.responses import Response
 
         audio_path, content_type = await asyncio.wait_for(
-            generate_speech_async(text, voice="Daniel"), timeout=4.5
+            generate_speech_async(text, voice="Daniel"),
+            timeout=_TTS_ASYNC_TIMEOUT_SECONDS,
         )
         _tmp_path = audio_path
         with open(audio_path, "rb") as f:
@@ -9031,6 +9154,11 @@ async def _try_async_tts(text):
                 "Access-Control-Expose-Headers": "X-TTS-Status",
             },
         )
+    except asyncio.TimeoutError:
+        logger.warning(
+            f"[TTS] Async TTS timed out after {_TTS_ASYNC_TIMEOUT_SECONDS:.1f}s"
+        )
+        return None
     except asyncio.CancelledError:
         # Clean up temp file if subprocess spawned before cancellation
         if _tmp_path:
@@ -9041,8 +9169,79 @@ async def _try_async_tts(text):
         logger.debug("[TTS] Async TTS cancelled (race lost)")
         raise
     except Exception as e:
-        logger.debug(f"[TTS] Async TTS failed: {e}")
+        logger.warning(
+            f"[TTS] Async TTS failed: {type(e).__name__}: {e}"
+        )
         return None
+
+
+async def _await_first_tts_success(
+    tasks: dict[str, "asyncio.Task"],
+    timeout_seconds: Optional[float] = None,
+    timeout: Optional[float] = None,
+    **kwargs,
+):
+    """
+    Wait for the first non-None TTS result within a global timeout.
+
+    Root-cause fix:
+    FIRST_COMPLETED alone is incorrect for multi-strategy races because a fast
+    failure can arrive before a slower success. This helper keeps waiting until
+    we either get a successful result or exhaust all candidates/timeout.
+    """
+    if not tasks:
+        return None
+
+    # Backward-compatible timeout contract:
+    # accept timeout_seconds, timeout, and legacy aliases.
+    if timeout_seconds is None:
+        timeout_seconds = timeout
+    if timeout_seconds is None:
+        timeout_seconds = kwargs.get("global_timeout")
+    if timeout_seconds is None:
+        timeout_seconds = kwargs.get("timeout_s")
+    if timeout_seconds is None:
+        timeout_seconds = 5.0
+
+    deadline = time.monotonic() + max(0.0, float(timeout_seconds))
+    pending = set(tasks.values())
+
+    try:
+        while pending:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+
+            done, pending = await asyncio.wait(
+                pending,
+                timeout=remaining,
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+
+            if not done:
+                break
+
+            for task in done:
+                try:
+                    result = task.result()
+                except asyncio.CancelledError:
+                    continue
+                except Exception:
+                    continue
+
+                if result is not None:
+                    for other in pending:
+                        other.cancel()
+                    if pending:
+                        await asyncio.gather(*pending, return_exceptions=True)
+                    return result
+    finally:
+        for task in pending:
+            task.cancel()
+        if pending:
+            await asyncio.gather(*pending, return_exceptions=True)
+
+    return None
 
 
 @app.post("/audio/speak")
@@ -9052,7 +9251,7 @@ async def audio_speak_post(request: dict):
     Never returns 503 - always provides audio response.
 
     Strategies 1 (JARVIS Voice API) and 2 (Async TTS Handler) race
-    concurrently with a 5s global ceiling. On failure, returns silent
+    concurrently with a configurable global timeout budget. On failure, returns silent
     audio immediately — frontend falls back to browser speechSynthesis.
     """
     from fastapi.responses import Response
@@ -9079,26 +9278,13 @@ async def audio_speak_post(request: dict):
         logger.warning("[TTS] No TTS strategies available, returning silent audio")
         return _generate_silent_audio_response()
 
-    # Race all strategies with 5s global timeout
-    GLOBAL_TTS_TIMEOUT = 5.0
-    done, pending = await asyncio.wait(
-        tasks.values(),
-        timeout=GLOBAL_TTS_TIMEOUT,
-        return_when=asyncio.FIRST_COMPLETED,
+    # Race strategies by first SUCCESS with a global timeout budget.
+    result = await _await_first_tts_success(
+        tasks=tasks,
+        timeout_seconds=_TTS_GLOBAL_TIMEOUT_SECONDS,
     )
-
-    # Cancel any still-running tasks
-    for task in pending:
-        task.cancel()
-
-    # Return first successful result
-    for task in done:
-        try:
-            result = task.result()
-            if result is not None:
-                return result
-        except Exception:
-            continue
+    if result is not None:
+        return result
 
     # All failed or timed out — return silent audio.
     # Frontend will use browser speechSynthesis as final fallback.

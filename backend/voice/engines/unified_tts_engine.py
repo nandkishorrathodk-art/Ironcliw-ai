@@ -289,9 +289,19 @@ class MacOSTTSEngine(BaseTTSEngine):
             cmd.append(text)
 
             # Run synthesis
+            # v266.5: start_new_session=True isolates the subprocess from
+            # the parent process group.  Without this, process-group-wide
+            # signals (e.g. SIGINT sent during zombie cleanup at startup)
+            # propagate to the `say` child and kill it mid-synthesis.
             loop = asyncio.get_event_loop()
             await loop.run_in_executor(
-                None, lambda: subprocess.run(cmd, check=True, capture_output=True)
+                None,
+                lambda: subprocess.run(
+                    cmd,
+                    check=True,
+                    capture_output=True,
+                    start_new_session=True,
+                ),
             )
 
             # Read audio file
@@ -322,13 +332,23 @@ class MacOSTTSEngine(BaseTTSEngine):
             )
 
         except Exception as e:
+            # Cleanup temp file on failure (prevents /tmp leak)
+            try:
+                temp_file.unlink(missing_ok=True)
+            except (NameError, Exception):
+                pass
             logger.error(f"macOS TTS error: {e}", exc_info=True)
             raise
 
     async def get_available_voices(self) -> List[str]:
         """Get available macOS voices"""
         try:
-            result = subprocess.run(["say", "-v", "?"], capture_output=True, text=True)
+            result = subprocess.run(
+                ["say", "-v", "?"],
+                capture_output=True,
+                text=True,
+                start_new_session=True,
+            )
             voices = []
             for line in result.stdout.split("\n"):
                 if line.strip():
@@ -752,13 +772,15 @@ class UnifiedTTSEngine:
         self._screen_lock_checker = None
         return None
 
-    async def _is_screen_locked_for_playback(self) -> bool:
+    async def _is_screen_locked_for_playback(self, force_refresh: bool = False) -> bool:
         """Check lock state with caching to avoid frequent expensive probes."""
         if not self._is_macos or not self._suppress_playback_when_locked:
             return False
 
         now = time.monotonic()
         if (
+            not force_refresh
+            and
             now - self._screen_lock_last_checked_monotonic
             <= self._screen_lock_cache_seconds
         ):
@@ -939,7 +961,7 @@ class UnifiedTTSEngine:
                     self._clear_audio_output_cooldown()
                     return
                 except Exception as afplay_err:
-                    if await self._is_screen_locked_for_playback():
+                    if await self._is_screen_locked_for_playback(force_refresh=True):
                         logger.info(
                             "[UnifiedTTS] Screen locked and afplay unavailable; "
                             "skipping fallback playback"
@@ -989,6 +1011,7 @@ class UnifiedTTSEngine:
                 check=True,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
+                start_new_session=True,
             )
         finally:
             try:

@@ -9,6 +9,11 @@
       "success": 5,
       "failure": 0,
       "avg_duration": 9.774395000000002
+    },
+    "open_app_unknown": {
+      "success": 1,
+      "failure": 0,
+      "avg_duration": 6.60595
     }
   },
   "preferences": {},
@@ -22,9 +27,13 @@
       "total": 6
     },
     "open_app": {
-      "success": 5,
-      "total": 5
+      "success": 6,
+      "total": 6
+    },
+    "unknown": {
+      "success": 1,
+      "total": 1
     }
   },
-  "last_updated": "2026-02-07T19:23:57.215483"
+  "last_updated": "2026-02-22T18:55:35.885509"
 }

@@ -74,6 +74,8 @@ API Endpoints:
     GET  /api/supervisor/health       - Supervisor health status
     GET  /api/supervisor/heartbeat    - Heartbeat for keep-alive
     GET  /api/supervisor/status       - Full supervisor status
+    POST /api/supervisor/recover      - Trigger supervisor recovery
+    GET  /api/supervisor/recover/status - Recovery controller status
     GET  /api/health/unified          - Cross-repo unified health
     GET  /api/progress                - Current progress state
     GET  /api/progress/eta            - ETA prediction
@@ -101,6 +103,7 @@ import math
 import os
 import signal
 import statistics
+import subprocess
 import sys
 import threading
 import time
@@ -1087,6 +1090,22 @@ class LoadingServer:
         self._hub_connect_task: Optional[asyncio.Task] = None
         self._loop: Optional[asyncio.AbstractEventLoop] = None
         self._active_request_tasks: Set[asyncio.Task] = set()
+        self._recovery_lock = asyncio.Lock()
+        self._recovery_process: Optional[subprocess.Popen] = None
+        self._recovery_last_attempt_at: float = 0.0
+        self._recovery_last_attempt_id: Optional[str] = None
+        self._recovery_last_result: Dict[str, Any] = {}
+        self._recovery_cooldown_seconds: float = max(
+            0.0,
+            float(os.getenv("JARVIS_RECOVERY_COOLDOWN_SECONDS", "15.0")),
+        )
+        self._recovery_python_executable: str = (
+            os.getenv("JARVIS_RECOVERY_PYTHON") or sys.executable or "python3"
+        )
+        self._recovery_project_root: Path = self._discover_recovery_project_root()
+        self._recovery_supervisor_script: Path = (
+            self._recovery_project_root / "unified_supervisor.py"
+        )
 
         # v183.0: Supervisor heartbeat tracking
         self._last_supervisor_update: float = time.time()
@@ -1353,6 +1372,373 @@ class LoadingServer:
             logger.debug(f"[v125.0] Could not read supervisor state: {e}")
         return {}
 
+    def _discover_recovery_project_root(self) -> Path:
+        """
+        Resolve project root for supervisor recovery without hardcoding.
+
+        Preference order:
+        1. JARVIS_RECOVERY_PROJECT_ROOT (if valid)
+        2. Configured jarvis_repo
+        3. Repository root inferred from this file
+        4. Current working directory
+        """
+        candidates: List[Path] = []
+
+        env_root = os.getenv("JARVIS_RECOVERY_PROJECT_ROOT")
+        if env_root:
+            candidates.append(Path(env_root).expanduser())
+
+        if getattr(self.config, "jarvis_repo", None):
+            candidates.append(Path(self.config.jarvis_repo).expanduser())
+
+        try:
+            candidates.append(Path(__file__).resolve().parents[1])
+        except Exception:
+            pass
+
+        candidates.append(Path.cwd())
+
+        for candidate in candidates:
+            try:
+                if (candidate / "unified_supervisor.py").exists():
+                    return candidate
+            except Exception:
+                continue
+
+        for candidate in candidates:
+            try:
+                if candidate.exists():
+                    return candidate
+            except Exception:
+                continue
+
+        return Path.cwd()
+
+    @staticmethod
+    def _sanitize_for_log(value: Any, max_len: int = 120) -> str:
+        """Flatten arbitrary values into single-line safe log strings."""
+        text = " ".join(str(value).split())
+        if len(text) > max_len:
+            return text[:max_len]
+        return text
+
+    @staticmethod
+    def _coerce_bool(value: Any) -> bool:
+        """Parse truthy values from API payloads."""
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str):
+            return value.strip().lower() in {"1", "true", "yes", "on"}
+        return bool(value)
+
+    def _is_recovery_process_running(self) -> bool:
+        """Return True when a supervisor recovery subprocess is still running."""
+        return (
+            self._recovery_process is not None
+            and self._recovery_process.poll() is None
+        )
+
+    def _build_recovery_command(self, action: str) -> List[str]:
+        """
+        Build unified supervisor recovery command.
+
+        --restart is idempotent: it restarts when already running, or starts when down.
+        """
+        command = [
+            self._recovery_python_executable,
+            str(self._recovery_supervisor_script),
+            "--restart",
+        ]
+        if action == "force_restart":
+            command.append("--force")
+        return command
+
+    def _get_recovery_log_path(self) -> Path:
+        """Log file used for supervisor recovery subprocess output."""
+        log_dir = self.config.jarvis_home / "logs"
+        log_dir.mkdir(parents=True, exist_ok=True)
+        return log_dir / "supervisor_recovery.log"
+
+    async def _check_backend_health_for_recovery(self) -> bool:
+        """Probe backend /health endpoint directly for recovery gating."""
+        timeout = max(
+            0.5,
+            float(os.getenv("JARVIS_RECOVERY_BACKEND_HEALTH_TIMEOUT", "2.0")),
+        )
+        host = os.getenv("JARVIS_RECOVERY_BACKEND_HOST", "127.0.0.1")
+        path = os.getenv("JARVIS_RECOVERY_BACKEND_HEALTH_PATH", "/health")
+        reader = None
+        writer = None
+        try:
+            reader, writer = await asyncio.wait_for(
+                asyncio.open_connection(host, self.config.backend_port),
+                timeout=timeout,
+            )
+            request = (
+                f"GET {path} HTTP/1.1\r\n"
+                f"Host: {host}\r\n"
+                f"Connection: close\r\n\r\n"
+            )
+            writer.write(request.encode("utf-8"))
+            await writer.drain()
+            status_line = await asyncio.wait_for(reader.readline(), timeout=timeout)
+            if not status_line:
+                return False
+            line = status_line.decode("utf-8", errors="ignore").strip()
+            parts = line.split(" ")
+            if len(parts) < 2:
+                return False
+            try:
+                status_code = int(parts[1])
+            except ValueError:
+                return False
+            return status_code == 200
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            return False
+        finally:
+            if writer is not None:
+                with suppress(Exception):
+                    writer.close()
+                    await writer.wait_closed()
+
+    async def _check_kernel_health_for_recovery(self) -> bool:
+        """Probe supervisor kernel IPC socket for health responsiveness."""
+        socket_path = self.config.jarvis_home / "locks" / "kernel.sock"
+        if not socket_path.exists():
+            return False
+
+        timeout = max(
+            0.5,
+            float(os.getenv("JARVIS_RECOVERY_KERNEL_HEALTH_TIMEOUT", "2.0")),
+        )
+        reader = None
+        writer = None
+        try:
+            reader, writer = await asyncio.wait_for(
+                asyncio.open_unix_connection(str(socket_path)),
+                timeout=timeout,
+            )
+            request = json.dumps({"command": "health"}) + "\n"
+            writer.write(request.encode("utf-8"))
+            await writer.drain()
+            response_data = await asyncio.wait_for(reader.readline(), timeout=timeout)
+            if not response_data:
+                return False
+            response = json.loads(response_data.decode("utf-8", errors="ignore"))
+            return bool(response.get("success")) or bool(response.get("healthy"))
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            return False
+        finally:
+            if writer is not None:
+                with suppress(Exception):
+                    writer.close()
+                    await writer.wait_closed()
+
+    async def _request_supervisor_recovery(
+        self,
+        reason: str = "api_request",
+        action: str = "restart",
+        force: bool = False,
+    ) -> Dict[str, Any]:
+        """
+        Trigger unified supervisor recovery with deterministic responses.
+
+        Response status values:
+        - already_healthy
+        - in_progress
+        - cooldown
+        - restart_initiated
+        - error
+        """
+        async with self._recovery_lock:
+            now = time.monotonic()
+            backend_healthy, kernel_healthy = await asyncio.gather(
+                self._check_backend_health_for_recovery(),
+                self._check_kernel_health_for_recovery(),
+            )
+
+            if backend_healthy and kernel_healthy and not force:
+                result = {
+                    "accepted": False,
+                    "status": "already_healthy",
+                    "message": "Kernel and backend are already healthy",
+                    "backend_healthy": True,
+                    "kernel_healthy": True,
+                    "attempt_id": self._recovery_last_attempt_id,
+                }
+                self._recovery_last_result = result
+                return result
+
+            if self._is_recovery_process_running():
+                result = {
+                    "accepted": True,
+                    "status": "in_progress",
+                    "message": "Recovery already in progress",
+                    "attempt_id": self._recovery_last_attempt_id,
+                    "recovery_pid": self._recovery_process.pid if self._recovery_process else None,
+                    "backend_healthy": backend_healthy,
+                    "kernel_healthy": kernel_healthy,
+                }
+                self._recovery_last_result = result
+                return result
+
+            elapsed = now - self._recovery_last_attempt_at
+            if (
+                self._recovery_last_attempt_at > 0
+                and elapsed < self._recovery_cooldown_seconds
+                and not force
+            ):
+                result = {
+                    "accepted": False,
+                    "status": "cooldown",
+                    "message": "Recovery cooldown active",
+                    "retry_after_seconds": round(self._recovery_cooldown_seconds - elapsed, 2),
+                    "attempt_id": self._recovery_last_attempt_id,
+                    "backend_healthy": backend_healthy,
+                    "kernel_healthy": kernel_healthy,
+                }
+                self._recovery_last_result = result
+                return result
+
+            if not self._recovery_supervisor_script.exists():
+                result = {
+                    "accepted": False,
+                    "status": "error",
+                    "message": (
+                        f"Supervisor entrypoint not found: {self._recovery_supervisor_script}"
+                    ),
+                    "backend_healthy": backend_healthy,
+                    "kernel_healthy": kernel_healthy,
+                }
+                self._recovery_last_result = result
+                return result
+
+            attempt_id = uuid.uuid4().hex[:12]
+            self._recovery_last_attempt_id = attempt_id
+            self._recovery_last_attempt_at = now
+            command = self._build_recovery_command(action)
+            recovery_log_path = self._get_recovery_log_path()
+            env = os.environ.copy()
+            env["JARVIS_RECOVERY_TRIGGER"] = "loading_server"
+            env["JARVIS_RECOVERY_ATTEMPT_ID"] = attempt_id
+            env["JARVIS_RECOVERY_REASON"] = self._sanitize_for_log(reason, 160)
+
+            try:
+                project_root = self._recovery_project_root
+                if not project_root.exists():
+                    project_root = Path.cwd()
+
+                with open(recovery_log_path, "a", encoding="utf-8") as log_file:
+                    log_file.write(
+                        f"\n[{datetime.now().isoformat()}] "
+                        f"attempt_id={attempt_id} "
+                        f"reason={self._sanitize_for_log(reason, 120)} "
+                        f"action={self._sanitize_for_log(action, 32)} "
+                        f"cmd={' '.join(command)}\n"
+                    )
+                    log_file.flush()
+                    self._recovery_process = subprocess.Popen(
+                        command,
+                        cwd=str(project_root),
+                        stdout=log_file,
+                        stderr=subprocess.STDOUT,
+                        start_new_session=True,
+                        env=env,
+                    )
+            except Exception as e:
+                result = {
+                    "accepted": False,
+                    "status": "error",
+                    "message": f"Recovery trigger failed: {e}",
+                    "attempt_id": self._recovery_last_attempt_id,
+                    "backend_healthy": backend_healthy,
+                    "kernel_healthy": kernel_healthy,
+                }
+                self._recovery_last_result = result
+                logger.error("[SupervisorRecovery] Failed: %s", e)
+                return result
+
+            result = {
+                "accepted": True,
+                "status": "restart_initiated",
+                "message": "Unified supervisor recovery initiated",
+                "attempt_id": self._recovery_last_attempt_id,
+                "recovery_pid": self._recovery_process.pid if self._recovery_process else None,
+                "project_root": str(self._recovery_project_root),
+                "supervisor_script": str(self._recovery_supervisor_script),
+                "backend_healthy": backend_healthy,
+                "kernel_healthy": kernel_healthy,
+            }
+            self._recovery_last_result = result
+            logger.warning(
+                "[SupervisorRecovery] Initiated (attempt=%s, pid=%s, reason=%s)",
+                self._recovery_last_attempt_id,
+                self._recovery_process.pid if self._recovery_process else None,
+                self._sanitize_for_log(reason, 120),
+            )
+            return result
+
+    async def _get_supervisor_recovery_status(self) -> Dict[str, Any]:
+        """Get recovery controller status with live health probes."""
+        backend_healthy, kernel_healthy = await asyncio.gather(
+            self._check_backend_health_for_recovery(),
+            self._check_kernel_health_for_recovery(),
+        )
+        process_running = self._is_recovery_process_running()
+        process_exit_code = None
+        process_pid = None
+        if self._recovery_process is not None:
+            process_exit_code = self._recovery_process.poll()
+            process_pid = self._recovery_process.pid
+
+        return {
+            "controller": "supervisor_recovery",
+            "backend_healthy": backend_healthy,
+            "kernel_healthy": kernel_healthy,
+            "recovery_process_running": process_running,
+            "recovery_process_pid": process_pid,
+            "recovery_process_exit_code": process_exit_code,
+            "last_attempt_id": self._recovery_last_attempt_id,
+            "last_attempt_age_seconds": (
+                round(time.monotonic() - self._recovery_last_attempt_at, 2)
+                if self._recovery_last_attempt_at > 0
+                else None
+            ),
+            "cooldown_seconds": self._recovery_cooldown_seconds,
+            "last_result": self._recovery_last_result,
+        }
+
+    async def _handle_supervisor_recover(self, body: Optional[bytes]) -> str:
+        """HTTP handler for supervisor recovery trigger."""
+        if not body:
+            return self._json_response({"error": "No body"}, status=400)
+
+        try:
+            data = json.loads(body.decode("utf-8"))
+        except Exception as e:
+            return self._json_response({"error": f"Invalid JSON: {e}"}, status=400)
+
+        reason = str(data.get("reason", "api_request"))
+        action = str(data.get("action", "restart")).strip().lower() or "restart"
+        force = self._coerce_bool(data.get("force", False))
+        if action not in {"restart", "start", "force_restart"}:
+            return self._json_response(
+                {"error": f"Unsupported action: {action}"},
+                status=400,
+            )
+
+        result = await self._request_supervisor_recovery(
+            reason=reason,
+            action=action,
+            force=force,
+        )
+        status = 500 if result.get("status") == "error" else 200
+        return self._json_response(result, status=status)
+
     # =========================================================================
     # HTTP Request Handlers
     # =========================================================================
@@ -1441,6 +1827,13 @@ class LoadingServer:
 
         elif path == "/api/supervisor/status":
             return self._json_response(self._get_full_status())
+
+        elif path == "/api/supervisor/recover" and method == "POST":
+            return await self._handle_supervisor_recover(body)
+
+        elif path == "/api/supervisor/recover/status":
+            status = await self._get_supervisor_recovery_status()
+            return self._json_response(status)
 
         elif path == "/api/health/unified":
             health = await self._health_aggregator.get_unified_health()
@@ -1644,6 +2037,11 @@ class LoadingServer:
     def _get_full_status(self) -> Dict[str, Any]:
         """Get full supervisor and loading server status."""
         state = self.get_supervisor_state()
+        recovery_process_running = self._is_recovery_process_running()
+        recovery_pid = self._recovery_process.pid if self._recovery_process else None
+        recovery_exit_code = (
+            self._recovery_process.poll() if self._recovery_process else None
+        )
         return {
             "supervisor": state,
             "loading_server": {
@@ -1663,6 +2061,19 @@ class LoadingServer:
             "circuit_breakers": {
                 name: cb.state.value
                 for name, cb in self._health_aggregator._circuit_breakers.items()
+            },
+            "recovery": {
+                "process_running": recovery_process_running,
+                "process_pid": recovery_pid,
+                "process_exit_code": recovery_exit_code,
+                "last_attempt_id": self._recovery_last_attempt_id,
+                "last_attempt_age_seconds": (
+                    round(time.monotonic() - self._recovery_last_attempt_at, 2)
+                    if self._recovery_last_attempt_at > 0
+                    else None
+                ),
+                "cooldown_seconds": self._recovery_cooldown_seconds,
+                "last_result": self._recovery_last_result,
             },
         }
 
@@ -2584,11 +2995,24 @@ console.log('[v186.0] Port config injected by loading_server.py:', {{
             except Exception as e:
                 logger.debug(f"[v212.1] WebSocket close_all cleanup: {e}")
 
-            # Cancel background tasks
-            for task in self._background_tasks:
+            # Cancel background tasks with a bounded drain.
+            # Unbounded awaits here can hang stop() and force supervisor SIGKILL.
+            tasks_to_cancel = [
+                task for task in self._background_tasks
+                if task and not task.done()
+            ]
+            for task in tasks_to_cancel:
                 task.cancel()
-                with suppress(asyncio.CancelledError):
-                    await task
+            if tasks_to_cancel:
+                _, pending_bg = await asyncio.wait(
+                    tasks_to_cancel,
+                    timeout=max(0.1, stop_timeout / 3.0),
+                )
+                if pending_bg:
+                    logger.warning(
+                        "[v212.2] %d background task(s) still pending during shutdown",
+                        len(pending_bg),
+                    )
             self._background_tasks.clear()
 
             # Save ETA history

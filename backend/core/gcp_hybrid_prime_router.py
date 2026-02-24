@@ -76,6 +76,7 @@ Version: 153.0.0
 from __future__ import annotations
 
 import asyncio
+import inspect
 import json
 import logging
 import os
@@ -165,17 +166,30 @@ MEMORY_NORMAL_POLL_INTERVAL = float(os.getenv("MEMORY_NORMAL_POLL_INTERVAL", "5.
 MEMORY_SPIKE_RATE_THRESHOLD_MB = float(os.getenv("MEMORY_SPIKE_RATE_THRESHOLD_MB", "100.0"))  # 100MB/sec = immediate trigger
 MEMORY_DERIVATIVE_WINDOW_SEC = float(os.getenv("MEMORY_DERIVATIVE_WINDOW_SEC", "3.0"))  # Calculate rate over 3s window
 
-# Emergency offload configuration
-EMERGENCY_OFFLOAD_RAM_PERCENT = float(os.getenv("EMERGENCY_OFFLOAD_RAM_PERCENT", "80.0"))  # SIGSTOP at 80%
-EMERGENCY_OFFLOAD_TIMEOUT_SEC = float(os.getenv("EMERGENCY_OFFLOAD_TIMEOUT_SEC", "60.0"))  # Max time processes paused
-
-# v192.0: Emergency offload anti-cycle protection
-# Cooldown after releasing offload - prevents immediate re-trigger
-EMERGENCY_OFFLOAD_COOLDOWN_SEC = float(os.getenv("EMERGENCY_OFFLOAD_COOLDOWN_SEC", "120.0"))  # 2 min cooldown
-# Hysteresis threshold - RAM must drop this much below trigger before re-enabling
-EMERGENCY_OFFLOAD_HYSTERESIS = float(os.getenv("EMERGENCY_OFFLOAD_HYSTERESIS", "10.0"))  # 10% below threshold
-# Max consecutive offloads before forcing termination instead of pause
-EMERGENCY_OFFLOAD_MAX_CYCLES = int(os.getenv("EMERGENCY_OFFLOAD_MAX_CYCLES", "3"))  # After 3 cycles, terminate
+# v266.1: Emergency offload configuration — clean unload primary, SIGSTOP last resort
+# Step 1 threshold: clean model unload via COMPONENT_UNLOAD
+EMERGENCY_UNLOAD_RAM_PERCENT = float(os.getenv("EMERGENCY_UNLOAD_RAM_PERCENT", "85.0"))  # Clean unload at 85%
+# Post-unload verification: wait this long to check if memory dropped
+EMERGENCY_UNLOAD_VERIFY_DELAY_SEC = float(os.getenv("EMERGENCY_UNLOAD_VERIFY_DELAY_SEC", "12.0"))
+# Minimum RAM drop (GB) to consider unload successful
+EMERGENCY_UNLOAD_MIN_DROP_GB = float(os.getenv("EMERGENCY_UNLOAD_MIN_DROP_GB", "1.0"))
+# Step 3 threshold: SIGSTOP as last resort (one-shot, no cycling)
+EMERGENCY_SIGSTOP_RAM_PERCENT = float(os.getenv("EMERGENCY_SIGSTOP_RAM_PERCENT", "95.0"))
+EMERGENCY_SIGSTOP_TIMEOUT_SEC = float(os.getenv("EMERGENCY_SIGSTOP_TIMEOUT_SEC", "60.0"))
+# Cooldown applies to SIGSTOP only (clean unload has no cycling problem)
+EMERGENCY_SIGSTOP_COOLDOWN_SEC = float(os.getenv("EMERGENCY_SIGSTOP_COOLDOWN_SEC", "120.0"))
+# Hysteresis: RAM must drop this much below unload trigger before re-enabling
+EMERGENCY_OFFLOAD_HYSTERESIS = float(os.getenv("EMERGENCY_OFFLOAD_HYSTERESIS", "10.0"))
+# v266.2: Post-crisis model recovery — hybrid lazy + background warm-up
+# After emergency offload, reload local model when memory stabilizes
+RECOVERY_STABILITY_THRESHOLD_PERCENT = float(os.getenv("EMERGENCY_RECOVERY_THRESHOLD_PERCENT", "75.0"))
+RECOVERY_STABILITY_DURATION_SEC = float(os.getenv("EMERGENCY_RECOVERY_STABILITY_SEC", "30.0"))
+RECOVERY_MAX_ATTEMPTS = int(os.getenv("EMERGENCY_RECOVERY_MAX_ATTEMPTS", "3"))
+RECOVERY_STABILITY_MIN_SEC = float(os.getenv("EMERGENCY_RECOVERY_STABILITY_MIN_SEC", "30.0"))
+RECOVERY_STABILITY_MAX_SEC = float(os.getenv("EMERGENCY_RECOVERY_STABILITY_MAX_SEC", "60.0"))
+RECOVERY_COOLDOWN_SEC = float(os.getenv("EMERGENCY_RECOVERY_COOLDOWN_SEC", "300.0"))
+RECOVERY_TREND_RISE_EPSILON = float(os.getenv("EMERGENCY_RECOVERY_TREND_RISE_EPSILON", "0.25"))
+RECOVERY_BACKOFF_SCHEDULE_SEC = [30.0, 60.0, 120.0]
 
 # Cross-repo signaling for memory pressure
 from pathlib import Path
@@ -190,6 +204,13 @@ PREFER_LOCAL_BELOW_COST = float(os.getenv("PREFER_LOCAL_BELOW_COST", "0.10"))
 VM_PROVISIONING_ENABLED = os.getenv("GCP_VM_PROVISIONING_ENABLED", "true").lower() == "true"
 VM_PROVISIONING_LOCK_TTL = int(os.getenv("VM_PROVISIONING_LOCK_TTL", "300"))  # 5 minutes
 VM_MIN_ACTIVE_REQUESTS = int(os.getenv("VM_MIN_ACTIVE_REQUESTS", "1"))  # Min requests before termination
+
+# v266.0: Pressure-driven VM lifecycle hysteresis
+GCP_RELEASE_RAM_PERCENT = float(os.getenv("GCP_RELEASE_RAM_PERCENT", "70.0"))
+GCP_TRIGGER_READINGS_REQUIRED = int(os.getenv("GCP_TRIGGER_READINGS_REQUIRED", "3"))
+GCP_TRIGGER_READINGS_WINDOW = int(os.getenv("GCP_TRIGGER_READINGS_WINDOW", "5"))
+GCP_ACTIVE_STABILITY_CHECKS = int(os.getenv("GCP_ACTIVE_STABILITY_CHECKS", "3"))
+GCP_COOLING_GRACE_SECONDS = float(os.getenv("GCP_COOLING_GRACE_SECONDS", "120.0"))
 
 # =============================================================================
 # Distributed Locking for VM Provisioning (v2.0)
@@ -229,6 +250,17 @@ class RoutingReason(Enum):
     CAPABILITY_REQUIRED = "capability_required"
     FALLBACK = "fallback"
     CIRCUIT_BREAKER_OPEN = "circuit_breaker_open"
+
+
+class VMLifecycleState(Enum):
+    """v266.0: State machine for pressure-driven GCP VM lifecycle."""
+    IDLE = "idle"
+    TRIGGERING = "triggering"
+    PROVISIONING = "provisioning"
+    BOOTING = "booting"
+    ACTIVE = "active"
+    COOLING_DOWN = "cooling_down"
+    STOPPING = "stopping"
 
 
 @dataclass
@@ -702,8 +734,15 @@ class GCPHybridPrimeRouter:
         # v2.0: VM provisioning with distributed locking
         self._vm_provisioning_enabled = VM_PROVISIONING_ENABLED and self._use_resilience
         self._vm_provisioning_lock: Optional[DistributedLock] = None
-        self._vm_provisioning_in_progress = False
         self._active_requests: Dict[RoutingTier, int] = {tier: 0 for tier in RoutingTier}
+
+        # v266.0: VM Lifecycle State Machine (replaces scattered booleans)
+        self._vm_lifecycle_state: VMLifecycleState = VMLifecycleState.IDLE
+        self._vm_lifecycle_changed_at: float = 0.0
+        self._trigger_readings: Deque[bool] = deque(maxlen=GCP_TRIGGER_READINGS_WINDOW)
+        self._active_stability_count: int = 0
+        self._cooling_started_at: float = 0.0
+        self._model_unload_task: Optional[asyncio.Task] = None
         self._vm_provisioning_task: Optional[asyncio.Task] = None
         self._memory_pressure_task: Optional[asyncio.Task] = None
 
@@ -733,16 +772,31 @@ class GCPHybridPrimeRouter:
         self._last_memory_rate_check: float = 0.0
         self._current_memory_rate_mb_sec: float = 0.0  # Current rate of memory growth (MB/sec)
 
-        # Emergency offload state
+        # v266.1: Emergency offload state — 3-step escalation ladder
         self._emergency_offload_active: bool = False
         self._emergency_offload_started_at: float = 0.0
-        self._paused_processes: Dict[int, str] = {}  # pid -> process_name
-        self._offload_lock: Optional[asyncio.Lock] = None  # Lazy init
+        self._pre_unload_percent: float = 0.0  # RAM % at Step 1 trigger (verification baseline)
+        self._clean_unload_fired: bool = False  # Step 1 completed
+        self._clean_unload_verified: bool = False  # Post-unload verification passed
 
-        # v192.0: Anti-cycle protection for emergency offload
-        self._emergency_offload_released_at: float = 0.0  # When last offload ended
-        self._emergency_offload_cycle_count: int = 0  # Consecutive offload cycles
-        self._emergency_offload_hysteresis_armed: bool = False  # True = waiting for RAM to drop
+        # SIGSTOP state (last resort only)
+        self._sigstop_active: bool = False
+        self._sigstop_started_at: float = 0.0  # When SIGSTOP was actually sent
+        self._paused_processes: Dict[int, str] = {}  # pid -> process_name
+        self._sigstop_released_at: float = 0.0  # Cooldown tracking for SIGSTOP only
+
+        # Hysteresis (applies to all emergency actions)
+        self._emergency_offload_hysteresis_armed: bool = False
+
+        # v266.2: Post-crisis recovery state
+        self._model_needs_recovery: bool = False
+        self._recovery_stable_since: float = 0.0  # When RAM first dropped below recovery threshold
+        self._recovery_attempts: int = 0
+        self._recovery_in_progress: bool = False  # Prevents concurrent reload attempts
+        self._recovery_cooldown_until: float = 0.0
+        self._recovery_task: Optional[asyncio.Task] = None
+        self._recovery_percent_history: Deque[Tuple[float, float]] = deque(maxlen=8)
+        self._local_circuit_state: str = "unknown"
 
         # Process tracking for emergency offload
         self._ml_loader_ref = None  # Reference to ProcessIsolatedMLLoader
@@ -755,15 +809,22 @@ class GCPHybridPrimeRouter:
         # Initialize VM provisioning lock if available
         if self._vm_provisioning_enabled and _VM_LOCK_AVAILABLE and DistributedLock:
             try:
-                self._vm_provisioning_lock = DistributedLock(
-                    lock_name="gcp_vm_provisioning",
-                    config=DistributedLockConfig(
-                        # v93.0: Fixed parameter names to match DistributedLockConfig API
-                        lock_ttl=VM_PROVISIONING_LOCK_TTL,  # Was ttl_seconds
-                        default_timeout=30.0,  # Max wait time to acquire
-                        retry_interval=1.0,  # Was retry_delay
-                    ),
+                _lock_cfg = DistributedLockConfig(
+                    lock_ttl=VM_PROVISIONING_LOCK_TTL,
+                    default_timeout=30.0,
+                    retry_interval=1.0,
                 )
+                _ctor_params = set(inspect.signature(DistributedLock.__init__).parameters.keys())
+                _lock_kwargs: Dict[str, Any] = {"config": _lock_cfg}
+                if "name" in _ctor_params:
+                    _lock_kwargs["name"] = "gcp_vm_provisioning"
+                elif "lock_name" in _ctor_params:
+                    _lock_kwargs["lock_name"] = "gcp_vm_provisioning"
+                else:
+                    raise TypeError(
+                        "DistributedLock constructor missing both `name` and `lock_name`"
+                    )
+                self._vm_provisioning_lock = DistributedLock(**_lock_kwargs)
             except Exception as e:
                 self.logger.warning(f"VM provisioning lock initialization failed: {e}")
 
@@ -980,6 +1041,46 @@ class GCPHybridPrimeRouter:
                 self._gcp_permanently_unavailable = True
             else:
                 # GCP is properly configured - start monitoring
+
+                # v266.0: Register for authoritative macOS memory tier changes
+                try:
+                    from backend.core.memory_quantizer import get_memory_quantizer, MemoryTier
+                    mq = await get_memory_quantizer()
+
+                    async def _on_tier_change(old_tier, new_tier):
+                        """MemoryQuantizer authoritative tier change callback."""
+                        tier_severity = {
+                            "abundant": 0, "optimal": 1,
+                            "elevated": 2, "constrained": 3,
+                            "critical": 4, "emergency": 5,
+                        }
+                        # Handle both enum and string tier values
+                        old_name = old_tier.value if hasattr(old_tier, 'value') else str(old_tier)
+                        new_name = new_tier.value if hasattr(new_tier, 'value') else str(new_tier)
+                        new_sev = tier_severity.get(new_name.lower(), 0)
+
+                        if new_sev >= 4 and self._vm_lifecycle_state == VMLifecycleState.IDLE:
+                            self.logger.info(
+                                f"[VMLifecycle] MemoryQuantizer tier change: {old_name} -> {new_name}"
+                            )
+                            self._trigger_readings.append(True)
+                            above_count = sum(1 for r in self._trigger_readings if r)
+                            if above_count >= GCP_TRIGGER_READINGS_REQUIRED:
+                                self._transition_vm_lifecycle(
+                                    VMLifecycleState.TRIGGERING,
+                                    f"mq_tier_{new_name}"
+                                )
+
+                    if hasattr(mq, 'register_tier_change_callback'):
+                        mq.register_tier_change_callback(_on_tier_change)
+                        self.logger.info("[VMLifecycle] Registered MemoryQuantizer tier callback")
+                    else:
+                        self.logger.debug("MemoryQuantizer has no register_tier_change_callback")
+                except ImportError:
+                    self.logger.debug("MemoryQuantizer not available — using psutil-only polling")
+                except Exception as e:
+                    self.logger.debug(f"MemoryQuantizer callback registration failed: {e}")
+
                 self._memory_pressure_task = asyncio.create_task(
                     self._memory_pressure_monitor(),
                     name="gcp_memory_pressure_monitor",
@@ -1002,7 +1103,7 @@ class GCPHybridPrimeRouter:
         When RAM usage exceeds VM_PROVISIONING_THRESHOLD OR memory growth rate
         exceeds MEMORY_SPIKE_RATE_THRESHOLD_MB (100MB/sec), triggers GCP provisioning.
 
-        At EMERGENCY_OFFLOAD_RAM_PERCENT (80%), initiates emergency offload:
+        At EMERGENCY_UNLOAD_RAM_PERCENT (85%), initiates emergency offload:
         1. SIGSTOP all local LLM processes
         2. Provision GCP VM
         3. SIGCONT processes (or terminate if cloud ready)
@@ -1033,6 +1134,7 @@ class GCPHybridPrimeRouter:
 
                 # v93.0: Update memory history for rate-of-change calculation
                 self._memory_history.append((timestamp, used_mb))
+                self._recovery_percent_history.append((timestamp, float(used_percent)))
 
                 # v93.0: Calculate memory growth rate (derivative)
                 memory_rate_mb_sec = self._calculate_memory_rate()
@@ -1069,135 +1171,165 @@ class GCPHybridPrimeRouter:
                             rate_mb_sec=memory_rate_mb_sec,
                         )
 
-                # v192.0: Reset hysteresis and cycle count when RAM drops below safe threshold
-                hysteresis_threshold = EMERGENCY_OFFLOAD_RAM_PERCENT - EMERGENCY_OFFLOAD_HYSTERESIS
-                if self._emergency_offload_hysteresis_armed and used_percent < hysteresis_threshold:
-                    self.logger.info(
-                        f"[v192.0] RAM dropped to {used_percent:.1f}% (below {hysteresis_threshold:.1f}%) - "
-                        f"disarming hysteresis, resetting cycle count from {self._emergency_offload_cycle_count}"
-                    )
-                    self._emergency_offload_hysteresis_armed = False
-                    self._emergency_offload_cycle_count = 0
-
-                # v93.0: Emergency offload check - highest priority
-                # v148.1: Consult enterprise recovery engine for strategy
-                # v192.0: Anti-cycle protection with cooldown, hysteresis, and cycle escalation
-                if used_percent >= EMERGENCY_OFFLOAD_RAM_PERCENT and not self._emergency_offload_active:
-                    # v192.0: Check cooldown period
-                    time_since_release = time.time() - self._emergency_offload_released_at
-                    in_cooldown = (
-                        self._emergency_offload_released_at > 0 and
-                        time_since_release < EMERGENCY_OFFLOAD_COOLDOWN_SEC
-                    )
-
-                    if in_cooldown:
-                        remaining_cooldown = EMERGENCY_OFFLOAD_COOLDOWN_SEC - time_since_release
-                        self.logger.warning(
-                            f"[v192.0] RAM at {used_percent:.1f}% but in cooldown - "
-                            f"{remaining_cooldown:.1f}s remaining before re-trigger allowed"
-                        )
-                        # Don't trigger, but we're not in a healthy state
-                        continue
-
-                    # v192.0: Check hysteresis - if armed, must wait for RAM to drop first
+                # v266.1: Emergency offload — 3-step escalation ladder
+                # Step 1 (85%): Clean model unload via COMPONENT_UNLOAD
+                # Step 2: Post-unload verification + GCP attempt
+                # Step 3 (95%): SIGSTOP as one-shot last resort
+                if not self._emergency_offload_active:
+                    # Check hysteresis: must wait for RAM to drop before re-trigger
                     if self._emergency_offload_hysteresis_armed:
-                        self.logger.warning(
-                            f"[v192.0] RAM at {used_percent:.1f}% but hysteresis armed - "
-                            f"waiting for RAM to drop below {hysteresis_threshold:.1f}% before re-trigger"
-                        )
-                        continue
-
-                    # v192.0: Check cycle count for escalation
-                    if self._emergency_offload_cycle_count >= EMERGENCY_OFFLOAD_MAX_CYCLES:
-                        self.logger.critical(
-                            f"[v192.0] EMERGENCY: RAM at {used_percent:.1f}% - "
-                            f"CYCLE LIMIT REACHED ({self._emergency_offload_cycle_count} cycles). "
-                            f"SIGSTOP is ineffective - escalating to process TERMINATION"
-                        )
-                        # Terminate instead of pause - SIGSTOP isn't freeing memory
-                        await self._terminate_local_llm_processes(
-                            reason=f"cycle_limit_termination_ram_{used_percent:.0f}pct"
-                        )
-                        # Reset cycle tracking after termination
-                        self._emergency_offload_cycle_count = 0
-                        self._emergency_offload_hysteresis_armed = False
-                        continue
-
-                    self.logger.critical(
-                        f"[v93.0] EMERGENCY: RAM at {used_percent:.1f}% - initiating emergency offload "
-                        f"(cycle {self._emergency_offload_cycle_count + 1}/{EMERGENCY_OFFLOAD_MAX_CYCLES})"
-                    )
-
-                    # v148.1: Get recovery strategy from enterprise hooks
-                    recovery_strategy = None
-                    if ENTERPRISE_HOOKS_AVAILABLE and handle_memory_pressure:
-                        try:
-                            trend = "increasing" if memory_rate_mb_sec > 0 else "stable"
-                            recovery_strategy = await handle_memory_pressure(
-                                used_percent,
-                                trend=trend,
-                                slope=memory_rate_mb_sec,
-                            )
+                        hysteresis_threshold = EMERGENCY_UNLOAD_RAM_PERCENT - EMERGENCY_OFFLOAD_HYSTERESIS
+                        if used_percent < hysteresis_threshold:
+                            self._emergency_offload_hysteresis_armed = False
+                            self._clean_unload_fired = False
+                            self._clean_unload_verified = False
+                            # v266.2: Trigger post-crisis recovery if model was unloaded
+                            if not self._model_needs_recovery:
+                                self._model_needs_recovery = True
+                                self._recovery_stable_since = 0.0
+                                self._recovery_attempts = 0
+                                self._recovery_cooldown_until = 0.0
                             self.logger.info(
-                                f"[v148.1] Recovery engine suggests: {recovery_strategy.value}"
+                                f"[v266.2] RAM dropped to {used_percent:.1f}% — "
+                                f"hysteresis disarmed, escalation reset, "
+                                f"recovery armed"
                             )
-                        except Exception as e:
-                            self.logger.debug(f"[v148.1] Recovery engine error: {e}")
+                        # else: Still above hysteresis threshold, skip to VM state machine
 
-                    # v148.1: Update health status
-                    if ENTERPRISE_HOOKS_AVAILABLE and update_component_health and HealthStatus:
+                    # Step 1: Clean model unload at CRITICAL tier (85%+)
+                    elif used_percent >= EMERGENCY_UNLOAD_RAM_PERCENT and not self._clean_unload_fired:
+                        self.logger.warning(
+                            f"[v266.1] RAM at {used_percent:.1f}% (>={EMERGENCY_UNLOAD_RAM_PERCENT}%) "
+                            f"— firing COMPONENT_UNLOAD for clean model unload"
+                        )
+                        self._emergency_offload_active = True
+                        self._emergency_offload_started_at = time.time()
+                        self._pre_unload_percent = used_percent  # Baseline for verification
+                        self._clean_unload_fired = True
+                        self._clean_unload_verified = False
+                        self._local_circuit_state = "open"
+
+                        # Fire COMPONENT_UNLOAD via MemoryQuantizer
                         try:
-                            update_component_health(
-                                "gcp_hybrid_router",
-                                HealthStatus.DEGRADED,
-                                message=f"Emergency offload: RAM at {used_percent:.1f}%",
+                            from backend.core.memory_quantizer import (
+                                get_memory_quantizer, OptimizationStrategy,
                             )
-                        except Exception:
-                            pass
+                            _mq = await get_memory_quantizer()
+                            if _mq:
+                                await _mq._apply_strategy(OptimizationStrategy.COMPONENT_UNLOAD)
+                                self.logger.info("[v266.1] COMPONENT_UNLOAD fired — waiting for verification")
+                            else:
+                                self.logger.warning("[v266.1] MemoryQuantizer unavailable")
+                        except Exception as e:
+                            self.logger.error(f"[v266.1] COMPONENT_UNLOAD failed: {e}")
 
-                    await self._emergency_offload(
-                        reason=f"critical_ram_{used_percent:.0f}pct",
-                        used_percent=used_percent,
-                        rate_mb_sec=memory_rate_mb_sec,
-                    )
+                        # Signal to other repos
+                        await self._signal_memory_pressure_to_repos(
+                            status="offload_active",
+                            action="unload",
+                            used_percent=used_percent,
+                            rate_mb_sec=memory_rate_mb_sec,
+                        )
+                        continue
+
+                elif self._emergency_offload_active:
+                    # Active offload — check escalation ladder
+                    await self._check_offload_escalation(used_percent, memory_rate_mb_sec)
                     continue
 
-                # v93.0: Rate-of-change trigger - detect memory spikes BEFORE hitting threshold
+                # v266.2: Post-crisis model recovery check
+                if self._model_needs_recovery and not self._emergency_offload_active:
+                    await self._check_model_recovery(used_percent)
+
+                # v266.0: State-machine-driven VM provisioning
                 spike_detected = memory_rate_mb_sec >= MEMORY_SPIKE_RATE_THRESHOLD_MB
-                if spike_detected and not self._vm_provisioning_in_progress:
-                    self.logger.warning(
-                        f"[v93.0] Memory SPIKE detected: {memory_rate_mb_sec:.1f} MB/s "
-                        f"(threshold: {MEMORY_SPIKE_RATE_THRESHOLD_MB} MB/s), "
-                        f"current RAM: {used_percent:.1f}%"
-                    )
-                    # Check cooldown
-                    if not self._is_in_cooldown():
+                current_state = self._vm_lifecycle_state
+
+                if current_state == VMLifecycleState.IDLE:
+                    above_trigger = used_percent >= CRITICAL_RAM_PERCENT  # 85%
+                    self._trigger_readings.append(above_trigger)
+
+                    # Spike bypass: 100MB/sec rate triggers instantly
+                    if spike_detected and not self._is_in_cooldown():
+                        self.logger.warning(
+                            f"[v93.0] Memory SPIKE detected: {memory_rate_mb_sec:.1f} MB/s "
+                            f"(threshold: {MEMORY_SPIKE_RATE_THRESHOLD_MB} MB/s), "
+                            f"current RAM: {used_percent:.1f}%"
+                        )
+                        # Clear stale readings to avoid contaminating future N-of-M checks
+                        self._trigger_readings.clear()
+                        self._transition_vm_lifecycle(VMLifecycleState.TRIGGERING,
+                                                       f"memory_spike_{memory_rate_mb_sec:.0f}mb_sec")
+                        self._transition_vm_lifecycle(VMLifecycleState.PROVISIONING,
+                                                       "spike_bypass")
                         self._last_pressure_event = time.time()
                         success = await self._trigger_vm_provisioning(
                             reason=f"memory_spike_{memory_rate_mb_sec:.0f}mb_sec"
                         )
+                        if not success:
+                            self._transition_vm_lifecycle(VMLifecycleState.COOLING_DOWN,
+                                                           "provisioning_failed")
+                            self._cooling_started_at = time.time()
                         self._handle_provisioning_result(success)
-                    continue
+                    elif above_trigger:
+                        self._transition_vm_lifecycle(VMLifecycleState.TRIGGERING,
+                                                       f"pressure_{used_percent:.1f}pct")
 
-                # v93.0: Standard threshold trigger (lowered to 70%)
-                if used_percent >= VM_PROVISIONING_THRESHOLD:
-                    if not self._vm_provisioning_in_progress and not self._is_in_cooldown():
-                        self.logger.warning(
-                            f"[v93.0] Memory pressure detected: {used_percent:.1f}% "
-                            f"(threshold: {VM_PROVISIONING_THRESHOLD}%), "
-                            f"rate: {memory_rate_mb_sec:.1f} MB/s"
-                        )
+                elif current_state == VMLifecycleState.TRIGGERING:
+                    above_trigger = used_percent >= CRITICAL_RAM_PERCENT
+                    self._trigger_readings.append(above_trigger)
+
+                    above_count = sum(1 for r in self._trigger_readings if r)
+
+                    if above_count >= GCP_TRIGGER_READINGS_REQUIRED:
+                        # Sustained pressure confirmed — provision
+                        self._transition_vm_lifecycle(VMLifecycleState.PROVISIONING,
+                                                       f"sustained_{above_count}/{len(self._trigger_readings)}")
                         self._last_pressure_event = time.time()
-                        success = await self._trigger_vm_provisioning(reason="memory_pressure")
+                        success = await self._trigger_vm_provisioning(reason="sustained_pressure")
+                        if not success:
+                            self._transition_vm_lifecycle(VMLifecycleState.COOLING_DOWN,
+                                                           "provisioning_failed")
+                            self._cooling_started_at = time.time()
                         self._handle_provisioning_result(success)
+                    elif not above_trigger and above_count == 0:
+                        # Pressure gone completely — back to idle
+                        self._transition_vm_lifecycle(VMLifecycleState.IDLE, "pressure_cleared")
+                        self._trigger_readings.clear()
 
-                # Check if we should terminate VM (low usage)
-                elif used_percent < GCP_TRIGGER_RAM_PERCENT - 20:
+                elif current_state == VMLifecycleState.ACTIVE:
+                    # Check release threshold (hysteresis: must drop below 70%)
+                    if used_percent < GCP_RELEASE_RAM_PERCENT:
+                        self._transition_vm_lifecycle(VMLifecycleState.COOLING_DOWN,
+                                                       f"pressure_released_{used_percent:.1f}pct")
+                        self._cooling_started_at = time.time()
+
+                elif current_state == VMLifecycleState.COOLING_DOWN:
+                    elapsed = time.time() - self._cooling_started_at
+                    if elapsed >= GCP_COOLING_GRACE_SECONDS:
+                        self._transition_vm_lifecycle(VMLifecycleState.IDLE, "cooling_complete")
+                        self._trigger_readings.clear()
+                    elif used_percent >= CRITICAL_RAM_PERCENT:
+                        # Pressure back — return to triggering (VM still running)
+                        self._transition_vm_lifecycle(VMLifecycleState.TRIGGERING,
+                                                       "pressure_returned")
+
+                # PROVISIONING and BOOTING states are managed by _trigger_vm_provisioning()
+                # and health check callbacks — not by the pressure monitor
+
+                # Check if we should terminate VM (low usage, only in IDLE)
+                if current_state == VMLifecycleState.IDLE and used_percent < GCP_TRIGGER_RAM_PERCENT - 20:
                     await self._check_vm_termination()
 
-                # v93.0: Check if emergency offload should be released
-                if self._emergency_offload_active:
-                    await self._check_emergency_offload_release(used_percent)
+                # Keep recovery/circuit observability fresh while post-crisis recovery is active.
+                if self._model_needs_recovery or self._recovery_state() in {"reloading", "cooldown"}:
+                    signal_status = "critical" if used_percent >= CRITICAL_RAM_PERCENT else "elevated"
+                    await self._signal_memory_pressure_to_repos(
+                        status=signal_status,
+                        action="recover" if self._model_needs_recovery else None,
+                        used_percent=used_percent,
+                        rate_mb_sec=memory_rate_mb_sec,
+                    )
 
             except asyncio.CancelledError:
                 # Ensure processes are resumed on shutdown
@@ -1295,113 +1427,21 @@ class GCPHybridPrimeRouter:
         slope = (n * sum_t_mb - sum_t * sum_mb) / denominator
         return slope  # MB per second
 
-    async def _emergency_offload(
-        self,
-        reason: str,
-        used_percent: float,
-        rate_mb_sec: float,
-    ) -> bool:
-        """
-        v93.0: Emergency Offload - SIGSTOP local LLM processes, provision GCP.
+    def register_llm_pid(self, pid: int) -> None:
+        """Register a JARVIS-owned LLM process PID for emergency offload targeting."""
+        self._local_llm_pids.add(pid)
 
-        This is the "panic button" for when memory is critically high.
-        Immediately pauses all local LLM subprocesses to prevent OOM,
-        provisions GCP VM, then either:
-        - SIGCONT processes (if GCP failed and RAM recovered)
-        - Terminates local processes (if GCP ready to take over)
-
-        Args:
-            reason: Reason for emergency offload
-            used_percent: Current RAM usage percent
-            rate_mb_sec: Current memory growth rate
-
-        Returns:
-            True if offload completed successfully
-        """
-        # Lazy init lock
-        if self._offload_lock is None:
-            self._offload_lock = asyncio.Lock()
-
-        async with self._offload_lock:
-            if self._emergency_offload_active:
-                return False  # Already in emergency mode
-
-            self._emergency_offload_active = True
-            self._emergency_offload_started_at = time.time()
-
-            self.logger.critical(
-                f"[v93.0] EMERGENCY OFFLOAD INITIATED\n"
-                f"  Reason: {reason}\n"
-                f"  RAM: {used_percent:.1f}%\n"
-                f"  Rate: {rate_mb_sec:.1f} MB/s\n"
-                f"  Action: SIGSTOP local LLM processes"
-            )
-
-            # v93.0: Signal to other repos that emergency offload is starting
-            await self._signal_memory_pressure_to_repos(
-                status="offload_active",
-                action="pause",
-                used_percent=used_percent,
-                rate_mb_sec=rate_mb_sec,
-            )
-
-            # Step 1: Identify and pause local LLM processes
-            paused_count = await self._pause_local_llm_processes()
-
-            if paused_count > 0:
-                self.logger.info(
-                    f"[v93.0] Paused {paused_count} local LLM processes via SIGSTOP"
-                )
-
-            # Step 2: Trigger GCP VM provisioning (with v153.0 recovery cascade check)
-            if not self._gcp_permanently_unavailable:
-                # v153.0: Check if GCP can be attempted (not in cooldown)
-                can_attempt, cooldown_reason = self._recovery_cascade.can_attempt_gcp()
-
-                if can_attempt:
-                    self.logger.info("[v93.0] Provisioning GCP VM for workload transfer...")
-                    success = await self._trigger_vm_provisioning(
-                        reason=f"emergency_offload_{reason}"
-                    )
-
-                    if success:
-                        self.logger.info(
-                            "[v93.0] GCP VM provisioned successfully - workload can transfer"
-                        )
-                        # v153.0: Record success in recovery cascade
-                        self._recovery_cascade.record_success(RoutingTier.GCP_VM)
-                        # Don't terminate local processes yet - let the system decide
-                        # based on actual GCP readiness
-                    else:
-                        self.logger.warning(
-                            "[v93.0] GCP VM provisioning failed - keeping processes paused "
-                            f"until RAM recovers or timeout ({EMERGENCY_OFFLOAD_TIMEOUT_SEC}s)"
-                        )
-                        # v153.0: RecoveryCascadeManager already recorded the failure in _trigger_vm_provisioning
-                else:
-                    self.logger.warning(
-                        f"[v153.0] GCP provisioning in cooldown: {cooldown_reason}. "
-                        f"Keeping processes paused until RAM recovers."
-                    )
-                    # v153.0: Get fallback tier for degraded operation
-                    fallback_tier, fallback_reason = self._recovery_cascade.get_fallback_tier(prefer_local=True)
-                    self.logger.info(
-                        f"[v153.0] Using fallback tier: {fallback_tier.value} ({fallback_reason})"
-                    )
-            else:
-                self.logger.warning(
-                    "[v93.0] GCP unavailable - processes paused until RAM recovers"
-                )
-
-            return True
+    def unregister_llm_pid(self, pid: int) -> None:
+        """Unregister a JARVIS-owned LLM process PID."""
+        self._local_llm_pids.discard(pid)
 
     async def _pause_local_llm_processes(self) -> int:
-        """
-        v93.0: Pause local LLM processes via SIGSTOP.
+        """v266.1: Pause local LLM processes via SIGSTOP (last resort only).
 
-        Discovers and pauses:
-        1. Processes from ProcessIsolatedMLLoader
-        2. Known LLM subprocess patterns (ollama, llama.cpp, etc.)
+        Priority order:
+        1. JARVIS-owned tracked PIDs (_local_llm_pids) — always preferred
+        2. ProcessIsolatedMLLoader PIDs — if available
+        3. Pattern-based scan — fallback only when no tracked PIDs found
 
         Returns:
             Number of processes paused
@@ -1411,7 +1451,18 @@ class GCPHybridPrimeRouter:
         try:
             import psutil
 
-            # Try to get processes from ML loader
+            # Priority 1: Use tracked JARVIS-owned PIDs
+            if self._local_llm_pids:
+                self.logger.info(
+                    f"[v266.1] SIGSTOP targeting {len(self._local_llm_pids)} tracked JARVIS PID(s)"
+                )
+                for pid in list(self._local_llm_pids):
+                    if pid not in self._paused_processes and self._pause_process(pid, "tracked_llm"):
+                        paused_count += 1
+                if paused_count > 0:
+                    return paused_count
+
+            # Priority 2: ProcessIsolatedMLLoader PIDs
             if self._ml_loader_ref is None:
                 try:
                     from backend.core.process_isolated_ml_loader import get_ml_loader
@@ -1421,10 +1472,15 @@ class GCPHybridPrimeRouter:
 
             if self._ml_loader_ref and hasattr(self._ml_loader_ref, '_active_processes'):
                 for pid in list(self._ml_loader_ref._active_processes.keys()):
-                    if self._pause_process(pid, "ml_loader"):
+                    if pid not in self._paused_processes and self._pause_process(pid, "ml_loader"):
                         paused_count += 1
+                if paused_count > 0:
+                    return paused_count
 
-            # Scan for known LLM process patterns
+            # Priority 3: Pattern-based scan (fallback only)
+            self.logger.warning(
+                "[v266.1] No tracked PIDs — falling back to pattern-based process scan"
+            )
             llm_patterns = [
                 "ollama", "llama", "llama.cpp", "llamacpp",
                 "text-generation", "vllm", "transformers",
@@ -1436,11 +1492,9 @@ class GCPHybridPrimeRouter:
                     proc_info = proc.info
                     pid = proc_info['pid']
 
-                    # Skip already paused
                     if pid in self._paused_processes:
                         continue
 
-                    # Check process name and cmdline
                     name = (proc_info.get('name') or '').lower()
                     cmdline = ' '.join(proc_info.get('cmdline') or []).lower()
 
@@ -1450,6 +1504,9 @@ class GCPHybridPrimeRouter:
                     )
 
                     if is_llm_process:
+                        self.logger.info(
+                            f"[v266.1] Pattern match: PID {pid} ({name}) — sending SIGSTOP"
+                        )
                         if self._pause_process(pid, name):
                             paused_count += 1
 
@@ -1457,7 +1514,7 @@ class GCPHybridPrimeRouter:
                     continue
 
         except Exception as e:
-            self.logger.error(f"[v93.0] Error pausing LLM processes: {e}")
+            self.logger.error(f"[v266.1] Error pausing LLM processes: {e}")
 
         return paused_count
 
@@ -1489,117 +1546,352 @@ class GCPHybridPrimeRouter:
             self.logger.warning(f"[v93.0] Error pausing PID {pid}: {e}")
             return False
 
-    async def _check_emergency_offload_release(self, current_used_percent: float) -> None:
-        """
-        v93.0/v148.0: Check if emergency offload should be released.
+    async def _check_offload_escalation(self, current_used_percent: float, rate_mb_sec: float) -> None:
+        """v266.1: Check escalation ladder during active emergency offload.
 
-        Releases if:
-        1. RAM dropped below threshold (processes can resume)
-        2. Timeout exceeded (force resume to prevent permanent freeze)
-        3. GCP VM is ready and processes should terminate
-        
-        v148.0 Enhancement: Escalation if memory continues growing:
-        4. If RAM still growing despite offload, trigger aggressive cleanup
-        5. If RAM exceeds critical threshold (95%), terminate paused processes
+        Step 1 complete (clean unload fired). Now:
+        - Verify unload worked (wait, re-read memory)
+        - If RAM still high, attempt GCP
+        - If GCP fails and RAM >= 95%, one-shot SIGSTOP (no cycling)
         """
         elapsed = time.time() - self._emergency_offload_started_at
 
-        # v148.0: Critical memory escalation (95%+) - HIGHEST PRIORITY
-        # If memory is still critically high despite pausing LLM processes,
-        # something else is consuming memory. Terminate paused processes
-        # to free any shared memory and trigger GC.
-        CRITICAL_ESCALATION_THRESHOLD = float(os.getenv("CRITICAL_ESCALATION_THRESHOLD", "95.0"))
-        if current_used_percent >= CRITICAL_ESCALATION_THRESHOLD:
-            self.logger.critical(
-                f"[v148.0] CRITICAL: RAM at {current_used_percent:.1f}% despite offload - "
-                f"escalating to process termination"
-            )
-            await self._terminate_paused_processes()
-            self._emergency_offload_active = False
-            
-            # v148.0: Trigger garbage collection to free memory
+        # --- Post-unload verification gate ---
+        if self._clean_unload_fired and not self._clean_unload_verified:
+            if elapsed < EMERGENCY_UNLOAD_VERIFY_DELAY_SEC:
+                # Still waiting for verification window
+                return
+
+            # Verification window elapsed — read memory
             try:
-                import gc
-                gc.collect()
-                self.logger.info("[v148.0] Forced garbage collection after escalation")
+                import psutil
+                mem = psutil.virtual_memory()
+                post_unload_percent = mem.percent
+                ram_dropped_gb = (self._pre_unload_percent - post_unload_percent) * mem.total / (100 * 1024 ** 3)
             except Exception:
-                pass
-            return
+                post_unload_percent = self._pre_unload_percent
+                ram_dropped_gb = 0.0
 
-        # v148.0: Check if GCP provisioning is in progress and extend timeout if so
-        # Don't force-release processes if we're still waiting for GCP
-        effective_timeout = EMERGENCY_OFFLOAD_TIMEOUT_SEC
-        if self._vm_provisioning_in_progress:
-            # Extend timeout while GCP provisioning is active
-            effective_timeout = max(effective_timeout, 180.0)  # At least 3 minutes for GCP
-            if elapsed >= effective_timeout:
-                self.logger.warning(
-                    f"[v148.0] Extended offload timeout ({elapsed:.1f}s) - "
-                    f"GCP provisioning still in progress"
-                )
-            # Don't force release yet if GCP is still provisioning
-            elif elapsed < effective_timeout:
-                pass  # Keep waiting for GCP
+            if ram_dropped_gb < 0:
+                ram_dropped_gb = 0.0
 
-        # Timeout - force release
-        if elapsed >= effective_timeout and not self._vm_provisioning_in_progress:
-            self.logger.warning(
-                f"[v93.0] Emergency offload timeout ({elapsed:.1f}s) - force releasing"
-            )
-            await self._release_emergency_offload(reason="timeout")
-            return
-
-        # RAM recovered
-        if current_used_percent < VM_PROVISIONING_THRESHOLD - 10:
-            self.logger.info(
-                f"[v93.0] RAM recovered to {current_used_percent:.1f}% - releasing paused processes"
-            )
-            await self._release_emergency_offload(reason="ram_recovered")
-            return
-
-        # GCP ready - can terminate local processes
-        if self._gcp_controller and hasattr(self._gcp_controller, 'is_vm_available'):
-            if self._gcp_controller.is_vm_available():
+            if ram_dropped_gb >= EMERGENCY_UNLOAD_MIN_DROP_GB or post_unload_percent < EMERGENCY_UNLOAD_RAM_PERCENT:
+                # Unload worked — cancel escalation
                 self.logger.info(
-                    "[v93.0] GCP VM ready - terminating local LLM processes for cloud takeover"
+                    f"[v266.1] Post-unload verification PASSED: "
+                    f"RAM {post_unload_percent:.1f}% (dropped {ram_dropped_gb:.1f}GB). "
+                    f"Escalation stopped."
+                )
+                self._clean_unload_verified = True
+                self._emergency_offload_active = False
+                self._emergency_offload_hysteresis_armed = True
+                await self._signal_memory_pressure_to_repos(
+                    status="normal", action=None, used_percent=post_unload_percent,
+                )
+                return
+
+            # Unload didn't drop enough — proceed to GCP
+            self._clean_unload_verified = True  # Mark verified (failed, but checked)
+            self.logger.warning(
+                f"[v266.1] Post-unload verification FAILED: "
+                f"RAM still {post_unload_percent:.1f}% (dropped only {ram_dropped_gb:.1f}GB). "
+                f"Attempting GCP offload."
+            )
+
+            # Step 2: GCP attempt
+            if not self._gcp_permanently_unavailable:
+                can_attempt, cooldown_reason = self._recovery_cascade.can_attempt_gcp()
+                if can_attempt:
+                    self.logger.info("[v266.1] Provisioning GCP VM for workload transfer...")
+                    success = await self._trigger_vm_provisioning(
+                        reason=f"post_unload_escalation_ram_{post_unload_percent:.0f}pct"
+                    )
+                    if success:
+                        self.logger.info("[v266.1] GCP VM provisioned — escalation resolved")
+                        self._recovery_cascade.record_success(RoutingTier.GCP_VM)
+                        self._emergency_offload_active = False
+                        self._emergency_offload_hysteresis_armed = True
+                        return
+                    else:
+                        self.logger.warning("[v266.1] GCP provisioning failed")
+                else:
+                    self.logger.warning(f"[v266.1] GCP in cooldown: {cooldown_reason}")
+
+            return  # Wait for next poll cycle to check SIGSTOP threshold
+
+        # --- SIGSTOP last resort gate ---
+        if current_used_percent >= EMERGENCY_SIGSTOP_RAM_PERCENT and not self._sigstop_active:
+            # Check SIGSTOP cooldown
+            time_since_sigstop = time.time() - self._sigstop_released_at
+            if self._sigstop_released_at > 0 and time_since_sigstop < EMERGENCY_SIGSTOP_COOLDOWN_SEC:
+                self.logger.warning(
+                    f"[v266.1] RAM at {current_used_percent:.1f}% but SIGSTOP in cooldown "
+                    f"({EMERGENCY_SIGSTOP_COOLDOWN_SEC - time_since_sigstop:.0f}s remaining)"
+                )
+                return
+
+            self.logger.critical(
+                f"[v266.1] LAST RESORT: RAM at {current_used_percent:.1f}% "
+                f"(>={EMERGENCY_SIGSTOP_RAM_PERCENT}%) after unload + GCP failed. "
+                f"One-shot SIGSTOP on JARVIS-owned PIDs."
+            )
+            self._sigstop_active = True
+            self._sigstop_started_at = time.time()
+            paused_count = await self._pause_local_llm_processes()
+            self.logger.critical(f"[v266.1] SIGSTOP sent to {paused_count} process(es)")
+            return
+
+        # --- SIGSTOP timeout: terminate if no recovery ---
+        if self._sigstop_active:
+            sigstop_elapsed = time.time() - self._sigstop_started_at
+            if sigstop_elapsed >= EMERGENCY_SIGSTOP_TIMEOUT_SEC:
+                self.logger.critical(
+                    f"[v266.1] SIGSTOP timeout ({sigstop_elapsed:.0f}s) — "
+                    f"terminating paused processes (no cycling)"
                 )
                 await self._terminate_paused_processes()
+                self._sigstop_active = False
                 self._emergency_offload_active = False
+                self._sigstop_released_at = time.time()
+                self._emergency_offload_hysteresis_armed = True
                 return
-        
-        # v148.0: Check if memory is still growing (other processes consuming)
-        if len(self._memory_history) >= 3:
-            recent_samples = list(self._memory_history)[-3:]
-            memory_trend = recent_samples[-1][1] - recent_samples[0][1]  # [1] is used_percent
 
-            if memory_trend > 5.0:  # Memory grew more than 5% despite offload
+            # Check if GCP became available while SIGSTOP'd
+            if self._gcp_controller and hasattr(self._gcp_controller, 'is_vm_available'):
+                if self._gcp_controller.is_vm_available():
+                    self.logger.info("[v266.1] GCP VM ready during SIGSTOP — terminating local processes")
+                    await self._terminate_paused_processes()
+                    self._sigstop_active = False
+                    self._emergency_offload_active = False
+                    return
+
+        # --- Global timeout: force-end offload ---
+        max_offload_duration = EMERGENCY_SIGSTOP_TIMEOUT_SEC * 3  # 180s absolute max
+        if elapsed >= max_offload_duration:
+            self.logger.warning(
+                f"[v266.1] Global offload timeout ({elapsed:.0f}s) — force-ending"
+            )
+            if self._sigstop_active:
+                await self._terminate_paused_processes()
+            self._sigstop_active = False
+            self._emergency_offload_active = False
+            self._emergency_offload_hysteresis_armed = True
+            return
+
+    def _recovery_state(self) -> str:
+        """Return normalized recovery state for observability and sidecar signals."""
+        if self._recovery_in_progress or (
+            self._recovery_task is not None and not self._recovery_task.done()
+        ):
+            return "reloading"
+        if self._recovery_cooldown_until > time.time():
+            return "cooldown"
+        if self._model_needs_recovery:
+            return "armed"
+        return "idle"
+
+    def _recovery_trend_percent_per_sec(self) -> float:
+        """Estimate memory trend for stability gating (non-rising requirement)."""
+        if len(self._recovery_percent_history) < 2:
+            return 0.0
+        start_ts, start_pct = self._recovery_percent_history[0]
+        end_ts, end_pct = self._recovery_percent_history[-1]
+        dt = max(0.001, end_ts - start_ts)
+        return (end_pct - start_pct) / dt
+
+    def _recovery_backoff_seconds(self, attempts_after_failure: int) -> float:
+        idx = max(0, min(attempts_after_failure - 1, len(RECOVERY_BACKOFF_SCHEDULE_SEC) - 1))
+        return float(RECOVERY_BACKOFF_SCHEDULE_SEC[idx])
+
+    def _set_recovery_cooldown(self, delay_seconds: float, reason: str) -> None:
+        delay = max(0.0, float(delay_seconds))
+        until = time.time() + delay
+        self._recovery_cooldown_until = max(self._recovery_cooldown_until, until)
+        self.logger.info(
+            "[v266.4] Recovery cooldown armed for %.0fs (reason=%s, attempts=%d)",
+            delay,
+            reason,
+            self._recovery_attempts,
+        )
+
+    async def _run_model_recovery_attempt(
+        self,
+        attempt_number: int,
+        current_used_percent: float,
+    ) -> None:
+        """Run one background recovery attempt under singleflight ownership."""
+        self._recovery_in_progress = True
+        self._local_circuit_state = "open"
+        try:
+            if current_used_percent >= EMERGENCY_UNLOAD_RAM_PERCENT:
+                raise RuntimeError(
+                    f"memory_critical_before_reload:{current_used_percent:.1f}%"
+                )
+
+            from backend.intelligence.unified_model_serving import get_model_serving
+
+            model_serving = await asyncio.wait_for(get_model_serving(), timeout=10.0)
+            model_serving.force_open_local_circuit_breaker(reason="post_crisis_reload")
+            self._local_circuit_state = model_serving.get_local_circuit_state()
+
+            load_ok = await asyncio.wait_for(model_serving.load_model(), timeout=120.0)
+            if not load_ok:
+                raise RuntimeError("load_model returned false")
+
+            # Abort cleanly if memory regresses to CRITICAL during reload.
+            ram_after = await self._get_ram_info_with_mb()
+            if ram_after and ram_after.get("used_percent", 0.0) >= EMERGENCY_UNLOAD_RAM_PERCENT:
+                raise RuntimeError(
+                    f"memory_critical_during_reload:{ram_after.get('used_percent', 0.0):.1f}%"
+                )
+
+            smoke_ok = await asyncio.wait_for(
+                model_serving.smoke_test_local_model(timeout_seconds=20.0),
+                timeout=25.0,
+            )
+            if not smoke_ok:
+                raise RuntimeError("smoke_test_local_model failed")
+
+            model_serving.reset_local_circuit_breaker()
+            self._local_circuit_state = model_serving.get_local_circuit_state()
+
+            self._model_needs_recovery = False
+            self._recovery_attempts = 0
+            self._recovery_stable_since = 0.0
+            self._recovery_cooldown_until = 0.0
+            self.logger.warning(
+                "[v266.4] Post-crisis recovery COMPLETE "
+                "(attempt=%d, local_circuit=%s)",
+                attempt_number,
+                self._local_circuit_state,
+            )
+            await self._signal_memory_pressure_to_repos(
+                status="recovered",
+                action=None,
+                used_percent=current_used_percent,
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception as recovery_err:
+            self._recovery_attempts += 1
+            self._recovery_stable_since = 0.0
+            self._local_circuit_state = "open"
+            self.logger.warning(
+                "[v266.4] Post-crisis recovery failed "
+                "(attempt=%d/%d, error=%s)",
+                self._recovery_attempts,
+                RECOVERY_MAX_ATTEMPTS,
+                recovery_err,
+            )
+
+            cooldown = self._recovery_backoff_seconds(self._recovery_attempts)
+            if self._recovery_attempts >= RECOVERY_MAX_ATTEMPTS:
+                cooldown = max(cooldown, RECOVERY_COOLDOWN_SEC)
                 self.logger.warning(
-                    f"[v148.0] Memory still growing (+{memory_trend:.1f}%) despite offload - "
-                    f"non-LLM processes may be consuming memory"
+                    "[v266.4] Recovery attempt budget exhausted; entering cooldown %.0fs",
+                    cooldown,
                 )
-                # Signal to other repos to reduce load
-                await self._signal_memory_pressure_to_repos(
-                    status="critical",
-                    action="reduce_load",
-                    used_percent=current_used_percent,
-                )
+            self._set_recovery_cooldown(cooldown, reason=str(recovery_err))
+        finally:
+            self._recovery_in_progress = False
 
-                # v149.0: Aggressive memory cleanup when growth continues
-                await self._aggressive_memory_cleanup(memory_trend)
+    async def _check_model_recovery(self, current_used_percent: float) -> None:
+        """Check stability gate and singleflight launch for post-crisis reload."""
+        now = time.time()
+        stable_target = min(
+            max(RECOVERY_STABILITY_DURATION_SEC, RECOVERY_STABILITY_MIN_SEC),
+            RECOVERY_STABILITY_MAX_SEC,
+        )
+        trend = self._recovery_trend_percent_per_sec()
+        non_rising = trend <= RECOVERY_TREND_RISE_EPSILON
+
+        # Abort if pressure returns to CRITICAL.
+        if current_used_percent >= EMERGENCY_UNLOAD_RAM_PERCENT:
+            if self._recovery_stable_since > 0.0:
+                self.logger.warning(
+                    "[v266.4] Recovery stability window aborted: RAM returned to CRITICAL "
+                    "(%.1f%%)",
+                    current_used_percent,
+                )
+            self._recovery_stable_since = 0.0
+            if self._recovery_task is not None and not self._recovery_task.done():
+                self._recovery_task.cancel()
+            self._recovery_in_progress = False
+            self._set_recovery_cooldown(RECOVERY_BACKOFF_SCHEDULE_SEC[-1], "memory_returned_critical")
+            return
+
+        if self._recovery_in_progress or (
+            self._recovery_task is not None and not self._recovery_task.done()
+        ):
+            return
+
+        if self._recovery_cooldown_until > now:
+            return
+
+        if self._recovery_attempts >= RECOVERY_MAX_ATTEMPTS:
+            # Keep candidate armed but avoid tight retry loops.
+            if self._recovery_cooldown_until > now:
+                return
+            self.logger.info(
+                "[v266.4] Recovery cooldown elapsed; resetting attempt budget"
+            )
+            self._recovery_attempts = 0
+            return
+
+        if current_used_percent <= RECOVERY_STABILITY_THRESHOLD_PERCENT and non_rising:
+            if self._recovery_stable_since == 0.0:
+                self._recovery_stable_since = now
+                self.logger.info(
+                    "[v266.4] Recovery stability gate opened "
+                    "(ram=%.1f%% trend=%.3f%%/s target=%.0fs)",
+                    current_used_percent,
+                    trend,
+                    stable_target,
+                )
+                return
+
+            elapsed = now - self._recovery_stable_since
+            if elapsed < stable_target:
+                return
+
+            attempt_number = self._recovery_attempts + 1
+            self.logger.warning(
+                "[v266.4] Recovery launch singleflight "
+                "(attempt=%d/%d, ram=%.1f%%, stable=%.0fs, trend=%.3f%%/s)",
+                attempt_number,
+                RECOVERY_MAX_ATTEMPTS,
+                current_used_percent,
+                elapsed,
+                trend,
+            )
+            self._recovery_task = asyncio.create_task(
+                self._run_model_recovery_attempt(attempt_number, current_used_percent),
+                name="post-crisis-model-recovery",
+            )
+            return
+
+        # Reset gate when pressure is above threshold or trend is rising.
+        if self._recovery_stable_since > 0.0:
+            self.logger.debug(
+                "[v266.4] Recovery stability reset (ram=%.1f%% trend=%.3f%%/s)",
+                current_used_percent,
+                trend,
+            )
+            self._recovery_stable_since = 0.0
 
     async def _release_emergency_offload(self, reason: str) -> None:
         """
-        v93.0/v192.0: Release emergency offload - SIGCONT all paused processes.
+        v93.0/v266.1: Release emergency offload - SIGCONT all paused processes.
 
-        v192.0 Enhancement: Track cycles for anti-cycling protection:
-        - Records release timestamp for cooldown enforcement
-        - Increments cycle count (reset only when RAM drops significantly)
-        - Arms hysteresis to require RAM drop before re-trigger
+        v266.1: Simplified release — no longer tracks cycle counts (the old
+        cycling logic was the root cause of the death spiral).  Cooldown is
+        now enforced via _sigstop_released_at in _check_offload_escalation().
+        Hysteresis is still armed so that re-trigger requires a RAM drop.
         """
         if not self._emergency_offload_active:
             return
 
-        self.logger.info(f"[v93.0] Releasing emergency offload (reason: {reason})")
+        self.logger.info(f"[v266.1] Releasing emergency offload (reason: {reason})")
 
         resumed_count = 0
         for pid, name in list(self._paused_processes.items()):
@@ -1609,15 +1901,19 @@ class GCPHybridPrimeRouter:
         self._paused_processes.clear()
         self._emergency_offload_active = False
         self._emergency_offload_started_at = 0.0
+        self._pre_unload_percent = 0.0
+        self._clean_unload_fired = False
+        self._clean_unload_verified = False
+        self._sigstop_active = False
+        self._sigstop_started_at = 0.0
 
-        # v192.0: Track release for anti-cycle protection
-        self._emergency_offload_released_at = time.time()
-        self._emergency_offload_cycle_count += 1
+        # v266.1: Record release time for SIGSTOP cooldown enforcement
+        self._sigstop_released_at = time.time()
         self._emergency_offload_hysteresis_armed = True
 
         self.logger.info(
-            f"[v192.0] Cycle tracking: count={self._emergency_offload_cycle_count}, "
-            f"hysteresis armed, cooldown={EMERGENCY_OFFLOAD_COOLDOWN_SEC}s starts now"
+            f"[v266.1] SIGSTOP released, hysteresis armed, "
+            f"cooldown={EMERGENCY_SIGSTOP_COOLDOWN_SEC}s starts now"
         )
 
         # v93.0: Signal to other repos that pressure is normal
@@ -1887,11 +2183,17 @@ class GCPHybridPrimeRouter:
                 "thresholds": {
                     "gcp_trigger": GCP_TRIGGER_RAM_PERCENT,
                     "vm_provisioning": VM_PROVISIONING_THRESHOLD,
-                    "emergency_offload": EMERGENCY_OFFLOAD_RAM_PERCENT,
+                    "emergency_offload": EMERGENCY_UNLOAD_RAM_PERCENT,
                     "critical": CRITICAL_RAM_PERCENT,
                 },
                 "emergency_offload_active": self._emergency_offload_active,
                 "paused_processes_count": len(self._paused_processes),
+                "recovery_state": self._recovery_state(),
+                "recovery_attempts": self._recovery_attempts,
+                "recovery_cooldown_until": self._recovery_cooldown_until,
+                "recovery_stable_since": self._recovery_stable_since,
+                "recovery_memory_trend_pct_per_sec": self._recovery_trend_percent_per_sec(),
+                "local_circuit_state": self._local_circuit_state,
             }
 
             with open(MEMORY_PRESSURE_SIGNAL_FILE, "w") as f:
@@ -1906,13 +2208,17 @@ class GCPHybridPrimeRouter:
             self.logger.warning(f"[v93.0] Failed to signal memory pressure: {e}")
 
     async def _clear_memory_pressure_signal(self) -> None:
-        """v93.0: Clear memory pressure signal when returning to normal."""
+        """v93.0: Clear memory pressure signal when returning to normal.
+        v265.7: DELETE the file instead of writing status=normal. A stale
+        memory_pressure.json with status=normal still triggers Clean Slate
+        detection (any existing file → confidence > 0). Deletion is the only
+        way to guarantee no false recovery on next startup.
+        """
         try:
             if MEMORY_PRESSURE_SIGNAL_FILE.exists():
-                await self._signal_memory_pressure_to_repos(
-                    status="normal",
-                    action=None,
-                    used_percent=0.0,
+                MEMORY_PRESSURE_SIGNAL_FILE.unlink(missing_ok=True)
+                self.logger.debug(
+                    "[v265.7] Deleted memory_pressure.json (pressure subsided)"
                 )
         except Exception as e:
             self.logger.warning(f"[v93.0] Failed to clear memory pressure signal: {e}")
@@ -2008,6 +2314,168 @@ class GCPHybridPrimeRouter:
             f"db={cleanup_stats['db_pools_cleaned']}, enterprise={cleanup_stats['enterprise_notified']}"
         )
 
+    # =========================================================================
+    # v266.0: VM Lifecycle State Machine
+    # =========================================================================
+
+    def _transition_vm_lifecycle(self, new_state: VMLifecycleState, reason: str = "") -> bool:
+        """Transition the VM lifecycle state machine. Returns True if transition was valid."""
+        old_state = self._vm_lifecycle_state
+
+        # Define valid transitions
+        valid_transitions = {
+            VMLifecycleState.IDLE: {VMLifecycleState.TRIGGERING, VMLifecycleState.STOPPING},
+            VMLifecycleState.TRIGGERING: {VMLifecycleState.PROVISIONING, VMLifecycleState.IDLE, VMLifecycleState.STOPPING},
+            VMLifecycleState.PROVISIONING: {VMLifecycleState.BOOTING, VMLifecycleState.COOLING_DOWN, VMLifecycleState.STOPPING},
+            VMLifecycleState.BOOTING: {VMLifecycleState.ACTIVE, VMLifecycleState.COOLING_DOWN, VMLifecycleState.STOPPING},
+            VMLifecycleState.ACTIVE: {VMLifecycleState.COOLING_DOWN, VMLifecycleState.STOPPING},
+            VMLifecycleState.COOLING_DOWN: {VMLifecycleState.IDLE, VMLifecycleState.TRIGGERING, VMLifecycleState.STOPPING},
+            VMLifecycleState.STOPPING: {VMLifecycleState.IDLE},
+        }
+
+        # STOPPING is always reachable (session shutdown)
+        if new_state == VMLifecycleState.STOPPING:
+            pass  # Always allowed
+        elif new_state not in valid_transitions.get(old_state, set()):
+            self.logger.warning(
+                f"[VMLifecycle] Invalid transition {old_state.value} -> {new_state.value} "
+                f"(reason: {reason})"
+            )
+            return False
+
+        self._vm_lifecycle_state = new_state
+        self._vm_lifecycle_changed_at = time.time()
+        self.logger.info(
+            f"[VMLifecycle] {old_state.value} -> {new_state.value} (reason: {reason})"
+        )
+
+        # v266.0: Start model unload task when entering ACTIVE
+        if new_state == VMLifecycleState.ACTIVE:
+            if self._model_unload_task is None or self._model_unload_task.done():
+                self._model_unload_task = asyncio.create_task(
+                    self._unload_local_model_after_stability(),
+                    name="gcp_model_unload_after_stability"
+                )
+
+        # v266.0: Cancel model unload if leaving ACTIVE
+        if old_state == VMLifecycleState.ACTIVE and new_state != VMLifecycleState.ACTIVE:
+            if self._model_unload_task and not self._model_unload_task.done():
+                self._model_unload_task.cancel()
+            os.environ.pop("JARVIS_GCP_OFFLOAD_ACTIVE", None)
+
+        return True
+
+    @property
+    def _vm_provisioning_in_progress(self) -> bool:
+        """Backward compat: True when VM is being provisioned or booting."""
+        return self._vm_lifecycle_state in (
+            VMLifecycleState.PROVISIONING, VMLifecycleState.BOOTING
+        )
+
+    @_vm_provisioning_in_progress.setter
+    def _vm_provisioning_in_progress(self, value: bool) -> None:
+        """Backward compat setter — no-op. State machine handles transitions."""
+        pass  # Ignored — state machine handles this
+
+    async def _await_vm_health_for_active(self, reason: str = "") -> None:
+        """Poll GCP VM health before transitioning BOOTING → ACTIVE.
+
+        The VM API reports RUNNING before the inference server is ready.
+        This task polls is_vm_available() (which checks the /health endpoint)
+        to confirm the inference stack is actually serving before we enter
+        ACTIVE state. Times out after 300s → COOLING_DOWN.
+        """
+        health_timeout = float(os.getenv("GCP_VM_HEALTH_GATE_TIMEOUT", "300.0"))
+        poll_interval = 10.0
+        deadline = time.time() + health_timeout
+
+        try:
+            while time.time() < deadline:
+                if self._vm_lifecycle_state != VMLifecycleState.BOOTING:
+                    self.logger.info(
+                        f"[VMLifecycle] Left BOOTING state ({self._vm_lifecycle_state.value}), "
+                        f"aborting health gate"
+                    )
+                    return
+
+                # Check if inference server is healthy
+                if self._gcp_controller and hasattr(self._gcp_controller, 'is_vm_available'):
+                    if self._gcp_controller.is_vm_available():
+                        self._transition_vm_lifecycle(
+                            VMLifecycleState.ACTIVE, "health_check_passed"
+                        )
+                        self.logger.info(
+                            f"[VMLifecycle] VM inference health confirmed — ACTIVE (reason: {reason})"
+                        )
+                        return
+
+                await asyncio.sleep(poll_interval)
+
+            # Timeout — VM never became healthy
+            self.logger.warning(
+                f"[VMLifecycle] VM health gate timeout ({health_timeout}s) — "
+                f"inference server never confirmed healthy"
+            )
+            self._transition_vm_lifecycle(
+                VMLifecycleState.COOLING_DOWN, "health_gate_timeout"
+            )
+            self._cooling_started_at = time.time()
+
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            self.logger.error(f"[VMLifecycle] Health gate error: {e}")
+            if self._vm_lifecycle_state == VMLifecycleState.BOOTING:
+                self._transition_vm_lifecycle(
+                    VMLifecycleState.COOLING_DOWN, f"health_gate_error: {e}"
+                )
+                self._cooling_started_at = time.time()
+
+    async def _unload_local_model_after_stability(self) -> None:
+        """After GCP VM proves stable, unload local model to reclaim RAM."""
+        try:
+            self._active_stability_count = 0
+
+            for _ in range(GCP_ACTIVE_STABILITY_CHECKS):
+                await asyncio.sleep(10.0)
+
+                # Check VM is still ACTIVE and healthy
+                if self._vm_lifecycle_state != VMLifecycleState.ACTIVE:
+                    self.logger.info("[VMLifecycle] Left ACTIVE state, aborting model unload")
+                    return
+
+                if self._gcp_controller and hasattr(self._gcp_controller, 'is_vm_available'):
+                    if not self._gcp_controller.is_vm_available():
+                        self.logger.info("[VMLifecycle] GCP VM unhealthy, aborting model unload")
+                        return
+
+                self._active_stability_count += 1
+
+            # GCP stable for N checks — unload local model
+            self.logger.info(
+                f"[VMLifecycle] GCP VM stable for {GCP_ACTIVE_STABILITY_CHECKS * 10}s, "
+                f"unloading local model to reclaim RAM"
+            )
+
+            try:
+                from backend.intelligence.unified_model_serving import get_model_serving
+                model_serving = get_model_serving()
+                if model_serving and hasattr(model_serving, 'stop'):
+                    await model_serving.stop()
+                    self.logger.info("[VMLifecycle] Local model unloaded — RAM reclaimed")
+                    os.environ["JARVIS_GCP_OFFLOAD_ACTIVE"] = "true"
+                else:
+                    self.logger.debug("[VMLifecycle] UnifiedModelServing not available or has no stop()")
+            except ImportError:
+                self.logger.debug("UnifiedModelServing not available for unload")
+            except Exception as e:
+                self.logger.warning(f"[VMLifecycle] Local model unload failed: {e}")
+
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            self.logger.debug(f"[VMLifecycle] Model unload task error: {e}")
+
     async def _trigger_vm_provisioning(self, reason: str = "unknown") -> bool:
         """
         v2.0: Trigger GCP VM provisioning with distributed locking.
@@ -2021,11 +2489,11 @@ class GCPHybridPrimeRouter:
         Returns:
             True if VM was provisioned, False otherwise
         """
-        if self._vm_provisioning_in_progress:
-            self.logger.debug("VM provisioning already in progress")
+        # v266.0: State machine handles guard
+        if self._vm_lifecycle_state in (VMLifecycleState.PROVISIONING, VMLifecycleState.BOOTING, VMLifecycleState.ACTIVE):
+            self.logger.debug(f"VM lifecycle in {self._vm_lifecycle_state.value}, skipping provision")
             return False
 
-        self._vm_provisioning_in_progress = True
         token: Optional[str] = None
 
         try:
@@ -2079,6 +2547,14 @@ class GCPHybridPrimeRouter:
                 if result:
                     self.logger.info("GCP VM provisioned successfully")
                     self._metrics.gcp_requests += 1
+
+                    # v266.0: Transition to BOOTING — ACTIVE deferred until health check
+                    self._transition_vm_lifecycle(VMLifecycleState.BOOTING, "vm_created")
+                    # Launch background task to poll health and transition to ACTIVE
+                    asyncio.create_task(
+                        self._await_vm_health_for_active(reason=reason),
+                        name="gcp_vm_health_gate"
+                    )
 
                     # v148.1: Record success for circuit breaker
                     if ENTERPRISE_HOOKS_AVAILABLE and record_provider_success:
@@ -2171,7 +2647,8 @@ class GCPHybridPrimeRouter:
             return False
 
         finally:
-            self._vm_provisioning_in_progress = False
+            # v266.0: State transitions handled by success/failure paths above
+            pass  # self._vm_provisioning_in_progress is now a derived property
             # Release distributed lock
             if self._vm_provisioning_lock and token:
                 try:
@@ -2234,6 +2711,10 @@ class GCPHybridPrimeRouter:
         """Stop the hybrid router."""
         self._running = False
 
+        # v266.0: Transition to STOPPING state
+        if self._vm_lifecycle_state != VMLifecycleState.IDLE:
+            self._transition_vm_lifecycle(VMLifecycleState.STOPPING, "router_shutdown")
+
         # v93.0: Release emergency offload FIRST to ensure paused processes resume
         if self._emergency_offload_active:
             self.logger.info("[v93.0] Releasing emergency offload during shutdown...")
@@ -2259,6 +2740,13 @@ class GCPHybridPrimeRouter:
             self._monitoring_task.cancel()
             try:
                 await self._monitoring_task
+            except asyncio.CancelledError:
+                pass
+
+        if self._recovery_task:
+            self._recovery_task.cancel()
+            try:
+                await self._recovery_task
             except asyncio.CancelledError:
                 pass
 
@@ -2631,6 +3119,30 @@ class GCPHybridPrimeRouter:
                 reason=RoutingReason.CAPABILITY_REQUIRED,
                 timeout_ms=self._get_timeout_for_tier(force_tier),
             )
+
+        # v266.0: If local model is being swapped (thrash cascade), use cloud.
+        # _model_swapping lives on PrimeLocalClient, not UnifiedModelServing.
+        try:
+            from backend.intelligence.unified_model_serving import (
+                _model_serving as _ums_singleton,
+                ModelProvider as _UMSProvider,
+            )
+            if _ums_singleton:
+                _local_client = getattr(_ums_singleton, '_clients', {}).get(
+                    _UMSProvider.PRIME_LOCAL
+                )
+                if _local_client and getattr(_local_client, '_model_swapping', False):
+                    self.logger.info(
+                        "[v266.0] Local model swapping (thrash cascade) — routing to cloud"
+                    )
+                    return RoutingDecision(
+                        tier=RoutingTier.CLOUD_CLAUDE,
+                        reason=RoutingReason.CAPABILITY_REQUIRED,
+                        timeout_ms=CLOUD_API_TIMEOUT_MS,
+                        metadata={"model_swapping": True},
+                    )
+        except (ImportError, AttributeError):
+            pass
 
         # Step 1: Check unified budget
         budget_decision = await self._check_budget(estimated_tokens)
@@ -3215,13 +3727,22 @@ class GCPHybridPrimeRouter:
             "degradation_reason": self._degradation_reason,
             "last_successful_tier": self._last_successful_tier.value if self._last_successful_tier else None,
             "tier_failure_counts": {tier.value: count for tier, count in self._tier_failure_counts.items()},
+            "post_crisis_recovery": {
+                "state": self._recovery_state(),
+                "needs_recovery": self._model_needs_recovery,
+                "attempts": self._recovery_attempts,
+                "cooldown_until": self._recovery_cooldown_until,
+                "stable_since": self._recovery_stable_since,
+                "local_circuit_state": self._local_circuit_state,
+                "trend_pct_per_sec": self._recovery_trend_percent_per_sec(),
+            },
             # v93.0: Predictive Memory Defense metrics
             "predictive_defense": {
                 "enabled": True,
                 "thresholds": {
                     "gcp_trigger_percent": GCP_TRIGGER_RAM_PERCENT,
                     "vm_provisioning_percent": VM_PROVISIONING_THRESHOLD,
-                    "emergency_offload_percent": EMERGENCY_OFFLOAD_RAM_PERCENT,
+                    "emergency_offload_percent": EMERGENCY_UNLOAD_RAM_PERCENT,
                     "critical_percent": CRITICAL_RAM_PERCENT,
                     "adaptive_poll_threshold_percent": MEMORY_ADAPTIVE_POLL_THRESHOLD,
                     "spike_rate_threshold_mb_sec": MEMORY_SPIKE_RATE_THRESHOLD_MB,

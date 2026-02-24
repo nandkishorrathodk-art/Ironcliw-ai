@@ -632,6 +632,19 @@ class GoogleWorkspaceConfig:
     # Retry
     max_retries: int = 3
     retry_delay_seconds: float = 1.0
+    # API time budgets
+    operation_timeout_seconds: float = field(
+        default_factory=lambda: float(os.getenv("JARVIS_GOOGLE_OPERATION_TIMEOUT", "15.0"))
+    )
+    workspace_summary_timeout_seconds: float = field(
+        default_factory=lambda: float(os.getenv("JARVIS_WORKSPACE_SUMMARY_TIMEOUT", "12.0"))
+    )
+    # OAuth behavior: interactive browser login should be opt-in, not default.
+    oauth_interactive_auth: bool = field(
+        default_factory=lambda: os.getenv(
+            "JARVIS_GOOGLE_INTERACTIVE_AUTH", "false"
+        ).lower() in {"1", "true", "yes"}
+    )
 
 
 # =============================================================================
@@ -790,6 +803,7 @@ class UnifiedWorkspaceExecutor:
         google_client: Optional[Any],
         date_str: str = "today",
         hours_ahead: int = 24,
+        allow_visual_fallback: bool = True,
     ) -> ExecutionResult:
         """
         Check calendar using waterfall strategy.
@@ -854,7 +868,11 @@ class UnifiedWorkspaceExecutor:
 
         # Tier 3: Computer Use (Visual)
         # v6.2: First switch to Calendar using Spatial Awareness, then take screenshot
-        if ExecutionTier.COMPUTER_USE in self._available_tiers and self._computer_use:
+        if (
+            allow_visual_fallback
+            and ExecutionTier.COMPUTER_USE in self._available_tiers
+            and self._computer_use
+        ):
             self._tier_stats[ExecutionTier.COMPUTER_USE]["attempts"] += 1
             try:
                 # v6.2 Grand Unification: Switch to Calendar app first via Yabai
@@ -894,6 +912,7 @@ class UnifiedWorkspaceExecutor:
         self,
         google_client: Optional[Any],
         limit: int = 10,
+        allow_visual_fallback: bool = True,
     ) -> ExecutionResult:
         """
         Check emails using waterfall strategy.
@@ -924,7 +943,11 @@ class UnifiedWorkspaceExecutor:
 
         # Tier 3: Computer Use (Visual) - Skip Tier 2 for email (no macOS email bridge)
         # v6.2: First switch to browser using Spatial Awareness, then navigate
-        if ExecutionTier.COMPUTER_USE in self._available_tiers and self._computer_use:
+        if (
+            allow_visual_fallback
+            and ExecutionTier.COMPUTER_USE in self._available_tiers
+            and self._computer_use
+        ):
             self._tier_stats[ExecutionTier.COMPUTER_USE]["attempts"] += 1
             try:
                 # v6.2 Grand Unification: Switch to Safari first via Yabai
@@ -1154,6 +1177,7 @@ class WorkspaceIntentDetector:
             "daily briefing", "morning briefing", "daily summary",
             "today's agenda", "brief me", "catch me up", "what's today",
             "give me a briefing", "morning summary", "give me my briefing",
+            "workspace summary", "what's happening across my workspace",
         ],
         WorkspaceIntent.GET_CONTACTS: [
             "contact info", "email address for", "phone number for",
@@ -1177,7 +1201,7 @@ class WorkspaceIntentDetector:
         WorkspaceIntent.CHECK_CALENDAR: {"calendar", "schedule", "meeting", "meetings", "agenda", "events", "appointments"},
         WorkspaceIntent.CREATE_EVENT: {"schedule", "create", "add", "book", "meeting", "event"},
         WorkspaceIntent.FIND_FREE_TIME: {"free", "available", "availability"},
-        WorkspaceIntent.DAILY_BRIEFING: {"briefing", "summary", "brief", "catch"},  # "catch me up"
+        WorkspaceIntent.DAILY_BRIEFING: {"briefing", "summary", "brief", "catch", "workspace"},
         WorkspaceIntent.GET_CONTACTS: {"contact", "phone", "address"},
         WorkspaceIntent.CREATE_DOCUMENT: {"essay", "paper", "report", "document", "article", "write"},
     }
@@ -1423,6 +1447,7 @@ class GoogleWorkspaceClient:
         self,
         operation: Callable[[], Any],
         api_name: str = "google_api",
+        timeout: Optional[float] = None,
     ) -> Any:
         """
         Execute an API operation with automatic retry on token expiration.
@@ -1436,19 +1461,30 @@ class GoogleWorkspaceClient:
         if not await circuit_breaker.can_execute(api_name):
             raise RuntimeError(f"Circuit breaker open for {api_name}")
 
+        operation_timeout = timeout or self.config.operation_timeout_seconds
+        operation_timeout = max(1.0, float(operation_timeout))
+
         # Ensure valid token before operation
         await self._ensure_valid_token()
 
         try:
             # Run operation in thread pool
             loop = asyncio.get_event_loop()
-            result = await loop.run_in_executor(None, operation)
+            result = await asyncio.wait_for(
+                loop.run_in_executor(None, operation),
+                timeout=operation_timeout,
+            )
 
             # Record success
             await circuit_breaker.record_success(api_name)
 
             return result
 
+        except asyncio.TimeoutError as e:
+            await circuit_breaker.record_failure(api_name)
+            raise TimeoutError(
+                f"{api_name} operation timed out after {operation_timeout:.1f}s"
+            ) from e
         except Exception as e:
             error_str = str(e).lower()
 
@@ -1459,7 +1495,10 @@ class GoogleWorkspaceClient:
                 # Refresh token and retry once
                 if await self._refresh_token():
                     try:
-                        result = await loop.run_in_executor(None, operation)
+                        result = await asyncio.wait_for(
+                            loop.run_in_executor(None, operation),
+                            timeout=operation_timeout,
+                        )
                         await circuit_breaker.record_success(api_name)
                         return result
                     except Exception as retry_error:
@@ -1470,7 +1509,7 @@ class GoogleWorkspaceClient:
             await circuit_breaker.record_failure(api_name)
             raise
 
-    async def authenticate(self) -> bool:
+    async def authenticate(self, interactive: Optional[bool] = None) -> bool:
         """
         Authenticate with Google APIs.
 
@@ -1481,6 +1520,9 @@ class GoogleWorkspaceClient:
             logger.error("Google API libraries not available")
             return False
 
+        if interactive is None:
+            interactive = bool(self.config.oauth_interactive_auth)
+
         async with self._lock:
             if self._authenticated:
                 return True
@@ -1489,7 +1531,7 @@ class GoogleWorkspaceClient:
                 # Run OAuth in thread pool (it's blocking)
                 loop = asyncio.get_event_loop()
                 success = await loop.run_in_executor(
-                    None, self._authenticate_sync
+                    None, lambda: self._authenticate_sync(interactive=interactive)
                 )
                 self._authenticated = success
                 return success
@@ -1498,7 +1540,7 @@ class GoogleWorkspaceClient:
                 logger.exception(f"Authentication failed: {e}")
                 return False
 
-    def _authenticate_sync(self) -> bool:
+    def _authenticate_sync(self, interactive: bool = False) -> bool:
         """Synchronous authentication (run in thread pool)."""
         try:
             # Check for existing token
@@ -1513,6 +1555,13 @@ class GoogleWorkspaceClient:
                     logger.info("Refreshing Google OAuth token...")
                     self._creds.refresh(Request())
                 else:
+                    if not interactive:
+                        logger.info(
+                            "Google OAuth token missing/invalid and interactive auth disabled; "
+                            "returning unauthenticated for graceful fallback"
+                        )
+                        return False
+
                     if not os.path.exists(self.config.credentials_path):
                         logger.error(
                             f"Google credentials file not found: {self.config.credentials_path}"
@@ -1545,7 +1594,7 @@ class GoogleWorkspaceClient:
     async def _ensure_authenticated(self) -> bool:
         """Ensure client is authenticated."""
         if not self._authenticated:
-            return await self.authenticate()
+            return await self.authenticate(interactive=False)
         return True
 
     def _get_cached(self, key: str) -> Optional[Any]:
@@ -1589,10 +1638,10 @@ class GoogleWorkspaceClient:
             return cached
 
         try:
-            loop = asyncio.get_event_loop()
-            result = await loop.run_in_executor(
-                None,
-                lambda: self._fetch_unread_sync(limit, label)
+            result = await self._execute_with_retry(
+                lambda: self._fetch_unread_sync(limit, label),
+                api_name="gmail",
+                timeout=self.config.operation_timeout_seconds,
             )
             self._set_cached(cache_key, result)
             return result
@@ -1658,10 +1707,10 @@ class GoogleWorkspaceClient:
             return {"error": "Not authenticated", "emails": []}
 
         try:
-            loop = asyncio.get_event_loop()
-            return await loop.run_in_executor(
-                None,
-                lambda: self._search_emails_sync(query, limit)
+            return await self._execute_with_retry(
+                lambda: self._search_emails_sync(query, limit),
+                api_name="gmail",
+                timeout=self.config.operation_timeout_seconds,
             )
         except Exception as e:
             logger.exception(f"Error searching emails: {e}")
@@ -1725,10 +1774,10 @@ class GoogleWorkspaceClient:
             return {"error": "Not authenticated"}
 
         try:
-            loop = asyncio.get_event_loop()
-            return await loop.run_in_executor(
-                None,
-                lambda: self._draft_email_sync(to, subject, body, reply_to_id)
+            return await self._execute_with_retry(
+                lambda: self._draft_email_sync(to, subject, body, reply_to_id),
+                api_name="gmail",
+                timeout=self.config.operation_timeout_seconds,
             )
         except Exception as e:
             logger.exception(f"Error creating draft: {e}")
@@ -1789,10 +1838,10 @@ class GoogleWorkspaceClient:
             return {"error": "Not authenticated"}
 
         try:
-            loop = asyncio.get_event_loop()
-            return await loop.run_in_executor(
-                None,
-                lambda: self._send_email_sync(to, subject, body, html_body)
+            return await self._execute_with_retry(
+                lambda: self._send_email_sync(to, subject, body, html_body),
+                api_name="gmail",
+                timeout=self.config.operation_timeout_seconds,
             )
         except Exception as e:
             logger.exception(f"Error sending email: {e}")
@@ -1873,10 +1922,10 @@ class GoogleWorkspaceClient:
             return cached
 
         try:
-            loop = asyncio.get_event_loop()
-            result = await loop.run_in_executor(
-                None,
-                lambda: self._get_events_sync(time_min, time_max)
+            result = await self._execute_with_retry(
+                lambda: self._get_events_sync(time_min, time_max),
+                api_name="calendar",
+                timeout=self.config.operation_timeout_seconds,
             )
             self._set_cached(cache_key, result)
             return result
@@ -1962,12 +2011,12 @@ class GoogleWorkspaceClient:
             return {"error": "Not authenticated"}
 
         try:
-            loop = asyncio.get_event_loop()
-            return await loop.run_in_executor(
-                None,
+            return await self._execute_with_retry(
                 lambda: self._create_event_sync(
                     title, start, end, description, location, attendees
-                )
+                ),
+                api_name="calendar",
+                timeout=self.config.operation_timeout_seconds,
             )
         except Exception as e:
             logger.exception(f"Error creating event: {e}")
@@ -2040,10 +2089,10 @@ class GoogleWorkspaceClient:
             return {"error": "Not authenticated", "contacts": []}
 
         try:
-            loop = asyncio.get_event_loop()
-            return await loop.run_in_executor(
-                None,
-                lambda: self._get_contacts_sync(query, limit)
+            return await self._execute_with_retry(
+                lambda: self._get_contacts_sync(query, limit),
+                api_name="people",
+                timeout=self.config.operation_timeout_seconds,
             )
         except Exception as e:
             logger.exception(f"Error fetching contacts: {e}")
@@ -2221,7 +2270,7 @@ class GoogleWorkspaceAgent(BaseNeuralMeshAgent):
         """Ensure client is authenticated."""
         if self._client is None:
             self._client = GoogleWorkspaceClient(self.config)
-        return await self._client.authenticate()
+        return await self._client.authenticate(interactive=False)
 
     # =========================================================================
     # v3.0: Trinity Loop Integration - Visual Context & Experience Logging
@@ -2501,8 +2550,20 @@ Return ONLY a JSON object with these keys (use null if not found):
         execution_mode = payload.get("execution_mode", "auto")
         visual_context = payload.get("visual_context")
         query = payload.get("query", "")
+        deadline = payload.get("deadline_monotonic")
 
         logger.debug(f"GoogleWorkspaceAgent executing: {action}")
+
+        # Respect upstream deadline budgets to avoid doing work that cannot finish.
+        if isinstance(deadline, (int, float)):
+            remaining = float(deadline) - asyncio.get_event_loop().time()
+            if remaining <= 0:
+                return {
+                    "success": False,
+                    "error": "deadline_exceeded",
+                    "response": "Workspace request timed out before execution.",
+                    "workspace_action": action or "unknown",
+                }
 
         # v3.0: Resolve entities from visual context if present
         if visual_context and query:
@@ -2573,6 +2634,7 @@ Return ONLY a JSON object with these keys (use null if not found):
         2. Computer Use (visual - open Gmail in browser)
         """
         limit = payload.get("limit", self.config.default_email_limit)
+        allow_visual_fallback = bool(payload.get("allow_visual_fallback", True))
 
         self._email_queries += 1
 
@@ -2581,6 +2643,7 @@ Return ONLY a JSON object with these keys (use null if not found):
             exec_result = await self._unified_executor.execute_email_check(
                 google_client=self._client if self._client else None,
                 limit=limit,
+                allow_visual_fallback=allow_visual_fallback,
             )
 
             if exec_result.success:
@@ -2620,18 +2683,23 @@ Return ONLY a JSON object with these keys (use null if not found):
                     confidence=0.9,
                 )
 
+                result["workspace_action"] = "fetch_unread_emails"
                 return result
             else:
                 return {
                     "error": exec_result.error or "All email check methods failed",
+                    "workspace_action": "fetch_unread_emails",
                     "emails": [],
                 }
 
         # Fallback to direct client call if executor not available
         if self._client:
-            return await self._client.fetch_unread_emails(limit=limit)
+            _result = await self._client.fetch_unread_emails(limit=limit)
+            if isinstance(_result, dict):
+                _result["workspace_action"] = "fetch_unread_emails"
+            return _result
 
-        return {"error": "No execution method available", "emails": []}
+        return {"error": "No execution method available", "emails": [], "workspace_action": "fetch_unread_emails"}
 
     async def _search_email(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         """Search emails."""
@@ -2640,7 +2708,10 @@ Return ONLY a JSON object with these keys (use null if not found):
 
         self._email_queries += 1
 
-        return await self._client.search_emails(query=query, limit=limit)
+        _result = await self._client.search_emails(query=query, limit=limit)
+        if isinstance(_result, dict):
+            _result["workspace_action"] = "search_email"
+        return _result
 
     async def _draft_email(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -2679,9 +2750,9 @@ Return ONLY a JSON object with these keys (use null if not found):
         original_email = payload.get("original_email_content", "")
 
         if not to:
-            return {"error": "Recipient 'to' is required", "success": False}
+            return {"error": "Recipient 'to' is required", "success": False, "workspace_action": "draft_email_reply"}
         if not subject:
-            return {"error": "Subject is required", "success": False}
+            return {"error": "Subject is required", "success": False, "workspace_action": "draft_email_reply"}
 
         generated_body = False
         model_used = None
@@ -2743,7 +2814,7 @@ EMAIL BODY:"""
                     logger.warning(f"Prime email generation failed: {e}")
 
         if not body:
-            return {"error": "Email body is required (generation failed)", "success": False}
+            return {"error": "Email body is required (generation failed)", "success": False, "workspace_action": "draft_email_reply"}
 
         # Create draft via Gmail API
         result = await self._client.draft_email(
@@ -2794,6 +2865,7 @@ EMAIL BODY:"""
         result["model_used"] = model_used
         result["execution_time_ms"] = execution_time_ms
 
+        result["workspace_action"] = "draft_email_reply"
         return result
 
     async def _track_draft_for_edits(
@@ -2986,6 +3058,7 @@ EMAIL BODY:"""
                     "spatial_target": spatial_target,
                     "actions_count": result.actions_count,
                     "execution_time_ms": execution_time_ms,
+                    "workspace_action": "draft_email_reply",
                     "message": (
                         f"Email draft created visually on screen. "
                         f"Switched to Gmail and filled in recipient ({to}) and subject ({subject}). "
@@ -3009,11 +3082,11 @@ EMAIL BODY:"""
         html_body = payload.get("html_body")
 
         if not to:
-            return {"error": "Recipient 'to' is required"}
+            return {"error": "Recipient 'to' is required", "workspace_action": "send_email"}
         if not subject:
-            return {"error": "Subject is required"}
+            return {"error": "Subject is required", "workspace_action": "send_email"}
         if not body:
-            return {"error": "Email body is required"}
+            return {"error": "Email body is required", "workspace_action": "send_email"}
 
         result = await self._client.send_email(
             to=to,
@@ -3047,6 +3120,7 @@ EMAIL BODY:"""
                 confidence=0.95,
             )
 
+        result["workspace_action"] = "send_email"
         return result
 
     async def _check_calendar(self, payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -3064,6 +3138,7 @@ EMAIL BODY:"""
         date_str = payload.get("date", "today")
         days = payload.get("days", 1)
         hours_ahead = days * 24
+        allow_visual_fallback = bool(payload.get("allow_visual_fallback", True))
 
         # Handle relative dates for display
         display_date = date_str
@@ -3082,6 +3157,7 @@ EMAIL BODY:"""
                 google_client=self._client if self._client else None,
                 date_str=date_str,
                 hours_ahead=hours_ahead,
+                allow_visual_fallback=allow_visual_fallback,
             )
 
             if exec_result.success:
@@ -3123,19 +3199,24 @@ EMAIL BODY:"""
                     confidence=0.9,
                 )
 
+                result["workspace_action"] = "check_calendar_events"
                 return result
             else:
                 return {
                     "error": exec_result.error or "All calendar check methods failed",
                     "events": [],
+                    "workspace_action": "check_calendar_events",
                     "count": 0,
                 }
 
         # Fallback to direct client call if executor not available
         if self._client:
-            return await self._client.get_calendar_events(date_str=display_date, days=days)
+            _result = await self._client.get_calendar_events(date_str=display_date, days=days)
+            if isinstance(_result, dict):
+                _result["workspace_action"] = "check_calendar_events"
+            return _result
 
-        return {"error": "No execution method available", "events": [], "count": 0}
+        return {"error": "No execution method available", "events": [], "count": 0, "workspace_action": "check_calendar_events"}
 
     async def _create_event(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         """Create a calendar event."""
@@ -3147,9 +3228,9 @@ EMAIL BODY:"""
         attendees = payload.get("attendees", [])
 
         if not title:
-            return {"error": "Event title is required"}
+            return {"error": "Event title is required", "workspace_action": "create_calendar_event"}
         if not start:
-            return {"error": "Start time is required"}
+            return {"error": "Start time is required", "workspace_action": "create_calendar_event"}
 
         result = await self._client.create_calendar_event(
             title=title,
@@ -3176,6 +3257,7 @@ EMAIL BODY:"""
                 confidence=0.95,
             )
 
+        result["workspace_action"] = "create_calendar_event"
         return result
 
     async def _get_contacts(self, payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -3184,8 +3266,11 @@ EMAIL BODY:"""
         limit = payload.get("limit", 20)
 
         if self._client:
-            return await self._client.get_contacts(query=query, limit=limit)
-        return {"error": "Google API client not available", "contacts": []}
+            _result = await self._client.get_contacts(query=query, limit=limit)
+            if isinstance(_result, dict):
+                _result["workspace_action"] = "get_contacts"
+            return _result
+        return {"error": "Google API client not available", "contacts": [], "workspace_action": "get_contacts"}
 
     async def _create_document(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -3207,7 +3292,7 @@ EMAIL BODY:"""
         word_count = payload.get("word_count")
 
         if not topic:
-            return {"error": "Document topic is required"}
+            return {"error": "Document topic is required", "workspace_action": "create_document"}
 
         logger.info(f"Creating document: {document_type} about '{topic}'")
 
@@ -3260,14 +3345,16 @@ EMAIL BODY:"""
                     confidence=0.9,
                 )
 
+                result["workspace_action"] = "create_document"
                 return result
             else:
                 return {
                     "error": exec_result.error or "All document creation methods failed",
+                    "workspace_action": "create_document",
                     "success": False,
                 }
 
-        return {"error": "No execution method available for document creation", "success": False}
+        return {"error": "No execution method available for document creation", "success": False, "workspace_action": "create_document"}
 
     async def _get_workspace_summary(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -3278,13 +3365,55 @@ EMAIL BODY:"""
         - Today's calendar events
         - Upcoming deadlines
         """
-        # Fetch in parallel
-        email_task = self._client.fetch_unread_emails(limit=5)
-        calendar_task = self._client.get_calendar_events(days=1)
+        deadline = payload.get("deadline_monotonic")
 
-        email_result, calendar_result = await asyncio.gather(
-            email_task, calendar_task, return_exceptions=True
+        async def _run_bounded(
+            operation: Callable[[], Any],
+            op_name: str,
+            default_timeout: float,
+        ) -> Dict[str, Any]:
+            timeout = max(1.0, default_timeout)
+            if isinstance(deadline, (int, float)):
+                remaining = float(deadline) - asyncio.get_event_loop().time()
+                if remaining <= 0:
+                    return {"error": "deadline_exceeded"}
+                timeout = max(1.0, min(timeout, remaining))
+
+            try:
+                return await asyncio.wait_for(operation(), timeout=timeout)
+            except asyncio.TimeoutError:
+                return {"error": f"{op_name}_timeout"}
+            except Exception as exc:
+                logger.debug("Workspace summary %s failed: %s", op_name, exc)
+                return {"error": str(exc)}
+
+        # Use fast, non-visual fallbacks for deterministic summary latency.
+        summary_timeout = self.config.workspace_summary_timeout_seconds
+        email_task = _run_bounded(
+            lambda: self._fetch_unread_emails(
+                {
+                    "limit": 5,
+                    "allow_visual_fallback": False,
+                    "deadline_monotonic": deadline,
+                }
+            ),
+            "email_summary",
+            summary_timeout,
         )
+        calendar_task = _run_bounded(
+            lambda: self._check_calendar(
+                {
+                    "date": "today",
+                    "days": 1,
+                    "allow_visual_fallback": False,
+                    "deadline_monotonic": deadline,
+                }
+            ),
+            "calendar_summary",
+            summary_timeout,
+        )
+
+        email_result, calendar_result = await asyncio.gather(email_task, calendar_task)
 
         # Build summary
         summary = {
@@ -3333,13 +3462,15 @@ EMAIL BODY:"""
             f"{event_count} events scheduled for today."
         )
 
-        if event_count > 0:
-            first_event = summary["calendar"]["events"][0]
+        calendar_events = summary.get("calendar", {}).get("events", [])
+        if event_count > 0 and calendar_events:
+            first_event = calendar_events[0]
             summary["brief"] += (
                 f" Your first meeting is '{first_event['title']}' "
                 f"starting at {first_event['start']}."
             )
 
+        summary["workspace_action"] = "workspace_summary"
         return summary
 
     async def _handle_natural_query(self, payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -3351,7 +3482,7 @@ EMAIL BODY:"""
         query = payload.get("query", "")
 
         if not query:
-            return {"error": "No query provided"}
+            return {"error": "No query provided", "workspace_action": "handle_workspace_query"}
 
         # Detect intent
         intent, confidence, metadata = self._intent_detector.detect(query)
@@ -3364,6 +3495,7 @@ EMAIL BODY:"""
         if intent == WorkspaceIntent.CHECK_EMAIL:
             return await self._fetch_unread_emails({
                 "limit": payload.get("limit", 5),
+                "deadline_monotonic": payload.get("deadline_monotonic"),
             })
 
         elif intent == WorkspaceIntent.CHECK_CALENDAR:
@@ -3371,6 +3503,7 @@ EMAIL BODY:"""
             return await self._check_calendar({
                 "date": dates.get("today") or dates.get("tomorrow"),
                 "days": 1,
+                "deadline_monotonic": payload.get("deadline_monotonic"),
             })
 
         elif intent == WorkspaceIntent.DRAFT_EMAIL:
@@ -3381,6 +3514,7 @@ EMAIL BODY:"""
                 "message": "Ready to draft email",
                 "detected_recipient": names[0] if names else None,
                 "instructions": "Please provide: to, subject, and body",
+                "workspace_action": "draft_email_reply",
             }
 
         elif intent == WorkspaceIntent.SEND_EMAIL:
@@ -3388,10 +3522,13 @@ EMAIL BODY:"""
                 "status": "send_ready",
                 "message": "Ready to send email",
                 "instructions": "Please provide: to, subject, and body",
+                "workspace_action": "send_email",
             }
 
         elif intent == WorkspaceIntent.DAILY_BRIEFING:
-            return await self._get_workspace_summary({})
+            return await self._get_workspace_summary({
+                "deadline_monotonic": payload.get("deadline_monotonic"),
+            })
 
         elif intent == WorkspaceIntent.GET_CONTACTS:
             names = metadata.get("extracted_names", [])
@@ -3404,6 +3541,7 @@ EMAIL BODY:"""
                 "status": "event_ready",
                 "message": "Ready to create calendar event",
                 "instructions": "Please provide: title, start, and optionally end, description, location, attendees",
+                "workspace_action": "create_calendar_event",
             }
 
         else:
@@ -3412,6 +3550,7 @@ EMAIL BODY:"""
                 "detected_intent": intent.value,
                 "confidence": confidence,
                 "message": "I'm not sure what workspace action you'd like. Try asking about emails, calendar, or contacts.",
+                "workspace_action": "handle_workspace_query",
             }
 
     async def _handle_workspace_message(self, message: AgentMessage) -> None:

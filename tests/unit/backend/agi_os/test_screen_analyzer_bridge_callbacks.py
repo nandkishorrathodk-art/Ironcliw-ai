@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+import time
 from typing import Any, Callable, Dict
 
 
@@ -44,6 +46,51 @@ class _FakeAnalyzer:
         return {"emitted": {}, "suppressed": {}}
 
 
+class _FakeEventStream:
+    async def emit(self, event: Any) -> None:
+        return None
+
+
+class _FakeResponseUsage:
+    input_tokens = 10
+    output_tokens = 5
+
+
+class _FakeResponseContent:
+    def __init__(self, text: str):
+        self.text = text
+
+
+class _FakeResponse:
+    def __init__(self, text: str = "SUMMARY: test\nSUGGESTIONS: none\nCONFIDENCE: 0.9"):
+        self.content = [_FakeResponseContent(text)]
+        self.usage = _FakeResponseUsage()
+
+
+class _DelayedMessages:
+    def __init__(self, delay_seconds: float = 0.0, error: Exception | None = None):
+        self._delay_seconds = delay_seconds
+        self._error = error
+        self.calls = 0
+
+    async def create(self, **kwargs: Any) -> _FakeResponse:
+        self.calls += 1
+        if self._delay_seconds > 0:
+            await asyncio.sleep(self._delay_seconds)
+        if self._error is not None:
+            raise self._error
+        return _FakeResponse()
+
+
+class _FakeClaudeClient:
+    def __init__(self, messages: _DelayedMessages):
+        self.messages = messages
+        self.closed = False
+
+    async def close(self) -> None:
+        self.closed = True
+
+
 async def test_bridge_registers_and_unregisters_all_callbacks():
     from backend.agi_os.jarvis_integration import ScreenAnalyzerBridge
 
@@ -67,3 +114,58 @@ async def test_bridge_registers_and_unregisters_all_callbacks():
     assert post_stats["callback_registered_count"] == 0
     for callback_set in analyzer.event_callbacks.values():
         assert len(callback_set) == 0
+
+
+async def test_error_detected_queues_vision_analysis_without_blocking_callback():
+    from backend.agi_os.jarvis_integration import ScreenAnalyzerBridge
+
+    messages = _DelayedMessages(delay_seconds=0.6)
+    bridge = ScreenAnalyzerBridge()
+    bridge._vision_enabled = True
+    bridge._claude_client = _FakeClaudeClient(messages)
+    bridge._event_stream = _FakeEventStream()
+    bridge._connected = True
+    bridge._ensure_vision_error_worker()
+
+    started = time.perf_counter()
+    await bridge._on_error_detected(
+        {
+            "error_type": "exception",
+            "message": "something failed",
+            "location": "dialog",
+            "screenshot": b"fake-image-bytes",
+        }
+    )
+    elapsed = time.perf_counter() - started
+
+    assert elapsed < 0.3
+
+    await asyncio.sleep(0.8)
+    stats = bridge.get_stats()
+    assert messages.calls >= 1
+    assert stats["vision_error_queue_enqueued"] >= 1
+    assert stats["vision_error_queue_processed"] >= 1
+
+    await bridge.disconnect()
+
+
+async def test_analyze_screen_opens_circuit_after_consecutive_failures():
+    from backend.agi_os.jarvis_integration import ScreenAnalyzerBridge
+
+    messages = _DelayedMessages(error=RuntimeError("Request timed out or interrupted"))
+    bridge = ScreenAnalyzerBridge()
+    bridge._vision_enabled = True
+    bridge._claude_client = _FakeClaudeClient(messages)
+    bridge._vision_failure_threshold = 2
+    bridge._vision_circuit_cooldown_seconds = 60.0
+
+    await bridge.analyze_screen(screenshot=b"img-1")
+    await bridge.analyze_screen(screenshot=b"img-2")
+    calls_before_short_circuit = messages.calls
+    await bridge.analyze_screen(screenshot=b"img-3")
+
+    stats = bridge.get_stats()
+    assert calls_before_short_circuit == 2
+    assert messages.calls == calls_before_short_circuit
+    assert stats["vision_circuit_open"] is True
+    assert stats["vision_circuit_short_circuits"] >= 1

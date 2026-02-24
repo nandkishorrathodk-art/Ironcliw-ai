@@ -9,6 +9,7 @@ import asyncio
 import logging
 import os
 import re as _re
+import sys
 from typing import Dict, Any, Optional, Callable, List
 from datetime import datetime
 
@@ -30,6 +31,15 @@ from .proactive_monitoring_handler import get_monitoring_handler
 from .activity_reporting_commands import is_activity_reporting_command
 
 logger = logging.getLogger(__name__)
+
+# Canonicalize module identity so both import styles share one singleton
+# instance/state (`vision_command_handler`) instead of split module copies.
+_this_module = sys.modules.get(__name__)
+if _this_module is not None:
+    if __name__.startswith("backend."):
+        sys.modules.setdefault("api.vision_command_handler", _this_module)
+    elif __name__ == "api.vision_command_handler":
+        sys.modules.setdefault("backend.api.vision_command_handler", _this_module)
 
 # Import new monitoring system components
 try:
@@ -3165,5 +3175,27 @@ Never use generic error messages or technical jargon.
             return {"error": str(e)}
 
 
-# Singleton instance
-vision_command_handler = VisionCommandHandler()
+# v265.6: Deferred singleton — constructor cascades 5+ subsystem inits
+# (EnhancedMultiSpaceSystem, YabaiSpaceDetector, QueryClassifier,
+# LearningSystem, ProactiveSuggestions) which block the event loop and
+# can crash the entire module import if any constructor fails.
+# Lazy getter defers construction to first actual use.
+_vision_command_handler_instance: Optional["VisionCommandHandler"] = None
+
+
+def get_vision_command_handler() -> Optional["VisionCommandHandler"]:
+    """Lazy singleton getter. Defers initialization to first call."""
+    global _vision_command_handler_instance
+    if _vision_command_handler_instance is None:
+        try:
+            _vision_command_handler_instance = VisionCommandHandler()
+        except Exception as e:
+            logger.error("[VISION] VisionCommandHandler initialization failed: %s", e)
+    return _vision_command_handler_instance
+
+
+# Backward-compatible module-level name.
+# Callers doing `from ... import vision_command_handler` get None initially;
+# production callers already use lazy imports inside function bodies and
+# guard against None. New code should use get_vision_command_handler().
+vision_command_handler: Optional["VisionCommandHandler"] = None

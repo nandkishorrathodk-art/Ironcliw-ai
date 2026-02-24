@@ -1140,7 +1140,9 @@ class UnifiedWebSocketManager:
             # Route to appropriate handler
             if msg_type == "command" or msg_type == "voice_command":
                 # Execute voice command
-                from .jarvis_voice_api import JARVISCommand, jarvis_api
+                # v265.6: Use lazy getter for JARVISVoiceAPI
+                from .jarvis_voice_api import JARVISCommand, get_jarvis_api
+                jarvis_api = get_jarvis_api()
 
                 command_text = message.get("command", message.get("text", ""))
                 # Get optional audio data if provided
@@ -1154,6 +1156,8 @@ class UnifiedWebSocketManager:
                 command_obj.deadline = _time_ws_legacy.monotonic() + 45.0 - _DEADLINE_HEADROOM_S
 
                 result = await jarvis_api.process_command(command_obj)
+                if not isinstance(result, dict):
+                    result = {"response": str(result), "status": "error", "success": False}
 
                 context.metadata["response"] = {
                     "type": "response",
@@ -1765,7 +1769,9 @@ class UnifiedWebSocketManager:
                     # Standard JARVIS API processing (for non-unlock or no audio)
                     if result is None:
                         try:
-                            from .jarvis_voice_api import JARVISCommand, jarvis_api
+                            # v265.6: Use lazy getter for JARVISVoiceAPI
+                            from .jarvis_voice_api import JARVISCommand, get_jarvis_api
+                            jarvis_api = get_jarvis_api()
                             import time as _time_ws
 
                             command_obj = JARVISCommand(text=command_text, audio_data=audio_data_received)
@@ -2522,6 +2528,8 @@ class UnifiedWebSocketManager:
 
                     processor = get_unified_processor()
                     result = await processor.process_command(command_text, websocket=None)
+                    if not isinstance(result, dict):
+                        result = {"response": str(result), "status": "error", "success": False}
 
                     response_text = result.get("response", "Command processed, Sir.")
                     success = result.get("success", False)
@@ -2546,6 +2554,8 @@ class UnifiedWebSocketManager:
                         "[WS] Unified processor not available, falling back to async pipeline"
                     )
                     result = await self.pipeline.process_async(text=command_text)
+                    if not isinstance(result, dict):
+                        result = {"response": str(result), "status": "error", "success": False}
 
                     response_text = result.get("response", "Command processed, Sir.")
                     success = result.get("success", False)

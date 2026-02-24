@@ -222,15 +222,30 @@ class DistributedLock:
 
     def __init__(
         self,
-        name: str,
+        name: Optional[str] = None,
         redis_client: Optional[Any] = None,  # ResilientRedisClient or redis.asyncio.Redis
         config: Optional[DistributedLockConfig] = None,
+        *,
+        lock_name: Optional[str] = None,
     ):
-        self.name = name
+        if name is None and lock_name is None:
+            raise TypeError(
+                "DistributedLock requires `name` (or legacy alias `lock_name`)."
+            )
+        if name is not None and lock_name is not None and name != lock_name:
+            raise ValueError(
+                "DistributedLock received conflicting identifiers for "
+                f"`name` ({name!r}) and `lock_name` ({lock_name!r})."
+            )
+
+        resolved_name = name if name is not None else lock_name
+        assert resolved_name is not None  # Satisfy type checkers after validation.
+
+        self.name = resolved_name
         self._redis = redis_client
         self.config = config or DistributedLockConfig()
 
-        self._lock_key = f"jarvis:lock:{name}"
+        self._lock_key = f"jarvis:lock:{resolved_name}"
         self._current_token: Optional[str] = None
         self._acquired_at: float = 0.0
         self._renewal_task: Optional[asyncio.Task] = None

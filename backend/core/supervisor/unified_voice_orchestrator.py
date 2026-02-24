@@ -960,10 +960,13 @@ class UnifiedVoiceOrchestrator:
                     "-r", str(self.config.rate),
                     text,
                 ]
+                # v266.5: start_new_session isolates child from parent
+                # process group signals (SIGINT from zombie cleanup, etc.)
                 self._current_process = await asyncio.create_subprocess_exec(
                     *cmd,
                     stdout=asyncio.subprocess.DEVNULL,
                     stderr=asyncio.subprocess.DEVNULL,
+                    start_new_session=True,
                 )
                 await self._current_process.wait()
                 return

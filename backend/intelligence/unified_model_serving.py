@@ -417,6 +417,11 @@ class PrimeLocalClient(ModelClient):
             max_workers=1, thread_name_prefix="llm-inference"
         )
 
+        # v266.0: Mmap thrash cascade state
+        self._model_swapping: bool = False
+        self._current_model_entry: Optional[Dict[str, Any]] = None  # Current QUANT_CATALOG entry
+        self._thrash_downgrade_attempted: bool = False
+
     def _discover_model(self, model_name: str) -> Optional[Path]:
         """
         Discover a model file by searching multiple directories.
@@ -484,16 +489,23 @@ class PrimeLocalClient(ModelClient):
         """
         Attempt to auto-download a model from Hugging Face.
 
+        v266.3: Default policy changed from "false" to "auto".
+        - "auto" (default): Download if huggingface_hub is available and
+          no model exists on disk. Intelligent provisioning.
+        - "true": Always attempt download (same as legacy behavior).
+        - "false": Never download (explicit opt-out).
+
         Args:
             model_name: Name of the model to download
 
         Returns:
             Path to downloaded model, or None if download failed/disabled
         """
-        # Check if auto-download is enabled
-        auto_download = os.getenv("JARVIS_PRIME_AUTO_DOWNLOAD", "false").lower() == "true"
-        if not auto_download:
+        # v266.3: Three-state policy (auto/true/false) replaces binary flag
+        _policy = os.getenv("JARVIS_PRIME_AUTO_DOWNLOAD", "auto").lower().strip()
+        if _policy == "false":
             return None
+        # "auto" and "true" both proceed — "auto" is the new default
 
         # Get HF repo for this model
         repo_id = self.HF_MODEL_REPOS.get(model_name)
@@ -663,6 +675,11 @@ class PrimeLocalClient(ModelClient):
                         model_path = await self._auto_download_model(
                             model_name
                         )
+                    # v266.0: Look up catalog entry for explicit model
+                    for _cat_entry in self.QUANT_CATALOG:
+                        if _cat_entry["filename"] == model_name:
+                            selected_entry = _cat_entry
+                            break
                 elif available_gb is not None:
                     # Dynamic selection from QUANT_CATALOG
                     result = await self._select_best_model(available_gb)
@@ -680,12 +697,15 @@ class PrimeLocalClient(ModelClient):
                 if model_path is None:
                     if not PrimeLocalClient._warned_missing_model:
                         PrimeLocalClient._warned_missing_model = True
+                        _policy = os.getenv(
+                            "JARVIS_PRIME_AUTO_DOWNLOAD", "auto"
+                        ).lower().strip()
                         self.logger.warning(
                             f"No suitable GGUF model found. "
                             f"Available RAM: {available_gb or 'unknown'}GB. "
-                            f"Set JARVIS_PRIME_AUTO_DOWNLOAD=true to enable "
-                            f"auto-download, or place a model in "
-                            f"{PRIME_MODELS_DIR}"
+                            f"Auto-download policy: {_policy}. "
+                            f"Place a model in {PRIME_MODELS_DIR} or "
+                            f"set JARVIS_PRIME_AUTO_DOWNLOAD=auto"
                         )
                     return False
 
@@ -700,18 +720,27 @@ class PrimeLocalClient(ModelClient):
                     else _model_size_gb
                 )
 
-                # v235.1: Dynamic headroom based on memory pressure tier (Fix C1)
-                _headroom_gb = 1.0  # default
+                # v266.0: Dynamic headroom based on memory pressure tier
+                # Bumped from 0.75-1.5GB to 1.5-2.5GB to account for frontend
+                # (500MB-1.2GB) and Docker (200-500MB) consuming headroom post-load.
+                # Env-var overrides for tuning without code changes.
+                def _headroom_env(name: str, default: float) -> float:
+                    try:
+                        return float(os.getenv(name, str(default)))
+                    except (ValueError, TypeError):
+                        return default
+
+                _headroom_gb = _headroom_env("JARVIS_MODEL_HEADROOM_NORMAL", 2.0)
                 _tier = None
                 try:
                     from backend.core.memory_quantizer import MemoryTier
                     _tier = _metrics.tier if '_metrics' in dir() and _metrics else None
                     if _tier in (MemoryTier.ABUNDANT, MemoryTier.OPTIMAL):
-                        _headroom_gb = 0.75
+                        _headroom_gb = _headroom_env("JARVIS_MODEL_HEADROOM_RELAXED", 1.5)
                     elif _tier == MemoryTier.ELEVATED:
-                        _headroom_gb = 1.0
+                        _headroom_gb = _headroom_env("JARVIS_MODEL_HEADROOM_NORMAL", 2.0)
                     elif _tier == MemoryTier.CONSTRAINED:
-                        _headroom_gb = 1.5
+                        _headroom_gb = _headroom_env("JARVIS_MODEL_HEADROOM_TIGHT", 2.5)
                     elif _tier in (MemoryTier.CRITICAL, MemoryTier.EMERGENCY):
                         self.logger.warning(
                             f"[v235.1] Memory tier {_tier.value} — refusing to load model "
@@ -782,14 +811,58 @@ class PrimeLocalClient(ModelClient):
                             f"(tier: {_tier.value if _tier else 'unknown'})"
                         )
 
-                self._model = Llama(
-                    model_path=str(model_path),
-                    n_ctx=_ctx,
-                    n_threads=os.cpu_count() or 4,
-                    n_gpu_layers=_n_gpu,
-                    use_mmap=_use_mmap,
-                    verbose=False,
-                )
+                # v266.0: Reserve memory in MemoryQuantizer accounting.
+                # This prevents other startup phases from consuming headroom
+                # between our RAM check and the actual Llama() allocation.
+                _reservation_id = None
+                _reservation_mq = None
+                try:
+                    from backend.core.memory_quantizer import get_memory_quantizer as _get_mq_reserve
+                    _reservation_mq = await _get_mq_reserve()
+                    if _reservation_mq and hasattr(_reservation_mq, 'reserve_memory'):
+                        _reserve_gb = _effective_size_gb + _kv_cache_gb + _headroom_gb
+                        _reservation_id = _reservation_mq.reserve_memory(
+                            _reserve_gb, "unified_model_serving"
+                        )
+                        self.logger.info(
+                            f"[v266.0] Reserved {_reserve_gb:.2f}GB in MemoryQuantizer "
+                            f"(id={_reservation_id})"
+                        )
+                except Exception as e:
+                    self.logger.debug(f"[v266.0] Memory reservation failed (non-fatal): {e}")
+
+                try:
+                    self._model = Llama(
+                        model_path=str(model_path),
+                        n_ctx=_ctx,
+                        n_threads=os.cpu_count() or 4,
+                        n_gpu_layers=_n_gpu,
+                        use_mmap=_use_mmap,
+                        verbose=False,
+                    )
+                except Exception:
+                    # v266.0: Release reservation on Llama() failure
+                    if _reservation_id and _reservation_mq:
+                        try:
+                            _reservation_mq.release_reservation(_reservation_id)
+                            self.logger.debug(
+                                f"[v266.0] Released reservation {_reservation_id} "
+                                f"(Llama constructor failed)"
+                            )
+                        except Exception:
+                            pass
+                    raise  # re-raise to outer except handlers
+
+                # v266.0: Release reservation — model itself now holds the RAM
+                if _reservation_id and _reservation_mq:
+                    try:
+                        _reservation_mq.release_reservation(_reservation_id)
+                        self.logger.debug(
+                            f"[v266.0] Released reservation {_reservation_id} "
+                            f"(model loaded successfully)"
+                        )
+                    except Exception:
+                        pass
 
                 # v235.1: Post-load memory validation (Fix C2)
                 try:
@@ -817,6 +890,7 @@ class PrimeLocalClient(ModelClient):
 
                 self._model_path = model_path
                 self._loaded = True
+                self._current_model_entry = selected_entry  # v266.0: Track for thrash downgrade
                 _name = (
                     selected_entry["name"]
                     if selected_entry
@@ -999,6 +1073,102 @@ class PrimeLocalClient(ModelClient):
 
         parts.append("Assistant: ")
         return "".join(parts)
+
+    async def background_provision_model(self) -> bool:
+        """
+        v266.3: Intelligent background model provisioning.
+
+        Selects the best GGUF model for available RAM, downloads it from
+        HuggingFace in a background thread (non-blocking), and marks Tier 2
+        as ready when complete. Called by supervisor at startup when no model
+        exists on disk and auto-download policy allows it.
+
+        Returns:
+            True if a model was successfully provisioned
+        """
+        _policy = os.getenv("JARVIS_PRIME_AUTO_DOWNLOAD", "auto").lower().strip()
+        if _policy == "false":
+            return False
+
+        try:
+            # Step 1: Determine available RAM
+            available_gb = None
+            try:
+                from backend.core.memory_quantizer import get_memory_quantizer
+                _mq = await get_memory_quantizer()
+                _metrics = _mq.get_current_metrics()
+                available_gb = _metrics.system_memory_available_gb
+            except Exception:
+                # Conservative fallback if MemoryQuantizer unavailable
+                try:
+                    import psutil
+                    available_gb = psutil.virtual_memory().available / (1024 ** 3)
+                except Exception:
+                    available_gb = 3.0  # Safe default for 16GB Mac
+
+            # Step 2: Find best downloadable model that fits RAM
+            _use_mmap = os.getenv(
+                "JARVIS_USE_MMAP", "true"
+            ).lower() in ("true", "1", "yes")
+            _mmap_factor = 0.65 if _use_mmap else 1.0
+
+            download_target = None
+            for entry in self.QUANT_CATALOG:
+                _effective_min = entry["min_ram_gb"] * _mmap_factor
+                if _effective_min <= available_gb:
+                    # Check if already on disk
+                    if self._discover_model(entry["filename"]) is not None:
+                        self.logger.info(
+                            f"[v266.3] Background provision: {entry['name']} "
+                            f"already on disk — Tier 2 ready"
+                        )
+                        return True
+                    # This is our download target (best quality that fits)
+                    if download_target is None:
+                        download_target = entry
+
+            if download_target is None:
+                self.logger.info(
+                    "[v266.3] Background provision: no model fits "
+                    f"available RAM ({available_gb:.1f}GB)"
+                )
+                return False
+
+            # Step 3: Download in background thread
+            self.logger.info(
+                f"[v266.3] Background provisioning: downloading "
+                f"{download_target['name']} ({download_target['filename']}) "
+                f"from {download_target['repo_id']}..."
+            )
+
+            model_path = await self._auto_download_model(
+                download_target["filename"]
+            )
+
+            if model_path is not None:
+                self.logger.info(
+                    f"[v266.3] Background provision complete: "
+                    f"{download_target['name']} ready at {model_path}. "
+                    f"Tier 2 local inference now available."
+                )
+                # Reset discovery flag so load_model() will find it
+                self._discovery_attempted = False
+                PrimeLocalClient._warned_missing_model = False
+                return True
+            else:
+                self.logger.warning(
+                    f"[v266.3] Background provision failed: "
+                    f"could not download {download_target['name']}"
+                )
+                return False
+
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            self.logger.warning(
+                f"[v266.3] Background provision error: {e}"
+            )
+            return False
 
     async def health_check(self) -> bool:
         """Check if the model is healthy."""
@@ -2258,6 +2428,20 @@ class UnifiedModelServing:
             )
             self.logger.info("[v235.1] Memory pressure monitor started")
 
+        # v266.0: Register for thrash detection
+        try:
+            from backend.core.memory_quantizer import get_memory_quantizer
+            _mq = await get_memory_quantizer()
+            if _mq and hasattr(_mq, 'register_thrash_callback'):
+                _mq.register_thrash_callback(self._handle_thrash_state_change)
+                self.logger.info("[v266.0] Registered thrash detection callback")
+            # v266.0: Register for component unload (GCP-disabled escape valve)
+            if _mq and hasattr(_mq, 'register_unload_callback'):
+                _mq.register_unload_callback(self._handle_component_unload)
+                self.logger.info("[v266.0] Registered component unload callback")
+        except Exception as e:
+            self.logger.debug(f"[v266.0] Memory callback registration: {e}")
+
     async def _start_memory_monitor(self) -> None:
         """v235.1: Background monitor that unloads local model under memory pressure (Fix C4)."""
         _critical_since: Optional[float] = None
@@ -2338,6 +2522,244 @@ class UnifiedModelServing:
                 )
             except Exception as e:
                 self.logger.warning(f"[v235.1] Model unload error: {e}")
+
+    def reset_local_circuit_breaker(self) -> None:
+        """v266.2: Reset PRIME_LOCAL circuit breaker after verified model reload.
+
+        Called by GCPHybridPrimeRouter when post-crisis recovery successfully
+        reloads the local model. Directly closes the breaker so requests
+        immediately route to LOCAL instead of waiting for HALF_OPEN timeout.
+        """
+        _provider = ModelProvider.PRIME_LOCAL.value
+        cb = self._circuit_breaker._get_cb(_provider)
+        if cb is not None:
+            with self._circuit_breaker._lock:
+                cb._state = _CanonicalCBState.CLOSED
+                cb._failure_count = 0
+                cb._success_count = 0
+                self._circuit_breaker._sync_state_from_canonical(_provider, cb)
+        else:
+            with self._circuit_breaker._lock:
+                state = self._circuit_breaker._states.get(_provider)
+                if state:
+                    state.state = CircuitState.CLOSED
+                    state.failure_count = 0
+        self.logger.info(
+            "[v266.2] PRIME_LOCAL circuit breaker reset to CLOSED (post-crisis recovery)"
+        )
+
+    def force_open_local_circuit_breaker(self, reason: str = "recovery_reload") -> None:
+        """Force PRIME_LOCAL circuit OPEN so routing stays on cloud during reload."""
+        _provider = ModelProvider.PRIME_LOCAL.value
+        for _ in range(CIRCUIT_BREAKER_FAILURE_THRESHOLD):
+            self._circuit_breaker.record_failure(_provider)
+        _state = self._circuit_breaker.get_state(_provider)
+        _state_name = (
+            _state.state.value
+            if hasattr(_state.state, "value")
+            else str(_state.state)
+        )
+        self.logger.info(
+            "[v266.4] PRIME_LOCAL circuit forced OPEN (reason=%s, state=%s)",
+            reason,
+            _state_name,
+        )
+
+    def get_local_circuit_state(self) -> str:
+        """Return normalized PRIME_LOCAL circuit state for observability."""
+        _state = self._circuit_breaker.get_state(ModelProvider.PRIME_LOCAL.value)
+        _raw = _state.state.value if hasattr(_state.state, "value") else str(_state.state)
+        return str(_raw).lower()
+
+    async def smoke_test_local_model(self, timeout_seconds: float = 20.0) -> bool:
+        """Run a minimal local inference smoke test after reload."""
+        _local = self._clients.get(ModelProvider.PRIME_LOCAL)
+        if _local is None:
+            self.logger.warning("[v266.4] Local smoke test skipped: PRIME_LOCAL client missing")
+            return False
+        if not await _local.health_check():
+            self.logger.warning("[v266.4] Local smoke test failed: health_check returned false")
+            return False
+
+        max_tokens = max(1, int(os.getenv("JARVIS_LOCAL_RECOVERY_SMOKE_MAX_TOKENS", "4")))
+        smoke_req = ModelRequest(
+            messages=[{"role": "user", "content": "Respond with OK."}],
+            max_tokens=max_tokens,
+            temperature=0.0,
+        )
+        try:
+            smoke_resp = await asyncio.wait_for(
+                _local.generate(smoke_req),
+                timeout=max(1.0, timeout_seconds),
+            )
+            if not getattr(smoke_resp, "success", False):
+                self.logger.warning(
+                    "[v266.4] Local smoke test failed: generation unsuccessful (%s)",
+                    getattr(smoke_resp, "error", "unknown"),
+                )
+                return False
+            return True
+        except Exception as smoke_err:
+            self.logger.warning(f"[v266.4] Local smoke test exception: {smoke_err}")
+            return False
+
+    # ── v266.0: Component Unload (GCP-disabled escape valve) ─────────
+
+    async def _handle_component_unload(self, tier) -> None:
+        """Handle COMPONENT_UNLOAD from MemoryQuantizer.
+
+        Called when memory reaches CRITICAL/EMERGENCY and GCP is unavailable.
+        Unloads the local LLM model to free 4-8GB of RAM.
+        """
+        if getattr(self, '_unload_in_progress', False):
+            return
+        self._unload_in_progress = True
+        try:
+            return await self._handle_component_unload_inner(tier)
+        finally:
+            self._unload_in_progress = False
+
+    async def _handle_component_unload_inner(self, tier) -> None:
+        """Inner implementation of component unload (guarded by reentrancy flag)."""
+        _local = self._clients.get(ModelProvider.PRIME_LOCAL)
+        if not _local or not isinstance(_local, PrimeLocalClient):
+            return
+        if not getattr(_local, '_model', None):
+            self.logger.info("[ComponentUnload] No local model loaded — nothing to unload")
+            return
+
+        self.logger.warning(
+            f"[ComponentUnload] Memory tier {tier} — unloading local LLM model"
+        )
+        try:
+            await self._unload_local_model()
+            self.logger.warning("[ComponentUnload] Local LLM model unloaded successfully")
+        except Exception as e:
+            self.logger.error(f"[ComponentUnload] Unload failed: {e}")
+
+    # ── v266.0: Mmap Thrash Cascade Response ─────────────────────────
+
+    async def _handle_thrash_state_change(self, new_state: str) -> None:
+        """Handle mmap thrash state changes from MemoryQuantizer.
+
+        Two-step cascade:
+        Step 1 (thrashing): Downgrade one tier in QUANT_CATALOG.
+        Step 2 (still thrashing or emergency): Trigger GCP offload.
+        """
+        _local = self._clients.get(ModelProvider.PRIME_LOCAL)
+        if not _local or not isinstance(_local, PrimeLocalClient):
+            return
+
+        if new_state == "healthy":
+            _local._thrash_downgrade_attempted = False
+            return
+
+        if new_state == "emergency":
+            # Skip downgrade, go straight to GCP
+            self.logger.critical(
+                "[ThrashCascade] EMERGENCY pagein rate — triggering GCP offload"
+            )
+            await self._trigger_gcp_offload_from_thrash()
+            return
+
+        if new_state == "thrashing":
+            if _local._thrash_downgrade_attempted:
+                # Already tried downgrade, still thrashing — go to GCP
+                self.logger.warning(
+                    "[ThrashCascade] Still thrashing after downgrade — triggering GCP offload"
+                )
+                await self._trigger_gcp_offload_from_thrash()
+                return
+
+            # Step 1: Downgrade one tier
+            _local._thrash_downgrade_attempted = True
+            await self._downgrade_model_one_tier()
+
+    async def _downgrade_model_one_tier(self) -> None:
+        """Unload current model, load next smaller from QUANT_CATALOG."""
+        _local = self._clients.get(ModelProvider.PRIME_LOCAL)
+        if not _local or not isinstance(_local, PrimeLocalClient):
+            self.logger.warning("[ThrashCascade] No PrimeLocalClient — cannot downgrade")
+            return
+
+        if not _local._current_model_entry:
+            self.logger.warning("[ThrashCascade] No current model entry — cannot downgrade")
+            return
+
+        current_rank = _local._current_model_entry.get("quality_rank", 0)
+        # Find next tier (higher quality_rank number = smaller model)
+        smaller_entries = [
+            e for e in PrimeLocalClient.QUANT_CATALOG
+            if e["quality_rank"] > current_rank
+        ]
+        smaller_entries.sort(key=lambda e: e["quality_rank"])
+
+        if not smaller_entries:
+            self.logger.warning(
+                "[ThrashCascade] Already on smallest model — cannot downgrade further"
+            )
+            await self._trigger_gcp_offload_from_thrash()
+            return
+
+        next_model = smaller_entries[0]
+        self.logger.warning(
+            f"[ThrashCascade] Downgrading: {_local._current_model_entry['name']} "
+            f"-> {next_model['name']}"
+        )
+
+        _local._model_swapping = True
+        try:
+            # Unload current model via the existing mechanism
+            await self._unload_local_model()
+
+            # Load smaller model
+            success = await _local.load_model(model_name=next_model["filename"])
+            if not success:
+                self.logger.error("[ThrashCascade] Downgrade load failed — triggering GCP")
+                await self._trigger_gcp_offload_from_thrash()
+        except Exception as e:
+            self.logger.error(f"[ThrashCascade] Downgrade error: {e}")
+            await self._trigger_gcp_offload_from_thrash()
+        finally:
+            _local._model_swapping = False
+
+    async def _trigger_gcp_offload_from_thrash(self) -> None:
+        """Signal GCP router to enter VM provisioning for thrash recovery.
+
+        Sets _model_swapping=True for the duration of the provisioning call,
+        then resets it. The caller (_downgrade_model_one_tier) manages the
+        flag independently via its own try/finally.
+        """
+        _local = self._clients.get(ModelProvider.PRIME_LOCAL)
+        _owns_flag = False
+        if _local and isinstance(_local, PrimeLocalClient) and not _local._model_swapping:
+            _local._model_swapping = True
+            _owns_flag = True
+        try:
+            from backend.core.gcp_hybrid_prime_router import (
+                get_gcp_hybrid_prime_router,
+                VMLifecycleState,
+            )
+            router = await get_gcp_hybrid_prime_router()
+            if router and hasattr(router, '_transition_vm_lifecycle'):
+                if router._vm_lifecycle_state == VMLifecycleState.IDLE:
+                    router._transition_vm_lifecycle(
+                        VMLifecycleState.TRIGGERING, "mmap_thrash_emergency"
+                    )
+                    router._transition_vm_lifecycle(
+                        VMLifecycleState.PROVISIONING, "thrash_bypass"
+                    )
+                    await router._trigger_vm_provisioning(reason="mmap_thrash")
+        except ImportError:
+            self.logger.debug("[ThrashCascade] GCP router not available")
+        except Exception as e:
+            self.logger.error(f"[ThrashCascade] GCP offload trigger failed: {e}")
+        finally:
+            # Reset flag if we own it (not owned by _downgrade_model_one_tier)
+            if _owns_flag and _local and isinstance(_local, PrimeLocalClient):
+                _local._model_swapping = False
+
+    # ── End v266.0 Thrash Cascade ────────────────────────────────────
 
     async def stop(self) -> None:
         """Stop the model serving layer.
@@ -2896,6 +3318,66 @@ async def get_unified_model_serving() -> UnifiedModelServing:
     Alias for get_model_serving() for Trinity Loop integration compatibility.
     """
     return await get_model_serving()
+
+
+async def shutdown_model_serving() -> None:
+    """v266.2: Shut down and reset the global UnifiedModelServing singleton.
+
+    Calls stop() to release executor threads, unload GGUF models, close
+    aiohttp sessions, and cancel the memory-pressure monitor.  Then clears
+    the module-level reference so the next get_model_serving() creates a
+    fresh instance.
+    """
+    global _model_serving
+
+    async with _lock:
+        if _model_serving is not None:
+            try:
+                await _model_serving.stop()
+            except Exception:
+                pass
+            _model_serving = None
+
+
+async def start_background_model_provision() -> Optional[asyncio.Task]:
+    """
+    v266.3: Start background GGUF model provisioning if needed.
+
+    Called by supervisor at startup when no local model exists and
+    auto-download policy permits. Spawns a background task that downloads
+    the best-fit model without blocking startup.
+
+    Returns:
+        The background asyncio.Task if provisioning was started, None otherwise
+    """
+    try:
+        serving = await get_model_serving()
+        _local = serving._router._clients.get("prime_local")
+        if not _local or not isinstance(_local, PrimeLocalClient):
+            return None
+
+        async def _provision_worker():
+            try:
+                success = await _local.background_provision_model()
+                if success:
+                    logging.getLogger("UnifiedModelServing").info(
+                        "[v266.3] Background model provision succeeded — "
+                        "Tier 2 local inference is now available"
+                    )
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                logging.getLogger("UnifiedModelServing").debug(
+                    f"[v266.3] Background provision task error: {e}"
+                )
+
+        task = asyncio.create_task(
+            _provision_worker(),
+            name="model-background-provision"
+        )
+        return task
+    except Exception:
+        return None
 
 
 # =============================================================================

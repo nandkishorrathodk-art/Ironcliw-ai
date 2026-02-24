@@ -236,9 +236,17 @@ class VMState(Enum):
     STAGING = "staging"
     RUNNING = "running"
     STOPPING = "stopping"
+    STOPPED = "stopped"
     TERMINATED = "terminated"
     FAILED = "failed"
     UNKNOWN = "unknown"
+
+
+class VMAction(Enum):
+    """Action types for VM lifecycle operations."""
+    STOP = "stop"          # Halt VM, preserve disk/IP
+    DELETE = "delete"       # Remove VM and ephemeral resources
+    TERMINATE = "terminate" # Force-terminate (monitoring loop)
 
 
 @dataclass
@@ -4523,7 +4531,10 @@ class GCPVMManager:
                             0.0,
                         )
             except Exception as e:
-                logger.warning(f"⚠️ Budget check failed (allowing VM): {e}")
+                logger.error(
+                    f"🚫 [CostGuard] Budget check failed — blocking VM creation for safety: {e}"
+                )
+                return (False, f"Budget check error (blocking): {e}", 0.0)
 
         # v229.0: Check concurrent VM limits using REAL GCP instance count
         # Previous bug: only checked tracked VMs (self.managed_vms), but untracked
@@ -6016,11 +6027,187 @@ class GCPVMManager:
                 # Continue waiting - operation might still complete
                 await asyncio.sleep(2)
 
-    async def terminate_vm(self, vm_name: str, reason: str = "Manual termination") -> bool:
+    def check_vm_protection(self, vm_name: str, action: VMAction, reason: str = "") -> Tuple[bool, str]:
+        """
+        Centralized VM protection check. Single source of truth for all guard logic.
+        v266.0: Replaces scattered InvincibleGuard checks in terminate_vm,
+        _force_delete_vm, and monitoring loop.
+
+        Returns:
+            (is_protected, explanation) — True means the action is BLOCKED.
+        """
+        # Detection: is this an invincible VM?
+        static_name = getattr(self.config, 'static_instance_name', 'jarvis-prime-node')
+        is_invincible = vm_name.startswith(static_name)
+
+        if not is_invincible and vm_name in self.managed_vms:
+            vm_meta = self.managed_vms[vm_name].metadata or {}
+            is_invincible = (
+                vm_meta.get("vm_class") == "invincible"
+                or vm_meta.get("labels", {}).get("vm-class") == "invincible"
+            )
+
+        if not is_invincible:
+            return False, ""  # Not protected, allow any action
+
+        # Invincible VM — check action type
+        if action in (VMAction.DELETE, VMAction.TERMINATE):
+            msg = (
+                f"[InvincibleGuard] BLOCKED {action.value} of persistent VM '{vm_name}' "
+                f"(reason: {reason}). Use GCP Console or gcloud CLI for manual override."
+            )
+            logger.warning(msg)
+            return True, msg
+
+        if action == VMAction.STOP:
+            # STOP is allowed for session shutdown when session lifecycle is enabled
+            session_lifecycle = os.getenv("JARVIS_GCP_SESSION_LIFECYCLE", "true").lower() == "true"
+            is_session_reason = reason in ("session_shutdown", "supervisor_cleanup", "emergency_shutdown")
+
+            if session_lifecycle and is_session_reason:
+                logger.info(
+                    f"[InvincibleGuard] Allowing STOP of '{vm_name}' "
+                    f"(session lifecycle, reason: {reason})"
+                )
+                return False, ""  # Allow STOP
+
+            msg = (
+                f"[InvincibleGuard] BLOCKED STOP of persistent VM '{vm_name}' "
+                f"(reason: {reason}, session_lifecycle={session_lifecycle})"
+            )
+            logger.warning(msg)
+            return True, msg
+
+        return True, f"[InvincibleGuard] Unknown action {action} for '{vm_name}'"
+
+    async def _stop_vm_instance(self, vm_name: str, reason: str) -> bool:
+        """Stop a VM instance (preserve disk/IP). Used for session shutdown.
+
+        v266.0: Unlike terminate/delete, STOP preserves the VM's disk and static IP.
+        The VM transitions to VMState.STOPPED in managed_vms (not removed).
+        Cost tracking session ends but the VM entry persists for fast resume.
+        """
+        try:
+            logger.info(f"[VMLifecycle] Stopping VM '{vm_name}' (reason: {reason})")
+
+            # Check if VM exists in GCP before attempting stop
+            exists, gcp_status = await self._check_vm_exists_in_gcp(vm_name)
+
+            if not exists:
+                logger.info(
+                    f"[VMLifecycle] VM '{vm_name}' does not exist in GCP — "
+                    f"marking STOPPED in local tracking"
+                )
+                async with self._vm_lock:
+                    if vm_name in self.managed_vms:
+                        self.managed_vms[vm_name].state = VMState.STOPPED
+                return True
+
+            # Already stopped — no-op
+            if gcp_status == "STOPPED":
+                logger.info(f"[VMLifecycle] VM '{vm_name}' is already STOPPED in GCP")
+                async with self._vm_lock:
+                    if vm_name in self.managed_vms:
+                        self.managed_vms[vm_name].state = VMState.STOPPED
+                        self.managed_vms[vm_name].last_activity_time = time.time()
+                return True
+
+            # Already stopping — wait for it
+            if gcp_status == "STOPPING":
+                logger.info(f"[VMLifecycle] VM '{vm_name}' is already STOPPING in GCP — waiting")
+                # Fall through to wait logic below with a short timeout
+                async with self._vm_lock:
+                    if vm_name in self.managed_vms:
+                        self.managed_vms[vm_name].state = VMState.STOPPING
+                # Wait up to 60s for it to finish stopping
+                for _ in range(30):
+                    await asyncio.sleep(2)
+                    _, status = await self._check_vm_exists_in_gcp(vm_name)
+                    if status == "STOPPED":
+                        break
+                async with self._vm_lock:
+                    if vm_name in self.managed_vms:
+                        self.managed_vms[vm_name].state = VMState.STOPPED
+                        self.managed_vms[vm_name].last_activity_time = time.time()
+                return True
+
+            # VM is RUNNING (or other active state) — issue stop command
+            logger.info(
+                f"[VMLifecycle] Issuing GCP stop for '{vm_name}' "
+                f"(current GCP status: {gcp_status})"
+            )
+
+            # Update local state to STOPPING before the API call
+            async with self._vm_lock:
+                if vm_name in self.managed_vms:
+                    self.managed_vms[vm_name].state = VMState.STOPPING
+
+            # GCP API: stop (not delete) — wrapped in thread for async
+            operation = await asyncio.to_thread(
+                self.instances_client.stop,
+                project=self.config.project_id,
+                zone=self.config.zone,
+                instance=vm_name,
+            )
+
+            # Wait for operation with 120s timeout (stop can take 30-90s)
+            try:
+                await self._wait_for_operation(operation, timeout=120)
+            except (TimeoutError, asyncio.TimeoutError):
+                logger.warning(
+                    f"[VMLifecycle] Timeout waiting for stop of '{vm_name}' (120s), "
+                    f"updating state optimistically — VM may still stop"
+                )
+            except Exception as wait_err:
+                logger.warning(f"[VMLifecycle] Error waiting for stop operation: {wait_err}")
+
+            # Update managed_vms state (don't remove — VM still exists)
+            vm_runtime_seconds = 0.0
+            async with self._vm_lock:
+                if vm_name in self.managed_vms:
+                    vm = self.managed_vms[vm_name]
+                    vm.state = VMState.STOPPED
+                    vm.last_activity_time = time.time()
+                    # Compute runtime for cost tracking
+                    vm.update_cost()
+                    vm_runtime_seconds = time.time() - vm.created_at
+
+            # End cost tracking session for this VM (isolated — failures don't block)
+            if vm_name in self.managed_vms:
+                await self._record_vm_termination_safe(
+                    self.managed_vms[vm_name], f"stopped: {reason}"
+                )
+
+            logger.info(
+                f"[VMLifecycle] VM '{vm_name}' stopped successfully "
+                f"(runtime: {vm_runtime_seconds / 3600:.2f}h)"
+            )
+            return True
+
+        except Exception as e:
+            error_str = str(e).lower()
+            # Handle 404 gracefully — VM may have been preempted/deleted
+            if "404" in error_str or "not found" in error_str or "notfound" in error_str:
+                logger.info(
+                    f"[VMLifecycle] VM '{vm_name}' not found during stop "
+                    f"(may have been preempted) — marking STOPPED"
+                )
+                async with self._vm_lock:
+                    if vm_name in self.managed_vms:
+                        self.managed_vms[vm_name].state = VMState.STOPPED
+                return True
+
+            logger.error(f"[VMLifecycle] Failed to stop VM '{vm_name}': {e}")
+            return False
+
+    async def terminate_vm(self, vm_name: str, reason: str = "Manual termination",
+                           action: VMAction = VMAction.DELETE) -> bool:
         """
         v134.0: Terminate a VM instance with existence verification and circuit breaker protection.
         v153.0: Added invincible VM protection — persistent VMs cannot be terminated by
                 automated systems (cost-cutting, idle detection, memory pressure, max lifetime).
+        v266.0: Added action parameter — VMAction.STOP halts the VM (preserving disk/IP)
+                instead of deleting. Used for session shutdown to enable fast resume.
 
         ROOT CAUSE FIX for 404 NotFound errors:
         This method now verifies VM existence in GCP before attempting delete operations.
@@ -6033,30 +6220,19 @@ class GCPVMManager:
         Args:
             vm_name: Name of the VM to terminate
             reason: Reason for termination (for logging/tracking)
+            action: VMAction.DELETE (default) removes VM, VMAction.STOP halts it
 
         Returns:
-            True if terminated successfully (or VM doesn't exist), False otherwise
+            True if terminated/stopped successfully (or VM doesn't exist), False otherwise
         """
-        # v153.0: INVINCIBLE VM PROTECTION — central guard for ALL termination paths.
-        # This prevents the monitoring loop's cost-cutting, idle detection, memory
-        # pressure, and max lifetime checks from deleting persistent VMs.
-        is_invincible = vm_name.startswith("jarvis-prime-node")
-
-        # Also check metadata if VM is tracked
-        if not is_invincible and vm_name in self.managed_vms:
-            vm_meta = self.managed_vms[vm_name].metadata or {}
-            is_invincible = (
-                vm_meta.get("vm_class") == "invincible"
-                or vm_meta.get("labels", {}).get("vm-class") == "invincible"
-            )
-
-        if is_invincible:
-            logger.warning(
-                f"🛡️ [InvincibleGuard] BLOCKED termination of persistent VM '{vm_name}' "
-                f"(reason: {reason}). Invincible VMs cannot be terminated by automated systems. "
-                f"Use GCP Console or gcloud CLI for manual override."
-            )
+        # v153.0 → v266.0: Centralized protection check (uses caller's action, not hardcoded DELETE)
+        is_protected, guard_msg = self.check_vm_protection(vm_name, action, reason)
+        if is_protected:
             return False
+
+        # v266.0: STOP action — halt VM, preserve disk/IP
+        if action == VMAction.STOP:
+            return await self._stop_vm_instance(vm_name, reason)
 
         async with self._vm_lock:
             if vm_name not in self.managed_vms:
@@ -6246,12 +6422,9 @@ class GCPVMManager:
         ROOT CAUSE FIX: Now checks if VM exists before attempting delete to
         prevent 404 NotFound errors from cluttering logs and circuit breaker.
         """
-        # v153.0: Invincible VM protection — same guard as terminate_vm()
-        if vm_name.startswith("jarvis-prime-node"):
-            logger.warning(
-                f"🛡️ [InvincibleGuard] BLOCKED force-deletion of persistent VM '{vm_name}' "
-                f"(reason: {reason}). Use GCP Console or gcloud CLI for manual override."
-            )
+        # v153.0 → v266.0: Centralized protection check (was name-only, now full check)
+        is_protected, guard_msg = self.check_vm_protection(vm_name, VMAction.DELETE, reason)
+        if is_protected:
             return False
 
         # v134.0: Check if VM actually exists in GCP first
@@ -6798,20 +6971,13 @@ class GCPVMManager:
 
                     # === STEP 4: INTELLIGENT COST-CUTTING CHECKS ===
 
-                    # Skip ALL cost-cutting checks for invincible VMs.
-                    # InvincibleGuard in terminate_vm() is the safety net, but we
-                    # avoid even reaching it to prevent repeated WARNING spam.
-                    vm_meta = vm.metadata or {}
-                    _is_invincible = (
-                        vm_name.startswith("jarvis-prime-node")
-                        or vm_meta.get("vm_class") == "invincible"
-                        or vm_meta.get("labels", {}).get("vm-class") == "invincible"
-                    )
-                    if _is_invincible:
-                        logger.debug(
-                            f"[InvincibleVM] Skipping cost-cutting checks for "
-                            f"persistent VM '{vm_name}' (uptime: {vm.uptime_hours:.1f}h)"
-                        )
+                    # v153.0 → v266.0: Centralized protection check
+                    _is_protected, _ = self.check_vm_protection(vm_name, VMAction.TERMINATE, "monitoring_loop")
+                    if _is_protected:
+                        continue
+
+                    # v266.0: Skip VMs that are already STOPPED (halted for session lifecycle)
+                    if vm_name in self.managed_vms and self.managed_vms[vm_name].state == VMState.STOPPED:
                         continue
 
                     # 4a. Check VM lifetime (hard limit)
@@ -7176,6 +7342,23 @@ class GCPVMManager:
         is_valid, validation_error = self.config.is_valid_for_vm_operations()
         if not is_valid:
             return False, None, f"CONFIG_INVALID: {validation_error}"
+
+        # v266.0: Budget gate — check cost before creating or starting VMs
+        # For STOPPED VMs (fast restart), use a lenient check since starting
+        # costs near-zero. For new CREATE operations, enforce full budget.
+        if self.cost_tracker and hasattr(self.cost_tracker, 'can_create_vm'):
+            try:
+                allowed, reason, details = await self.cost_tracker.can_create_vm()
+                if not allowed:
+                    logger.warning(
+                        f"🚫 [InvincibleNode] ensure_static_vm_ready blocked by budget: {reason}"
+                    )
+                    return (False, None, f"BUDGET_EXCEEDED: {reason}")
+            except Exception as e:
+                logger.error(
+                    f"🚫 [InvincibleNode] Budget check failed — blocking for safety: {e}"
+                )
+                return (False, None, f"BUDGET_CHECK_ERROR: {e}")
 
         # Use lock to prevent concurrent start/create operations
         async with self._vm_lock:
@@ -9239,6 +9422,32 @@ async def reset_gcp_vm_manager_singleton() -> None:
 
             _gcp_vm_manager = None
             logger.info("[GCPVMManager] v132.0: Singleton reset - will reinitialize with fresh config")
+
+
+async def shutdown_gcp_vm_manager() -> None:
+    """v266.2: Gracefully shut down and reset the GCP VM Manager singleton.
+
+    Stops the invincible node (if running) and marks GCP as shut down
+    so no new VMs are created.  Then clears the module-level reference
+    so the next get_gcp_vm_manager() creates a fresh instance.
+
+    NOTE: Does NOT call cleanup_all_vms() — running VMs are intentionally
+    kept alive across supervisor restarts to avoid cold-boot penalty.
+    """
+    global _gcp_vm_manager
+
+    async with _manager_lock:
+        if _gcp_vm_manager is not None:
+            try:
+                mark_gcp_shutdown()
+            except Exception:
+                pass
+            try:
+                await _gcp_vm_manager.stop_invincible_node()
+            except Exception:
+                pass
+            _gcp_vm_manager = None
+            logger.info("[GCPVMManager] v266.2: Singleton shut down and reset")
 
 
 async def get_gcp_vm_manager_with_force_enable() -> GCPVMManager:

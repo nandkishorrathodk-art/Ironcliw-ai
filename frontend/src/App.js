@@ -7,6 +7,7 @@ import ActionDisplay from './components/ActionDisplay';
 import MatrixBackground from './components/MatrixBackground';
 import MaintenanceOverlay from './components/MaintenanceOverlay';
 import UpdateNotificationBadge from './components/UpdateNotificationBadge';
+import StartupGate from './components/StartupGate';
 
 function App() {
   const [input, setInput] = useState('');
@@ -90,6 +91,7 @@ function App() {
 
 
   return (
+    <StartupGate>
     <div className="App">
       {/* Maintenance Overlay - Shows during system updates/restarts */}
       <MaintenanceOverlay />
@@ -169,6 +171,7 @@ function App() {
       {/* Config Diagnostic Tool - REMOVED */}
       {/* <ConfigDiagnostic /> */}
     </div>
+    </StartupGate>
   );
 }
 

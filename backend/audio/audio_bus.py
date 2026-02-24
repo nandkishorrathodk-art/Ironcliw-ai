@@ -351,9 +351,26 @@ class AudioBus:
     """
 
     _instance: ClassVar[Optional["AudioBus"]] = None
-    _creation_lock: ClassVar[threading.Lock] = threading.Lock()
+    # v266.4: MUST be RLock (re-entrant), not Lock.
+    # get_instance() acquires this lock then calls cls() → __init__()
+    # which also acquires it. threading.Lock deadlocks on same-thread
+    # re-acquisition; RLock allows it. This was the root cause of the
+    # startup hang introduced in v267.0.
+    _creation_lock: ClassVar[threading.RLock] = threading.RLock()
 
     def __init__(self):
+        # v267.0: Self-register as singleton on construction so that
+        # ``get_instance_safe()`` always returns the live instance —
+        # even when callers bypass ``get_instance()`` (which was the
+        # root cause of startup static: the supervisor called AudioBus()
+        # directly, leaving _instance = None, so the TTS pipeline
+        # couldn't find the running bus and fell through to raw
+        # afplay / sd.play(), opening a second audio stream and
+        # producing device-contention static).
+        with self._creation_lock:
+            if AudioBus._instance is None:
+                AudioBus._instance = self
+
         # These are set during start()
         self._device: Optional[FullDuplexDevice] = None
         self._aec: Optional[AcousticEchoCanceller] = None

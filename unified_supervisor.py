@@ -233,7 +233,6 @@ del _early_sys, _early_signal, _early_os, _early_platform, _cli_flags, _is_cli_m
 # Keep platform flags for later use
 # _is_windows, _is_linux, _is_macos remain available
 
-
 # =============================================================================
 # CRITICAL: VENV AUTO-ACTIVATION (MUST BE BEFORE ANY IMPORTS)
 # =============================================================================
@@ -311,13 +310,11 @@ def _ensure_venv_python() -> None:
     # Re-execute with venv Python
     _os.execv(str(venv_python), [str(venv_python)] + _sys.argv) # This is the execv function to re-execute with the venv Python.
 
-
 # Execute venv check immediately
 _ensure_venv_python()
 
 # Clean up temporary imports
 del _os, _sys, _Path, _ensure_venv_python
-
 
 # =============================================================================
 # FAST EARLY-EXIT FOR RUNNING KERNEL
@@ -439,14 +436,12 @@ def _fast_kernel_check() -> bool:
 
     return True
 
-
 # Run fast check before heavy imports
 if _fast_kernel_check():
     import sys as _sys
     _sys.exit(0)
 
 del _fast_kernel_check
-
 
 # =============================================================================
 # PYTHON 3.9 COMPATIBILITY PATCH
@@ -478,7 +473,6 @@ if _sys.version_info < (3, 10):
         except Exception:
             pass
 del _sys
-
 
 # =============================================================================
 # PYTORCH/TRANSFORMERS COMPATIBILITY SHIM
@@ -537,13 +531,11 @@ def _apply_pytorch_compat() -> bool:
     _pytree.register_pytree_node = _noop_register
     return True
 
-
 # v253.0: Deferred — no longer called at module level.
 # Previously `import torch` here added 20-40s to every startup.
 # Now called once in _startup_impl() before backend Phase 2.
 # _apply_pytorch_compat()  # DEFERRED
 # del _apply_pytorch_compat  # Keep for deferred call
-
 
 # =============================================================================
 # TRANSFORMERS SECURITY CHECK BYPASS (CVE-2025-32434)
@@ -586,13 +578,11 @@ def _apply_transformers_security_bypass() -> bool:
     except Exception:
         return False
 
-
 # v253.0: Deferred — no longer called at module level.
 # Previously `import transformers` here added 5-15s to every startup.
 # Now called once in _startup_impl() before backend Phase 2.
 # _apply_transformers_security_bypass()  # DEFERRED
 # del _apply_transformers_security_bypass  # Keep for deferred call
-
 
 # ╔═══════════════════════════════════════════════════════════════════════════════╗
 # ║                                                                               ║
@@ -619,9 +609,11 @@ del _early_time
 import argparse
 import asyncio
 import contextlib
+import errno
 import functools
 import hashlib
 import heapq
+import importlib.util
 import inspect
 import json
 import logging
@@ -629,6 +621,7 @@ import os
 import platform
 import random
 import re
+import shlex
 import shutil
 import signal
 import socket
@@ -667,6 +660,139 @@ T = TypeVar('T')
 ConfigT = TypeVar('ConfigT', bound='SystemKernelConfig')
 
 # =============================================================================
+# v265.7: IMPORT GUARD — Observable failure paths + deferred retry
+# =============================================================================
+# Root cause: 36 try/except ImportError blocks silently set *_AVAILABLE = False
+# with zero logging, zero retry, and zero observability. A transient failure
+# at startup permanently disables features with no way to diagnose.
+#
+# Fix:
+#   1. Warning-level logging on every import failure (observable)
+#   2. _FAILED_IMPORTS registry for startup audit (auditable)
+#   3. _retry_critical_imports() for deferred recovery (self-healing)
+#   4. Severity classification: CRITICAL > HIGH > MODERATE > LOW
+# =============================================================================
+
+import importlib as _importlib
+
+_FAILED_IMPORTS: Dict[str, Dict[str, Any]] = {}
+_GUARDED_IMPORT_COUNT = 36  # Total guarded import blocks
+
+def _record_import_failure(
+    flag_name: str,
+    module_path: str,
+    error: Exception,
+    severity: str = "MODERATE",
+    symbols: Any = None,
+    alias: Optional[str] = None,
+) -> None:
+    """Record a failed import for audit and potential retry.
+
+    Args:
+        flag_name: The *_AVAILABLE flag (e.g., "AIOHTTP_AVAILABLE")
+        module_path: Primary dotted module path
+        error: The ImportError exception
+        severity: CRITICAL, HIGH, MODERATE, LOW
+        symbols: List[str] (names kept) or Dict[str, str] (attr → alias) for retry
+        alias: For 'import X as Y', the global alias name for retry
+    """
+    if isinstance(symbols, (list, tuple)):
+        symbols = {s: s for s in symbols}
+    _FAILED_IMPORTS[flag_name] = {
+        "module": module_path,
+        "error": str(error),
+        "severity": severity,
+        "symbols": symbols,
+        "alias": alias,
+    }
+    logging.warning(
+        "[ImportGuard] %s unavailable — import %s failed: %s",
+        flag_name, module_path, error,
+    )
+
+def _log_import_audit() -> None:
+    """Log startup audit summary of all import statuses."""
+    if not _FAILED_IMPORTS:
+        logging.info(
+            "[ImportAudit] All %d guarded imports loaded successfully",
+            _GUARDED_IMPORT_COUNT,
+        )
+        return
+    by_severity: Dict[str, List[str]] = {}
+    for flag_name, info in _FAILED_IMPORTS.items():
+        sev = info.get("severity", "MODERATE")
+        by_severity.setdefault(sev, []).append(flag_name)
+    total = len(_FAILED_IMPORTS)
+    parts = []
+    for sev in ("CRITICAL", "HIGH", "MODERATE", "LOW"):
+        flags = by_severity.get(sev, [])
+        if flags:
+            parts.append(f"  {sev}: {', '.join(flags)}")
+    logging.warning(
+        "[ImportAudit] %d of %d guarded imports FAILED:\n%s",
+        total, _GUARDED_IMPORT_COUNT, "\n".join(parts),
+    )
+
+async def _retry_critical_imports(
+    max_retries: int = 2,
+    delay: float = 3.0,
+) -> int:
+    """Retry CRITICAL and HIGH severity failed imports with exponential backoff.
+
+    Only retries imports that recorded symbols or alias metadata (i.e., single-module
+    imports that can be replayed via importlib). Multi-module imports and those with
+    inline fallbacks are skipped.
+
+    Returns:
+        Number of successfully recovered imports.
+    """
+    recovered = 0
+    g = globals()
+    retryable = {
+        k: v for k, v in _FAILED_IMPORTS.items()
+        if v["severity"] in ("CRITICAL", "HIGH")
+        and (v.get("symbols") is not None or v.get("alias") is not None)
+    }
+    if not retryable:
+        return 0
+    logging.info("[ImportRetry] Retrying %d critical/high imports...", len(retryable))
+    for flag_name, info in list(retryable.items()):
+        success = False
+        for attempt in range(max_retries):
+            try:
+                mod = _importlib.import_module(info["module"])
+                if info.get("symbols"):
+                    for attr_name, global_name in info["symbols"].items():
+                        g[global_name] = getattr(mod, attr_name)
+                elif info.get("alias"):
+                    g[info["alias"]] = mod
+                else:
+                    g[info["module"].rsplit(".", 1)[-1]] = mod
+                g[flag_name] = True
+                del _FAILED_IMPORTS[flag_name]
+                recovered += 1
+                success = True
+                logging.info(
+                    "[ImportRetry] %s recovered on attempt %d/%d",
+                    flag_name, attempt + 1, max_retries,
+                )
+                break
+            except (ImportError, AttributeError) as e:
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(delay * (2 ** attempt))
+        if not success:
+            logging.warning(
+                "[ImportRetry] %s still unavailable after %d retries",
+                flag_name, max_retries,
+            )
+    if recovered:
+        logging.info(
+            "[ImportRetry] Recovered %d/%d critical imports",
+            recovered, len(retryable),
+        )
+    return recovered
+
+# =============================================================================
 # THIRD-PARTY IMPORTS (with graceful fallbacks)
 # =============================================================================
 
@@ -674,48 +800,54 @@ ConfigT = TypeVar('ConfigT', bound='SystemKernelConfig')
 try:
     import aiohttp
     AIOHTTP_AVAILABLE = True
-except ImportError:
+except ImportError as _ie:
     AIOHTTP_AVAILABLE = False
+    _record_import_failure("AIOHTTP_AVAILABLE", "aiohttp", _ie, "CRITICAL", alias="aiohttp")
     aiohttp = None
 
 # aiofiles - async file I/O
 try:
     import aiofiles
     AIOFILES_AVAILABLE = True
-except ImportError:
+except ImportError as _ie:
     AIOFILES_AVAILABLE = False
+    _record_import_failure("AIOFILES_AVAILABLE", "aiofiles", _ie, "MODERATE", alias="aiofiles")
     aiofiles = None
 
 # psutil - process utilities
 try:
     import psutil
     PSUTIL_AVAILABLE = True
-except ImportError:
+except ImportError as _ie:
     PSUTIL_AVAILABLE = False
+    _record_import_failure("PSUTIL_AVAILABLE", "psutil", _ie, "HIGH", alias="psutil")
     psutil = None
 
 # uvicorn - ASGI server
 try:
     import uvicorn
     UVICORN_AVAILABLE = True
-except ImportError:
+except ImportError as _ie:
     UVICORN_AVAILABLE = False
+    _record_import_failure("UVICORN_AVAILABLE", "uvicorn", _ie, "CRITICAL", alias="uvicorn")
     uvicorn = None
 
 # dotenv - environment loading
 try:
     from dotenv import load_dotenv
     DOTENV_AVAILABLE = True
-except ImportError:
+except ImportError as _ie:
     DOTENV_AVAILABLE = False
+    _record_import_failure("DOTENV_AVAILABLE", "dotenv", _ie, "MODERATE", symbols=["load_dotenv"])
     load_dotenv = None
 
 # numpy - numerical operations
 try:
     import numpy as np
     NUMPY_AVAILABLE = True
-except ImportError:
+except ImportError as _ie:
     NUMPY_AVAILABLE = False
+    _record_import_failure("NUMPY_AVAILABLE", "numpy", _ie, "MODERATE", alias="np")
     np = None
 
 # v186.0: rich - enhanced CLI experience
@@ -807,8 +939,9 @@ try:
     JARVIS_RICH_THEME = RichTheme(JARVIS_THEME_STYLES)
     _rich_console = Console(theme=JARVIS_RICH_THEME, highlight=False)
 
-except ImportError:
+except ImportError as _ie:
     RICH_AVAILABLE = False
+    _record_import_failure("RICH_AVAILABLE", "rich", _ie, "LOW")
     Console = None
     Progress = None
     Panel = None
@@ -983,8 +1116,9 @@ _CAPABILITY_EMOJI = {
 try:
     from backend.core.service_registry import get_service_registry, ServiceRegistry
     SERVICE_REGISTRY_AVAILABLE = True
-except ImportError:
+except ImportError as _ie:
     SERVICE_REGISTRY_AVAILABLE = False
+    _record_import_failure("SERVICE_REGISTRY_AVAILABLE", "backend.core.service_registry", _ie, "HIGH", symbols=["get_service_registry", "ServiceRegistry"])
     get_service_registry = None
     ServiceRegistry = None
 
@@ -992,8 +1126,9 @@ except ImportError:
 try:
     from backend.core.resilience.graceful_shutdown import cleanup_orphaned_semaphores
     SEMAPHORE_CLEANUP_AVAILABLE = True
-except ImportError:
+except ImportError as _ie:
     SEMAPHORE_CLEANUP_AVAILABLE = False
+    _record_import_failure("SEMAPHORE_CLEANUP_AVAILABLE", "backend.core.resilience.graceful_shutdown", _ie, "HIGH", symbols=["cleanup_orphaned_semaphores"])
     cleanup_orphaned_semaphores = None
 
 # Supervisor Singleton - stale lock cleanup with cross-repo support
@@ -1003,8 +1138,9 @@ try:
         cleanup_stale_locks_sync,
     )
     LOCK_CLEANUP_AVAILABLE = True
-except ImportError:
+except ImportError as _ie:
     LOCK_CLEANUP_AVAILABLE = False
+    _record_import_failure("LOCK_CLEANUP_AVAILABLE", "backend.core.supervisor_singleton", _ie, "HIGH", symbols={"cleanup_stale_locks": "backend_cleanup_stale_locks", "cleanup_stale_locks_sync": "cleanup_stale_locks_sync"})
     backend_cleanup_stale_locks = None
     cleanup_stale_locks_sync = None
 
@@ -1017,8 +1153,9 @@ try:
         capture_system_state,
     )
     DIAGNOSTICS_AVAILABLE = True
-except ImportError:
+except ImportError as _ie:
     DIAGNOSTICS_AVAILABLE = False
+    _record_import_failure("DIAGNOSTICS_AVAILABLE", "backend.core.shutdown_diagnostics", _ie, "CRITICAL", symbols=["ShutdownDiagnostics", "log_shutdown_trigger", "log_startup_checkpoint", "capture_system_state"])
     ShutdownDiagnostics = None
     log_shutdown_trigger = None
     log_startup_checkpoint = None
@@ -1031,8 +1168,9 @@ try:
         prevent_multiple_jarvis_instances,
     )
     PROCESS_CLEANUP_MANAGER_AVAILABLE = True
-except ImportError:
+except ImportError as _ie:
     PROCESS_CLEANUP_MANAGER_AVAILABLE = False
+    _record_import_failure("PROCESS_CLEANUP_MANAGER_AVAILABLE", "backend.process_cleanup_manager", _ie, "HIGH", symbols=["ProcessCleanupManager", "prevent_multiple_jarvis_instances"])
     ProcessCleanupManager = None
     prevent_multiple_jarvis_instances = None
 
@@ -1044,8 +1182,9 @@ try:
         set_cli_only_mode,
     )
     GRACEFUL_SHUTDOWN_AVAILABLE = True
-except ImportError:
+except ImportError as _ie:
     GRACEFUL_SHUTDOWN_AVAILABLE = False
+    _record_import_failure("GRACEFUL_SHUTDOWN_AVAILABLE", "backend.core.resilience.graceful_shutdown", _ie, "HIGH", symbols=["cleanup_orphaned_semaphores", "set_cli_only_mode"])
     cleanup_orphaned_semaphores = None
     set_cli_only_mode = lambda *args: None  # No-op fallback
 
@@ -1053,8 +1192,9 @@ except ImportError:
 try:
     from backend.core.resilience.startup import StartupResilience
     STARTUP_RESILIENCE_AVAILABLE = True
-except ImportError:
+except ImportError as _ie:
     STARTUP_RESILIENCE_AVAILABLE = False
+    _record_import_failure("STARTUP_RESILIENCE_AVAILABLE", "backend.core.resilience.startup", _ie, "CRITICAL", symbols=["StartupResilience"])
     StartupResilience = None  # type: ignore
 
 # v208.0: Unified Readiness Configuration - Status display and dashboard mappings
@@ -1066,8 +1206,9 @@ try:
         get_readiness_config,
     )
     READINESS_CONFIG_AVAILABLE = True
-except ImportError:
+except ImportError as _ie:
     READINESS_CONFIG_AVAILABLE = False
+    _record_import_failure("READINESS_CONFIG_AVAILABLE", "backend.core.readiness_config", _ie, "MODERATE", symbols=["DASHBOARD_STATUS_MAP", "STATUS_DISPLAY_MAP", "get_readiness_config"])
     get_readiness_config = None  # type: ignore
     # Fallback mappings if readiness_config is unavailable
     STATUS_DISPLAY_MAP = {
@@ -1085,8 +1226,9 @@ except ImportError:
 try:
     from backend.core.readiness_predicate import ReadinessPredicate, ReadinessResult
     READINESS_PREDICATE_AVAILABLE = True
-except ImportError:
+except ImportError as _ie:
     READINESS_PREDICATE_AVAILABLE = False
+    _record_import_failure("READINESS_PREDICATE_AVAILABLE", "backend.core.readiness_predicate", _ie, "MODERATE", symbols=["ReadinessPredicate", "ReadinessResult"])
     ReadinessPredicate = None  # type: ignore
     ReadinessResult = None  # type: ignore
 
@@ -1100,8 +1242,9 @@ try:
         StartupLockError,
     )
     CROSS_REPO_ORCHESTRATOR_AVAILABLE = True
-except ImportError:
+except ImportError as _ie:
     CROSS_REPO_ORCHESTRATOR_AVAILABLE = False
+    _record_import_failure("CROSS_REPO_ORCHESTRATOR_AVAILABLE", "backend.supervisor.cross_repo_startup_orchestrator", _ie, "CRITICAL", symbols=["initialize_cross_repo_orchestration", "get_active_rescue_env_vars", "ProcessOrchestrator", "StartupLockError"])
     initialize_cross_repo_orchestration = None
     get_active_rescue_env_vars = None
     ProcessOrchestrator = None
@@ -1114,8 +1257,9 @@ try:
         cleanup_orphaned_semaphores_on_startup,
     )
     SHUTDOWN_HOOK_AVAILABLE = True
-except ImportError:
+except ImportError as _ie:
     SHUTDOWN_HOOK_AVAILABLE = False
+    _record_import_failure("SHUTDOWN_HOOK_AVAILABLE", "backend.scripts.shutdown_hook", _ie, "HIGH", symbols={"register_handlers": "register_shutdown_handlers", "cleanup_orphaned_semaphores_on_startup": "cleanup_orphaned_semaphores_on_startup"})
     register_shutdown_handlers = None
     cleanup_orphaned_semaphores_on_startup = None
 
@@ -1166,6 +1310,7 @@ try:
     _kernel_logger.debug("[ModularKernel] Enterprise kernel modules loaded successfully")
 except ImportError as e:
     MODULAR_KERNEL_AVAILABLE = False
+    _record_import_failure("MODULAR_KERNEL_AVAILABLE", "backend.kernel", e, "MODERATE")
     ModularSystemKernelConfig = None
     ModularStartupMode = None
     ModularHardwareProfile = None
@@ -1224,6 +1369,7 @@ try:
     _orch_logger.debug("[ModularOrchestrator] Enterprise orchestrator modules loaded successfully")
 except ImportError as e:
     MODULAR_ORCHESTRATOR_AVAILABLE = False
+    _record_import_failure("MODULAR_ORCHESTRATOR_AVAILABLE", "backend.orchestrator", e, "MODERATE")
     _modular_get_service_registry = None
     _modular_get_health_coordinator = None
     _modular_start_all_services = None
@@ -1270,6 +1416,7 @@ try:
     _browser_logger.debug("[ModularBrowser] Enterprise browser stability modules loaded successfully")
 except ImportError as e:
     MODULAR_BROWSER_STABILITY_AVAILABLE = False
+    _record_import_failure("MODULAR_BROWSER_STABILITY_AVAILABLE", "backend.core.browser_stability", e, "MODERATE")
     ModularBrowserStabilityManager = None
     ModularStabilizedChromeLauncher = None
     ModularMemoryPressureMonitor = None
@@ -1305,8 +1452,9 @@ try:
         shielded_wait_for,
     )
     ASYNC_SAFETY_AVAILABLE = True
-except ImportError:
+except ImportError as _ie:
     ASYNC_SAFETY_AVAILABLE = False
+    _record_import_failure("ASYNC_SAFETY_AVAILABLE", "backend.core.async_safety", _ie, "CRITICAL")
     AsyncTimeoutConfig = None
     AsyncPersistentCircuitBreaker = None
     AsyncRetryEngine = None
@@ -1436,8 +1584,9 @@ try:
         get_health_aggregator,
     )
     ENTERPRISE_HEALTH_AVAILABLE = True
-except ImportError:
+except ImportError as _ie:
     ENTERPRISE_HEALTH_AVAILABLE = False
+    _record_import_failure("ENTERPRISE_HEALTH_AVAILABLE", "backend.core.health_contracts", _ie, "HIGH", symbols={"SystemHealthAggregator": "SystemHealthAggregator", "HealthStatus": "EnterpriseHealthStatus", "get_health_aggregator": "get_health_aggregator"})
     SystemHealthAggregator = None
     EnterpriseHealthStatus = None
     get_health_aggregator = None
@@ -1453,8 +1602,9 @@ try:
         get_recovery_engine,
     )
     ENTERPRISE_RECOVERY_AVAILABLE = True
-except ImportError:
+except ImportError as _ie:
     ENTERPRISE_RECOVERY_AVAILABLE = False
+    _record_import_failure("ENTERPRISE_RECOVERY_AVAILABLE", "backend.core.recovery_engine", _ie, "HIGH", symbols=["RecoveryEngine", "RecoveryPhase", "RecoveryStrategy", "RecoveryAction", "ErrorClassifier", "get_recovery_engine"])
     RecoveryEngine = None
     RecoveryPhase = None
     RecoveryStrategy = None
@@ -1469,8 +1619,9 @@ try:
         get_capability_router,
     )
     ENTERPRISE_CAPABILITY_AVAILABLE = True
-except ImportError:
+except ImportError as _ie:
     ENTERPRISE_CAPABILITY_AVAILABLE = False
+    _record_import_failure("ENTERPRISE_CAPABILITY_AVAILABLE", "backend.core.capability_router", _ie, "MODERATE", symbols=["CapabilityRouter", "get_capability_router"])
     CapabilityRouter = None
     get_capability_router = None
 
@@ -1481,8 +1632,9 @@ try:
         ComponentStatus as EnterpriseComponentStatus,
     )
     ENTERPRISE_REGISTRY_AVAILABLE = True
-except ImportError:
+except ImportError as _ie:
     ENTERPRISE_REGISTRY_AVAILABLE = False
+    _record_import_failure("ENTERPRISE_REGISTRY_AVAILABLE", "backend.core.component_registry", _ie, "MODERATE", symbols={"get_component_registry": "get_component_registry", "ComponentStatus": "EnterpriseComponentStatus"})
     get_component_registry = None
     EnterpriseComponentStatus = None
 
@@ -1490,8 +1642,9 @@ except ImportError:
 try:
     from backend.core.default_components import register_default_components
     ENTERPRISE_DEFAULTS_AVAILABLE = True
-except ImportError:
+except ImportError as _ie:
     ENTERPRISE_DEFAULTS_AVAILABLE = False
+    _record_import_failure("ENTERPRISE_DEFAULTS_AVAILABLE", "backend.core.default_components", _ie, "MODERATE", symbols=["register_default_components"])
     register_default_components = None
 
 # =============================================================================
@@ -1508,20 +1661,17 @@ def _use_modular_circuit_breaker() -> bool:
     # Environment variable to force inline implementation (for debugging)
     return not _get_env_bool("JARVIS_FORCE_INLINE_CIRCUIT_BREAKER", False)
 
-
 def _use_modular_browser_stability() -> bool:
     """Check if we should use the modular browser stability implementation."""
     if not MODULAR_BROWSER_STABILITY_AVAILABLE:
         return False
     return not _get_env_bool("JARVIS_FORCE_INLINE_BROWSER_STABILITY", False)
 
-
 def _use_modular_crash_recovery() -> bool:
     """Check if we should use the modular crash recovery implementation."""
     if not MODULAR_ORCHESTRATOR_AVAILABLE:
         return False
     return not _get_env_bool("JARVIS_FORCE_INLINE_CRASH_RECOVERY", False)
-
 
 # Log modular integration status at startup
 _integration_logger = logging.getLogger("unified_supervisor.integration")
@@ -1555,8 +1705,9 @@ try:
         async_check_unix_socket,
     )
     ASYNC_STARTUP_UTILS_AVAILABLE = True
-except ImportError:
+except ImportError as _ie:
     ASYNC_STARTUP_UTILS_AVAILABLE = False
+    _record_import_failure("ASYNC_STARTUP_UTILS_AVAILABLE", "backend.utils.async_startup", _ie, "HIGH", symbols=["async_psutil_wait", "async_process_wait", "async_subprocess_run", "async_check_port", "async_check_unix_socket"])
     async_psutil_wait = None
     async_process_wait = None
     async_subprocess_run = None
@@ -1578,8 +1729,9 @@ try:
         StartupTimeoutCalculator,
     )
     STARTUP_TIMEOUTS_AVAILABLE = True
-except ImportError:
+except ImportError as _ie:
     STARTUP_TIMEOUTS_AVAILABLE = False
+    _record_import_failure("STARTUP_TIMEOUTS_AVAILABLE", "backend.config.startup_timeouts", _ie, "HIGH", symbols=["get_timeouts", "StartupTimeouts", "get_startup_config", "StartupConfig", "StartupTimeoutCalculator"])
     get_timeouts = None
     StartupTimeouts = None
     get_startup_config = None
@@ -1595,8 +1747,9 @@ except ImportError:
 try:
     import backend.config.hardware_enforcer  # noqa: F401 - import triggers enforcement
     HARDWARE_ENFORCER_AVAILABLE = True
-except ImportError:
+except ImportError as _ie:
     HARDWARE_ENFORCER_AVAILABLE = False
+    _record_import_failure("HARDWARE_ENFORCER_AVAILABLE", "backend.config.hardware_enforcer", _ie, "MODERATE")
 
 # =============================================================================
 # v185.0: JARVIS SUPERVISOR LIFECYCLE INTEGRATION
@@ -1619,12 +1772,12 @@ try:
         DeadManSwitch,
         RollbackManager,
         RollbackDecision,
-        get_rollback_manager,
     )
     from backend.core.supervisor.update_engine import UpdateEngine
     JARVIS_SUPERVISOR_AVAILABLE = True
-except ImportError:
+except ImportError as _ie:
     JARVIS_SUPERVISOR_AVAILABLE = False
+    _record_import_failure("JARVIS_SUPERVISOR_AVAILABLE", "backend.core.supervisor", _ie, "HIGH")
     JARVISSupervisor = None
     SupervisorConfig = None
     get_supervisor_config = None
@@ -1632,7 +1785,6 @@ except ImportError:
     DeadManSwitch = None
     RollbackManager = None
     RollbackDecision = None
-    get_rollback_manager = None
     UpdateEngine = None
 
 # =============================================================================
@@ -1673,16 +1825,49 @@ def _register_early_shutdown_handlers() -> bool:
 _register_early_shutdown_handlers()
 
 # v233.0: Clean up backend_port.json on exit to prevent stale port state
+# v265.7: Extended to clean ALL stale state files that cause false crash recovery
 import atexit as _atexit
-def _cleanup_port_state_file():
-    """Remove backend_port.json so stale port info doesn't mislead next startup."""
+import glob as _glob
+
+def _cleanup_stale_state_on_exit():
+    """Remove stale state files on normal exit to prevent false crash recovery.
+
+    Root cause: emergency_shutdown() writes kernel_crash.marker on ALL exits
+    (even expected ones), and memory_pressure.json / cloud_lock.json persist
+    from previous sessions. On next startup, Clean Slate detects these with
+    high confidence and triggers unnecessary recovery, logging false warnings.
+
+    This atexit handler cleans all such files when the process exits normally
+    (atexit only fires on graceful interpreter shutdown, not SIGKILL).
+    """
+    _home = Path.home() / ".jarvis"
+    # Stale state files that mislead next startup's Clean Slate phase
+    _stale_files = [
+        _home / "backend_port.json",                          # Stale port info
+        _home / "locks" / "kernel_crash.marker",              # False crash detection
+        _home / "cross_repo" / "memory_pressure.json",        # Stale memory signal (router)
+        _home / "memory_pressure.json",                       # Stale memory signal (guard)
+        _home / "trinity" / "cloud_lock.json",                # Stale Trinity lock
+        _home / "trinity" / "state" / "system_phase.json",    # Stale phase
+    ]
+    for _sf in _stale_files:
+        try:
+            if _sf.exists():
+                _sf.unlink(missing_ok=True)
+        except Exception:
+            pass
+    # Clean signal files directory (transient coordination)
+    _signals_dir = str(_home / "signals")
     try:
-        _port_state = Path.home() / ".jarvis" / "backend_port.json"
-        if _port_state.exists():
-            _port_state.unlink(missing_ok=True)
+        for _sig_f in _glob.glob(_signals_dir + "/*.json"):
+            try:
+                Path(_sig_f).unlink(missing_ok=True)
+            except Exception:
+                pass
     except Exception:
-        pass  # Best-effort cleanup
-_atexit.register(_cleanup_port_state_file)
+        pass
+
+_atexit.register(_cleanup_stale_state_on_exit)
 
 # Intelligent Startup Narrator - phase-aware voice narration
 # Note: Import as BackendStartupPhase to avoid conflict with local StartupPhase enum
@@ -1692,8 +1877,9 @@ try:
         StartupPhase as BackendStartupPhase,
     )
     STARTUP_NARRATOR_AVAILABLE = True
-except ImportError:
+except ImportError as _ie:
     STARTUP_NARRATOR_AVAILABLE = False
+    _record_import_failure("STARTUP_NARRATOR_AVAILABLE", "backend.core.supervisor.startup_narrator", _ie, "MODERATE", symbols={"IntelligentStartupNarrator": "IntelligentStartupNarrator", "StartupPhase": "BackendStartupPhase"})
     IntelligentStartupNarrator = None
     BackendStartupPhase = None
 
@@ -1704,8 +1890,9 @@ try:
         OrchestratorEvent,
     )
     ORCHESTRATOR_NARRATOR_AVAILABLE = True
-except ImportError:
+except ImportError as _ie:
     ORCHESTRATOR_NARRATOR_AVAILABLE = False
+    _record_import_failure("ORCHESTRATOR_NARRATOR_AVAILABLE", "backend.core.supervisor.orchestrator_narrator_bridge", _ie, "MODERATE", symbols=["emit_orchestrator_event", "OrchestratorEvent"])
     emit_orchestrator_event = None
     OrchestratorEvent = None
 
@@ -1718,8 +1905,9 @@ try:
         narrate_error as _narrate_backend_error,
     )
     BACKEND_NARRATOR_FUNCS_AVAILABLE = True
-except ImportError:
+except ImportError as _ie:
     BACKEND_NARRATOR_FUNCS_AVAILABLE = False
+    _record_import_failure("BACKEND_NARRATOR_FUNCS_AVAILABLE", "backend.core.supervisor.startup_narrator", _ie, "MODERATE", symbols={"get_startup_narrator": "_get_backend_startup_narrator", "narrate_phase": "_narrate_backend_phase", "narrate_complete": "_narrate_backend_complete", "narrate_error": "_narrate_backend_error"})
     _get_backend_startup_narrator = None
     _narrate_backend_phase = None
     _narrate_backend_complete = None
@@ -1729,18 +1917,23 @@ except ImportError:
 try:
     from backend.core.voice_orchestrator import VoiceOrchestrator
     VOICE_ORCHESTRATOR_AVAILABLE = True
-except ImportError:
+except ImportError as _ie:
     VOICE_ORCHESTRATOR_AVAILABLE = False
+    _record_import_failure("VOICE_ORCHESTRATOR_AVAILABLE", "backend.core.voice_orchestrator", _ie, "MODERATE", symbols=["VoiceOrchestrator"])
     VoiceOrchestrator = None
 
 # Phase 5A: BoundedAsyncQueue - backpressure for unbounded asyncio.Queue instances
 try:
     from backend.core.bounded_queue import BoundedAsyncQueue, OverflowPolicy
     BOUNDED_QUEUE_AVAILABLE = True
-except ImportError:
+except ImportError as _ie:
     BOUNDED_QUEUE_AVAILABLE = False
+    _record_import_failure("BOUNDED_QUEUE_AVAILABLE", "backend.core.bounded_queue", _ie, "MODERATE", symbols=["BoundedAsyncQueue", "OverflowPolicy"])
     BoundedAsyncQueue = None
     OverflowPolicy = None
+
+# v265.7: Run import audit at module load to surface all failures
+_log_import_audit()
 
 # =============================================================================
 # CONSTANTS
@@ -1813,7 +2006,6 @@ SMARTWATCHDOG_CONSECUTIVE_FAILURES = int(os.environ.get("JARVIS_WATCHDOG_CONSECU
 SMARTWATCHDOG_EXTENSION_BUFFER = float(os.environ.get("JARVIS_WATCHDOG_EXTENSION_BUFFER", "60.0"))
 SMARTWATCHDOG_LIVENESS_ENABLED = os.environ.get("JARVIS_WATCHDOG_LIVENESS_ENABLED", "true").lower() == "true"
 
-
 def _calculate_effective_startup_timeout(
     config_timeout: float,
     trinity_enabled: bool = False,
@@ -1867,7 +2059,6 @@ def _calculate_effective_startup_timeout(
         "max_timeout": max_timeout,
         "components": components,
     }
-
 
 # =============================================================================
 # v225.0: PROGRESS-AWARE STARTUP CONTROLLER
@@ -1947,6 +2138,7 @@ class ProgressAwareStartupController:
             "activity_source": "none",
             "subsystem_reasons": [],
             "stage": "startup",
+            "subsystem_progress_pct": 0.0,
         }
 
         try:
@@ -1960,6 +2152,7 @@ class ProgressAwareStartupController:
             activity_source = str(state.get("activity_source", "none") or "none")
             subsystem_reasons = state.get("active_subsystem_reasons") or []
             stage = str(state.get("stage", "startup") or "startup")
+            subsystem_progress_pct = float(state.get("subsystem_progress_pct", 0.0) or 0.0)
 
             if not isinstance(subsystem_reasons, list):
                 subsystem_reasons = [str(subsystem_reasons)]
@@ -1986,6 +2179,8 @@ class ProgressAwareStartupController:
                 "activity_source": activity_source,
                 "subsystem_reasons": subsystem_reasons,
                 "stage": stage,
+                # v267.1: Granular subsystem progress (e.g., model loading %)
+                "subsystem_progress_pct": max(0.0, min(100.0, subsystem_progress_pct)),
             }
         except Exception:
             return default_state
@@ -2023,6 +2218,11 @@ class ProgressAwareStartupController:
         self._last_progress_pct = 0.0
         self._extensions_granted = 0
         self._completion_seen_at = 0.0
+        # v267.1: Track subsystem-level progress (e.g., model loading %).
+        # When the overall progress_pct is flat (discrete milestone) but a
+        # subsystem's own progress is advancing, this prevents the hard cap
+        # from falsely killing a working startup.
+        self._last_subsystem_progress_pct = 0.0
 
         # Create the startup task
         task = asyncio.create_task(coro)
@@ -2052,6 +2252,16 @@ class ProgressAwareStartupController:
                 activity_source = progress_state["activity_source"]
                 subsystem_reasons = progress_state["subsystem_reasons"]
                 stage = progress_state["stage"]
+                subsystem_progress_pct = progress_state.get("subsystem_progress_pct", 0.0)
+
+                # v267.1: Detect subsystem-level progress advancement.
+                # When the overall progress_pct is flat (e.g., stuck at 75%
+                # during trinity phase) but a subsystem like model_loading is
+                # progressing (37%→38%→39%), treat it as real progress to
+                # prevent the hard cap from falsely killing active work.
+                if subsystem_progress_pct > self._last_subsystem_progress_pct + 0.5:
+                    self._last_progress_time = now
+                    self._last_subsystem_progress_pct = subsystem_progress_pct
 
                 # RULE 1: Detect REAL progress advancement (phase changes)
                 if progress_pct > self._last_progress_pct:
@@ -2207,6 +2417,7 @@ class ProgressAwareStartupController:
                                 f"[ProgressController] Phase hold at {progress_pct:.1f}% "
                                 f"for {time_since_progress:.0f}s "
                                 f"(subsystem active, stage={stage}, reasons={reasons}, "
+                                f"subsystem_pct={subsystem_progress_pct:.1f}%, "
                                 f"ETA: {eta_remaining:.0f}s)"
                             )
 
@@ -2214,11 +2425,16 @@ class ProgressAwareStartupController:
                         # has_active_subsystem=True from indefinitely suppressing
                         # stall detection. If we've been in phase hold for longer
                         # than the hard cap with NO progress, it's a stall regardless.
+                        # v267.1: Now also respects subsystem_progress_pct — the hard
+                        # cap only fires when BOTH overall AND subsystem progress are
+                        # flat for the full duration. Active model loading (37%→50%→65%)
+                        # resets the timer via subsystem progress tracking above.
                         if time_since_progress >= TRINITY_PHASE_HOLD_HARD_CAP:
                             self.logger.error(
                                 f"[ProgressController] PHASE HOLD HARD CAP ({TRINITY_PHASE_HOLD_HARD_CAP:.0f}s) "
                                 f"exceeded at {progress_pct:.1f}% — subsystem claims active but "
-                                f"zero progress for {time_since_progress:.0f}s. "
+                                f"zero progress for {time_since_progress:.0f}s "
+                                f"(subsystem_pct={subsystem_progress_pct:.1f}%). "
                                 f"Treating as TRUE STALL (likely leaked active flag)."
                             )
                             if progress_pct < 95:
@@ -2313,13 +2529,11 @@ for _logger_name in [
     # when external modules reconfigure logging at runtime.
     _noisy_logger.propagate = False
 
-
 class _RegisteredCheckpointFilter(logging.Filter):
     """Suppress repetitive SpeechBrain checkpoint hook registration chatter."""
 
     def filter(self, record: logging.LogRecord) -> bool:
         return "registered checkpoint" not in record.getMessage().lower()
-
 
 if os.getenv("JARVIS_SUPPRESS_REGISTERED_CHECKPOINT_LOGS", "true").strip().lower() in (
     "1", "true", "yes", "on"
@@ -2368,10 +2582,8 @@ def _load_environment_files() -> List[str]:
 
     return loaded
 
-
 # Load environment files immediately
 _loaded_env_files = _load_environment_files()
-
 
 # =============================================================================
 # DYNAMIC DETECTION HELPERS
@@ -2391,7 +2603,6 @@ def _detect_best_port(start: int, end: int) -> int:
             continue
     return start  # Fallback to start of range
 
-
 def _discover_venv() -> Optional[Path]:
     """Discover virtual environment path."""
     candidates = [
@@ -2404,7 +2615,6 @@ def _discover_venv() -> Optional[Path]:
             return candidate
     return None
 
-
 def _discover_repo(names: List[str]) -> Optional[Path]:
     """Discover sibling repository by name."""
     parent = PROJECT_ROOT.parent
@@ -2414,16 +2624,13 @@ def _discover_repo(names: List[str]) -> Optional[Path]:
             return path
     return None
 
-
 def _discover_prime_repo() -> Optional[Path]:
     """Discover JARVIS-Prime repository."""
     return _discover_repo(["JARVIS-Prime", "jarvis-prime"])
 
-
 def _discover_reactor_repo() -> Optional[Path]:
     """Discover Reactor-Core repository."""
     return _discover_repo(["Reactor-Core", "reactor-core"])
-
 
 def _detect_gcp_credentials() -> bool:
     """Check if GCP credentials are available."""
@@ -2439,7 +2646,6 @@ def _detect_gcp_credentials() -> bool:
         return True
 
     return False
-
 
 def _detect_gcp_project() -> Optional[str]:
     """Detect GCP project ID."""
@@ -2463,7 +2669,6 @@ def _detect_gcp_project() -> Optional[str]:
         pass
 
     return None
-
 
 # =============================================================================
 # SAFE FILE I/O UTILITIES (v119.0)
@@ -2517,7 +2722,6 @@ def _safe_read_file(path: Path, default: str = "") -> str:
     except Exception:
         return default
 
-
 def _safe_read_json(path: Path, default: dict = None) -> dict:
     """
     v119.0: Robust JSON file reading with error handling.
@@ -2541,7 +2745,6 @@ def _safe_read_json(path: Path, default: dict = None) -> dict:
     except (json.JSONDecodeError, TypeError):
         return default
 
-
 def _calculate_memory_budget() -> float:
     """Calculate memory budget based on system RAM."""
     if not PSUTIL_AVAILABLE:
@@ -2552,7 +2755,6 @@ def _calculate_memory_budget() -> float:
 
     return round(total_gb * (target_percent / 100), 1)
 
-
 def _get_env_bool(key: str, default: bool = False) -> bool:
     """Get boolean from environment variable."""
     value = os.environ.get(key, "").lower()
@@ -2562,14 +2764,12 @@ def _get_env_bool(key: str, default: bool = False) -> bool:
         return False
     return default
 
-
 def _get_env_int(key: str, default: int) -> int:
     """Get integer from environment variable."""
     try:
         return int(os.environ.get(key, default))
     except (ValueError, TypeError):
         return default
-
 
 def _get_env_float(key: str, default: float) -> float:
     """Get float from environment variable."""
@@ -2578,6 +2778,301 @@ def _get_env_float(key: str, default: float) -> float:
     except (ValueError, TypeError):
         return default
 
+def _get_env_command(key: str, default: Optional[List[str]] = None) -> List[str]:
+    """Parse a shell-style command from environment into argv tokens."""
+    if default is None:
+        default = []
+    raw = os.environ.get(key, "").strip()
+    if not raw:
+        return list(default)
+    try:
+        return shlex.split(raw)
+    except ValueError:
+        return list(default)
+
+def _allocate_ephemeral_port(host: str = "127.0.0.1") -> Optional[int]:
+    """
+    Ask the OS for an available ephemeral TCP port.
+
+    This is a deterministic final fallback when configured port ranges are
+    exhausted. The socket is closed immediately after allocation, so callers
+    must bind promptly to minimize race windows.
+    """
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            sock.bind((host, 0))
+            port = int(sock.getsockname()[1])
+            return port if port > 0 else None
+    except Exception:
+        return None
+
+def _read_available_memory_gb() -> Optional[float]:
+    """Read available system memory in GB, if metrics are available."""
+    if not PSUTIL_AVAILABLE:
+        return None
+    try:
+        return float(psutil.virtual_memory().available / (1024 ** 3))
+    except Exception:
+        return None
+
+def _resolve_local_startup_mode_on_cloud_unavailable(
+    current_mode: str,
+    available_gb: Optional[float] = None,
+) -> str:
+    """
+    Resolve a deterministic local startup mode when cloud execution is unavailable.
+
+    Key invariant:
+    - ``cloud_only`` must never degrade into ``local_full`` by default.
+      If cloud was required due memory pressure, fallback remains conservative.
+    """
+    normalized_mode = (current_mode or "cloud_first").strip().lower()
+    if normalized_mode not in {
+        "cloud_first", "cloud_only",
+        "local_full", "local_optimized", "sequential", "minimal",
+    }:
+        normalized_mode = "cloud_first"
+
+    critical_threshold = max(0.1, _get_env_float("JARVIS_CRITICAL_THRESHOLD_GB", 2.0))
+    optimize_threshold = max(
+        critical_threshold,
+        _get_env_float("JARVIS_OPTIMIZE_THRESHOLD_GB", 4.0),
+    )
+    planned_ml_gb = max(0.0, _get_env_float("JARVIS_PLANNED_ML_GB", 4.6))
+    minimal_threshold = max(
+        0.5,
+        min(
+            critical_threshold,
+            _get_env_float(
+                "JARVIS_MINIMAL_THRESHOLD_GB",
+                critical_threshold * 0.5,
+            ),
+        ),
+    )
+
+    # Unknown memory snapshot: stay conservative.
+    if available_gb is None:
+        if normalized_mode == "minimal":
+            return "minimal"
+        if normalized_mode == "sequential":
+            return "sequential"
+        if normalized_mode in ("cloud_first", "cloud_only", "local_full"):
+            return "local_optimized"
+        return "local_optimized"
+
+    predicted_post_load = max(0.0, available_gb - planned_ml_gb)
+    if available_gb < minimal_threshold:
+        candidate = "minimal"
+    elif available_gb < critical_threshold or predicted_post_load < critical_threshold:
+        candidate = "sequential"
+    elif predicted_post_load < optimize_threshold:
+        candidate = "local_optimized"
+    else:
+        # cloud_only remains conservative even when memory looks healthy now.
+        candidate = "local_optimized" if normalized_mode == "cloud_only" else "local_full"
+
+    # Monotonic fallback: never recover to less-restrictive mode in this path.
+    severity = {
+        "local_full": 0,
+        "local_optimized": 1,
+        "sequential": 2,
+        "cloud_first": 3,
+        "cloud_only": 4,
+        "minimal": 5,
+    }
+    if normalized_mode in ("cloud_first", "cloud_only"):
+        # Cloud is explicitly unavailable in this resolver path.
+        return candidate
+    current_sev = severity.get(normalized_mode, 0)
+    candidate_sev = severity.get(candidate, 0)
+    return normalized_mode if candidate_sev < current_sev else candidate
+
+
+def _is_cloud_probe_candidate(
+    desired_mode: str,
+    effective_mode: str,
+    cloud_recovery_candidate: bool = False,
+) -> bool:
+    """
+    Determine whether startup should attempt a GCP availability probe.
+
+    desired_mode expresses operator/resource intent. effective_mode may be
+    temporarily degraded for safety. Probe eligibility is intentionally keyed
+    to desired intent (or an explicit recovery candidate flag), so degraded
+    effective mode does not suppress cloud recovery opportunities.
+    """
+    _desired = (desired_mode or "").strip().lower()
+    if _desired in ("cloud_first", "cloud_only"):
+        return True
+
+    # If effective mode is local for safety but cloud recovery remains desired,
+    # this explicit flag keeps probe behavior deterministic.
+    return bool(cloud_recovery_candidate)
+
+# =============================================================================
+# BACKEND LAUNCH DISCOVERY
+# =============================================================================
+@dataclass(frozen=True)
+class BackendLaunchContext:
+    """Resolved context for launching the backend process."""
+    project_root: Path
+    backend_dir: Optional[Path]
+    backend_script: Optional[Path]
+
+def _discover_backend_launch_context(
+    primary_project_root: Optional[Path] = None,
+) -> BackendLaunchContext:
+    """
+    Resolve backend launch paths deterministically across invocation contexts.
+
+    Searches common roots (env/config/cwd parents) and returns the first root
+    that contains ``backend/main.py``. Falls back to the first existing root so
+    callers still get a stable ``project_root`` for diagnostics.
+    """
+    candidate_roots: List[Path] = []
+
+    env_project_root = os.environ.get("JARVIS_PROJECT_ROOT")
+    if env_project_root:
+        candidate_roots.append(Path(env_project_root).expanduser())
+
+    if primary_project_root is not None:
+        candidate_roots.append(primary_project_root)
+
+    candidate_roots.extend(
+        [
+            PROJECT_ROOT,
+            Path(__file__).resolve().parent,
+            Path.cwd(),
+            Path.cwd().resolve(),
+        ]
+    )
+
+    # Walk up from cwd to support launches from nested directories/worktrees.
+    try:
+        _cwd = Path.cwd().resolve()
+        for _ in range(4):
+            candidate_roots.append(_cwd)
+            _cwd = _cwd.parent
+    except Exception:
+        pass
+
+    deduped_roots: List[Path] = []
+    seen: Set[str] = set()
+    for root in candidate_roots:
+        try:
+            resolved = root.expanduser().resolve()
+        except Exception:
+            continue
+        key = str(resolved)
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped_roots.append(resolved)
+
+    fallback_root = next((root for root in deduped_roots if root.exists()), PROJECT_ROOT)
+
+    for root in deduped_roots:
+        backend_script = root / "backend" / "main.py"
+        if backend_script.exists():
+            return BackendLaunchContext(
+                project_root=root,
+                backend_dir=backend_script.parent,
+                backend_script=backend_script,
+            )
+
+    return BackendLaunchContext(
+        project_root=fallback_root,
+        backend_dir=None,
+        backend_script=None,
+    )
+
+def _detect_backend_runtime_capabilities(
+    context: BackendLaunchContext,
+) -> Dict[str, bool]:
+    """Detect runtime capabilities required to launch backend deterministically."""
+    backend_module_available = (
+        importlib.util.find_spec("backend.main") is not None
+        if importlib.util.find_spec("backend") is not None
+        else False
+    )
+    script_present = context.backend_script is not None and context.backend_script.exists()
+
+    return {
+        "uvicorn_available": importlib.util.find_spec("uvicorn") is not None,
+        "granian_available": importlib.util.find_spec("granian") is not None,
+        "backend_module_available": backend_module_available,
+        "backend_script_available": script_present,
+        "backend_module_possible": backend_module_available or script_present,
+    }
+
+def _select_backend_launch_command(
+    context: BackendLaunchContext,
+    backend_host: str,
+    backend_port: int,
+    capabilities: Optional[Dict[str, bool]] = None,
+) -> Tuple[List[str], str]:
+    """
+    Select backend launch command based on available runtime capabilities.
+
+    Order of preference:
+    1. ``uvicorn`` module launch (best observability + supervisor control)
+    2. ``backend.main`` entrypoint with ``granian`` runtime
+    """
+    caps = capabilities or _detect_backend_runtime_capabilities(context)
+
+    if caps["uvicorn_available"]:
+        if not caps["backend_module_possible"]:
+            raise RuntimeError(
+                "uvicorn is available but backend.main is not importable and backend/main.py "
+                "could not be discovered"
+            )
+        return (
+            [
+                sys.executable,
+                "-m",
+                "uvicorn",
+                "backend.main:app",
+                "--host",
+                backend_host,
+                "--port",
+                str(backend_port),
+            ],
+            "uvicorn_module",
+        )
+
+    if not caps["granian_available"]:
+        raise RuntimeError(
+            "No backend ASGI runtime available: install uvicorn or granian"
+        )
+
+    if caps["backend_script_available"] and context.backend_script is not None:
+        return (
+            [
+                sys.executable,
+                str(context.backend_script),
+                "--port",
+                str(backend_port),
+            ],
+            "backend_main_granian",
+        )
+
+    if caps["backend_module_available"]:
+        return (
+            [
+                sys.executable,
+                "-m",
+                "backend.main",
+                "--port",
+                str(backend_port),
+            ],
+            "backend_module_granian",
+        )
+
+    raise RuntimeError(
+        "granian is available but backend entrypoint is missing "
+        "(neither backend/main.py nor backend.main module found)"
+    )
 
 # =============================================================================
 # v258.4: TRINITY IPC SYSTEM PHASE PUBLISHER
@@ -2628,7 +3123,6 @@ def _publish_system_phase_to_trinity(phase: str, extra: Optional[Dict[str, Any]]
             )
         except Exception:
             pass
-
 
 # =============================================================================
 # CLI BOX DRAWING UTILITY (v201.4)
@@ -2795,10 +3289,8 @@ class CLIBoxDrawing:
             suffix_len = 0
         return f"{self.SEP_L}{prefix}{self.H * suffix_len}{self.SEP_R}"
 
-
 # Global instance with default width
 _cli_box = CLIBoxDrawing(width=70)
-
 
 def get_cli_box(width: int = 70) -> CLIBoxDrawing:
     """Get a CLIBoxDrawing instance (cached for default width)."""
@@ -2806,7 +3298,6 @@ def get_cli_box(width: int = 70) -> CLIBoxDrawing:
     if width == 70:
         return _cli_box
     return CLIBoxDrawing(width=width)
-
 
 # =============================================================================
 # SYSTEM KERNEL CONFIGURATION
@@ -2958,6 +3449,16 @@ class SystemKernelConfig:
     narrator_enabled: bool = field(default_factory=lambda: _get_env_bool("STARTUP_NARRATOR_VOICE", True))
     wake_word_enabled: bool = field(default_factory=lambda: _get_env_bool("JARVIS_WAKE_WORD", True))
     ecapa_enabled: bool = field(default_factory=lambda: _get_env_bool("JARVIS_ECAPA_ENABLED", True))
+    voice_sidecar_enabled: bool = field(default_factory=lambda: _get_env_bool("JARVIS_VOICE_SIDECAR_ENABLED", False))
+    voice_sidecar_required: bool = field(default_factory=lambda: _get_env_bool("JARVIS_VOICE_SIDECAR_REQUIRED", False))
+    voice_sidecar_manage_worker: bool = field(default_factory=lambda: _get_env_bool("JARVIS_VOICE_SIDECAR_MANAGE_WORKER", False))
+    voice_sidecar_transport: str = field(default_factory=lambda: os.environ.get("JARVIS_VOICE_SIDECAR_TRANSPORT", "http").strip().lower() or "http")
+    voice_sidecar_base_url: str = field(default_factory=lambda: os.environ.get("JARVIS_VOICE_SIDECAR_BASE_URL", "http://127.0.0.1:9860").strip())
+    voice_sidecar_socket_path: str = field(default_factory=lambda: os.environ.get("JARVIS_VOICE_SIDECAR_SOCKET", "").strip())
+    voice_sidecar_command: List[str] = field(default_factory=lambda: _get_env_command("JARVIS_VOICE_SIDECAR_COMMAND"))
+    voice_sidecar_health_timeout: float = field(default_factory=lambda: _get_env_float("JARVIS_VOICE_SIDECAR_HEALTH_TIMEOUT", 2.5))
+    voice_sidecar_start_timeout: float = field(default_factory=lambda: _get_env_float("JARVIS_VOICE_SIDECAR_START_TIMEOUT", 20.0))
+    voice_sidecar_control_timeout: float = field(default_factory=lambda: _get_env_float("JARVIS_VOICE_SIDECAR_CONTROL_TIMEOUT", 5.0))
 
     # ═══════════════════════════════════════════════════════════════════════════
     # MEMORY / RESOURCES
@@ -3006,6 +3507,9 @@ class SystemKernelConfig:
             self.trinity_enabled = False
             self.hybrid_intelligence_enabled = False
 
+        if self.voice_sidecar_transport not in {"http", "unix"}:
+            self.voice_sidecar_transport = "http"
+
     @classmethod
     def from_environment(cls) -> "SystemKernelConfig":
         """Factory: Create config from environment variables."""
@@ -3030,6 +3534,12 @@ class SystemKernelConfig:
 
         if self.hot_reload_enabled and not self.dev_mode:
             warnings_list.append("hot_reload_enabled but dev_mode=False (hot reload will be disabled)")
+
+        if self.voice_sidecar_enabled and self.voice_sidecar_transport == "unix" and not self.voice_sidecar_socket_path:
+            warnings_list.append("voice sidecar unix transport selected but JARVIS_VOICE_SIDECAR_SOCKET is unset")
+
+        if self.voice_sidecar_enabled and not self.voice_sidecar_command:
+            warnings_list.append("voice sidecar enabled but JARVIS_VOICE_SIDECAR_COMMAND is empty; supervisor expects sidecar to already be running")
 
         return warnings_list
 
@@ -3059,7 +3569,6 @@ class SystemKernelConfig:
         ]
         return "\n".join(lines)
 
-
 # =============================================================================
 # ADD BACKEND TO PATH
 # =============================================================================
@@ -3067,7 +3576,6 @@ if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
-
 
 # ╔═══════════════════════════════════════════════════════════════════════════════╗
 # ║                                                                               ║
@@ -3095,7 +3603,6 @@ class LogLevel(Enum):
     SUCCESS = ("SUCCESS", "\033[92m")  # Bright Green
     PHASE = ("PHASE", "\033[94m")      # Bright Blue
 
-
 class LogSection(Enum):
     """Logical sections for organized log output."""
     BOOT = "BOOT"
@@ -3113,7 +3620,6 @@ class LogSection(Enum):
     STORAGE = "STORAGE"
     PROCESS = "PROCESS"
     DEV = "DEV"
-
 
 # =============================================================================
 # SECTION CONTEXT MANAGER
@@ -3141,7 +3647,6 @@ class SectionContext:
         duration_ms = (time.perf_counter() - self.start_time) * 1000
         self.logger._render_section_footer(self.section, duration_ms)
         return None
-
 
 # =============================================================================
 # PARALLEL TRACKER
@@ -3179,7 +3684,6 @@ class ParallelTracker:
             self._results[name] = (False, duration)
             self.logger.warning(f"  [{name}] failed in {duration:.0f}ms: {e}")
             raise
-
 
 # =============================================================================
 # UNIFIED LOGGER
@@ -3482,10 +3986,8 @@ class UnifiedLogger:
 
         print(f"{green}{'═' * 70}{reset}\n")
 
-
 # Global logger instance for use throughout the kernel
 _unified_logger = UnifiedLogger()
-
 
 # =============================================================================
 # STARTUP LOCK (Singleton Enforcement)
@@ -3591,26 +4093,82 @@ class StartupLock:
         """
         is_locked, holder_pid = self.is_locked()
 
-        if is_locked and not force:
-            return False
+        # Shared lock already held by a live kernel.
+        if is_locked:
+            if holder_pid == self.pid:
+                self._acquired = True
+                return True
+            if not force:
+                return False
 
-        # Clean up stale lock or force acquire
-        if self.lock_path.exists():
-            self.lock_path.unlink()
+            # Root hardening: never steal a live lock by default.
+            # Force takeover must kill/handover first (handled by takeover protocol).
+            allow_live_steal = _get_env_bool("JARVIS_STARTUP_LOCK_FORCE_STEAL", False)
+            if holder_pid and self._is_process_alive(holder_pid) and not allow_live_steal:
+                return False
 
-        # Write new lock
+        # Write new lock atomically to prevent create/unlink races when two
+        # supervisors start concurrently.
         lock_data = {
             "pid": self.pid,
             "acquired_at": datetime.now().isoformat(),
             "kernel_version": KERNEL_VERSION,
             "hostname": platform.node(),
         }
-
+        payload = json.dumps(lock_data, indent=2)
         self.lock_path.parent.mkdir(parents=True, exist_ok=True)
-        self.lock_path.write_text(json.dumps(lock_data, indent=2))
-        self._acquired = True
 
-        return True
+        max_attempts = 3
+        for attempt in range(1, max_attempts + 1):
+            try:
+                fd = os.open(
+                    str(self.lock_path),
+                    os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+                    0o644,
+                )
+                with os.fdopen(fd, "w") as lock_file:
+                    lock_file.write(payload)
+                    lock_file.flush()
+                self._acquired = True
+                return True
+            except FileExistsError:
+                current_holder = self.get_current_holder() or {}
+                current_pid_raw = current_holder.get("pid")
+                current_pid: Optional[int] = None
+                if isinstance(current_pid_raw, int):
+                    current_pid = current_pid_raw
+                else:
+                    try:
+                        current_pid = int(current_pid_raw) if current_pid_raw is not None else None
+                    except Exception:
+                        current_pid = None
+
+                allow_live_steal = _get_env_bool("JARVIS_STARTUP_LOCK_FORCE_STEAL", False)
+                holder_live = (
+                    current_pid is not None
+                    and current_pid != self.pid
+                    and self._is_process_alive(current_pid)
+                )
+
+                # Live holder: deny unless explicit force-steal override.
+                if holder_live and not (force and allow_live_steal):
+                    return False
+
+                # Stale/invalid lock file (or explicit live-steal): remove and retry.
+                try:
+                    self.lock_path.unlink()
+                except FileNotFoundError:
+                    pass
+                except OSError:
+                    if attempt >= max_attempts:
+                        return False
+
+                if attempt < max_attempts:
+                    time.sleep(0.05 * attempt)
+            except OSError:
+                return False
+
+        return False
 
     def release(self) -> None:
         """Release the lock."""
@@ -3646,7 +4204,6 @@ class StartupLock:
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:
         self.release()
 
-
 # =============================================================================
 # INTELLIGENT KERNEL TAKEOVER PROTOCOL (v192.0)
 # =============================================================================
@@ -3667,7 +4224,6 @@ class KernelHealthStatus(Enum):
     ZOMBIE = "zombie"             # PID exists but process is zombie
     DEAD = "dead"                 # Process not running
 
-
 @dataclass
 class KernelProcessInfo:
     """Information about a kernel process."""
@@ -3684,7 +4240,6 @@ class KernelProcessInfo:
     memory_mb: Optional[float] = None
     cpu_percent: Optional[float] = None
 
-
 @dataclass
 class TakeoverResult:
     """Result of a kernel takeover attempt."""
@@ -3695,7 +4250,6 @@ class TakeoverResult:
     errors: List[str] = field(default_factory=list)
     warnings: List[str] = field(default_factory=list)
     duration_ms: float = 0.0
-
 
 class IntelligentKernelTakeover:
     """
@@ -3782,6 +4336,23 @@ class IntelligentKernelTakeover:
         self._takeover_start = time.time()
         result = TakeoverResult(success=False)
 
+        async def _acquire_startup_lock(force_lock: bool, context: str) -> bool:
+            """
+            Acquire startup lock with bounded retries to handle concurrent startup races.
+            """
+            for attempt in range(1, self.max_retries + 1):
+                if self.startup_lock.acquire(force=force_lock):
+                    return True
+                if attempt < self.max_retries:
+                    await asyncio.sleep(min(1.0, 0.15 * (2 ** (attempt - 1))))
+
+            holder = self.startup_lock.get_current_holder() or {}
+            holder_pid = holder.get("pid", "unknown")
+            result.errors.append(
+                f"{context}: failed to acquire startup lock (holder PID: {holder_pid})"
+            )
+            return False
+
         try:
             # Phase 1: Check current lock status
             is_locked, holder_pid = self.startup_lock.is_locked()
@@ -3799,7 +4370,7 @@ class IntelligentKernelTakeover:
                     )
 
                 # Acquire lock
-                if self.startup_lock.acquire(force=False):
+                if await _acquire_startup_lock(False, "clean_start"):
                     result.success = True
                     result.takeover_method = "clean_start"
                     self.logger.info("[Takeover] Clean start - no previous kernel")
@@ -3814,9 +4385,9 @@ class IntelligentKernelTakeover:
             if holder_pid is None:
                 # Shouldn't happen, but handle gracefully
                 self.logger.warning("[Takeover] Lock exists but no holder PID - treating as stale")
-                self.startup_lock.acquire(force=True)
-                result.success = True
-                result.takeover_method = "stale_no_pid"
+                if await _acquire_startup_lock(True, "stale_no_pid"):
+                    result.success = True
+                    result.takeover_method = "stale_no_pid"
                 result.duration_ms = (time.time() - self._takeover_start) * 1000
                 return result
 
@@ -3828,9 +4399,9 @@ class IntelligentKernelTakeover:
             if kernel_info.status == KernelHealthStatus.DEAD:
                 # Stale lock - just take it
                 self.logger.info("[Takeover] Previous kernel is dead - cleaning stale lock")
-                self.startup_lock.acquire(force=True)
-                result.success = True
-                result.takeover_method = "stale_lock"
+                if await _acquire_startup_lock(True, "stale_lock"):
+                    result.success = True
+                    result.takeover_method = "stale_lock"
 
             elif kernel_info.status in (KernelHealthStatus.ZOMBIE, KernelHealthStatus.UNRESPONSIVE):
                 # Zombie or unresponsive - force kill
@@ -3839,10 +4410,10 @@ class IntelligentKernelTakeover:
                 )
                 await self._force_kill_process(holder_pid)
                 await asyncio.sleep(0.5)  # Wait for process cleanup
-                self.startup_lock.acquire(force=True)
-                result.success = True
-                result.takeover_method = "force_kill_unresponsive"
-                result.processes_cleaned = 1
+                if await _acquire_startup_lock(True, "force_kill_unresponsive"):
+                    result.success = True
+                    result.takeover_method = "force_kill_unresponsive"
+                    result.processes_cleaned = 1
 
             elif kernel_info.status in (KernelHealthStatus.HEALTHY, KernelHealthStatus.DEGRADED):
                 # Healthy or degraded kernel running - try graceful takeover
@@ -3852,10 +4423,10 @@ class IntelligentKernelTakeover:
                     self.logger.warning(f"[Takeover] Force requested - killing {status_desc} kernel")
                     await self._force_kill_process(holder_pid)
                     await asyncio.sleep(0.5)
-                    self.startup_lock.acquire(force=True)
-                    result.success = True
-                    result.takeover_method = "force_kill_user_request"
-                    result.processes_cleaned = 1
+                    if await _acquire_startup_lock(True, "force_kill_user_request"):
+                        result.success = True
+                        result.takeover_method = "force_kill_user_request"
+                        result.processes_cleaned = 1
 
                 elif graceful_first:
                     # Try graceful handover
@@ -3863,19 +4434,19 @@ class IntelligentKernelTakeover:
                     handover_success = await self._graceful_handover(holder_pid, kernel_info)
 
                     if handover_success:
-                        self.startup_lock.acquire(force=True)
-                        result.success = True
-                        result.takeover_method = "graceful_handover"
-                        result.processes_cleaned = 1
+                        if await _acquire_startup_lock(True, "graceful_handover"):
+                            result.success = True
+                            result.takeover_method = "graceful_handover"
+                            result.processes_cleaned = 1
                     else:
                         # Graceful failed - fall back to force
                         self.logger.warning("[Takeover] Graceful handover failed - forcing")
                         await self._force_kill_process(holder_pid)
                         await asyncio.sleep(0.5)
-                        self.startup_lock.acquire(force=True)
-                        result.success = True
-                        result.takeover_method = "force_after_graceful_failed"
-                        result.processes_cleaned = 1
+                        if await _acquire_startup_lock(True, "force_after_graceful_failed"):
+                            result.success = True
+                            result.takeover_method = "force_after_graceful_failed"
+                            result.processes_cleaned = 1
                 else:
                     # No force, no graceful - can't proceed
                     result.errors.append(
@@ -3888,10 +4459,10 @@ class IntelligentKernelTakeover:
                 self.logger.warning(f"[Takeover] Unknown kernel status: {kernel_info.status}")
                 await self._force_kill_process(holder_pid)
                 await asyncio.sleep(0.5)
-                self.startup_lock.acquire(force=True)
-                result.success = True
-                result.takeover_method = "force_unknown_status"
-                result.processes_cleaned = 1
+                if await _acquire_startup_lock(True, "force_unknown_status"):
+                    result.success = True
+                    result.takeover_method = "force_unknown_status"
+                    result.processes_cleaned = 1
 
             # Phase 4: Clean up any remaining cross-repo orphans
             if result.success:
@@ -4012,8 +4583,14 @@ class IntelligentKernelTakeover:
                 timeout=self.ipc_timeout
             )
 
-            # Send health check request
-            request = json.dumps({"action": "health", "source": "takeover"}) + "\n"
+            # Send health check request.
+            # v266.0: use IPCServer contract ("command"/"args"), keep legacy
+            # "action" field for compatibility with older kernels.
+            request = json.dumps({
+                "command": IPCCommand.HEALTH.value,
+                "args": {"source": "takeover", "target_pid": pid},
+                "action": "health",
+            }) + "\n"
             writer.write(request.encode())
             await writer.drain()
 
@@ -4028,7 +4605,24 @@ class IntelligentKernelTakeover:
 
             if response:
                 data = json.loads(response.decode())
-                return data.get("status") in ("ok", "healthy", "running")
+
+                # Legacy payload format support.
+                if isinstance(data, dict) and data.get("status") in ("ok", "healthy", "running"):
+                    return True
+
+                # Current IPCServer envelope:
+                # {"success": bool, "result": {...}, "error": ...}
+                if isinstance(data, dict) and data.get("success") is True:
+                    result = data.get("result")
+                    if isinstance(result, dict):
+                        health_level = str(result.get("health_level", "")).upper()
+                        return health_level in {
+                            "PROCESS_EXISTS",
+                            "IPC_RESPONSIVE",
+                            "HTTP_HEALTHY",
+                            "FULLY_READY",
+                        }
+                    return True
             return False
 
         except asyncio.TimeoutError:
@@ -4061,9 +4655,12 @@ class IntelligentKernelTakeover:
             )
 
             request = json.dumps({
+                "command": IPCCommand.SHUTDOWN.value,
+                "args": {
+                    "reason": "new_kernel_takeover",
+                    "source_pid": os.getpid(),
+                },
                 "action": "shutdown",
-                "reason": "new_kernel_takeover",
-                "source_pid": os.getpid(),
             }) + "\n"
             writer.write(request.encode())
             await writer.drain()
@@ -4079,7 +4676,20 @@ class IntelligentKernelTakeover:
 
             if response:
                 data = json.loads(response.decode())
-                if data.get("status") != "shutting_down":
+
+                # Legacy payload format support.
+                if isinstance(data, dict) and data.get("status") == "shutting_down":
+                    pass
+                # Current IPCServer envelope.
+                elif isinstance(data, dict) and data.get("success") is True:
+                    result = data.get("result")
+                    acknowledged = (
+                        isinstance(result, dict) and result.get("acknowledged") is True
+                    )
+                    if not acknowledged:
+                        self.logger.debug(f"[Takeover] Unexpected shutdown ACK payload: {data}")
+                        return False
+                else:
                     self.logger.debug(f"[Takeover] Unexpected response: {data}")
                     return False
 
@@ -4330,7 +4940,6 @@ class IntelligentKernelTakeover:
         except (OSError, ProcessLookupError):
             return False
 
-
 # =============================================================================
 # CIRCUIT BREAKER STATE
 # =============================================================================
@@ -4345,7 +4954,6 @@ else:
         CLOSED = "closed"      # Normal operation
         OPEN = "open"          # Failing, reject requests
         HALF_OPEN = "half_open"  # Testing recovery
-
 
 # =============================================================================
 # CIRCUIT BREAKER
@@ -4446,7 +5054,6 @@ else:
                 self.record_failure()
                 raise
 
-
 # =============================================================================
 # RETRY WITH BACKOFF
 # =============================================================================
@@ -4519,7 +5126,6 @@ else:
                         await asyncio.sleep(delay)
 
             raise last_exception or RuntimeError(f"Retries exhausted for {operation_name}")
-
 
 # =============================================================================
 # TERMINAL UI HELPERS
@@ -4656,7 +5262,6 @@ class TerminalUI:
         if current >= total:
             print()  # New line when complete
 
-
 # =============================================================================
 # BENIGN WARNING FILTER
 # =============================================================================
@@ -4691,7 +5296,6 @@ class BenignWarningFilter(logging.Filter):
                 return False
         return True
 
-
 # Install benign warning filter on noisy loggers
 _benign_filter = BenignWarningFilter()
 for _logger_name in [
@@ -4703,7 +5307,6 @@ for _logger_name in [
 ]:
     logging.getLogger(_logger_name).addFilter(_benign_filter)
 logging.getLogger().addFilter(_benign_filter)
-
 
 # =============================================================================
 # SECRET REDACTION FILTER
@@ -4774,11 +5377,9 @@ class SecretRedactionFilter(logging.Filter):
 
         return True  # Always allow the record through
 
-
 # Install secret redaction filter globally
 _secret_filter = SecretRedactionFilter()
 logging.getLogger().addFilter(_secret_filter)
-
 
 # =============================================================================
 # ENHANCED TERMINAL UI (Live Spinners & Summary Table)
@@ -4867,7 +5468,6 @@ class LiveSpinner:
             idx += 1
             await asyncio.sleep(0.1)
 
-
 class StartupSummaryTable:
     """
     Collects and displays a summary table of startup phases.
@@ -4937,7 +5537,6 @@ class StartupSummaryTable:
 
         print(f"\n  Total: {total_ms:.0f}ms ({total_ms/1000:.2f}s) | Phases: {success_count}/{total_count} successful")
         print()
-
 
 class StartupProgressDisplay:
     """
@@ -5124,10 +5723,8 @@ class StartupProgressDisplay:
         print(f"  Phases: {summary['success']}✓ {summary['warning']}⚠ {summary['error']}✗")
         print("─" * 50)
 
-
 # Global startup display instance
 _startup_display: Optional[StartupProgressDisplay] = None
-
 
 def get_startup_display(enabled: bool = True) -> StartupProgressDisplay:
     """Get or create the global startup display instance."""
@@ -5135,7 +5732,6 @@ def get_startup_display(enabled: bool = True) -> StartupProgressDisplay:
     if _startup_display is None:
         _startup_display = StartupProgressDisplay(enabled=enabled)
     return _startup_display
-
 
 # =============================================================================
 # v197.1: LIVE PROGRESS DASHBOARD - Real-time multi-component status display
@@ -5148,7 +5744,6 @@ def get_startup_display(enabled: bool = True) -> StartupProgressDisplay:
 #
 # This replaces the log spam with a clean, real-time dashboard.
 # =============================================================================
-
 
 class ModelLoadingState(dict):
     """v242.4: Dict subclass that enforces model loading state invariants.
@@ -5189,7 +5784,6 @@ class ModelLoadingState(dict):
 
         if active and progress_pct is not None and progress_pct >= 100 and stage == "ready":
             super().__setitem__("active", False)
-
 
 class LiveProgressDashboard:
     """
@@ -6161,10 +6755,8 @@ class LiveProgressDashboard:
         empty = width - filled
         return f"[{self.PROGRESS_FULL * filled}{self.PROGRESS_EMPTY * empty}]"
 
-
 # Global live dashboard instance
 _live_dashboard: Optional[LiveProgressDashboard] = None
-
 
 def get_live_dashboard(enabled: bool = True) -> LiveProgressDashboard:
     """Get or create the global live dashboard instance."""
@@ -6173,12 +6765,10 @@ def get_live_dashboard(enabled: bool = True) -> LiveProgressDashboard:
         _live_dashboard = LiveProgressDashboard(enabled=enabled)
     return _live_dashboard
 
-
 # v226.2: Timestamp of last real (APARS-sourced) GCP progress update.
 # Used by _background_node_monitor to avoid overwriting real data with
 # synthetic time-based progress estimates.
 _last_real_gcp_progress_update: float = 0.0
-
 
 def update_dashboard_gcp_progress(
     phase: int = None,
@@ -6208,7 +6798,6 @@ def update_dashboard_gcp_progress(
             source=source,  # v233.2: Forward source for stall detection
             **kwargs
         )
-
 
 def update_dashboard_model_loading(
     active: bool = None,
@@ -6274,7 +6863,6 @@ def update_dashboard_model_loading(
             progress_source=progress_source,  # v233.1: Pass through progress source
         )
 
-
 def add_dashboard_log(message: str, level: str = "INFO") -> None:
     """
     v197.3: Add a log message to the dashboard buffer.
@@ -6288,7 +6876,6 @@ def add_dashboard_log(message: str, level: str = "INFO") -> None:
     """
     if _live_dashboard:
         _live_dashboard.add_log(message, level)
-
 
 class DashboardLogHandler(logging.Handler):
     """
@@ -6346,10 +6933,8 @@ class DashboardLogHandler(logging.Handler):
         except Exception:
             pass  # Never let logging errors crash the app
 
-
 # Global dashboard log handler
 _dashboard_log_handler: Optional[DashboardLogHandler] = None
-
 
 def get_dashboard_log_handler() -> DashboardLogHandler:
     """Get or create the global dashboard log handler."""
@@ -6357,7 +6942,6 @@ def get_dashboard_log_handler() -> DashboardLogHandler:
     if _dashboard_log_handler is None:
         _dashboard_log_handler = DashboardLogHandler()
     return _dashboard_log_handler
-
 
 def update_dashboard_component_status(
     component: str,
@@ -6378,7 +6962,6 @@ def update_dashboard_component_status(
     if _live_dashboard:
         _live_dashboard.update_component(component, status, detail)
 
-
 def update_dashboard_memory() -> None:
     """Helper to refresh memory stats on the dashboard (if available)."""
     if _live_dashboard:
@@ -6392,7 +6975,6 @@ def update_dashboard_memory() -> None:
             )
         except Exception:
             pass  # psutil may not be available
-
 
 # =============================================================================
 # v249.0: SUPERVISOR EVENT BUS & CLI PRESENTATION LAYER
@@ -6409,7 +6991,6 @@ def update_dashboard_memory() -> None:
 #   JARVIS_EVENT_BUS_QUEUE_SIZE = int               (default: 1000)
 #   JARVIS_EVENT_BUS_ENABLED    = true/false        (default: true)
 # =============================================================================
-
 
 class SupervisorEventType(Enum):
     """Categories of supervisor lifecycle events."""
@@ -6428,7 +7009,6 @@ class SupervisorEventType(Enum):
     SHUTDOWN_END = "shutdown_end"
     LOG = "log"
 
-
 class SupervisorEventSeverity(Enum):
     """Event severity levels."""
     DEBUG = "debug"
@@ -6437,7 +7017,6 @@ class SupervisorEventSeverity(Enum):
     ERROR = "error"
     CRITICAL = "critical"
     SUCCESS = "success"
-
 
 @dataclass(frozen=True)
 class SupervisorEvent:
@@ -6485,7 +7064,6 @@ class SupervisorEvent:
         if self.correlation_id:
             d["correlation_id"] = self.correlation_id
         return d
-
 
 class SupervisorEventBus:
     """
@@ -6539,11 +7117,16 @@ class SupervisorEventBus:
 
         If the async consumer loop hasn't started yet, delivers synchronously
         to all handlers (ignoring async handlers by closing their coroutines).
+
+        v266.1: Guard against post-stop emission — after stop(), the queue
+        exists but the consumer is dead, so events would accumulate without
+        delivery. Fall back to sync delivery or drop.
         """
         if not self._enabled:
             return
-        if self._queue is None:
-            self._deliver_sync(event)
+        if self._queue is None or not self._started:
+            if self._handlers:
+                self._deliver_sync(event)
             return
         try:
             if self._queue.full():
@@ -6585,6 +7168,7 @@ class SupervisorEventBus:
                 await asyncio.wait_for(self._consumer_task, timeout=3.0)
             except (asyncio.CancelledError, asyncio.TimeoutError):
                 pass
+            self._consumer_task = None
         # Drain remaining events
         if self._queue:
             while not self._queue.empty():
@@ -6592,6 +7176,7 @@ class SupervisorEventBus:
                     await self._deliver(self._queue.get_nowait())
                 except asyncio.QueueEmpty:
                     break
+            self._queue = None
 
     async def _consumer_loop(self) -> None:
         """Main consumer: dequeue events and deliver to all handlers."""
@@ -6629,9 +7214,7 @@ class SupervisorEventBus:
         """Number of registered handlers."""
         return len(self._handlers)
 
-
 _supervisor_event_bus: Optional[SupervisorEventBus] = None
-
 
 def get_event_bus() -> SupervisorEventBus:
     """Get the singleton SupervisorEventBus instance."""
@@ -6640,6 +7223,29 @@ def get_event_bus() -> SupervisorEventBus:
         _supervisor_event_bus = SupervisorEventBus()
     return _supervisor_event_bus
 
+async def _reset_event_bus_singleton() -> None:
+    """
+    v266.1: Stop and reset the SupervisorEventBus singleton for clean restart.
+
+    Root cause: SupervisorEventBus uses double-layer singleton (class._instance
+    + module._supervisor_event_bus). On in-process restart, stale handlers,
+    cancelled consumer tasks, and dead asyncio.Queue references persist,
+    causing event delivery to silently fail or raise RuntimeError on wrong loop.
+
+    Both layers must be reset: class-level _instance AND module-level reference.
+    """
+    global _supervisor_event_bus
+    bus = _supervisor_event_bus
+    if bus is not None:
+        try:
+            if bus._started:
+                await bus.stop()
+        except Exception:
+            pass
+        # Reset class-level singleton
+        SupervisorEventBus._instance = None
+        # Reset module-level reference
+        _supervisor_event_bus = None
 
 # ─────────────────────────────────────────────────────────────────────────────
 # CLI RENDERERS
@@ -6653,7 +7259,6 @@ def get_event_bus() -> SupervisorEventBus:
 # events to whatever renderer is active. Renderer crashes are silenced —
 # they never affect the control plane.
 # ─────────────────────────────────────────────────────────────────────────────
-
 
 class CliRenderer(ABC):
     """Abstract base for CLI presentation renderers."""
@@ -6696,7 +7301,6 @@ class CliRenderer(ABC):
             ) or event.severity == SupervisorEventSeverity.CRITICAL
         # ops: everything except DEBUG
         return event.severity != SupervisorEventSeverity.DEBUG
-
 
 class RichCliRenderer(CliRenderer):
     """
@@ -6764,7 +7368,6 @@ class RichCliRenderer(CliRenderer):
         """Access the recorded phase timeline for post-startup summary."""
         return list(self._phase_timeline)
 
-
 class PlainCliRenderer(CliRenderer):
     """
     Text-only renderer. No ANSI codes, no Rich. CI/non-TTY safe.
@@ -6801,7 +7404,6 @@ class PlainCliRenderer(CliRenderer):
         except Exception:
             pass
 
-
 class JsonCliRenderer(CliRenderer):
     """
     JSON-lines renderer: one JSON object per line. Machine-readable.
@@ -6820,7 +7422,6 @@ class JsonCliRenderer(CliRenderer):
             )
         except Exception:
             pass
-
 
 def _create_cli_renderer(
     ui_mode: str,
@@ -6855,7 +7456,6 @@ def _create_cli_renderer(
     else:
         return RichCliRenderer(verbosity=verbosity, no_animation=no_animation)
 
-
 # =============================================================================
 # STARTUP ISSUE COLLECTOR & HEALTH REPORT
 # =============================================================================
@@ -6873,7 +7473,6 @@ class IssueSeverity(Enum):
     ERROR = ("error", "\033[31m", "✗")      # Red
     CRITICAL = ("critical", "\033[35m", "🔥")  # Magenta
 
-
 class IssueCategory(Enum):
     """Categories for organizing startup issues."""
     GCP = "GCP / Cloud"
@@ -6888,7 +7487,6 @@ class IssueCategory(Enum):
     CONFIG = "Configuration"
     SYSTEM = "System / Hardware"
     GENERAL = "General"
-
 
 @dataclass
 class StartupIssue:
@@ -6932,7 +7530,6 @@ class StartupIssue:
                 for line in tb_lines:
                     lines.append(f"      {line}")
         return '\n'.join(lines)
-
 
 class StartupIssueCollector:
     """
@@ -7325,12 +7922,10 @@ class StartupIssueCollector:
 
         print()
 
-
 # Global instance for easy access
 def get_startup_issue_collector() -> StartupIssueCollector:
     """Get the global startup issue collector instance."""
     return StartupIssueCollector.get_instance()
-
 
 # =============================================================================
 # ANIMATED PROGRESS BAR
@@ -7452,13 +8047,11 @@ class AnimatedProgressBar:
         sys.stdout.write(f"\r\033[K  {green}[{bar}]{reset} {bold}100%{reset} ✓ {message} ({elapsed:.1f}s)\n")
         sys.stdout.flush()
 
-
 # ╔═══════════════════════════════════════════════════════════════════════════════╗
 # ║                                                                               ║
 # ║   END OF ZONE 2                                                               ║
 # ║                                                                               ║
 # ╚═══════════════════════════════════════════════════════════════════════════════╝
-
 
 # ╔═══════════════════════════════════════════════════════════════════════════════╗
 # ║                                                                               ║
@@ -7478,7 +8071,6 @@ class AnimatedProgressBar:
 # ║   - TieredStorageManager: Hot/warm/cold tiering                               ║
 # ║                                                                               ║
 # ╚═══════════════════════════════════════════════════════════════════════════════╝
-
 
 # =============================================================================
 # RESOURCE MANAGER BASE CLASS
@@ -7656,7 +8248,6 @@ class ResourceManagerBase(ABC):
             self._health_status = "error"
             return False, f"Health check error: {e}"
 
-
 # =============================================================================
 # DOCKER DAEMON STATUS ENUM
 # =============================================================================
@@ -7668,7 +8259,6 @@ class DaemonStatus(Enum):
     STARTING = "starting"
     RUNNING = "running"
     ERROR = "error"
-
 
 # =============================================================================
 # DOCKER DAEMON HEALTH DATACLASS
@@ -7702,7 +8292,6 @@ class DaemonHealth:
             "error_message": self.error_message,
             "healthy": self.is_healthy(),
         }
-
 
 # =============================================================================
 # DOCKER DAEMON MANAGER
@@ -8278,7 +8867,6 @@ class DockerDaemonManager(ResourceManagerBase):
             self._logger.error(f"Error stopping Docker: {e}")
             return False
 
-
 # =============================================================================
 # GCP INSTANCE STATUS ENUM
 # =============================================================================
@@ -8294,7 +8882,6 @@ class GCPInstanceStatus(Enum):
     SUSPENDED = "suspended"
     TERMINATED = "terminated"
     ERROR = "error"
-
 
 # =============================================================================
 # GCP INSTANCE MANAGER
@@ -8337,6 +8924,10 @@ class GCPInstanceManager(ResourceManagerBase):
         self.machine_type = os.getenv("GCP_MACHINE_TYPE", "e2-medium")
         self.credentials_path = os.getenv("GCP_CREDENTIALS_PATH", "")
         self.firewall_rule_prefix = os.getenv("GCP_FIREWALL_RULE_PREFIX", "jarvis-")
+        self.client_init_timeout = max(
+            5.0,
+            float(os.getenv("GCP_CLIENT_INIT_TIMEOUT", "20.0")),
+        )
 
         # State
         self.instance_status = GCPInstanceStatus.UNKNOWN
@@ -8382,29 +8973,50 @@ class GCPInstanceManager(ResourceManagerBase):
             return True  # Non-fatal - system can run without GCP
 
     async def _initialize_clients(self) -> None:
-        """Initialize GCP API clients."""
-        try:
-            # Try to import google-cloud libraries
+        """
+        Initialize GCP API clients.
+
+        Root hardening: client construction can block on credential discovery
+        (ADC, metadata probing, filesystem I/O). Build clients in a worker
+        thread behind an explicit timeout so startup remains deterministic.
+        """
+        def _build_clients_sync() -> Tuple[Any, Any]:
             from google.cloud import compute_v1
             from google.cloud import run_v2
 
-            # Initialize compute client
             if self.credentials_path and Path(self.credentials_path).exists():
-                self._compute_client = compute_v1.InstancesClient.from_service_account_json(
+                compute_client = compute_v1.InstancesClient.from_service_account_json(
                     self.credentials_path
                 )
             else:
-                self._compute_client = compute_v1.InstancesClient()
+                compute_client = compute_v1.InstancesClient()
 
-            # Initialize Cloud Run client if preferred
+            run_client = None
             if self.prefer_cloud_run:
                 if self.credentials_path and Path(self.credentials_path).exists():
-                    self._run_client = run_v2.ServicesClient.from_service_account_json(
+                    run_client = run_v2.ServicesClient.from_service_account_json(
                         self.credentials_path
                     )
                 else:
-                    self._run_client = run_v2.ServicesClient()
+                    run_client = run_v2.ServicesClient()
 
+            return compute_client, run_client
+
+        try:
+            compute_client, run_client = await asyncio.wait_for(
+                asyncio.to_thread(_build_clients_sync),
+                timeout=self.client_init_timeout,
+            )
+            self._compute_client = compute_client
+            self._run_client = run_client
+        except asyncio.CancelledError:
+            raise
+        except asyncio.TimeoutError as e:
+            self._compute_client = None
+            self._run_client = None
+            raise TimeoutError(
+                f"GCP client initialization timed out after {self.client_init_timeout:.1f}s"
+            ) from e
         except ImportError:
             self._logger.warning("Google Cloud libraries not installed, GCP features limited")
             # Add to startup issue collector for organized display
@@ -8616,7 +9228,6 @@ class GCPInstanceManager(ResourceManagerBase):
             "last_preemption_time": self._last_preemption_time,
         }
 
-
 # =============================================================================
 # v223.0: SMARTWATCHDOG - Enterprise-Grade Progress-Aware Component Monitor
 # =============================================================================
@@ -8628,7 +9239,6 @@ class SmartWatchdogResult(Enum):
     ERROR = "error"             # Component reported error
     TIMEOUT = "timeout"         # Hard timeout exceeded
     NETWORK_ERROR = "network"   # Consecutive network failures
-
 
 @dataclass
 class SmartWatchdogState:
@@ -8648,7 +9258,6 @@ class SmartWatchdogState:
     extensions_granted: int
     is_stalled: bool
     is_alive: bool
-
 
 class SmartWatchdog:
     """
@@ -8985,7 +9594,6 @@ class SmartWatchdog:
             response.get("current_step", ""),
         )
 
-
 # =============================================================================
 # COST TRACKER
 # =============================================================================
@@ -9007,7 +9615,6 @@ class SystemService(ABC):
     @abstractmethod
     async def cleanup(self) -> None:
         """Release resources. Called during shutdown."""
-
 
 class CostTracker(ResourceManagerBase, SystemService):
     """
@@ -9359,7 +9966,6 @@ class CostTracker(ResourceManagerBase, SystemService):
             "regular_rate": self.regular_vm_hourly,
         }
 
-
 # =============================================================================
 # SCALE TO ZERO COST OPTIMIZER
 # =============================================================================
@@ -9544,7 +10150,6 @@ class ScaleToZeroCostOptimizer(ResourceManagerBase):
             "estimated_cost_saved": round(self.estimated_cost_saved, 4),
             "monitoring_active": self._monitoring_task is not None and not self._monitoring_task.done(),
         }
-
 
 # =============================================================================
 # DYNAMIC PORT MANAGER
@@ -9919,7 +10524,6 @@ class DynamicPortManager(ResourceManagerBase):
         """Get the best available port (cached or primary)."""
         return self.selected_port or self.primary_port
 
-
 # =============================================================================
 # COORDINATED PORT ASSIGNMENT
 # =============================================================================
@@ -9931,7 +10535,6 @@ class PortAssignment(NamedTuple):
     frontend_port: int
     conflicts_resolved: int
     assignment_method: str  # "explicit", "environment", "dynamic"
-
 
 async def assign_all_ports(
     config: Optional["SystemKernelConfig"] = None,
@@ -10069,7 +10672,6 @@ async def assign_all_ports(
         conflicts_resolved=conflicts_resolved,
         assignment_method=assignment_method,
     )
-
 
 # =============================================================================
 # SEMANTIC VOICE CACHE MANAGER
@@ -10403,7 +11005,6 @@ class SemanticVoiceCacheManager(ResourceManagerBase):
             "last_cleanup_time": self._last_cleanup_time,
         }
 
-
 # =============================================================================
 # TIERED STORAGE MANAGER
 # =============================================================================
@@ -10650,7 +11251,6 @@ class TieredStorageManager(ResourceManagerBase):
             "bytes_migrated_cold": self._bytes_migrated_cold,
         }
 
-
 # =============================================================================
 # RESOURCE MANAGER REGISTRY
 # =============================================================================
@@ -10703,7 +11303,9 @@ class ResourceManagerRegistry:
         self,
         parallel: bool = True,
         base_progress: int = 15,
-        end_progress: int = 30
+        end_progress: int = 30,
+        manager_timeout: Optional[float] = None,
+        overall_timeout: Optional[float] = None,
     ) -> Dict[str, bool]:
         """
         Initialize all registered managers with progress reporting.
@@ -10715,6 +11317,10 @@ class ResourceManagerRegistry:
             parallel: Initialize in parallel (faster) or sequential (safer)
             base_progress: Starting progress percentage (default: 15)
             end_progress: Ending progress percentage (default: 30)
+            manager_timeout: Per-manager initialization timeout in seconds.
+                            None/<=0 disables per-manager timeout.
+            overall_timeout: Global timeout for the entire resource initialization.
+                            None/<=0 disables global timeout.
 
         Returns:
             Dict mapping manager name to success status
@@ -10723,83 +11329,175 @@ class ResourceManagerRegistry:
         total = len(self._managers)
         completed = 0
         progress_per_manager = (end_progress - base_progress) / max(total, 1)
+        start_monotonic = time.monotonic()
+        manager_start_times: Dict[str, float] = {}
+
+        if manager_timeout is not None and manager_timeout <= 0:
+            manager_timeout = None
+        if overall_timeout is not None and overall_timeout <= 0:
+            overall_timeout = None
+        overall_deadline = (
+            start_monotonic + overall_timeout
+            if overall_timeout is not None
+            else None
+        )
+
+        async def _emit_progress(name: str, status: str) -> None:
+            nonlocal completed
+            completed += 1
+            current_progress = int(base_progress + (completed * progress_per_manager))
+
+            if self._progress_callback:
+                try:
+                    await self._progress_callback(
+                        name,
+                        status,
+                        completed,
+                        total,
+                        current_progress,
+                    )
+                except Exception as cb_err:
+                    self._logger.debug(f"Progress callback error: {cb_err}")
+
+            self._logger.debug(
+                f"[ResourceRegistry] {name} {status} ({completed}/{total}, {current_progress}%)"
+            )
+
+        async def _initialize_manager(
+            name: str,
+            manager: ResourceManagerBase,
+        ) -> bool:
+            if manager_timeout is None:
+                return await manager.safe_initialize()
+            try:
+                return await asyncio.wait_for(
+                    manager.safe_initialize(),
+                    timeout=manager_timeout,
+                )
+            except asyncio.TimeoutError:
+                manager._ready = False
+                manager._health_status = "error"
+                manager._error = (
+                    f"Initialization timed out after {manager_timeout:.1f}s"
+                )
+                self._logger.warning(
+                    f"Manager {name} timed out after {manager_timeout:.1f}s"
+                )
+                return False
 
         if parallel:
-            # v188.0: Parallel initialization with per-completion progress updates
-            # Use asyncio.wait with FIRST_COMPLETED to report progress incrementally
             pending_tasks: Dict[asyncio.Task, str] = {}
-            
+            pending_log_interval = max(
+                5.0,
+                float(os.environ.get("JARVIS_RESOURCE_PENDING_LOG_INTERVAL", "15.0")),
+            )
+            last_pending_log = start_monotonic
+
             for name, manager in self._managers.items():
-                task = create_safe_task(manager.safe_initialize())
+                manager_start_times[name] = time.monotonic()
+                self._logger.info(f"[ResourceRegistry] Starting {name}...")
+                task = create_safe_task(
+                    _initialize_manager(name, manager),
+                    name=f"resource-init-{name}",
+                )
                 pending_tasks[task] = name
-            
+
             while pending_tasks:
-                # Wait for any task to complete
+                now = time.monotonic()
+                if overall_deadline is not None and now >= overall_deadline:
+                    self._logger.warning(
+                        f"[ResourceRegistry] Overall initialization timeout "
+                        f"after {overall_timeout:.1f}s; marking remaining managers as failed"
+                    )
+                    for task, name in list(pending_tasks.items()):
+                        task.cancel()
+                        pending_tasks.pop(task, None)
+                        results[name] = False
+                        await _emit_progress(name, "timeout")
+                    break
+
+                if (now - last_pending_log) >= pending_log_interval and pending_tasks:
+                    pending_names = ", ".join(sorted(pending_tasks.values()))
+                    self._logger.info(
+                        f"[ResourceRegistry] Waiting on {len(pending_tasks)} manager(s): "
+                        f"{pending_names} (elapsed {now - start_monotonic:.1f}s)"
+                    )
+                    last_pending_log = now
+
+                wait_timeout: Optional[float] = None
+                if overall_deadline is not None:
+                    wait_timeout = max(0.0, min(1.0, overall_deadline - now))
+
                 done, pending = await asyncio.wait(
                     pending_tasks.keys(),
+                    timeout=wait_timeout,
                     return_when=asyncio.FIRST_COMPLETED
                 )
-                
+
+                if not done:
+                    continue
+
                 for task in done:
                     name = pending_tasks.pop(task)
                     try:
                         result = task.result()
-                        results[name] = result
-                        status = "complete" if result else "failed"
+                        result_bool = bool(result)
+                        results[name] = result_bool
+                        status = "complete" if result_bool else "failed"
+                    except asyncio.CancelledError:
+                        results[name] = False
+                        status = "cancelled"
                     except Exception as e:
                         self._logger.error(f"Manager {name} initialization error: {e}")
                         results[name] = False
                         status = "error"
-                    
-                    completed += 1
-                    current_progress = int(base_progress + (completed * progress_per_manager))
-                    
-                    # v188.0: Report progress for each completed manager
-                    if self._progress_callback:
-                        try:
-                            await self._progress_callback(
-                                name,
-                                status,
-                                completed,
-                                total,
-                                current_progress
-                            )
-                        except Exception as cb_err:
-                            self._logger.debug(f"Progress callback error: {cb_err}")
-                    
-                    self._logger.debug(
-                        f"[ResourceRegistry] {name} {status} ({completed}/{total}, {current_progress}%)"
+
+                    elapsed_s = time.monotonic() - manager_start_times.get(name, start_monotonic)
+                    self._logger.info(
+                        f"[ResourceRegistry] {name} -> {status} ({elapsed_s:.1f}s)"
                     )
-                
-                # Update pending_tasks dict with remaining tasks
-                pending_tasks = {t: pending_tasks.get(t) for t in pending if t in pending_tasks}
+                    await _emit_progress(name, status)
+
+                pending_tasks = {t: pending_tasks[t] for t in pending if t in pending_tasks}
         else:
             # Sequential initialization with progress updates
             for name, manager in self._managers.items():
+                now = time.monotonic()
+                if overall_deadline is not None and now >= overall_deadline:
+                    self._logger.warning(
+                        f"[ResourceRegistry] Overall initialization timeout "
+                        f"after {overall_timeout:.1f}s; marking remaining managers as failed"
+                    )
+                    results[name] = False
+                    await _emit_progress(name, "timeout")
+                    for remaining_name in self._managers.keys():
+                        if remaining_name in results:
+                            continue
+                        results[remaining_name] = False
+                        await _emit_progress(remaining_name, "timeout")
+                    break
+
                 try:
-                    result = await manager.safe_initialize()
-                    results[name] = result
-                    status = "complete" if result else "failed"
+                    manager_start_times[name] = time.monotonic()
+                    self._logger.info(f"[ResourceRegistry] Starting {name}...")
+                    result = await _initialize_manager(name, manager)
+                    result_bool = bool(result)
+                    results[name] = result_bool
+                    status = "complete" if result_bool else "failed"
                 except Exception as e:
                     self._logger.error(f"Manager {name} initialization error: {e}")
                     results[name] = False
                     status = "error"
-                
-                completed += 1
-                current_progress = int(base_progress + (completed * progress_per_manager))
-                
-                # v188.0: Report progress for each completed manager
-                if self._progress_callback:
-                    try:
-                        await self._progress_callback(
-                            name,
-                            status,
-                            completed,
-                            total,
-                            current_progress
-                        )
-                    except Exception as cb_err:
-                        self._logger.debug(f"Progress callback error: {cb_err}")
+
+                elapsed_s = time.monotonic() - manager_start_times.get(name, start_monotonic)
+                self._logger.info(
+                    f"[ResourceRegistry] {name} -> {status} ({elapsed_s:.1f}s)"
+                )
+                await _emit_progress(name, status)
+
+        for name in self._managers.keys():
+            if name not in results:
+                results[name] = False
 
         self._initialized = True
         return results
@@ -10845,13 +11543,11 @@ class ResourceManagerRegistry:
         """Number of registered managers."""
         return len(self._managers)
 
-
 # =============================================================================
 # v239.0: SYSTEM SERVICE REGISTRY — Uniform lifecycle for dead-code activation
 # =============================================================================
 # NOTE: `SystemService` is declared earlier (before first subclass) to avoid
 # import-time base-class NameError from class ordering.
-
 
 @dataclass
 class ServiceDescriptor:
@@ -10866,7 +11562,6 @@ class ServiceDescriptor:
     error: Optional[str] = None
     init_time_ms: float = 0.0
     memory_delta_mb: float = 0.0
-
 
 class SystemServiceRegistry:
     """Manages lifecycle of system services in dependency-ordered waves.
@@ -11085,7 +11780,6 @@ class SystemServiceRegistry:
             "memory_mb": round(total_mem, 1),
             "init_time_ms": round(total_time, 0),
         }
-
 
 # =============================================================================
 # SPOT INSTANCE RESILIENCE HANDLER
@@ -11326,7 +12020,6 @@ class SpotInstanceResilienceHandler(ResourceManagerBase):
             "preemption_history_count": len(self.preemption_history),
             "polling_active": self._polling_active,
         }
-
 
 # =============================================================================
 # INTELLIGENT CACHE MANAGER
@@ -11633,7 +12326,6 @@ class IntelligentCacheManager(ResourceManagerBase):
             "preserve_patterns": self.preserve_patterns,
         }
 
-
 # =============================================================================
 # DYNAMIC RAM MONITOR - Advanced Memory Tracking
 # =============================================================================
@@ -11911,7 +12603,6 @@ class DynamicRAMMonitor:
 
         return (False, "MAINTAINING: GCP deployment active")
 
-
 # =============================================================================
 # LAZY ASYNC LOCK - Python 3.9 Compatibility
 # =============================================================================
@@ -11943,7 +12634,6 @@ class LazyAsyncLock:
         if self._lock is not None:
             self._lock.release()
         return False
-
 
 # =============================================================================
 # GLOBAL SESSION MANAGER - Session Tracking Singleton
@@ -12258,11 +12948,9 @@ class GlobalSessionManager:
             **self._stats,
         }
 
-
 # Module-level singleton accessor
 _global_session_manager: Optional[GlobalSessionManager] = None
 _session_manager_lock = threading.Lock()
-
 
 def get_session_manager() -> GlobalSessionManager:
     """Get the global session manager singleton."""
@@ -12272,7 +12960,6 @@ def get_session_manager() -> GlobalSessionManager:
             if _global_session_manager is None:
                 _global_session_manager = GlobalSessionManager()
     return _global_session_manager
-
 
 # =============================================================================
 # SUPERVISOR RESTART MANAGER - Cross-Repo Process Management
@@ -12289,7 +12976,6 @@ class SupervisorManagedProcess:
     port: Optional[int] = None
     enabled: bool = True
     exit_code: Optional[int] = None
-
 
 class SupervisorRestartManager:
     """
@@ -12452,7 +13138,6 @@ class SupervisorRestartManager:
                 "enabled": managed.enabled,
             }
         return status
-
 
 # =============================================================================
 # TRINITY LAUNCH CONFIG - Environment-Driven Configuration
@@ -12628,7 +13313,6 @@ class TrinityLaunchConfig:
         if not self.trinity_instance_id:
             self.trinity_instance_id = f"trinity_{uuid.uuid4().hex[:8]}"
 
-
 # =============================================================================
 # DYNAMIC REPO DISCOVERY - Intelligent Repository Finding
 # =============================================================================
@@ -12802,7 +13486,6 @@ class DynamicRepoDiscovery:
 
         return None
 
-
 # =============================================================================
 # ROBUST VENV DETECTOR - Python Environment Detection
 # =============================================================================
@@ -12929,7 +13612,6 @@ class RobustVenvDetector:
         """Alias for find_python."""
         return self.find_python(repo_path)
 
-
 # =============================================================================
 # TRINITY TRACE CONTEXT - Distributed Tracing
 # =============================================================================
@@ -12969,7 +13651,6 @@ class TrinityTraceContext:
             trace_flags=self.trace_flags,
         )
 
-
 # =============================================================================
 # ASYNC VOICE NARRATOR - Enterprise Voice Feedback for Lifecycle Events
 # =============================================================================
@@ -12979,7 +13660,6 @@ class VoicePriority(IntEnum):
     HIGH = 1      # Authentication events, phase completions
     MEDIUM = 2    # Zone transitions, service status
     LOW = 3       # Progress updates, informational
-
 
 class AsyncVoiceNarrator:
     """
@@ -13767,10 +14447,8 @@ class AsyncVoiceNarrator:
                     except ProcessLookupError:
                         pass  # v253.2: Exited between terminate and kill
 
-
 # Global narrator instance (lazy initialization)
 _global_narrator: Optional[AsyncVoiceNarrator] = None
-
 
 def get_voice_narrator() -> AsyncVoiceNarrator:
     """Get or create the global voice narrator instance."""
@@ -13778,7 +14456,6 @@ def get_voice_narrator() -> AsyncVoiceNarrator:
     if _global_narrator is None:
         _global_narrator = AsyncVoiceNarrator()
     return _global_narrator
-
 
 # =============================================================================
 # PHYSICS-AWARE STARTUP MANAGER - Voice Authentication
@@ -13898,7 +14575,6 @@ class PhysicsAwareStartupManager:
             "spoofs_detected": self.spoofs_detected,
         }
 
-
 # =============================================================================
 # RESOURCE STATUS - Enhanced Resource Metrics
 # =============================================================================
@@ -13940,7 +14616,6 @@ class ResourceStatus:
     def is_cloud_mode(self) -> bool:
         return self.startup_mode in ("cloud_first", "cloud_only")
 
-
 # =============================================================================
 # INTELLIGENT RESOURCE ORCHESTRATOR - Unified Resource Management
 # =============================================================================
@@ -13967,9 +14642,9 @@ class IntelligentResourceOrchestrator:
     """
 
     # Thresholds (configurable via environment)
-    CLOUD_THRESHOLD_GB = float(os.getenv("JARVIS_CLOUD_THRESHOLD_GB", "6.0"))
-    CRITICAL_THRESHOLD_GB = float(os.getenv("JARVIS_CRITICAL_THRESHOLD_GB", "2.0"))
-    OPTIMIZE_THRESHOLD_GB = float(os.getenv("JARVIS_OPTIMIZE_THRESHOLD_GB", "4.0"))
+    CLOUD_THRESHOLD_GB = _get_env_float("JARVIS_CLOUD_THRESHOLD_GB", 6.0)
+    CRITICAL_THRESHOLD_GB = _get_env_float("JARVIS_CRITICAL_THRESHOLD_GB", 2.0)
+    OPTIMIZE_THRESHOLD_GB = _get_env_float("JARVIS_OPTIMIZE_THRESHOLD_GB", 4.0)
 
     def __init__(self, config: SystemKernelConfig):
         self.config = config
@@ -13988,8 +14663,8 @@ class IntelligentResourceOrchestrator:
 
     # v258.3: Planned workload estimates for predictive capacity planning.
     # These are used to predict post-startup RAM, not just current snapshot.
-    _MACOS_BASE_CONSUMPTION_GB = float(os.getenv("JARVIS_MACOS_BASE_GB", "5.0"))
-    _PLANNED_ML_WORKLOAD_GB_FALLBACK = float(os.getenv("JARVIS_PLANNED_ML_GB", "4.6"))
+    _MACOS_BASE_CONSUMPTION_GB = _get_env_float("JARVIS_MACOS_BASE_GB", 5.0)
+    _PLANNED_ML_WORKLOAD_GB_FALLBACK = _get_env_float("JARVIS_PLANNED_ML_GB", 4.6)
     # Static fallback: whisper_medium(2.0) + speechbrain(0.3) + ecapa(0.2) + pytorch(0.5)
     #        + transformers(0.3) + neural_mesh(0.8) + warmup(0.5) = 4.6GB
 
@@ -14260,7 +14935,6 @@ class IntelligentResourceOrchestrator:
         """Check if cloud mode was activated."""
         return self._cloud_activated
 
-
 # =============================================================================
 # VM SESSION TRACKER - Simplified VM Ownership Tracking
 # =============================================================================
@@ -14407,7 +15081,6 @@ class VMSessionTracker:
             return "unified_supervisor.py" in " ".join(cmdline) or "start_system.py" in " ".join(cmdline)
         except (psutil.NoSuchProcess, psutil.AccessDenied):
             return False
-
 
 # =============================================================================
 # CACHE STATISTICS TRACKER - Comprehensive Cache Metrics
@@ -14636,7 +15309,6 @@ class CacheStatisticsTracker:
             return 0.0
         return self._cache_misses / self._total_queries
 
-
 # =============================================================================
 # PROCESS RESTART MANAGER - Advanced Process Supervision
 # =============================================================================
@@ -14651,7 +15323,6 @@ class RestartableManagedProcess:
     max_restarts: int = 5
     port: Optional[int] = None
     exit_code: Optional[int] = None
-
 
 class ProcessRestartManager:
     """
@@ -14905,10 +15576,8 @@ class ProcessRestartManager:
             }
         return status
 
-
 # Global restart manager instance
 _restart_manager: Optional[ProcessRestartManager] = None
-
 
 def get_restart_manager() -> ProcessRestartManager:
     """Get the global process restart manager instance."""
@@ -14916,7 +15585,6 @@ def get_restart_manager() -> ProcessRestartManager:
     if _restart_manager is None:
         _restart_manager = ProcessRestartManager()
     return _restart_manager
-
 
 # =============================================================================
 # TRINITY CIRCUIT BREAKER (v100.1) - Persistent State Circuit Breaker
@@ -14927,7 +15595,6 @@ class TrinityCircuitBreakerState(Enum):
     CLOSED = "closed"      # Normal operation, requests pass through
     OPEN = "open"          # Circuit tripped, requests blocked
     HALF_OPEN = "half_open"  # Testing if service recovered
-
 
 class TrinityCircuitBreaker:
     """
@@ -15083,7 +15750,6 @@ class TrinityCircuitBreaker:
             "can_execute": self.can_execute(),
         }
 
-
 # =============================================================================
 # ASYNC RETRY UTILITY (v95.0) - Standalone Retry Function
 # =============================================================================
@@ -15180,7 +15846,6 @@ async def async_retry(
         raise last_exception
     raise RuntimeError(f"{operation_name} failed after {max_attempts} attempts")
 
-
 # =============================================================================
 # STARTUP PHASE ENUM - Phases of Supervisor Startup
 # =============================================================================
@@ -15198,7 +15863,6 @@ class StartupPhase(Enum):
     JARVIS_START = "jarvis_start"       # Full JARVIS system startup
     COMPLETE = "complete"               # Startup completed successfully
     FAILED = "failed"                   # Startup failed
-
 
 # =============================================================================
 # STABILIZED CHROME LAUNCHER - v197.4 Root Cause Fix for Code 5 Crashes
@@ -15395,7 +16059,6 @@ CDP_PORT_RANGE_START = int(os.environ.get("JARVIS_CDP_PORT_START", "9222"))
 CDP_PORT_RANGE_END = int(os.environ.get("JARVIS_CDP_PORT_END", "9232"))
 _current_cdp_port: Optional[int] = None  # Cached active CDP port
 
-
 def _is_port_available(port: int) -> bool:
     """Check if a TCP port is available for binding."""
     import socket
@@ -15406,7 +16069,6 @@ def _is_port_available(port: int) -> bool:
             return True
     except (OSError, socket.error):
         return False
-
 
 def _find_available_cdp_port(start: int = CDP_PORT_RANGE_START, end: int = CDP_PORT_RANGE_END) -> Optional[int]:
     """
@@ -15423,12 +16085,10 @@ def _find_available_cdp_port(start: int = CDP_PORT_RANGE_START, end: int = CDP_P
             return port
     return None
 
-
 def get_active_cdp_port() -> int:
     """Get the currently active CDP port (for external callers like background_actuator)."""
     global _current_cdp_port
     return _current_cdp_port or CDP_PORT_RANGE_START
-
 
 def get_chrome_stability_flags() -> List[str]:
     """
@@ -15458,7 +16118,6 @@ def get_chrome_stability_flags() -> List[str]:
         # Unknown platform, use minimal flags
         return CHROME_MINIMAL_STABILITY_FLAGS.copy()
 
-
 # Legacy alias for backward compatibility
 CHROME_STABILITY_FLAGS = get_chrome_stability_flags()
 
@@ -15481,7 +16140,6 @@ CHROME_BINARY_PATHS: Dict[str, List[str]] = {
         r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
     ],
 }
-
 
 class StabilizedChromeLauncher:
     """
@@ -16057,10 +16715,8 @@ class StabilizedChromeLauncher:
             "platform": sys.platform,  # v197.6
         }
 
-
 # Global stabilized chrome launcher instance
 _stabilized_chrome_launcher: Optional[StabilizedChromeLauncher] = None
-
 
 def get_stabilized_chrome_launcher() -> StabilizedChromeLauncher:
     """
@@ -16089,7 +16745,6 @@ def get_stabilized_chrome_launcher() -> StabilizedChromeLauncher:
         _stabilized_chrome_launcher = StabilizedChromeLauncher()
     return _stabilized_chrome_launcher
 
-
 # =============================================================================
 # INTELLIGENT CHROME INCOGNITO MANAGER - Browser Automation
 # =============================================================================
@@ -16100,19 +16755,16 @@ def get_stabilized_chrome_launcher() -> StabilizedChromeLauncher:
 _browser_opened_this_startup: bool = os.environ.get("JARVIS_BROWSER_OPENED", "").lower() == "true"
 _browser_lock: Optional[asyncio.Lock] = None
 
-
 def _mark_browser_opened():
     """Mark browser as opened both locally and in environment for cross-process coordination."""
     global _browser_opened_this_startup
     _browser_opened_this_startup = True
     os.environ["JARVIS_BROWSER_OPENED"] = "true"
 
-
 def _is_browser_opened() -> bool:
     """Check if browser was already opened (local flag OR environment variable)."""
     global _browser_opened_this_startup
     return _browser_opened_this_startup or os.environ.get("JARVIS_BROWSER_OPENED", "").lower() == "true"
-
 
 def _get_browser_lock() -> asyncio.Lock:
     """Get or create the global browser lock (lazy init for Python 3.9)."""
@@ -16120,7 +16772,6 @@ def _get_browser_lock() -> asyncio.Lock:
     if _browser_lock is None:
         _browser_lock = asyncio.Lock()
     return _browser_lock
-
 
 class IntelligentChromeIncognitoManager:
     """
@@ -16859,10 +17510,8 @@ class IntelligentChromeIncognitoManager:
             'patterns_loaded': len(self.JARVIS_URL_PATTERNS),
         }
 
-
 # Global Chrome manager singleton
 _chrome_manager: Optional[IntelligentChromeIncognitoManager] = None
-
 
 def get_chrome_manager() -> IntelligentChromeIncognitoManager:
     """Get the global Chrome incognito manager."""
@@ -16870,7 +17519,6 @@ def get_chrome_manager() -> IntelligentChromeIncognitoManager:
     if _chrome_manager is None:
         _chrome_manager = IntelligentChromeIncognitoManager()
     return _chrome_manager
-
 
 # =============================================================================
 # BROWSER CRASH MONITOR - v197.1 Intelligent Browser Crash Detection & Recovery
@@ -16891,7 +17539,6 @@ class BrowserCrashSeverity(Enum):
     HIGH = "high"         # Critical, requires intervention
     CRITICAL = "critical" # System-wide impact
 
-
 @dataclass
 class BrowserCrashEvent:
     """Record of a browser crash event."""
@@ -16905,7 +17552,6 @@ class BrowserCrashEvent:
     recovery_successful: bool = False
     error_message: str = ""
     stack_trace: Optional[str] = None
-
 
 class BrowserCrashMonitor:
     """
@@ -17297,10 +17943,8 @@ class BrowserCrashMonitor:
         
         return False
 
-
 # Global browser crash monitor singleton
 _browser_crash_monitor: Optional[BrowserCrashMonitor] = None
-
 
 def get_browser_crash_monitor() -> BrowserCrashMonitor:
     """
@@ -17330,7 +17974,6 @@ def get_browser_crash_monitor() -> BrowserCrashMonitor:
         _browser_crash_monitor = BrowserCrashMonitor()
     return _browser_crash_monitor
 
-
 # v210.0: NEW - Get the modular browser stability manager
 def get_browser_stability_manager():
     """
@@ -17354,12 +17997,10 @@ def get_browser_stability_manager():
             _logger.warning(f"[v210.0] Failed to get stability manager: {e}")
     return None
 
-
 # =============================================================================
 # NOTE: UnifiedTrinityConnector v1.0 (dead copy) removed in v241.0.
 # The active copy with Lamport clocks lives at line ~56528.
 # =============================================================================
-
 
 # =============================================================================
 # ADVANCED STARTUP BOOTSTRAPPER - Dynamic Environment Discovery
@@ -17744,10 +18385,8 @@ class AdvancedStartupBootstrapper:
             'telemetry_events': len(self._telemetry['events']),
         }
 
-
 # Global bootstrapper singleton
 _bootstrapper: Optional[AdvancedStartupBootstrapper] = None
-
 
 def get_bootstrapper() -> AdvancedStartupBootstrapper:
     """Get the global bootstrapper."""
@@ -17755,7 +18394,6 @@ def get_bootstrapper() -> AdvancedStartupBootstrapper:
     if _bootstrapper is None:
         _bootstrapper = AdvancedStartupBootstrapper()
     return _bootstrapper
-
 
 # =============================================================================
 # PROCESS INFO DATACLASS - Process Metadata
@@ -17769,7 +18407,6 @@ class ProcessInfo:
     age_seconds: float
     memory_mb: float = 0.0
     source: str = "scan"  # "pid_file", "scan", or "port_<N>"
-
 
 # =============================================================================
 # PARALLEL PROCESS CLEANER - Intelligent Process Cleanup
@@ -18303,7 +18940,6 @@ class ParallelProcessCleaner:
 
         return True
 
-
 # =============================================================================
 # ZOMBIE PROCESS INFO DATACLASS - Extended Process Metadata
 # =============================================================================
@@ -18322,7 +18958,6 @@ class ZombieProcessInfo:
     stale_connection_count: int = 0
     repo_origin: str = "unknown"  # jarvis, jarvis-prime, reactor-core
     detection_source: str = "scan"  # scan, port, registry, pid_file
-
 
 # =============================================================================
 # COMPREHENSIVE ZOMBIE CLEANUP - Cross-Repo Zombie Detection
@@ -18596,10 +19231,8 @@ class ComprehensiveZombieCleanup:
         """Get cleanup statistics."""
         return self._stats.copy()
 
-
 # Global process cleaner singleton
 _process_cleaner: Optional[ParallelProcessCleaner] = None
-
 
 def get_process_cleaner() -> ParallelProcessCleaner:
     """Get the global process cleaner."""
@@ -18608,12 +19241,10 @@ def get_process_cleaner() -> ParallelProcessCleaner:
         _process_cleaner = ParallelProcessCleaner()
     return _process_cleaner
 
-
 # =============================================================================
 # ZONE 3.7: INTELLIGENT CACHE MANAGER
 # =============================================================================
 # v110.0: Dynamic Python module and bytecode cache management
-
 
 class _Deprecated_IntelligentCacheManager:  # v239.0: superseded by IntelligentCacheManager(ResourceManagerBase) at line ~10879
     """
@@ -18971,10 +19602,8 @@ class _Deprecated_IntelligentCacheManager:  # v239.0: superseded by IntelligentC
         stats["bytes_freed_mb"] = stats["bytes_freed"] / (1024 * 1024)
         return stats
 
-
 # Global cache manager singleton
 _cache_manager: Optional[IntelligentCacheManager] = None
-
 
 def get_cache_manager() -> IntelligentCacheManager:
     """Get global Intelligent Cache Manager instance."""
@@ -18983,12 +19612,10 @@ def get_cache_manager() -> IntelligentCacheManager:
         _cache_manager = IntelligentCacheManager()
     return _cache_manager
 
-
 # =============================================================================
 # ZONE 3.8: PHYSICS-AWARE VOICE AUTHENTICATION MANAGER
 # =============================================================================
 # v109.0: Physics-based voice anti-spoofing and liveness detection
-
 
 class PhysicsAwareAuthManager:
     """
@@ -19253,12 +19880,10 @@ class PhysicsAwareAuthManager:
             "spoof_history_count": len(self._spoof_history),
         }
 
-
 # =============================================================================
 # ZONE 3.9: SPOT INSTANCE RESILIENCE HANDLER
 # =============================================================================
 # v109.0: GCP Spot VM preemption handling and automatic fallback
-
 
 class _Deprecated_SpotInstanceResilienceHandler:  # v239.0: superseded by SpotInstanceResilienceHandler(ResourceManagerBase) at line ~10638
     """
@@ -19549,12 +20174,10 @@ class _Deprecated_SpotInstanceResilienceHandler:  # v239.0: superseded by SpotIn
             "has_webhook": self.preemption_webhook is not None,
         }
 
-
 # =============================================================================
 # ZONE 3.10: INTELLIGENT MODEL MANAGER
 # =============================================================================
 # v109.0: Memory-aware model selection with auto-download from HuggingFace
-
 
 # Model catalog for available LLM models
 MODEL_CATALOG: Dict[str, Dict[str, Any]] = {
@@ -19599,7 +20222,6 @@ MODEL_CATALOG: Dict[str, Dict[str, Any]] = {
         "context_length": 8192,
     },
 }
-
 
 class IntelligentModelManager:
     """
@@ -20059,13 +20681,11 @@ class IntelligentModelManager:
             **self._stats,
         }
 
-
 # ╔═══════════════════════════════════════════════════════════════════════════════╗
 # ║                                                                               ║
 # ║   END OF ZONE 3                                                               ║
 # ║                                                                               ║
 # ╚═══════════════════════════════════════════════════════════════════════════════╝
-
 
 # ╔═══════════════════════════════════════════════════════════════════════════════╗
 # ║                                                                               ║
@@ -20085,7 +20705,6 @@ class IntelligentModelManager:
 # ║   - AdaptiveThresholdManager: NO hardcoded thresholds                         ║
 # ║                                                                               ║
 # ╚═══════════════════════════════════════════════════════════════════════════════╝
-
 
 # =============================================================================
 # INTELLIGENCE MANAGER BASE CLASS
@@ -20203,7 +20822,6 @@ class IntelligenceManagerBase(ABC):
         if len(self._observations) > self._max_observations:
             self._observations.pop(0)
 
-
 # =============================================================================
 # RAM STATE ENUM
 # =============================================================================
@@ -20214,7 +20832,6 @@ class RAMState(Enum):
     WARNING = "WARNING"
     CRITICAL = "CRITICAL"
     EMERGENCY = "EMERGENCY"
-
 
 # =============================================================================
 # ADAPTIVE THRESHOLD MANAGER
@@ -20429,7 +21046,6 @@ class AdaptiveThresholdManager:
             "observation_count": len(self._outcome_history),
             "min_observations": self.min_observations,
         }
-
 
 # =============================================================================
 # HYBRID LEARNING MODEL
@@ -20704,7 +21320,6 @@ class HybridLearningModel:
             },
         }
 
-
 # =============================================================================
 # SAI HYBRID INTEGRATION
 # =============================================================================
@@ -20772,7 +21387,6 @@ class SAIHybridIntegration:
         """Save learned model to persistent storage."""
         # This would persist to the SAI database
         pass
-
 
 # =============================================================================
 # HYBRID WORKLOAD ROUTER
@@ -21390,7 +22004,6 @@ echo "=== JARVIS GCP Instance Ready ===" | tee -a /var/log/jarvis-startup.log
             "thresholds": self.threshold_manager.get_all_thresholds(),
         }
 
-
 # =============================================================================
 # GOAL INFERENCE ENGINE
 # =============================================================================
@@ -21502,7 +22115,6 @@ class GoalInferenceEngine(IntelligenceManagerBase):
             "method": "rule_based",
             "meets_threshold": best_score >= self.confidence_threshold,
         }
-
 
 # =============================================================================
 # HYBRID INTELLIGENCE COORDINATOR
@@ -21706,7 +22318,6 @@ class HybridIntelligenceCoordinator(IntelligenceManagerBase):
             "decision_history_count": len(self._decision_history),
         }
 
-
 # =============================================================================
 # INTELLIGENCE REGISTRY
 # =============================================================================
@@ -21723,6 +22334,7 @@ class IntelligenceRegistry:
         self._managers: Dict[str, IntelligenceManagerBase] = {}
         self._logger = UnifiedLogger()
         self._initialized = False
+        self._last_init_errors: Dict[str, str] = {}
 
     def register(self, manager: IntelligenceManagerBase) -> None:
         """Register an intelligence manager."""
@@ -21739,21 +22351,35 @@ class IntelligenceRegistry:
         Each manager gets an individual timeout (env-var configurable) so one
         hanging manager cannot block the entire intelligence phase.
         """
-        _per_mgr_timeout = _get_env_float("JARVIS_INTEL_MANAGER_TIMEOUT", 30.0)
+        requested_timeout = _get_env_float("JARVIS_INTEL_MANAGER_TIMEOUT", 30.0)
+        _per_mgr_timeout = max(5.0, requested_timeout)
+        self._last_init_errors = {}
         results: Dict[str, bool] = {}
         names = list(self._managers.keys())
         managers = list(self._managers.values())
+
+        if not names:
+            self._logger.warning("IntelligenceRegistry has no managers to initialize")
+            self._initialized = True
+            return results
 
         async def _init_one(name: str, mgr: "IntelligenceManagerBase") -> bool:
             try:
                 return await asyncio.wait_for(mgr.initialize(), timeout=_per_mgr_timeout)
             except asyncio.TimeoutError:
-                self._logger.warning(f"{name}: initialization timed out ({_per_mgr_timeout:.0f}s)")
+                error_msg = (
+                    f"initialization timed out ({_per_mgr_timeout:.0f}s "
+                    f"requested={requested_timeout:.2f}s)"
+                )
+                self._last_init_errors[name] = error_msg
+                self._logger.warning(f"{name}: {error_msg}")
                 return False
             except asyncio.CancelledError:
                 raise
             except Exception as e:
-                self._logger.error(f"{name} initialization error: {e}")
+                error_msg = f"initialization error: {type(e).__name__}: {e}"
+                self._last_init_errors[name] = error_msg
+                self._logger.error(f"{name} {error_msg}")
                 return False
 
         gather_results = await asyncio.gather(
@@ -21766,6 +22392,9 @@ class IntelligenceRegistry:
                 raise result
             elif isinstance(result, BaseException):
                 self._logger.error(f"{name} initialization raised: {result}")
+                self._last_init_errors[name] = (
+                    f"initialization raised: {type(result).__name__}: {result}"
+                )
                 results[name] = False
             else:
                 results[name] = bool(result)
@@ -21773,6 +22402,7 @@ class IntelligenceRegistry:
                     self._logger.success(f"{name}: initialized")
                 else:
                     self._logger.warning(f"{name}: initialization failed")
+                    self._last_init_errors.setdefault(name, "initialization returned False")
 
         self._initialized = True
         return results
@@ -21781,6 +22411,9 @@ class IntelligenceRegistry:
         """Get status of all managers."""
         return {name: manager.status for name, manager in self._managers.items()}
 
+    def get_last_init_errors(self) -> Dict[str, str]:
+        """Get per-manager initialization errors from the latest initialize_all call."""
+        return dict(self._last_init_errors)
 
 class PersistentConversationMemoryAgent:
     """
@@ -22765,13 +23398,11 @@ class PersistentConversationMemoryAgent:
         tmp_file.write_text(json.dumps(snapshot, indent=2, default=str), encoding="utf-8")
         os.replace(tmp_file, self._state_file)
 
-
 # =============================================================================
 # ZONE 4.5: LEARNING GOALS DISCOVERY SYSTEM
 # =============================================================================
 # v108.0: Intelligent learning goals discovery with reactor-core integration
 # Analyzes experiences, logs, and corrections to discover what JARVIS needs to learn
-
 
 class DiscoverySource(Enum):
     """Sources of discovered learning topics."""
@@ -22782,7 +23413,6 @@ class DiscoverySource(Enum):
     UNKNOWN_TERM = "unknown_term"  # JARVIS didn't recognize a term
     TRENDING = "trending"  # Frequently mentioned topic
     MANUAL = "manual"  # Manually added topic
-
 
 @dataclass
 class DiscoveredTopic:
@@ -22839,7 +23469,6 @@ class DiscoveredTopic:
             scraped=data.get("scraped", False),
             pages_scraped=data.get("pages_scraped", 0),
         )
-
 
 class IntelligentLearningGoalsDiscovery:
     """
@@ -23540,13 +24169,11 @@ class IntelligentLearningGoalsDiscovery:
             "has_safe_scout": self._safe_scout is not None,
         }
 
-
 # =============================================================================
 # ZONE 4.8: COLLECTIVE AI INTELLIGENCE (CAI)
 # =============================================================================
 # v108.0: Emergent intelligence from all subsystems
 # Synthesizes insights across UAE, SAI, and other components
-
 
 @dataclass
 class InsightSource:
@@ -23556,7 +24183,6 @@ class InsightSource:
     confidence: float
     timestamp: float
     data: Dict[str, Any]
-
 
 @dataclass
 class CollectiveInsight:
@@ -23573,7 +24199,6 @@ class CollectiveInsight:
     aggregated_confidence: float = 0.0
     recommendations: List[str] = field(default_factory=list)
     created_at: float = field(default_factory=time.time)
-
 
 class CollectiveAI:
     """
@@ -23777,7 +24402,6 @@ class CollectiveAI:
             ),
             **self._metrics,
         }
-
 
 # =============================================================================
 # ZONE 4.9: ENTERPRISE INTEGRATION LAYER
@@ -23987,7 +24611,6 @@ class DataFlywheelManager:
             "running": self._running,
         }
 
-
 class TrainingOrchestrator:
     """
     Intelligent training orchestrator for the Reactor-Core pipeline.
@@ -24158,7 +24781,6 @@ class TrainingOrchestrator:
             "candidate_model": self._candidate_model,
             "ab_test_active": self._ab_test_active,
         }
-
 
 class TrinityHealthMonitor:
     """
@@ -24404,7 +25026,6 @@ class TrinityHealthMonitor:
             "overall_healthy": all(s["healthy"] for s in self._components.values()),
         }
 
-
 class GracefulDegradationManager(SystemService):
     """
     Resource-aware feature flag manager for graceful degradation.
@@ -24592,7 +25213,6 @@ class GracefulDegradationManager(SystemService):
 
     async def cleanup(self) -> None:
         await self.stop()
-
 
 class AGIOrchestrator:
     """
@@ -24865,7 +25485,6 @@ class AGIOrchestrator:
             "memory_size": len(self._long_term_memory),
             "stats": self._stats,
         }
-
 
 class OuroborosEngine:
     """
@@ -25270,7 +25889,6 @@ Respond in JSON format:
             "stats": self._stats,
         }
 
-
 class TrinityIPCHub:
     """
     Inter-Process Communication Hub for Trinity cross-repo coordination.
@@ -25565,7 +26183,6 @@ class TrinityIPCHub:
             "stats": self._stats,
         }
 
-
 class DistributedObservabilitySystem:
     """
     Enterprise-grade observability for the Trinity system.
@@ -25855,7 +26472,6 @@ class DistributedObservabilitySystem:
             "stats": self._stats,
         }
 
-
 class ResourceQuotaManager:
     """
     Resource quota management with ulimit protection.
@@ -26109,7 +26725,6 @@ class ResourceQuotaManager:
             "stats": self._stats,
         }
 
-
 class CrossRepoExperienceForwarder:
     """
     Forwards learning experiences to Reactor Core for training.
@@ -26308,7 +26923,6 @@ class CrossRepoExperienceForwarder:
             "stats": self._stats,
         }
 
-
 class ProcessHealthPredictor:
     """
     ML-based process health prediction using statistical analysis.
@@ -26485,7 +27099,6 @@ class ProcessHealthPredictor:
             "health_scores": self._health_scores,
             "stats": self._stats,
         }
-
 
 class SelfHealingOrchestrator:
     """
@@ -26672,7 +27285,6 @@ class SelfHealingOrchestrator:
             "recent_remediations": self._history[-5:],
             "stats": self._stats,
         }
-
 
 class DistributedStateCoordinator:
     """
@@ -26964,7 +27576,6 @@ class DistributedStateCoordinator:
             "vector_clock": self._vector_clock,
             "stats": self._stats,
         }
-
 
 class TrinityOrchestrationEngine:
     """
@@ -27334,7 +27945,6 @@ class TrinityOrchestrationEngine:
             "stats": self._stats,
         }
 
-
 class IntelligentWorkloadBalancer:
     """
     Intelligent workload distribution across JARVIS components.
@@ -27652,7 +28262,6 @@ class IntelligentWorkloadBalancer:
             "stats": self._stats,
         }
 
-
 class AdvancedCircuitBreaker:
     """
     Enterprise-grade circuit breaker with half-open state and sliding window.
@@ -27850,7 +28459,6 @@ class AdvancedCircuitBreaker:
             "time_in_state": time.time() - self._last_state_change,
             "stats": self._stats,
         }
-
 
 class CacheHierarchyManager(SystemService):
     """
@@ -28125,7 +28733,6 @@ class CacheHierarchyManager(SystemService):
             "stats": self._stats,
         }
 
-
 class TokenBucketRateLimiter(SystemService):
     """
     Token bucket rate limiter for API protection.
@@ -28292,7 +28899,6 @@ class TokenBucketRateLimiter(SystemService):
             "clients": len(self._buckets),
             "stats": self._stats,
         }
-
 
 class EventSourcingManager(SystemService):
     """
@@ -28579,7 +29185,6 @@ class EventSourcingManager(SystemService):
         self._events.clear()
         self._handlers.clear()
 
-
 class DynamicConfigurationManager:
     """
     Dynamic configuration with hot reload and validation.
@@ -28792,7 +29397,6 @@ class DynamicConfigurationManager:
             "stats": self._stats,
         }
 
-
 # =============================================================================
 # ZONE 4.10: DISTRIBUTED SYSTEMS INFRASTRUCTURE
 # =============================================================================
@@ -28804,7 +29408,6 @@ class DynamicConfigurationManager:
 # - AutoScalingController: Resource-aware automatic scaling
 # - SecretVaultManager: Secure credential storage and rotation
 # - AuditTrailRecorder: Compliance-ready audit logging
-
 
 class FencingToken:
     """
@@ -28849,7 +29452,6 @@ class FencingToken:
         token.resource_id = data.get("resource_id", "")
         token.metadata = data.get("metadata", {})
         return token
-
 
 class DistributedLockManager(SystemService):
     """
@@ -29198,7 +29800,6 @@ class DistributedLockManager(SystemService):
     async def cleanup(self) -> None:
         await self.stop()
 
-
 class ServiceEndpoint:
     """
     Represents a service endpoint in the service mesh.
@@ -29303,7 +29904,6 @@ class ServiceEndpoint:
             "metadata": self.metadata,
         }
 
-
 class RetryPolicy:
     """
     Retry policy for service mesh requests.
@@ -29361,7 +29961,6 @@ class RetryPolicy:
                     return True
 
         return False
-
 
 class ServiceMeshRouter:
     """
@@ -29773,7 +30372,6 @@ class ServiceMeshRouter:
             "stats": self._stats.copy(),
         }
 
-
 class TelemetryDataPoint:
     """Single telemetry data point."""
 
@@ -29800,7 +30398,6 @@ class TelemetryDataPoint:
             "labels": self.labels,
             "unit": self.unit,
         }
-
 
 class TraceSpan:
     """
@@ -29873,7 +30470,6 @@ class TraceSpan:
             "events": self.events,
         }
 
-
 class LogEntry:
     """Structured log entry."""
 
@@ -29904,7 +30500,6 @@ class LogEntry:
             "span_id": self.span_id,
             "attributes": self.attributes,
         }
-
 
 class ObservabilityPipeline(SystemService):
     """
@@ -30436,7 +31031,6 @@ class ObservabilityPipeline(SystemService):
             "stats": self._stats.copy(),
         }
 
-
 class TargetingRule:
     """
     Targeting rule for feature gates.
@@ -30517,7 +31111,6 @@ class TargetingRule:
             "start_time": self.start_time,
             "end_time": self.end_time,
         }
-
 
 class FeatureGate:
     """
@@ -30618,7 +31211,6 @@ class FeatureGate:
             "evaluation_count": self.evaluation_count,
             "enabled_count": self.enabled_count,
         }
-
 
 class FeatureGateManager:
     """
@@ -30914,7 +31506,6 @@ class FeatureGateManager:
             "stats": self._stats.copy(),
         }
 
-
 class ScalingDecision:
     """Represents an auto-scaling decision."""
 
@@ -30943,7 +31534,6 @@ class ScalingDecision:
             "metrics": self.metrics,
             "timestamp": self.timestamp,
         }
-
 
 class AutoScalingController:
     """
@@ -31263,7 +31853,6 @@ class AutoScalingController:
             "stats": self._stats.copy(),
         }
 
-
 class SecretEntry:
     """
     Represents a secret entry in the vault.
@@ -31328,7 +31917,6 @@ class SecretEntry:
         if include_value:
             result["value"] = self.value
         return result
-
 
 class SecretVaultManager:
     """
@@ -31615,7 +32203,6 @@ class SecretVaultManager:
             "stats": self._stats.copy(),
         }
 
-
 class AuditEvent:
     """Represents an audit event for compliance logging."""
 
@@ -31670,7 +32257,6 @@ class AuditEvent:
             f"resource={self.resource} "
             f"outcome={self.outcome}"
         )
-
 
 class AuditTrailRecorder:
     """
@@ -31986,7 +32572,6 @@ class AuditTrailRecorder:
             "stats": self._stats.copy(),
         }
 
-
 # =============================================================================
 # ZONE 4.11: WORKFLOW AND TASK ORCHESTRATION
 # =============================================================================
@@ -31999,7 +32584,6 @@ class AuditTrailRecorder:
 # - SchemaRegistry: Data validation and schema versioning
 # - APIGatewayManager: Request routing and transformation
 
-
 class WorkflowStepStatus(Enum):
     """Status of a workflow step."""
     PENDING = "pending"
@@ -32008,7 +32592,6 @@ class WorkflowStepStatus(Enum):
     FAILED = "failed"
     SKIPPED = "skipped"
     CANCELLED = "cancelled"
-
 
 class WorkflowStep:
     """
@@ -32069,7 +32652,6 @@ class WorkflowStep:
             "error": self.error,
             "metadata": self.metadata,
         }
-
 
 class WorkflowDefinition:
     """
@@ -32180,7 +32762,6 @@ class WorkflowDefinition:
             "created_at": self.created_at,
         }
 
-
 class WorkflowInstance:
     """
     Represents a running instance of a workflow.
@@ -32234,7 +32815,6 @@ class WorkflowInstance:
                 for k, v in self.definition.steps.items()
             },
         }
-
 
 class WorkflowEngine:
     """
@@ -32555,7 +33135,6 @@ class WorkflowEngine:
             "stats": self._stats.copy(),
         }
 
-
 class TaskPriority(Enum):
     """Task priority levels."""
     CRITICAL = 0
@@ -32563,7 +33142,6 @@ class TaskPriority(Enum):
     NORMAL = 2
     LOW = 3
     BACKGROUND = 4
-
 
 class QueuedTask:
     """
@@ -32629,7 +33207,6 @@ class QueuedTask:
             "error": self.error,
             "worker_id": self.worker_id,
         }
-
 
 class TaskQueueManager(SystemService):
     """
@@ -32979,7 +33556,6 @@ class TaskQueueManager(SystemService):
     async def cleanup(self) -> None:
         await self.stop()
 
-
 class StateTransition:
     """Represents a state machine transition."""
 
@@ -32996,7 +33572,6 @@ class StateTransition:
         self.event = event
         self.condition = condition
         self.action = action
-
 
 class StateMachineDefinition:
     """
@@ -33084,7 +33659,6 @@ class StateMachineDefinition:
             ],
         }
 
-
 class StateMachineInstance:
     """Represents a running state machine instance."""
 
@@ -33119,7 +33693,6 @@ class StateMachineInstance:
             "last_transition_at": self.last_transition_at,
             "transition_count": len(self.transition_history),
         }
-
 
 class StateMachineManager:
     """
@@ -33286,7 +33859,6 @@ class StateMachineManager:
             "stats": self._stats.copy(),
         }
 
-
 class BatchItem:
     """Represents an item in a batch operation."""
 
@@ -33301,7 +33873,6 @@ class BatchItem:
         self.result: Optional[Any] = None
         self.error: Optional[str] = None
         self.processed_at: Optional[float] = None
-
 
 class BatchProcessor:
     """
@@ -33480,7 +34051,6 @@ class BatchProcessor:
             "stats": self._stats.copy(),
         }
 
-
 class NotificationChannel(Enum):
     """Notification channels."""
     LOG = "log"
@@ -33490,14 +34060,12 @@ class NotificationChannel(Enum):
     WEBSOCKET = "websocket"
     VOICE = "voice"
 
-
 class NotificationPriority(Enum):
     """Notification priority levels."""
     CRITICAL = 0
     HIGH = 1
     NORMAL = 2
     LOW = 3
-
 
 class Notification:
     """Represents a notification."""
@@ -33537,7 +34105,6 @@ class Notification:
             "delivered_channels": self.delivered_channels,
             "failed_channels": self.failed_channels,
         }
-
 
 class NotificationDispatcher:
     """
@@ -33702,7 +34269,6 @@ class NotificationDispatcher:
             "stats": self._stats.copy(),
         }
 
-
 class SchemaVersion:
     """Represents a schema version."""
 
@@ -33717,7 +34283,6 @@ class SchemaVersion:
         self.schema = schema
         self.created_at = created_at
         self.description = description
-
 
 class SchemaRegistry:
     """
@@ -33904,7 +34469,6 @@ class SchemaRegistry:
             "stats": self._stats.copy(),
         }
 
-
 class APIRoute:
     """Represents an API route in the gateway."""
 
@@ -33968,7 +34532,6 @@ class APIRoute:
             "error_count": self.error_count,
             "avg_latency_ms": self.total_latency_ms / max(1, self.request_count),
         }
-
 
 class APIGatewayManager:
     """
@@ -34224,7 +34787,6 @@ class APIGatewayManager:
             "stats": self._stats.copy(),
         }
 
-
 # =============================================================================
 # ZONE 4.12: DEPLOYMENT AND INFRASTRUCTURE ORCHESTRATION
 # =============================================================================
@@ -34236,7 +34798,6 @@ class APIGatewayManager:
 # - CanaryReleaseManager: Progressive canary deployments
 # - RollbackCoordinator: Automated rollback with checkpoints
 # - InfrastructureProvisionerManager: Infrastructure provisioning
-
 
 class PooledConnection:
     """Represents a connection in the pool."""
@@ -34279,7 +34840,6 @@ class PooledConnection:
     def age_seconds(self) -> float:
         """Calculate connection age."""
         return time.time() - self.created_at
-
 
 class ConnectionPool:
     """
@@ -34535,7 +35095,6 @@ class ConnectionPool:
             "stats": self._stats.copy(),
         }
 
-
 class ConnectionPoolManager:
     """
     Manages multiple connection pools.
@@ -34630,13 +35189,11 @@ class ConnectionPoolManager:
             "stats": self._stats.copy(),
         }
 
-
 class HealthCheckType(Enum):
     """Types of health checks."""
     LIVENESS = "liveness"
     READINESS = "readiness"
     STARTUP = "startup"
-
 
 class HealthCheckResult:
     """Result of a health check."""
@@ -34670,7 +35227,6 @@ class HealthCheckResult:
             "timestamp": self.timestamp,
         }
 
-
 class HealthCheck:
     """Represents a health check definition."""
 
@@ -34697,7 +35253,6 @@ class HealthCheck:
         self.consecutive_successes = 0
         self.last_result: Optional[HealthCheckResult] = None
         self.healthy = True
-
 
 class HealthCheckOrchestrator:
     """
@@ -34944,7 +35499,6 @@ class HealthCheckOrchestrator:
             "stats": self._stats.copy(),
         }
 
-
 class DeploymentPhase(Enum):
     """Deployment phases."""
     PENDING = "pending"
@@ -34954,7 +35508,6 @@ class DeploymentPhase(Enum):
     COMPLETED = "completed"
     FAILED = "failed"
     ROLLED_BACK = "rolled_back"
-
 
 class Deployment:
     """Represents a deployment."""
@@ -35023,7 +35576,6 @@ class Deployment:
             "rollback_available": self.rollback_available,
             "phase_history": self.phase_history,
         }
-
 
 class DeploymentCoordinator:
     """
@@ -35297,7 +35849,6 @@ class DeploymentCoordinator:
             "stats": self._stats.copy(),
         }
 
-
 class BlueGreenState:
     """State for blue-green deployment."""
 
@@ -35310,7 +35861,6 @@ class BlueGreenState:
         self.blue_version: Optional[str] = None
         self.green_version: Optional[str] = None
         self.last_switch_at: Optional[float] = None
-
 
 class BlueGreenDeployer:
     """
@@ -35481,7 +36031,6 @@ class BlueGreenDeployer:
             "stats": self._stats.copy(),
         }
 
-
 class CanaryReleaseState:
     """State for canary release."""
 
@@ -35505,7 +36054,6 @@ class CanaryReleaseState:
         self.canary_errors = 0
         self.stable_requests = 0
         self.stable_errors = 0
-
 
 class CanaryReleaseManager:
     """
@@ -35751,7 +36299,6 @@ class CanaryReleaseManager:
             "stats": self._stats.copy(),
         }
 
-
 class RollbackCheckpoint:
     """Represents a rollback checkpoint."""
 
@@ -35778,7 +36325,6 @@ class RollbackCheckpoint:
             "created_at": self.created_at,
             "metadata": self.metadata,
         }
-
 
 class RollbackCoordinator:
     """
@@ -35968,7 +36514,6 @@ class RollbackCoordinator:
             "stats": self._stats.copy(),
         }
 
-
 class InfrastructureResource:
     """Represents an infrastructure resource."""
 
@@ -36003,7 +36548,6 @@ class InfrastructureResource:
             "error": self.error,
         }
 
-
 class InfrastructureStack:
     """Represents an infrastructure stack."""
 
@@ -36037,7 +36581,6 @@ class InfrastructureStack:
                 for rid, r in self.resources.items()
             },
         }
-
 
 class InfrastructureProvisionerManager:
     """
@@ -36206,7 +36749,6 @@ class InfrastructureProvisionerManager:
             "stats": self._stats.copy(),
         }
 
-
 # =============================================================================
 # ZONE 4.13: DATA PIPELINE AND MESSAGING INFRASTRUCTURE
 # =============================================================================
@@ -36218,7 +36760,6 @@ class InfrastructureProvisionerManager:
 # - WebhookDispatcher: Outgoing webhook management
 # - CacheInvalidationCoordinator: Distributed cache invalidation
 # - LoadSheddingController: Graceful degradation under load
-
 
 class PipelineStage:
     """Represents a stage in a data pipeline."""
@@ -36249,7 +36790,6 @@ class PipelineStage:
         if self.items_processed == 0:
             return 0.0
         return (self.total_processing_time / self.items_processed) * 1000
-
 
 class DataPipeline:
     """Represents a data pipeline definition."""
@@ -36301,7 +36841,6 @@ class DataPipeline:
             "created_at": self.created_at,
         }
 
-
 class PipelineRun:
     """Represents a pipeline execution run."""
 
@@ -36319,7 +36858,6 @@ class PipelineRun:
         self.items_output = 0
         self.current_stage: Optional[str] = None
         self.errors: List[Dict[str, Any]] = []
-
 
 class DataPipelineManager:
     """
@@ -36489,7 +37027,6 @@ class DataPipelineManager:
             "stats": self._stats.copy(),
         }
 
-
 class StreamEvent:
     """Represents an event in a stream."""
 
@@ -36519,7 +37056,6 @@ class StreamEvent:
             "metadata": self.metadata,
         }
 
-
 class StreamConsumerGroup:
     """Consumer group for stream processing."""
 
@@ -36542,7 +37078,6 @@ class StreamConsumerGroup:
     def remove_consumer(self, consumer_id: str) -> None:
         """Remove a consumer from the group."""
         self.consumers.discard(consumer_id)
-
 
 class StreamProcessor:
     """
@@ -36781,7 +37316,6 @@ class StreamProcessor:
             "stats": self._stats.copy(),
         }
 
-
 class Topic:
     """Represents a pub/sub topic."""
 
@@ -36795,7 +37329,6 @@ class Topic:
         self.created_at = time.time()
         self.subscribers: Dict[str, Callable[[Dict[str, Any]], Awaitable[None]]] = {}
         self.message_count = 0
-
 
 class MessageBroker(SystemService):
     """
@@ -36987,7 +37520,6 @@ class MessageBroker(SystemService):
         self._topics.clear()
         self._dead_letter.clear()
 
-
 class ScheduledJob:
     """Represents a scheduled job."""
 
@@ -37011,7 +37543,6 @@ class ScheduledJob:
         self.run_count = 0
         self.failure_count = 0
         self.last_error: Optional[str] = None
-
 
 class CronScheduler:
     """
@@ -37242,7 +37773,6 @@ class CronScheduler:
             "stats": self._stats.copy(),
         }
 
-
 class Webhook:
     """Represents a webhook endpoint."""
 
@@ -37266,7 +37796,6 @@ class Webhook:
         self.failure_count = 0
         self.last_delivery_at: Optional[float] = None
         self.last_failure_at: Optional[float] = None
-
 
 class WebhookDispatcher:
     """
@@ -37431,7 +37960,6 @@ class WebhookDispatcher:
             "stats": self._stats.copy(),
         }
 
-
 class CacheRegion:
     """Represents a cache region for invalidation coordination."""
 
@@ -37445,7 +37973,6 @@ class CacheRegion:
         self.keys: Set[str] = set()
         self.last_invalidation_at: Optional[float] = None
         self.invalidation_count = 0
-
 
 class CacheInvalidationCoordinator:
     """
@@ -37631,7 +38158,6 @@ class CacheInvalidationCoordinator:
             "stats": self._stats.copy(),
         }
 
-
 class LoadSheddingPolicy:
     """Load shedding policy configuration."""
 
@@ -37646,7 +38172,6 @@ class LoadSheddingPolicy:
         self.threshold = threshold
         self.action = action
         self.priority_threshold = priority_threshold
-
 
 class LoadSheddingController:
     """
@@ -37828,7 +38353,6 @@ class LoadSheddingController:
             "requests_degraded": self._requests_degraded,
             "stats": self._stats.copy(),
         }
-
 
 # ╔═══════════════════════════════════════════════════════════════════════════════╗
 # ║                                                                               ║
@@ -38037,7 +38561,6 @@ async def _test_zones_0_through_4():
     logger.print_startup_summary()
     TerminalUI.print_success("Zones 0-4 validation complete!")
 
-
 # =============================================================================
 # ZONE 4.14: ADVANCED SECURITY AND COMPLIANCE INFRASTRUCTURE
 # =============================================================================
@@ -38051,7 +38574,6 @@ async def _test_zones_0_through_4():
 # - IncidentResponseCoordinator: Handle security incidents
 # - ThreatIntelligenceManager: Integrate threat intelligence feeds
 # =============================================================================
-
 
 class SecurityPolicyViolation(Exception):
     """Exception raised when a security policy is violated."""
@@ -38068,7 +38590,6 @@ class SecurityPolicyViolation(Exception):
         self.severity = severity
         self.details = details or {}
         self.timestamp = datetime.now()
-
 
 @dataclass
 class SecurityPolicy:
@@ -38097,7 +38618,6 @@ class SecurityPolicy:
     updated_at: datetime = field(default_factory=datetime.now)
     metadata: Dict[str, Any] = field(default_factory=dict)
 
-
 @dataclass
 class PolicyEvaluationResult:
     """Result of evaluating a security policy."""
@@ -38107,7 +38627,6 @@ class PolicyEvaluationResult:
     enforcement_action: str
     evaluated_at: datetime = field(default_factory=datetime.now)
     context: Dict[str, Any] = field(default_factory=dict)
-
 
 class SecurityPolicyEngine:
     """
@@ -38482,7 +39001,6 @@ class SecurityPolicyEngine:
         """Get all registered policies."""
         return list(self._policies.values())
 
-
 @dataclass
 class ComplianceRequirement:
     """
@@ -38507,7 +39025,6 @@ class ComplianceRequirement:
     responsible_role: str = "security_team"
     metadata: Dict[str, Any] = field(default_factory=dict)
 
-
 @dataclass
 class ComplianceStatus:
     """Status of a compliance requirement."""
@@ -38518,7 +39035,6 @@ class ComplianceStatus:
     last_assessed: datetime
     next_assessment: datetime
     assessor: str = "automated"
-
 
 class ComplianceAuditor:
     """
@@ -38821,7 +39337,6 @@ class ComplianceAuditor:
         report["summary"]["by_status"] = status_counts
         return report
 
-
 @dataclass
 class DataClassification:
     """
@@ -38843,7 +39358,6 @@ class DataClassification:
     access_restrictions: List[str] = field(default_factory=list)
     metadata: Dict[str, Any] = field(default_factory=dict)
 
-
 @dataclass
 class ClassifiedData:
     """Represents classified data with its metadata."""
@@ -38855,7 +39369,6 @@ class ClassifiedData:
     created_at: datetime = field(default_factory=datetime.now)
     last_accessed: datetime = field(default_factory=datetime.now)
     access_count: int = 0
-
 
 class DataClassificationManager:
     """
@@ -39111,7 +39624,6 @@ class DataClassificationManager:
             ):
                 child.classification = parent.classification
 
-
 @dataclass
 class AccessPermission:
     """Defines an access permission."""
@@ -39119,7 +39631,6 @@ class AccessPermission:
     resource_type: str
     actions: List[str]  # read, write, delete, admin
     conditions: Dict[str, Any] = field(default_factory=dict)
-
 
 @dataclass
 class AccessRole:
@@ -39130,7 +39641,6 @@ class AccessRole:
     permissions: List[AccessPermission]
     inherits_from: List[str] = field(default_factory=list)
     metadata: Dict[str, Any] = field(default_factory=dict)
-
 
 @dataclass
 class AccessGrant:
@@ -39144,7 +39654,6 @@ class AccessGrant:
     expires_at: Optional[datetime] = None
     granted_by: str = "system"
     conditions: Dict[str, Any] = field(default_factory=dict)
-
 
 class AccessControlManager:
     """
@@ -39524,7 +40033,6 @@ class AccessControlManager:
 
         return entries[-limit:]
 
-
 @dataclass
 class EncryptionKey:
     """Represents an encryption key."""
@@ -39537,7 +40045,6 @@ class EncryptionKey:
     status: str = "active"  # active, rotated, revoked
     purpose: str = "general"  # general, data, auth, signing
     metadata: Dict[str, Any] = field(default_factory=dict)
-
 
 class EncryptionServiceManager:
     """
@@ -39757,7 +40264,6 @@ class EncryptionServiceManager:
 
         return needs_rotation
 
-
 @dataclass
 class AnomalyScore:
     """Score for an anomaly detection."""
@@ -39767,7 +40273,6 @@ class AnomalyScore:
     threshold: float
     is_anomaly: bool
     timestamp: datetime = field(default_factory=datetime.now)
-
 
 class AnomalyDetector:
     """
@@ -39980,7 +40485,6 @@ class AnomalyDetector:
 
         return entries[-limit:]
 
-
 @dataclass
 class SecurityIncident:
     """Represents a security incident."""
@@ -39997,7 +40501,6 @@ class SecurityIncident:
     evidence: List[Dict[str, Any]] = field(default_factory=list)
     remediation_steps: List[str] = field(default_factory=list)
     metadata: Dict[str, Any] = field(default_factory=dict)
-
 
 class IncidentResponseCoordinator:
     """
@@ -40372,7 +40875,6 @@ class IncidentResponseCoordinator:
                     return (resolve_time - incident.detected_at).total_seconds() / 60
         return None
 
-
 @dataclass
 class ThreatIndicator:
     """Represents a threat indicator (IOC)."""
@@ -40387,7 +40889,6 @@ class ThreatIndicator:
     last_seen: datetime = field(default_factory=datetime.now)
     tags: List[str] = field(default_factory=list)
     metadata: Dict[str, Any] = field(default_factory=dict)
-
 
 class ThreatIntelligenceManager:
     """
@@ -40646,7 +41147,6 @@ class ThreatIntelligenceManager:
 
         return rules
 
-
 # =============================================================================
 # ZONE 4.15: INTEGRATION AND API MANAGEMENT
 # =============================================================================
@@ -40660,7 +41160,6 @@ class ThreatIntelligenceManager:
 # - IntegrationBusManager: Message-based integration
 # - APIVersionManager: API versioning and deprecation
 # =============================================================================
-
 
 @dataclass
 class ServiceRegistration:
@@ -40678,7 +41177,6 @@ class ServiceRegistration:
     status: str = "healthy"  # healthy, unhealthy, unknown
     tags: List[str] = field(default_factory=list)
 
-
 @dataclass
 class ServiceQuery:
     """Query parameters for service discovery."""
@@ -40688,7 +41186,6 @@ class ServiceQuery:
     tags: Optional[List[str]] = None
     status: Optional[str] = None
     metadata_filters: Optional[Dict[str, Any]] = None
-
 
 class ServiceRegistryManager:
     """
@@ -40942,7 +41439,6 @@ class ServiceRegistryManager:
             "by_status": by_status
         }
 
-
 @dataclass
 class ConfigurationEntry:
     """A configuration entry."""
@@ -40955,7 +41451,6 @@ class ConfigurationEntry:
     updated_at: datetime = field(default_factory=datetime.now)
     metadata: Dict[str, Any] = field(default_factory=dict)
 
-
 @dataclass
 class ConfigurationChangeEvent:
     """Event for configuration changes."""
@@ -40965,7 +41460,6 @@ class ConfigurationChangeEvent:
     source: str
     changed_at: datetime = field(default_factory=datetime.now)
     changed_by: str = "system"
-
 
 class ConfigurationManager:
     """
@@ -41228,7 +41722,6 @@ class ConfigurationManager:
             history = [e for e in history if e.key == key]
         return history[-limit:]
 
-
 @dataclass
 class DependencyDefinition:
     """Definition of a dependency."""
@@ -41237,7 +41730,6 @@ class DependencyDefinition:
     scope: str = "singleton"  # singleton, transient, scoped
     dependencies: List[str] = field(default_factory=list)
     metadata: Dict[str, Any] = field(default_factory=dict)
-
 
 class DependencyContainer:
     """
@@ -41392,7 +41884,6 @@ class DependencyContainer:
         """Get list of registered dependency names."""
         return list(self._definitions.keys())
 
-
 @dataclass
 class Event:
     """Base event class for event sourcing."""
@@ -41405,7 +41896,6 @@ class Event:
     timestamp: datetime = field(default_factory=datetime.now)
     version: int = 1
 
-
 @dataclass
 class EventStream:
     """A stream of events for an aggregate."""
@@ -41413,7 +41903,6 @@ class EventStream:
     aggregate_type: str
     events: List[Event]
     version: int = 0
-
 
 class _Deprecated_EventSourcingManager:  # v239.0: superseded by EventSourcingManager at line ~27325
     """
@@ -41648,7 +42137,6 @@ class _Deprecated_EventSourcingManager:  # v239.0: superseded by EventSourcingMa
             await handler(event)
         return len(events)
 
-
 @dataclass
 class GraphNode:
     """A node in the graph."""
@@ -41657,7 +42145,6 @@ class GraphNode:
     properties: Dict[str, Any]
     created_at: datetime = field(default_factory=datetime.now)
     updated_at: datetime = field(default_factory=datetime.now)
-
 
 @dataclass
 class GraphEdge:
@@ -41668,7 +42155,6 @@ class GraphEdge:
     target_id: str
     properties: Dict[str, Any]
     created_at: datetime = field(default_factory=datetime.now)
-
 
 class GraphDatabaseManager:
     """
@@ -41990,7 +42476,6 @@ class GraphDatabaseManager:
             "edge_types": list(set(e.edge_type for e in self._edges.values()))
         }
 
-
 @dataclass
 class SearchDocument:
     """A document in the search index."""
@@ -42000,7 +42485,6 @@ class SearchDocument:
     metadata: Dict[str, Any] = field(default_factory=dict)
     indexed_at: datetime = field(default_factory=datetime.now)
 
-
 @dataclass
 class SearchResult:
     """A search result."""
@@ -42008,7 +42492,6 @@ class SearchResult:
     score: float
     highlights: List[str]
     document: SearchDocument
-
 
 class SearchEngineManager:
     """
@@ -42264,7 +42747,6 @@ class SearchEngineManager:
             ) / max(1, len(self._documents))
         }
 
-
 @dataclass
 class IntegrationMessage:
     """A message on the integration bus."""
@@ -42277,7 +42759,6 @@ class IntegrationMessage:
     timestamp: datetime = field(default_factory=datetime.now)
     correlation_id: Optional[str] = None
     reply_to: Optional[str] = None
-
 
 class IntegrationBusManager:
     """
@@ -42511,7 +42992,6 @@ class IntegrationBusManager:
         """Get dead letter messages."""
         return list(self._dead_letter)[-limit:]
 
-
 @dataclass
 class APIVersion:
     """An API version definition."""
@@ -42523,7 +43003,6 @@ class APIVersion:
     sunset_at: Optional[datetime] = None
     migration_guide: Optional[str] = None
     changes_from_previous: List[str] = field(default_factory=list)
-
 
 class APIVersionManager:
     """
@@ -42717,7 +43196,6 @@ class APIVersionManager:
             )
         }
 
-
 # =============================================================================
 # ZONE 4.16: RESOURCE MANAGEMENT AND MULTI-TENANCY
 # =============================================================================
@@ -42732,7 +43210,6 @@ class APIVersionManager:
 # - CostAccountingManager: Resource usage cost tracking
 # =============================================================================
 
-
 @dataclass
 class ResourceQuota:
     """Resource quota definition."""
@@ -42745,7 +43222,6 @@ class ResourceQuota:
     scope_id: Optional[str] = None
     metadata: Dict[str, Any] = field(default_factory=dict)
 
-
 @dataclass
 class ResourceUsage:
     """Current resource usage."""
@@ -42755,7 +43231,6 @@ class ResourceUsage:
     percentage: float
     last_updated: datetime = field(default_factory=datetime.now)
     history: List[Tuple[datetime, float]] = field(default_factory=list)
-
 
 class ResourceQuotaManager:
     """
@@ -43035,7 +43510,6 @@ class ResourceQuotaManager:
         forecast = usage.current_usage + (rate_per_second * hours_ahead * 3600)
         return max(0, forecast)
 
-
 @dataclass
 class Tenant:
     """A tenant in the multi-tenant system."""
@@ -43050,7 +43524,6 @@ class Tenant:
     status: str = "active"  # active, suspended, deleted
     metadata: Dict[str, Any] = field(default_factory=dict)
 
-
 @dataclass
 class TenantContext:
     """Context for the current tenant."""
@@ -43058,7 +43531,6 @@ class TenantContext:
     user_id: Optional[str] = None
     session_id: Optional[str] = None
     request_id: Optional[str] = None
-
 
 class TenantManager:
     """
@@ -43327,7 +43799,6 @@ class TenantManager:
 
         return tenants
 
-
 @dataclass
 class RateLimitRule:
     """A rate limiting rule."""
@@ -43339,7 +43810,6 @@ class RateLimitRule:
     burst_limit: Optional[int] = None
     metadata: Dict[str, Any] = field(default_factory=dict)
 
-
 @dataclass
 class RateLimitState:
     """Current state of rate limiting for a key."""
@@ -43348,7 +43818,6 @@ class RateLimitState:
     tokens: float
     last_update: datetime
     request_count: int = 0
-
 
 class RateLimiterManager:
     """
@@ -43600,7 +44069,6 @@ class RateLimiterManager:
             "algorithm": self._algorithm
         }
 
-
 @dataclass
 class CoalescedRequest:
     """A coalesced request waiting for result."""
@@ -43608,7 +44076,6 @@ class CoalescedRequest:
     key: str
     future: asyncio.Future
     created_at: datetime = field(default_factory=datetime.now)
-
 
 class RequestCoalescer:
     """
@@ -43754,7 +44221,6 @@ class RequestCoalescer:
             ) * 100
         }
 
-
 @dataclass
 class BackgroundJob:
     """A background job definition."""
@@ -43773,7 +44239,6 @@ class BackgroundJob:
     result: Optional[Any] = None
     error: Optional[str] = None
     attempts: int = 0
-
 
 class BackgroundJobManager:
     """
@@ -44009,7 +44474,6 @@ class BackgroundJobManager:
         await asyncio.gather(*self._workers, return_exceptions=True)
         self._logger.info("Background job manager shutdown complete")
 
-
 @dataclass
 class RetryPolicyDef:
     """Retry policy configuration (BPM-style, distinct from ServiceMesh RetryPolicy)."""
@@ -44021,7 +44485,6 @@ class RetryPolicyDef:
     jitter: bool = True
     retryable_exceptions: List[type] = field(default_factory=list)
     non_retryable_exceptions: List[type] = field(default_factory=list)
-
 
 class RetryPolicyManager:
     """
@@ -44175,7 +44638,6 @@ class RetryPolicyManager:
             return self._metrics.get(policy_id, {})
         return dict(self._metrics)
 
-
 @dataclass
 class PooledResource:
     """A resource in the pool."""
@@ -44185,7 +44647,6 @@ class PooledResource:
     last_used: datetime = field(default_factory=datetime.now)
     use_count: int = 0
     healthy: bool = True
-
 
 class ResourcePoolManager:
     """
@@ -44397,7 +44858,6 @@ class ResourcePoolManager:
 
         self._logger.info(f"Resource pool '{self.name}' shutdown complete")
 
-
 @dataclass
 class CostEntry:
     """A cost accounting entry."""
@@ -44410,7 +44870,6 @@ class CostEntry:
     user_id: Optional[str]
     timestamp: datetime = field(default_factory=datetime.now)
     metadata: Dict[str, Any] = field(default_factory=dict)
-
 
 class CostAccountingManager:
     """
@@ -44616,7 +45075,6 @@ class CostAccountingManager:
             "budget_usage_percent": round((total / budget) * 100, 2) if budget != float("inf") else None
         }
 
-
 # =============================================================================
 # ZONE 4.17: MONITORING, TESTING, AND RULES ENGINE
 # =============================================================================
@@ -44630,7 +45088,6 @@ class CostAccountingManager:
 # - TemplateEngine: Dynamic template rendering
 # - ReportGenerator: Dynamic report generation
 # =============================================================================
-
 
 @dataclass
 class AlertRule:
@@ -44650,7 +45107,6 @@ class AlertRule:
     tags: List[str] = field(default_factory=list)
     metadata: Dict[str, Any] = field(default_factory=dict)
 
-
 @dataclass
 class Alert:
     """An active or resolved alert."""
@@ -44666,7 +45122,6 @@ class Alert:
     status: str = "active"  # active, acknowledged, resolved
     acknowledged_by: Optional[str] = None
     metadata: Dict[str, Any] = field(default_factory=dict)
-
 
 class AlertingManager:
     """
@@ -44947,7 +45402,6 @@ class AlertingManager:
             "history_size": len(self._alert_history)
         }
 
-
 @dataclass
 class ProfileEntry:
     """A profiling entry."""
@@ -44960,7 +45414,6 @@ class ProfileEntry:
     memory_before: int = 0
     memory_after: int = 0
     metadata: Dict[str, Any] = field(default_factory=dict)
-
 
 class PerformanceProfiler:
     """
@@ -45128,7 +45581,6 @@ class PerformanceProfiler:
         """Set sampling rate (0.0 to 1.0)."""
         self._sample_rate = max(0.0, min(1.0, rate))
 
-
 @dataclass
 class Experiment:
     """An A/B test experiment."""
@@ -45145,7 +45597,6 @@ class Experiment:
     current_sample_size: int = 0
     metadata: Dict[str, Any] = field(default_factory=dict)
 
-
 @dataclass
 class ExperimentAssignment:
     """Assignment of a user to an experiment variant."""
@@ -45153,7 +45604,6 @@ class ExperimentAssignment:
     experiment_id: str
     variant: str
     assigned_at: datetime = field(default_factory=datetime.now)
-
 
 class ABTestingFramework:
     """
@@ -45431,7 +45881,6 @@ class ABTestingFramework:
         experiment.end_date = datetime.now()
         return True
 
-
 @dataclass
 class FeatureFlag:
     """A feature flag definition."""
@@ -45446,7 +45895,6 @@ class FeatureFlag:
     created_at: datetime = field(default_factory=datetime.now)
     updated_at: datetime = field(default_factory=datetime.now)
     metadata: Dict[str, Any] = field(default_factory=dict)
-
 
 class FeatureFlagManager:
     """
@@ -45663,7 +46111,6 @@ class FeatureFlagManager:
         """Get all feature flags."""
         return list(self._flags.values())
 
-
 @dataclass
 class Rule:
     """A business rule definition."""
@@ -45677,7 +46124,6 @@ class Rule:
     stop_on_match: bool = True
     metadata: Dict[str, Any] = field(default_factory=dict)
 
-
 @dataclass
 class RuleResult:
     """Result of rule evaluation."""
@@ -45686,7 +46132,6 @@ class RuleResult:
     actions_executed: List[str]
     data_modified: Dict[str, Any]
     execution_time_ms: float
-
 
 class RulesEngine:
     """
@@ -45902,7 +46347,6 @@ class RulesEngine:
                 return None
         return current
 
-
 @dataclass
 class ValidationRule:
     """A data validation rule."""
@@ -45910,7 +46354,6 @@ class ValidationRule:
     rule_type: str  # required, type, min, max, pattern, custom, etc.
     value: Any
     message: str
-
 
 @dataclass
 class ValidationError:
@@ -45920,14 +46363,12 @@ class ValidationError:
     message: str
     actual_value: Any
 
-
 @dataclass
 class ValidationResult:
     """Result of data validation."""
     valid: bool
     errors: List[ValidationError]
     validated_data: Dict[str, Any]
-
 
 class DataValidationManager:
     """
@@ -46135,7 +46576,6 @@ class DataValidationManager:
                 return None
         return current
 
-
 @dataclass
 class Template:
     """A template definition."""
@@ -46146,7 +46586,6 @@ class Template:
     created_at: datetime = field(default_factory=datetime.now)
     updated_at: datetime = field(default_factory=datetime.now)
     metadata: Dict[str, Any] = field(default_factory=dict)
-
 
 class TemplateEngine:
     """
@@ -46347,7 +46786,6 @@ class TemplateEngine:
             # Clean up temporary template
             self._templates.pop(temp_id, None)
 
-
 @dataclass
 class ReportSection:
     """A section in a report."""
@@ -46355,7 +46793,6 @@ class ReportSection:
     content: str
     data: Dict[str, Any] = field(default_factory=dict)
     charts: List[Dict[str, Any]] = field(default_factory=list)
-
 
 @dataclass
 class Report:
@@ -46366,7 +46803,6 @@ class Report:
     sections: List[ReportSection]
     summary: str
     metadata: Dict[str, Any]
-
 
 class ReportGenerator:
     """
@@ -46633,7 +47069,6 @@ class ReportGenerator:
 
         return None
 
-
 # =============================================================================
 # ZONE 4.18: PLUGIN SYSTEM AND EXTENDED SERVICES
 # =============================================================================
@@ -46647,7 +47082,6 @@ class ReportGenerator:
 # - CalendarService: Date/time and scheduling utilities
 # - CommandPatternManager: Command pattern implementation
 # =============================================================================
-
 
 @dataclass
 class Plugin:
@@ -46665,7 +47099,6 @@ class Plugin:
     metadata: Dict[str, Any] = field(default_factory=dict)
     hooks: Dict[str, List[Callable]] = field(default_factory=dict)
 
-
 @dataclass
 class PluginEvent:
     """An event in the plugin system."""
@@ -46673,7 +47106,6 @@ class PluginEvent:
     plugin_id: str
     data: Dict[str, Any]
     timestamp: datetime = field(default_factory=datetime.now)
-
 
 class PluginManager:
     """
@@ -46921,7 +47353,6 @@ class PluginManager:
             "event_log_size": len(self._event_log)
         }
 
-
 @dataclass
 class LocaleData:
     """Locale-specific data."""
@@ -46935,7 +47366,6 @@ class LocaleData:
     number_format: Dict[str, Any] = field(default_factory=dict)
     currency_code: str = "USD"
     currency_symbol: str = "$"
-
 
 class LocalizationManager:
     """
@@ -47195,7 +47625,6 @@ class LocalizationManager:
             return {locale: self._missing_translations.get(locale, set())}
         return dict(self._missing_translations)
 
-
 @dataclass
 class AuditEntry:
     """An audit trail entry."""
@@ -47211,7 +47640,6 @@ class AuditEntry:
     ip_address: Optional[str] = None
     user_agent: Optional[str] = None
     session_id: Optional[str] = None
-
 
 class AuditTrailManager:
     """
@@ -47454,7 +47882,6 @@ class AuditTrailManager:
             "top_actors": sorted(actor_counts.items(), key=lambda x: x[1], reverse=True)[:10]
         }
 
-
 @dataclass
 class NetworkEndpoint:
     """A network endpoint definition."""
@@ -47467,7 +47894,6 @@ class NetworkEndpoint:
     last_check: datetime = field(default_factory=datetime.now)
     response_time_ms: float = 0
     metadata: Dict[str, Any] = field(default_factory=dict)
-
 
 class NetworkManager:
     """
@@ -47647,7 +48073,6 @@ class NetworkManager:
         """Get all healthy endpoints."""
         return [e for e in self._endpoints.values() if e.healthy]
 
-
 @dataclass
 class FileMetadata:
     """Metadata for a file."""
@@ -47660,7 +48085,6 @@ class FileMetadata:
     is_directory: bool
     permissions: str
     checksum: Optional[str] = None
-
 
 class FileSystemManager:
     """
@@ -47937,7 +48361,6 @@ class FileSystemManager:
             except Exception as e:
                 self._logger.error(f"Watcher callback error: {e}")
 
-
 @dataclass
 class ExternalService:
     """An external service definition."""
@@ -47953,7 +48376,6 @@ class ExternalService:
     last_request: Optional[datetime] = None
     request_count: int = 0
     error_count: int = 0
-
 
 class ExternalServiceRegistry:
     """
@@ -48259,7 +48681,6 @@ class ExternalServiceRegistry:
             "last_request": service.last_request.isoformat() if service.last_request else None
         }
 
-
 @dataclass
 class ScheduledEvent:
     """A scheduled calendar event."""
@@ -48269,7 +48690,6 @@ class ScheduledEvent:
     end_time: datetime
     recurrence: Optional[str] = None  # daily, weekly, monthly, yearly
     metadata: Dict[str, Any] = field(default_factory=dict)
-
 
 class CalendarService:
     """
@@ -48512,7 +48932,6 @@ class CalendarService:
 
         return occurrences
 
-
 @dataclass
 class Command:
     """A command for the command pattern."""
@@ -48525,7 +48944,6 @@ class Command:
     executed_at: Optional[datetime] = None
     result: Optional[Any] = None
     undone: bool = False
-
 
 class CommandPatternManager:
     """
@@ -48716,7 +49134,6 @@ class CommandPatternManager:
             "recording": self._recording_macro is not None
         }
 
-
 # =============================================================================
 # ZONE 4.19: ADVANCED ENTERPRISE PATTERNS AND OPERATIONS
 # =============================================================================
@@ -48731,7 +49148,6 @@ class CommandPatternManager:
 # - Consent Management: GDPR/privacy compliance
 # - Digital Signatures: Document signing and verification
 # =============================================================================
-
 
 # -----------------------------------------------------------------------------
 # 4.19.1: MLOps Model Registry
@@ -48749,7 +49165,6 @@ class ModelArtifact(NamedTuple):
     created_at: float
     metadata: Dict[str, Any]
 
-
 class ModelVersion(NamedTuple):
     """Model version with artifacts and metrics."""
     version_id: str
@@ -48763,7 +49178,6 @@ class ModelVersion(NamedTuple):
     created_at: float
     created_by: str
     description: str
-
 
 class RegisteredModel(NamedTuple):
     """Registered ML model in the registry."""
@@ -48780,7 +49194,6 @@ class RegisteredModel(NamedTuple):
     owner: str
     tags: List[str]
 
-
 class ModelExperiment(NamedTuple):
     """ML experiment tracking."""
     experiment_id: str
@@ -48794,7 +49207,6 @@ class ModelExperiment(NamedTuple):
     artifacts: List[str]
     logs: List[str]
     tags: List[str]
-
 
 class MLOpsModelRegistry:
     """
@@ -49186,7 +49598,6 @@ class MLOpsModelRegistry:
             "active_deployments": sum(1 for d in self._deployments.values() if d.get("status") == "deployed"),
         }
 
-
 # -----------------------------------------------------------------------------
 # 4.19.2: Workflow Orchestration Engine
 # -----------------------------------------------------------------------------
@@ -49203,13 +49614,11 @@ class WorkflowTaskDef(NamedTuple):
     retry_policy: Dict[str, Any]
     conditions: List[str]  # Conditional expressions
 
-
 class WorkflowTransition(NamedTuple):
     """Transition between workflow tasks."""
     from_task: str
     to_task: str
     condition: Optional[str]  # Transition condition expression
-
 
 class BPMWorkflowDef(NamedTuple):
     """BPMN workflow process definition (distinct from WorkflowEngine's WorkflowDefinition)."""
@@ -49225,7 +49634,6 @@ class BPMWorkflowDef(NamedTuple):
     created_at: float
     updated_at: float
 
-
 class WorkflowTaskInstance(NamedTuple):
     """Running workflow task instance."""
     instance_id: str
@@ -49237,7 +49645,6 @@ class WorkflowTaskInstance(NamedTuple):
     outputs: Dict[str, Any]
     error: Optional[str]
     retry_count: int
-
 
 class BPMWorkflowInst(NamedTuple):
     """Running BPMN workflow instance (distinct from WorkflowEngine's WorkflowInstance)."""
@@ -49251,7 +49658,6 @@ class BPMWorkflowInst(NamedTuple):
     task_instances: Dict[str, WorkflowTaskInstance]
     variables: Dict[str, Any]
     parent_instance_id: Optional[str]  # For sub-workflows
-
 
 class WorkflowOrchestrator:
     """
@@ -49648,7 +50054,6 @@ class WorkflowOrchestrator:
             "instance_status": status_counts,
         }
 
-
 # -----------------------------------------------------------------------------
 # 4.19.3: Document Management System
 # -----------------------------------------------------------------------------
@@ -49663,7 +50068,6 @@ class DocumentVersion(NamedTuple):
     created_at: float
     created_by: str
     change_summary: str
-
 
 class Document(NamedTuple):
     """Document with version history."""
@@ -49682,7 +50086,6 @@ class Document(NamedTuple):
     updated_at: float
     owner: str
 
-
 class Folder(NamedTuple):
     """Document folder."""
     folder_id: str
@@ -49694,7 +50097,6 @@ class Folder(NamedTuple):
     created_at: float
     updated_at: float
     owner: str
-
 
 class DocumentManagementSystem:
     """
@@ -50119,7 +50521,6 @@ class DocumentManagementSystem:
             "index_terms": len(self._search_index),
         }
 
-
 # -----------------------------------------------------------------------------
 # 4.19.4: Notification Hub
 # -----------------------------------------------------------------------------
@@ -50134,7 +50535,6 @@ class NotificationChannel(NamedTuple):
     rate_limit: int  # Max notifications per hour
     created_at: float
 
-
 class NotificationTemplate(NamedTuple):
     """Notification template."""
     template_id: str
@@ -50145,7 +50545,6 @@ class NotificationTemplate(NamedTuple):
     variables: List[str]
     created_at: float
     updated_at: float
-
 
 class Notification(NamedTuple):
     """Notification record."""
@@ -50164,7 +50563,6 @@ class Notification(NamedTuple):
     metadata: Dict[str, Any]
     created_at: float
 
-
 class NotificationPreference(NamedTuple):
     """User notification preferences."""
     user_id: str
@@ -50172,7 +50570,6 @@ class NotificationPreference(NamedTuple):
     quiet_hours: Optional[Tuple[int, int]]  # (start_hour, end_hour) in UTC
     frequency_limit: Dict[str, int]  # notification_type -> max per day
     opt_outs: List[str]  # List of notification types to not receive
-
 
 class NotificationHub:
     """
@@ -50624,7 +51021,6 @@ class NotificationHub:
             "user_preferences": len(self._preferences),
         }
 
-
 # -----------------------------------------------------------------------------
 # 4.19.5: Session Management
 # -----------------------------------------------------------------------------
@@ -50641,14 +51037,12 @@ class Session(NamedTuple):
     data: Dict[str, Any]
     is_valid: bool
 
-
 class SessionStore(NamedTuple):
     """Session store configuration."""
     store_id: str
     store_type: str  # memory, redis, database
     config: Dict[str, Any]
     default_ttl: float
-
 
 class SessionManager:
     """
@@ -50954,7 +51348,6 @@ class SessionManager:
             "max_sessions_per_user": self._max_sessions_per_user,
         }
 
-
 # -----------------------------------------------------------------------------
 # 4.19.6: Data Lake Manager
 # -----------------------------------------------------------------------------
@@ -50970,7 +51363,6 @@ class DataPartition(NamedTuple):
     row_count: int
     created_at: float
     metadata: Dict[str, Any]
-
 
 class Dataset(NamedTuple):
     """Data lake dataset."""
@@ -50988,7 +51380,6 @@ class Dataset(NamedTuple):
     owner: str
     tags: List[str]
 
-
 class DataCatalogEntry(NamedTuple):
     """Data catalog entry for discovery."""
     entry_id: str
@@ -51000,7 +51391,6 @@ class DataCatalogEntry(NamedTuple):
     lineage: List[str]  # Source dataset IDs
     quality_score: float
     last_updated: float
-
 
 class DataLakeManager:
     """
@@ -51389,7 +51779,6 @@ class DataLakeManager:
             "catalog_entries": len(self._catalog),
         }
 
-
 # -----------------------------------------------------------------------------
 # 4.19.7: Streaming Analytics Engine
 # -----------------------------------------------------------------------------
@@ -51401,7 +51790,6 @@ class StreamWindow(NamedTuple):
     slide_seconds: Optional[float]  # For sliding windows
     gap_seconds: Optional[float]  # For session windows
 
-
 class StreamAggregation(NamedTuple):
     """Stream aggregation specification."""
     aggregation_id: str
@@ -51410,7 +51798,6 @@ class StreamAggregation(NamedTuple):
     group_by: List[str]
     aggregations: Dict[str, str]  # output_field -> agg_expression
     filter_expr: Optional[str]
-
 
 class StreamEvent(NamedTuple):
     """Streaming event."""
@@ -51421,7 +51808,6 @@ class StreamEvent(NamedTuple):
     data: Dict[str, Any]
     partition_key: Optional[str]
 
-
 class StreamState(NamedTuple):
     """Stateful stream processing state."""
     state_id: str
@@ -51431,7 +51817,6 @@ class StreamState(NamedTuple):
     group_key: str
     values: Dict[str, Any]
     count: int
-
 
 class StreamingAnalyticsEngine:
     """
@@ -51732,7 +52117,6 @@ class StreamingAnalyticsEngine:
             "registered_handlers": len(self._output_handlers),
         }
 
-
 # -----------------------------------------------------------------------------
 # 4.19.8: Consent Management System
 # -----------------------------------------------------------------------------
@@ -51749,7 +52133,6 @@ class ConsentPurpose(NamedTuple):
     required: bool  # Required for service
     created_at: float
 
-
 class ConsentRecord(NamedTuple):
     """Individual consent record."""
     consent_id: str
@@ -51763,7 +52146,6 @@ class ConsentRecord(NamedTuple):
     user_agent: Optional[str]
     proof: Optional[str]  # Signature or token
 
-
 class DataSubjectRequest(NamedTuple):
     """GDPR data subject request."""
     request_id: str
@@ -51775,7 +52157,6 @@ class DataSubjectRequest(NamedTuple):
     completed_at: Optional[float]
     notes: str
     data_delivered: Optional[str]
-
 
 class ConsentManagementSystem:
     """
@@ -52122,7 +52503,6 @@ class ConsentManagementSystem:
             "policy_version": self._policy_version,
         }
 
-
 # -----------------------------------------------------------------------------
 # 4.19.9: Digital Signature Service
 # -----------------------------------------------------------------------------
@@ -52134,7 +52514,6 @@ class SignatureAlgorithm(NamedTuple):
     hash_algorithm: str
     key_type: str
     key_size: int
-
 
 class SigningKey(NamedTuple):
     """Signing key."""
@@ -52148,7 +52527,6 @@ class SigningKey(NamedTuple):
     owner: str
     status: str  # active, revoked, expired
 
-
 class DigitalSignature(NamedTuple):
     """Digital signature record."""
     signature_id: str
@@ -52161,7 +52539,6 @@ class DigitalSignature(NamedTuple):
     certificate_chain: Optional[List[str]]
     metadata: Dict[str, Any]
 
-
 class SignatureVerification(NamedTuple):
     """Signature verification result."""
     is_valid: bool
@@ -52170,7 +52547,6 @@ class SignatureVerification(NamedTuple):
     timestamp: float
     algorithm: str
     reason: str
-
 
 class DigitalSignatureService:
     """
@@ -52475,7 +52851,6 @@ class DigitalSignatureService:
             "supported_algorithms": list(self._algorithms.keys()),
         }
 
-
 # =============================================================================
 # ZONE 4.20: FINAL UTILITIES AND SYSTEM INTEGRATION
 # =============================================================================
@@ -52486,7 +52861,6 @@ class DigitalSignatureService:
 # - Graceful degradation management
 # - Resource cleanup coordination
 # =============================================================================
-
 
 # -----------------------------------------------------------------------------
 # 4.20.1: Health Aggregator
@@ -52503,7 +52877,6 @@ class SubsystemHealth(NamedTuple):
     details: Dict[str, Any]
     dependencies: List[str]
 
-
 class HealthCheckResult(NamedTuple):
     """Result of a health check."""
     overall_status: str
@@ -52512,7 +52885,6 @@ class HealthCheckResult(NamedTuple):
     degraded_count: int
     unhealthy_count: int
     total_response_time_ms: float
-
 
 class HealthAggregator(SystemService):
     """
@@ -52803,7 +53175,6 @@ class HealthAggregator(SystemService):
             "alert_callbacks": len(self._alert_callbacks),
         }
 
-
 # -----------------------------------------------------------------------------
 # 4.20.2: System Telemetry Collector
 # -----------------------------------------------------------------------------
@@ -52818,7 +53189,6 @@ class TelemetryMetric(NamedTuple):
     tags: Dict[str, str]
     aggregation: str  # gauge, counter, histogram
 
-
 class TelemetryEvent(NamedTuple):
     """Telemetry event record."""
     event_id: str
@@ -52827,7 +53197,6 @@ class TelemetryEvent(NamedTuple):
     data: Dict[str, Any]
     severity: str
     source: str
-
 
 class SystemTelemetryCollector:
     """
@@ -53088,7 +53457,6 @@ class SystemTelemetryCollector:
             "flush_interval": self._flush_interval,
         }
 
-
 # -----------------------------------------------------------------------------
 # 4.20.3: Graceful Degradation Manager
 # -----------------------------------------------------------------------------
@@ -53102,7 +53470,6 @@ class DegradationLevel(NamedTuple):
     reduced_capacity: Dict[str, float]  # feature -> capacity multiplier
     description: str
 
-
 class DegradationState(NamedTuple):
     """Current degradation state."""
     current_level: str
@@ -53110,7 +53477,6 @@ class DegradationState(NamedTuple):
     disabled_features: List[str]
     capacity_limits: Dict[str, float]
     reason: str
-
 
 class _Deprecated_GracefulDegradationManager:  # v239.0: superseded by GracefulDegradationManager at line ~23485
     """
@@ -53340,7 +53706,6 @@ class _Deprecated_GracefulDegradationManager:  # v239.0: superseded by GracefulD
             "disabled_features_count": len(self._current_state.disabled_features) if self._current_state else 0,
         }
 
-
 # -----------------------------------------------------------------------------
 # 4.20.4: Resource Cleanup Coordinator
 # -----------------------------------------------------------------------------
@@ -53354,7 +53719,6 @@ class CleanupTask(NamedTuple):
     timeout_seconds: float
     critical: bool  # If True, failure stops cleanup
 
-
 class CleanupResult(NamedTuple):
     """Result of a cleanup task."""
     task_id: str
@@ -53362,7 +53726,6 @@ class CleanupResult(NamedTuple):
     success: bool
     duration_ms: float
     error: Optional[str]
-
 
 class CleanupReport(NamedTuple):
     """Complete cleanup report."""
@@ -53374,7 +53737,6 @@ class CleanupReport(NamedTuple):
     skipped: int
     results: List[CleanupResult]
     overall_success: bool
-
 
 class ResourceCleanupCoordinator:
     """
@@ -53586,7 +53948,6 @@ class ResourceCleanupCoordinator:
             "last_cleanup_success": self._last_report.overall_success if self._last_report else None,
         }
 
-
 # =============================================================================
 # =============================================================================
 #
@@ -53610,7 +53971,6 @@ class ResourceCleanupCoordinator:
 #
 # =============================================================================
 # =============================================================================
-
 
 # =============================================================================
 # ZONE 5.1: UNIFIED SIGNAL HANDLER
@@ -53648,7 +54008,6 @@ def get_modular_signal_protector():
             pass
     return None
 
-
 def get_modular_shutdown_coordinator():
     """
     v210.0: Get the modular ShutdownCoordinator for graceful shutdown.
@@ -53667,7 +54026,6 @@ def get_modular_shutdown_coordinator():
         except Exception:
             pass
     return None
-
 
 class UnifiedSignalHandler:
     """
@@ -53923,10 +54281,8 @@ class UnifiedSignalHandler:
             if self._shutdown_event is not None:
                 self._shutdown_event.clear()
 
-
 # Global signal handler singleton
 _unified_signal_handler: Optional[UnifiedSignalHandler] = None
-
 
 def get_unified_signal_handler() -> UnifiedSignalHandler:
     """
@@ -53939,7 +54295,6 @@ def get_unified_signal_handler() -> UnifiedSignalHandler:
     if _unified_signal_handler is None:
         _unified_signal_handler = UnifiedSignalHandler()
     return _unified_signal_handler
-
 
 # =============================================================================
 # ZONE 5.2: ZOMBIE PROCESS DETECTION DATA STRUCTURES
@@ -53959,7 +54314,6 @@ class ZombieProcessInfo:
     is_zombie_like: bool = False
     stale_connection_count: int = 0
     detection_source: str = ""
-
 
 # =============================================================================
 # ZONE 5.3: COMPREHENSIVE ZOMBIE CLEANUP SYSTEM
@@ -54503,7 +54857,6 @@ class ComprehensiveZombieCleanup:
 
         return freed_ports
 
-
 # =============================================================================
 # ZONE 5.4: PROCESS STATE MANAGER
 # =============================================================================
@@ -54517,7 +54870,6 @@ class ProcessState(Enum):
     STOPPED = "stopped"
     FAILED = "failed"
     CRASHED = "crashed"
-
 
 @dataclass
 class ManagedProcess:
@@ -54544,7 +54896,6 @@ class ManagedProcess:
     def is_running(self) -> bool:
         """Check if process is in running state."""
         return self.state == ProcessState.RUNNING
-
 
 class ProcessStateManager:
     """
@@ -54725,7 +55076,6 @@ class ProcessStateManager:
             }
         }
 
-
 # =============================================================================
 # ZONE 5.5: HOT RELOAD WATCHER
 # =============================================================================
@@ -54738,7 +55088,6 @@ class ProcessStateManager:
 # - Smart debouncing and cooldown
 # =============================================================================
 
-
 class FileTypeCategory(Enum):
     """Categories of file types for intelligent restart decisions."""
     BACKEND_CODE = "backend_code"       # Python, Rust - requires backend restart
@@ -54750,7 +55099,6 @@ class FileTypeCategory(Enum):
     BUILD = "build"                     # Cargo.toml, package.json - build configs
     UNKNOWN = "unknown"
 
-
 @dataclass
 class FileTypeInfo:
     """Information about a file type for hot reload."""
@@ -54759,7 +55107,6 @@ class FileTypeInfo:
     requires_restart: bool = True
     restart_target: str = "backend"  # backend, frontend, native, all, none
     description: str = ""
-
 
 class IntelligentFileTypeRegistry:
     """
@@ -54967,7 +55314,6 @@ class IntelligentFileTypeRegistry:
             lines.append(f"  ... and {len(sorted_types) - 15} more types")
 
         return "\n".join(lines)
-
 
 class HotReloadWatcher:
     """
@@ -55394,7 +55740,6 @@ class HotReloadWatcher:
                 self.logger.error(f"Hot reload monitor error: {e}")
                 await asyncio.sleep(self.check_interval)
 
-
 # =============================================================================
 # ZONE 5.6: PROGRESSIVE READINESS MANAGER
 # =============================================================================
@@ -55408,7 +55753,6 @@ class ReadinessTier(Enum):
     INTERACTIVE = "interactive"  # API ready, basic endpoints functional
     WARMUP = "warmup"  # Frontend ready, optional components loading
     FULLY_READY = "fully_ready"  # Complete system ready
-
 
 @dataclass
 class ReadinessState:
@@ -55427,7 +55771,6 @@ class ReadinessState:
     def get_tier_duration(self, tier: ReadinessTier) -> Optional[float]:
         """Get time when a tier was reached."""
         return self.tier_reached_at.get(tier.value)
-
 
 class ProgressiveReadinessManager:
     """
@@ -55580,7 +55923,6 @@ class ProgressiveReadinessManager:
         target_idx = tier_order.index(tier)
         return current_idx >= target_idx
 
-
 # =============================================================================
 # ZONE 5.6: STARTUP WATCHDOG (v188.0 - Dead Man's Switch)
 # =============================================================================
@@ -55609,7 +55951,6 @@ class PhaseConfig:
     progress_start: int
     progress_end: int
     recovery_action: str  # "warn", "diagnostic", "restart", "rollback"
-
 
 class StartupWatchdog:
     """
@@ -55708,10 +56049,15 @@ class StartupWatchdog:
         self._rollback_callback = rollback_callback
         
         # Configuration from environment
-        self._enabled = os.environ.get("JARVIS_DMS_ENABLED", "true").lower() == "true"
-        self._stall_threshold = float(os.environ.get("JARVIS_DMS_STALL_THRESHOLD", "60"))
-        self._check_interval = float(os.environ.get("JARVIS_DMS_CHECK_INTERVAL", "5"))
-        self._recovery_mode = os.environ.get("JARVIS_DMS_RECOVERY_MODE", "graduated")
+        self._enabled = _get_env_bool("JARVIS_DMS_ENABLED", True)
+        self._stall_threshold = _get_env_float("JARVIS_DMS_STALL_THRESHOLD", 60.0)
+        self._check_interval = _get_env_float("JARVIS_DMS_CHECK_INTERVAL", 5.0)
+        self._recovery_mode = os.environ.get("JARVIS_DMS_RECOVERY_MODE", "graduated").strip().lower()
+        if self._recovery_mode not in {"graduated", "aggressive", "passive"}:
+            self._logger.warning(
+                f"[DMS] Invalid recovery mode '{self._recovery_mode}' - using 'graduated'"
+            )
+            self._recovery_mode = "graduated"
 
         # v187.0: Apply environment overrides for phase timeouts
         # e.g., JARVIS_DMS_TIMEOUT_TRINITY=300 sets Trinity to 5 minutes
@@ -55739,7 +56085,7 @@ class StartupWatchdog:
             trinity_config = self._phase_configs.get("trinity")
             if trinity_config:
                 # v193.0: Hollow client mode needs GCP_VM_STARTUP_TIMEOUT + fallback time
-                gcp_timeout = float(os.environ.get("GCP_VM_STARTUP_TIMEOUT", "300.0"))
+                gcp_timeout = _get_env_float("GCP_VM_STARTUP_TIMEOUT", 300.0)
                 fallback_buffer = 180.0  # Fallback processing + safety buffer
                 hollow_client_timeout = max(gcp_timeout + fallback_buffer, trinity_config.timeout_seconds)
                 if hollow_client_timeout > trinity_config.timeout_seconds:
@@ -55775,8 +56121,8 @@ class StartupWatchdog:
         # (warn→diagnostic→restart→rollback in 20 seconds). Cooldown ensures
         # minimum spacing between escalation steps.
         self._last_timeout_action_time: Dict[str, float] = {}
-        self._escalation_cooldown = float(
-            os.environ.get("JARVIS_DMS_ESCALATION_COOLDOWN", "60")
+        self._escalation_cooldown = _get_env_float(
+            "JARVIS_DMS_ESCALATION_COOLDOWN", 60.0
         )
         # v250.1: Stall handler also needs cooldown — same rapid-fire bug.
         # Without this, stall handler escalates warn→diag→restart×3→rollback
@@ -55784,14 +56130,14 @@ class StartupWatchdog:
         # each escalation step waits JARVIS_DMS_STALL_ESCALATION_COOLDOWN (default
         # 15s) before the next, giving the init time to complete.
         self._last_stall_action_time: Dict[str, float] = {}
-        self._stall_escalation_cooldown = float(
-            os.environ.get("JARVIS_DMS_STALL_ESCALATION_COOLDOWN", "15")
+        self._stall_escalation_cooldown = _get_env_float(
+            "JARVIS_DMS_STALL_ESCALATION_COOLDOWN", 15.0
         )
 
         # v232.2: Progress-aware watchdog — don't kill processes that are advancing
         self._progress_history: List[Tuple[float, int]] = []  # (timestamp, progress)
-        self._progress_advancing_window = float(
-            os.environ.get("JARVIS_DMS_PROGRESS_WINDOW", "120")
+        self._progress_advancing_window = _get_env_float(
+            "JARVIS_DMS_PROGRESS_WINDOW", 120.0
         )  # Consider progress "advancing" if it changed within this window
 
         # v3.2: Parallel initializer coordination — DMS defers to parallel_init's
@@ -55846,12 +56192,8 @@ class StartupWatchdog:
 
         # v232.2: Memory pressure circuit breaker
         rate = self._get_progress_rate()
-        _ram_pct_threshold = float(
-            os.environ.get("JARVIS_DMS_RAM_PRESSURE_PCT", "90")
-        )
-        _min_rate_threshold = float(
-            os.environ.get("JARVIS_DMS_MIN_PROGRESS_RATE", "0.05")
-        )
+        _ram_pct_threshold = _get_env_float("JARVIS_DMS_RAM_PRESSURE_PCT", 90.0)
+        _min_rate_threshold = _get_env_float("JARVIS_DMS_MIN_PROGRESS_RATE", 0.05)
         try:
             import psutil as _psutil_check
             ram_pct = _psutil_check.virtual_memory().percent
@@ -56475,7 +56817,6 @@ class StartupWatchdog:
         else:
             return "rollback"
 
-
 # =============================================================================
 # ZONE 5.7: TRINITY INTEGRATOR
 # =============================================================================
@@ -56492,6 +56833,7 @@ class TrinityComponent:
     health_url: Optional[str] = None
     last_health_check: Optional[float] = None
     restart_count: int = 0
+    last_restart_attempt: float = 0.0
     # v3.4: Track when component was last started to enforce grace period
     start_time: float = 0.0
 
@@ -56500,7 +56842,6 @@ class TrinityComponent:
         """Check if component is running."""
         return self.state in ("running", "healthy")
 
-
 # =============================================================================
 # v190.0: SEMANTIC READINESS DETECTION SYSTEM
 # =============================================================================
@@ -56508,13 +56849,11 @@ class TrinityComponent:
 # simple HTTP 200 checks to understand actual operational state.
 # =============================================================================
 
-
 class ComponentType(Enum):
     """Trinity component types with their readiness semantics."""
     PRIME = "prime"      # LLM inference engine (requires model_loaded, ready_for_inference)
     REACTOR = "reactor"  # Training/data engine (requires training_ready, trinity_connected)
     GENERIC = "generic"  # Unknown component (HTTP 200 only)
-
 
 class ComponentReadinessState(Enum):
     """Semantic readiness states for Trinity components."""
@@ -56525,7 +56864,6 @@ class ComponentReadinessState(Enum):
     DEGRADED = "degraded"         # Partially ready (some features unavailable)
     READY = "ready"               # Fully operational and ready for requests
     ERROR = "error"               # Component in error state
-
 
 @dataclass
 class SemanticReadinessResult:
@@ -56583,7 +56921,6 @@ class SemanticReadinessResult:
             return "retry_connection"  # Network issue, retry
         else:
             return "unknown"
-
 
 class SemanticReadinessChecker:
     """
@@ -56974,7 +57311,6 @@ class SemanticReadinessChecker:
         # Unknown or error - don't estimate
         return None
 
-
 class TrinityIntegrator:
     """
     Cross-repo integration for JARVIS Trinity architecture.
@@ -57019,6 +57355,9 @@ class TrinityIntegrator:
         self._shutdown_event = asyncio.Event()
         self._health_check_interval = float(os.getenv("TRINITY_HEALTH_INTERVAL", "10.0"))
         self._max_restarts = int(os.getenv("TRINITY_MAX_RESTARTS", "3"))
+        self._restart_budget_cooldown_seconds = float(
+            os.getenv("TRINITY_RESTART_BUDGET_COOLDOWN_SECONDS", "300.0")
+        )
 
         # Discovery cache
         self._discovery_cache: Dict[str, Optional[Path]] = {}
@@ -58853,6 +59192,181 @@ class TrinityIntegrator:
             name="trinity-health-monitor"
         )
 
+    def _should_monitor_runtime_health(self, component: Optional[TrinityComponent]) -> bool:
+        """
+        Decide whether a component should be checked by the runtime health loop.
+
+        Components intentionally disabled/offloaded are excluded. Everything else
+        with a health endpoint remains observable, including currently unhealthy
+        components so they can recover back to healthy without manual intervention.
+        """
+        if component is None:
+            return False
+        if component.state in {"disabled", "hollow_client", "abandoned"}:
+            return False
+        return bool(component.health_url)
+
+    def _is_within_startup_grace_period(
+        self,
+        component: TrinityComponent,
+        grace_periods: Dict[str, float],
+        now: Optional[float] = None,
+    ) -> bool:
+        """Return True when failed health checks are still expected during startup."""
+        if component.start_time <= 0:
+            return False
+        now_ts = now if now is not None else time.time()
+        grace = grace_periods.get(component.name, 120.0)
+        elapsed = now_ts - component.start_time
+        if elapsed < grace:
+            self.logger.debug(
+                f"[Trinity] {component.name} health check failed but within "
+                f"startup grace period ({elapsed:.0f}s / {grace:.0f}s) — not marking unhealthy"
+            )
+            return True
+        return False
+
+    def _refresh_restart_budget(
+        self,
+        component: TrinityComponent,
+        now: Optional[float] = None,
+    ) -> None:
+        """
+        Reset restart budget after a cooldown window.
+
+        This prevents permanent dead states when a component remains unhealthy
+        across a long outage and later becomes recoverable again.
+        """
+        if component.restart_count <= 0:
+            return
+
+        cooldown = max(0.0, self._restart_budget_cooldown_seconds)
+        if cooldown <= 0:
+            return
+
+        now_ts = now if now is not None else time.time()
+        reference_ts = component.last_restart_attempt or component.start_time
+        if reference_ts <= 0:
+            return
+
+        elapsed = now_ts - reference_ts
+        if elapsed >= cooldown:
+            self.logger.info(
+                f"[Trinity] {component.name} restart budget cooldown elapsed "
+                f"({elapsed:.0f}s >= {cooldown:.0f}s), resetting restart count "
+                f"from {component.restart_count} to 0"
+            )
+            component.restart_count = 0
+            component.last_restart_attempt = 0.0
+
+    async def _restart_component_with_budget(
+        self,
+        component: TrinityComponent,
+        reason: str,
+    ) -> bool:
+        """Attempt a restart while enforcing bounded restart budget semantics."""
+        self._refresh_restart_budget(component)
+
+        if component.restart_count >= self._max_restarts:
+            self.logger.warning(
+                f"[Trinity] {component.name} restart budget exhausted "
+                f"({component.restart_count}/{self._max_restarts}); "
+                f"waiting for cooldown ({self._restart_budget_cooldown_seconds:.0f}s)"
+            )
+            return False
+
+        component.restart_count += 1
+        component.last_restart_attempt = time.time()
+        self.logger.info(
+            f"[Trinity] Attempting restart for {component.name} ({reason}) "
+            f"(attempt {component.restart_count}/{self._max_restarts})"
+        )
+        try:
+            return await self._start_component(component)
+        except Exception as e:
+            self.logger.debug(f"[Trinity] Restart call failed for {component.name}: {e}")
+            return False
+
+    async def _handle_unhealthy_component(self, component: TrinityComponent) -> None:
+        """
+        Handle unhealthy runtime state using enterprise recovery policy when available.
+        """
+        if component.state != "unhealthy":
+            self.logger.warning(f"[Trinity] {component.name} became unhealthy")
+        component.state = "unhealthy"
+
+        # v238.0: Use RecoveryEngine for intelligent failure handling.
+        if ENTERPRISE_RECOVERY_AVAILABLE and self._recovery_engine:
+            try:
+                _err = RuntimeError(f"{component.name} health check failed")
+                _action = await self._recovery_engine.handle_failure(
+                    component.name,
+                    _err,
+                    RecoveryPhase.RUNTIME,
+                )
+                if _action.strategy == RecoveryStrategy.RETRY:
+                    _delay = max(0.0, float(_action.delay or 0.0))
+                    self.logger.info(
+                        f"[Trinity] Recovery engine: RETRY {component.name} after {_delay:.1f}s"
+                    )
+                    if _delay > 0:
+                        await asyncio.sleep(_delay)
+                    if not self._shutdown_event.is_set():
+                        await self._restart_component_with_budget(
+                            component,
+                            reason="recovery-engine retry",
+                        )
+                elif _action.strategy == RecoveryStrategy.FULL_RESTART:
+                    self.logger.info(f"[Trinity] Recovery engine: RESTART {component.name}")
+                    await self._restart_component_with_budget(
+                        component,
+                        reason="recovery-engine full restart",
+                    )
+                elif _action.strategy == RecoveryStrategy.FALLBACK_MODE:
+                    self.logger.warning(
+                        f"[Trinity] Recovery engine: FALLBACK for {component.name}"
+                    )
+                    component.state = "degraded"
+                elif _action.strategy == RecoveryStrategy.DISABLE_AND_CONTINUE:
+                    self.logger.warning(
+                        f"[Trinity] Recovery engine: DISABLE {component.name}"
+                    )
+                    component.state = "disabled"
+                else:
+                    self.logger.error(
+                        f"[Trinity] Recovery engine: ESCALATE {component.name} — "
+                        f"{_action.message or 'manual intervention needed'}"
+                    )
+                return
+            except Exception as _re_err:
+                self.logger.debug(f"[Trinity] Recovery engine error: {_re_err}")
+
+        await self._restart_component_with_budget(component, reason="runtime health failure")
+
+    async def _evaluate_component_runtime_health(
+        self,
+        component: TrinityComponent,
+        grace_periods: Dict[str, float],
+    ) -> None:
+        """
+        Run one health-monitor evaluation cycle for a single component.
+        """
+        if not self._should_monitor_runtime_health(component):
+            return
+
+        self._refresh_restart_budget(component)
+        healthy = await self._check_health(component)
+        if healthy:
+            if component.state != "healthy":
+                self.logger.info(f"[Trinity] {component.name} recovered to healthy")
+            component.state = "healthy"
+            return
+
+        if self._is_within_startup_grace_period(component, grace_periods):
+            return
+
+        await self._handle_unhealthy_component(component)
+
     async def _health_monitor_loop(self) -> None:
         """Monitor component health and auto-restart if needed.
 
@@ -58872,71 +59386,11 @@ class TrinityIntegrator:
                 await asyncio.sleep(self._health_check_interval)
 
                 for component in [self._jprime, self._reactor]:
-                    if component and component.state == "healthy":
-                        healthy = await self._check_health(component)
-                        if not healthy:
-                            # v3.4: Check startup grace period before marking unhealthy.
-                            # Components like reactor-core take 10-15 min to load ML models.
-                            # During this window, failed health checks are expected (training_ready=False).
-                            grace = _grace_periods.get(component.name, 120.0)
-                            if component.start_time > 0:
-                                elapsed = time.time() - component.start_time
-                                if elapsed < grace:
-                                    self.logger.debug(
-                                        f"[Trinity] {component.name} health check failed but within "
-                                        f"startup grace period ({elapsed:.0f}s / {grace:.0f}s) — not marking unhealthy"
-                                    )
-                                    continue
-
-                            self.logger.warning(f"[Trinity] {component.name} became unhealthy")
-                            component.state = "unhealthy"
-
-                            # v238.0: Use RecoveryEngine for intelligent failure handling
-                            # instead of bare restart. Classifies failure type and decides
-                            # strategy: retry, restart, fallback, disable, or escalate.
-                            if ENTERPRISE_RECOVERY_AVAILABLE and self._recovery_engine:
-                                try:
-                                    _err = RuntimeError(f"{component.name} health check failed")
-                                    _action = await self._recovery_engine.handle_failure(
-                                        component.name, _err, RecoveryPhase.RUNTIME,
-                                    )
-                                    if _action.strategy == RecoveryStrategy.RETRY:
-                                        self.logger.info(
-                                            f"[Trinity] Recovery engine: RETRY {component.name} "
-                                            f"after {_action.delay:.1f}s"
-                                        )
-                                        await asyncio.sleep(_action.delay)
-                                        component.restart_count += 1
-                                        await self._start_component(component)
-                                    elif _action.strategy == RecoveryStrategy.FULL_RESTART:
-                                        self.logger.info(f"[Trinity] Recovery engine: RESTART {component.name}")
-                                        component.restart_count += 1
-                                        await self._start_component(component)
-                                    elif _action.strategy == RecoveryStrategy.FALLBACK_MODE:
-                                        self.logger.warning(
-                                            f"[Trinity] Recovery engine: FALLBACK for {component.name}"
-                                        )
-                                        component.state = "degraded"
-                                    elif _action.strategy == RecoveryStrategy.DISABLE_AND_CONTINUE:
-                                        self.logger.warning(
-                                            f"[Trinity] Recovery engine: DISABLE {component.name}"
-                                        )
-                                        component.state = "disabled"
-                                    else:
-                                        self.logger.error(
-                                            f"[Trinity] Recovery engine: ESCALATE {component.name} — "
-                                            f"{_action.message or 'manual intervention needed'}"
-                                        )
-                                except Exception as _re_err:
-                                    self.logger.debug(f"[Trinity] Recovery engine error: {_re_err}")
-                                    # Fall through to legacy restart
-                                    if component.restart_count < self._max_restarts:
-                                        component.restart_count += 1
-                                        await self._start_component(component)
-                            elif component.restart_count < self._max_restarts:
-                                self.logger.info(f"[Trinity] Attempting to restart {component.name}")
-                                component.restart_count += 1
-                                await self._start_component(component)
+                    if component:
+                        await self._evaluate_component_runtime_health(
+                            component,
+                            grace_periods=_grace_periods,
+                        )
 
             except asyncio.CancelledError:
                 break
@@ -59450,7 +59904,6 @@ class TrinityIntegrator:
             self.logger.error(f"[Trinity] {name} restart failed (attempt #{component.restart_count})")
 
         return start_ok
-
 
 # =============================================================================
 # ZONE 5.8: UNIFIED TRINITY CONNECTOR (Enhanced Cross-Repo Orchestration)
@@ -60014,10 +60467,8 @@ class UnifiedTrinityConnector:
 
         return status
 
-
 # Global Trinity connector singleton
 _trinity_connector: Optional[UnifiedTrinityConnector] = None
-
 
 def get_trinity_connector() -> UnifiedTrinityConnector:
     """
@@ -60055,7 +60506,6 @@ def get_trinity_connector() -> UnifiedTrinityConnector:
     
     return _trinity_connector
 
-
 # v210.0: NEW - Direct access to modular orchestrator components
 def get_service_registry():
     """
@@ -60076,7 +60526,6 @@ def get_service_registry():
             pass
     return None
 
-
 def get_health_coordinator():
     """
     v210.0: Get the modular HealthCoordinator for cross-service health monitoring.
@@ -60095,7 +60544,6 @@ def get_health_coordinator():
         except Exception:
             pass
     return None
-
 
 def get_crash_recovery_coordinator():
     """
@@ -60116,7 +60564,6 @@ def get_crash_recovery_coordinator():
             pass
     return None
 
-
 async def initialize_trinity_connector(
     websocket_manager: Any = None,
     voice_system: Any = None,
@@ -60132,14 +60579,12 @@ async def initialize_trinity_connector(
         event_bus=event_bus,
     )
 
-
 async def shutdown_trinity_connector() -> None:
     """Shutdown the Trinity connector."""
     global _trinity_connector
     if _trinity_connector:
         await _trinity_connector.shutdown()
         _trinity_connector = None
-
 
 # =============================================================================
 # ZONE 5 SELF-TEST FUNCTION
@@ -60210,7 +60655,6 @@ async def _test_zone5():
     logger.print_startup_summary()
     TerminalUI.print_success("Zone 5 validation complete!")
 
-
 # =============================================================================
 # =============================================================================
 #
@@ -60234,7 +60678,6 @@ async def _test_zone5():
 # =============================================================================
 # =============================================================================
 
-
 # =============================================================================
 # ZONE 6.1: KERNEL STATE AND STARTUP LOCK
 # =============================================================================
@@ -60252,9 +60695,7 @@ class KernelState(Enum):
     STOPPED = "stopped"
     FAILED = "failed"
 
-
 # NOTE: StartupLock is defined in Zone 2 (Core Utilities)
-
 
 # =============================================================================
 # ZONE 6.2: IPC SERVER
@@ -60268,13 +60709,11 @@ class IPCCommand(Enum):
     RESTART = "restart"
     RELOAD = "reload"
 
-
 @dataclass
 class IPCRequest:
     """IPC request from a client."""
     command: IPCCommand
     args: Dict[str, Any] = field(default_factory=dict)
-
 
 @dataclass
 class IPCResponse:
@@ -60282,7 +60721,6 @@ class IPCResponse:
     success: bool
     result: Any = None
     error: Optional[str] = None
-
 
 class IPCServer:
     """
@@ -60407,7 +60845,6 @@ class IPCServer:
         except Exception:
             pass
 
-
 # =============================================================================
 # ZONE 6.3: JARVIS SYSTEM KERNEL
 # =============================================================================
@@ -60491,10 +60928,14 @@ class JarvisSystemKernel:
         self._backend_process: Optional[asyncio.subprocess.Process] = None
         self._backend_server: Optional[Any] = None  # uvicorn.Server if in-process
         self._backend_server_task: Optional[asyncio.Task] = None  # uvicorn serve task
+        self._voice_sidecar_process: Optional[asyncio.subprocess.Process] = None
+        self._voice_sidecar_client: Optional[Any] = None
 
         # Frontend and loading server processes
         self._frontend_process: Optional[asyncio.subprocess.Process] = None
         self._loading_server_process: Optional[asyncio.subprocess.Process] = None
+        self._frontend_start_task: Optional[asyncio.Task] = None
+        self._frontend_start_lock = asyncio.Lock()
 
         # v183.0: Protected PIDs - processes spawned by THIS kernel that must NOT be killed
         # Used by zombie cleanup to avoid killing our own loading server, frontend, etc.
@@ -60502,6 +60943,7 @@ class JarvisSystemKernel:
 
         # Enterprise status tracking
         self._enterprise_status: Dict[str, Any] = {}
+        self._enterprise_background_services: Dict[str, asyncio.Task] = {}
 
         # v182.0: Dynamic component status tracking for accurate progress broadcasting
         # This tracks the REAL status of each component for the loading page
@@ -60524,6 +60966,7 @@ class JarvisSystemKernel:
             "visual_pipeline": {"status": "pending", "message": "Waiting to start"},  # v250.0: Visual Pipeline
             "audio_infrastructure": {"status": "pending", "message": "Waiting to start"},  # v238.0: Audio Bus
             "system_services": {"status": "pending", "message": "Waiting for flag"},  # v239.0: SSR
+            "voice_sidecar": {"status": "pending", "message": "Waiting for flag"},
             "frontend": {"status": "pending", "message": "Waiting to start"},
         }
 
@@ -60542,8 +60985,10 @@ class JarvisSystemKernel:
         self._ghost_hands_orchestrator = None
         self._n_optic_nerve = None
         self._ghost_display_init_task: Optional[asyncio.Task] = None
+        self._ghost_display_recovery_task: Optional[asyncio.Task] = None
         self._ghost_display_health_task: Optional[asyncio.Task] = None
         self._visual_pipeline_health_task: Optional[asyncio.Task] = None
+        self._visual_pipeline_deferred_task: Optional[asyncio.Task] = None
         self._visual_pipeline_initialized: bool = False
 
         # v264.0: Screen Recording Permission + Real-Time Observation (Phase 6.4)
@@ -60566,6 +61011,7 @@ class JarvisSystemKernel:
         self._conversation_pipeline = None
         self._mode_dispatcher = None
         self._audio_health_task: Optional[asyncio.Task] = None
+        self._audio_recovery_task: Optional[asyncio.Task] = None
         self._audio_infrastructure_initialized: bool = False
         self._audio_pipeline_handle = None  # v238.1: PipelineHandle from bootstrap
 
@@ -60575,7 +61021,7 @@ class JarvisSystemKernel:
         # v199.0: Invincible Node (Static IP Spot VM) state
         self._invincible_node_ready: bool = False
         self._invincible_node_ip: Optional[str] = None
-        self._early_invincible_task: Optional[asyncio.Task] = None  # v233.4: Early GCP pre-warm
+        # v266.0: _early_invincible_task removed — VM prewarm now pressure-driven
         self._model_serving = None  # v234.0: UnifiedModelServing instance
         self._pending_gcp_endpoint: Optional[str] = None  # v236.0: Deferred GCP URL
         self._pending_jprime_api_url: Optional[str] = None  # v261.0: Deferred J-Prime URL
@@ -60587,9 +61033,22 @@ class JarvisSystemKernel:
         # - Ollama LLM server
         # - Invincible Node (GCP VM)
         self._startup_resilience: Optional["StartupResilience"] = None
+        self._resilience_recovery_task: Optional[asyncio.Task] = None  # v265.5
 
-        # v183.0/v204.0: Heartbeat task for loading server
+        # v265.5: Background recovery tasks for degraded components
+        self._dms_recovery_task: Optional[asyncio.Task] = None
+        self._model_serving_recovery_task: Optional[asyncio.Task] = None
+
+        # v265.6: Phase 5/6 background recovery tasks
+        self._trinity_component_recovery_task: Optional[asyncio.Task] = None
+        self._enterprise_service_recovery_task: Optional[asyncio.Task] = None
+
+        # v266.0: Split heartbeat ownership to avoid task-handle aliasing
+        # between startup progress and loading-server transport heartbeats.
+        # _heartbeat_task is retained as a legacy alias for startup heartbeat.
         self._heartbeat_task: Optional[asyncio.Task] = None
+        self._startup_progress_heartbeat_task: Optional[asyncio.Task] = None
+        self._loading_server_heartbeat_task: Optional[asyncio.Task] = None
         self._current_progress: int = 0  # Track progress for heartbeat payload
         self._current_startup_phase: str = "initializing"  # Current startup phase name
         self._current_startup_progress: int = 0  # Base progress for heartbeat calculations
@@ -60650,6 +61109,7 @@ class JarvisSystemKernel:
         # - Voice approval workflows
         # - Proactive event streaming
         self._agi_os: Optional[Any] = None  # AGIOSCoordinator
+        self._agi_os_init_task: Optional[asyncio.Task] = None
         self._neural_mesh_bridge: Optional[Any] = None  # Runtime↔Mesh bridge handle
 
         # v200.0: Two-Tier + AGI OS status tracking
@@ -61335,9 +61795,13 @@ class JarvisSystemKernel:
                     
                     # Try to relaunch Chrome to a safe URL
                     # Note: This now uses StabilizedChromeLauncher internally (v197.4)
-                    result = await chrome_manager.ensure_single_incognito_window(
-                        "about:blank",  # Safe URL to test recovery
-                        force_new=True,
+                    # v265.3: Timeout guard for AppleScript hang
+                    result = await asyncio.wait_for(
+                        chrome_manager.ensure_single_incognito_window(
+                            "about:blank",  # Safe URL to test recovery
+                            force_new=True,
+                        ),
+                        timeout=30.0,
                     )
                     
                     if result.get("success"):
@@ -61502,65 +61966,74 @@ class JarvisSystemKernel:
         # v181.0: Write crash marker for next startup
         # v205.0: Use asyncio.to_thread to avoid blocking the event loop
         # v242.5: Enriched with diagnostic context (JSON) for crash forensics
-        try:
-            crash_marker = LOCKS_DIR / "kernel_crash.marker"
+        # v265.7: Only write marker for UNEXPECTED exits — expected exits clean up
+        # via atexit handler. Writing on expected exits caused false crash recovery
+        # on every startup (Clean Slate saw stale marker → triggered recovery).
+        if expected:
+            self.logger.debug(
+                "[Kernel] Expected shutdown — skipping crash marker write "
+                "(atexit will clean stale state)"
+            )
+        else:
+            try:
+                crash_marker = LOCKS_DIR / "kernel_crash.marker"
 
-            def _write_crash_marker() -> None:
-                """Sync helper for crash marker write — captures diagnostic snapshot."""
-                crash_marker.parent.mkdir(parents=True, exist_ok=True)
-                # v242.5: Capture diagnostic context for next-startup forensics
-                uptime = time.time() - self._started_at if self._started_at else 0.0
-                diag = {
-                    "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
-                    "epoch": time.time(),
-                    "pid": os.getpid(),
-                    "kernel_state": self._state.value if self._state else "unknown",
-                    "shutdown_mode": "emergency",
-                    "shutdown_reason": reason,
-                    "expected": bool(expected),
-                    "uptime_seconds": round(uptime, 1),
-                    "component_status": {},
-                }
-                # Capture component status snapshot (what was running/failed)
-                try:
-                    for comp_name, comp_info in (self._component_status or {}).items():
-                        diag["component_status"][comp_name] = comp_info.get("status", "unknown")
-                except Exception:
-                    pass
-                # Capture Trinity component states
-                try:
-                    if self._trinity and hasattr(self._trinity, "_components"):
-                        trinity_states = {}
-                        for name, comp in self._trinity._components.items():
-                            trinity_states[name] = {
-                                "running": getattr(comp, "is_running", False),
-                                "pid": getattr(comp, "pid", None),
-                            }
-                        diag["trinity_components"] = trinity_states
-                except Exception:
-                    pass
-                # Capture memory info if psutil available
-                try:
-                    import psutil
-                    proc = psutil.Process(os.getpid())
-                    mem = proc.memory_info()
-                    diag["memory_rss_mb"] = round(mem.rss / (1024 * 1024), 1)
-                    diag["memory_vms_mb"] = round(mem.vms / (1024 * 1024), 1)
-                    diag["system_memory_pct"] = round(psutil.virtual_memory().percent, 1)
-                except Exception:
-                    pass
-                try:
-                    crash_marker.write_text(json.dumps(diag, indent=2))
-                except Exception:
-                    # Fallback to plain text if JSON serialization fails
-                    crash_marker.write_text(
-                        f"Emergency shutdown at {time.strftime('%Y-%m-%d %H:%M:%S')} "
-                        f"(reason={reason}, expected={expected})"
-                    )
+                def _write_crash_marker() -> None:
+                    """Sync helper for crash marker write — captures diagnostic snapshot."""
+                    crash_marker.parent.mkdir(parents=True, exist_ok=True)
+                    # v242.5: Capture diagnostic context for next-startup forensics
+                    uptime = time.time() - self._started_at if self._started_at else 0.0
+                    diag = {
+                        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+                        "epoch": time.time(),
+                        "pid": os.getpid(),
+                        "kernel_state": self._state.value if self._state else "unknown",
+                        "shutdown_mode": "emergency",
+                        "shutdown_reason": reason,
+                        "expected": bool(expected),
+                        "uptime_seconds": round(uptime, 1),
+                        "component_status": {},
+                    }
+                    # Capture component status snapshot (what was running/failed)
+                    try:
+                        for comp_name, comp_info in (self._component_status or {}).items():
+                            diag["component_status"][comp_name] = comp_info.get("status", "unknown")
+                    except Exception:
+                        pass
+                    # Capture Trinity component states
+                    try:
+                        if self._trinity and hasattr(self._trinity, "_components"):
+                            trinity_states = {}
+                            for name, comp in self._trinity._components.items():
+                                trinity_states[name] = {
+                                    "running": getattr(comp, "is_running", False),
+                                    "pid": getattr(comp, "pid", None),
+                                }
+                            diag["trinity_components"] = trinity_states
+                    except Exception:
+                        pass
+                    # Capture memory info if psutil available
+                    try:
+                        import psutil
+                        proc = psutil.Process(os.getpid())
+                        mem = proc.memory_info()
+                        diag["memory_rss_mb"] = round(mem.rss / (1024 * 1024), 1)
+                        diag["memory_vms_mb"] = round(mem.vms / (1024 * 1024), 1)
+                        diag["system_memory_pct"] = round(psutil.virtual_memory().percent, 1)
+                    except Exception:
+                        pass
+                    try:
+                        crash_marker.write_text(json.dumps(diag, indent=2))
+                    except Exception:
+                        # Fallback to plain text if JSON serialization fails
+                        crash_marker.write_text(
+                            f"Emergency shutdown at {time.strftime('%Y-%m-%d %H:%M:%S')} "
+                            f"(reason={reason}, expected={expected})"
+                        )
 
-            await asyncio.to_thread(_write_crash_marker)
-        except Exception:
-            pass
+                await asyncio.to_thread(_write_crash_marker)
+            except Exception:
+                pass
 
         # v181.0/v206.0: Stop Trinity components FIRST (prevents orphaned processes)
         # v206.0: PILLAR 5 - Use tiered_stop() for idempotent, bounded, never-raises cleanup
@@ -61580,6 +62053,25 @@ class JarvisSystemKernel:
             except Exception as e:
                 # tiered_stop should never raise, but log just in case
                 self.logger.warning(f"[Kernel] Trinity tiered_stop unexpected error: {e}")
+
+        # v266.0: Emergency VM STOP — preserve disk/IP for fast restart
+        try:
+            from backend.core.gcp_vm_manager import get_gcp_vm_manager_safe, VMAction
+            vm_manager = get_gcp_vm_manager_safe()
+            if vm_manager:
+                for vm_name, vm_info in list(vm_manager.managed_vms.items()):
+                    if hasattr(vm_info, 'state') and vm_info.state.value in ("running", "staging"):
+                        try:
+                            await asyncio.wait_for(
+                                vm_manager.terminate_vm(
+                                    vm_name, reason="emergency_shutdown", action=VMAction.STOP
+                                ),
+                                timeout=10.0,
+                            )
+                        except Exception:
+                            pass
+        except Exception:
+            pass
 
         # v181.0: Cleanup GCP VMs (prevents orphaned Spot VMs)
         try:
@@ -61607,6 +62099,20 @@ class JarvisSystemKernel:
                 self.logger.debug("[Kernel] Startup resilience stop timed out")
             except Exception as e:
                 self.logger.debug(f"[Kernel] Startup resilience cleanup error: {e}")
+
+        # v265.5/v265.6: Cancel all background recovery tasks
+        for _recov_attr in (
+            "_dms_recovery_task", "_resilience_recovery_task", "_model_serving_recovery_task",
+            "_trinity_component_recovery_task", "_enterprise_service_recovery_task",
+        ):
+            _recov_task = getattr(self, _recov_attr, None)
+            if _recov_task is not None:
+                _recov_task.cancel()
+                try:
+                    await asyncio.wait_for(_recov_task, timeout=2.0)
+                except (asyncio.CancelledError, asyncio.TimeoutError, Exception):
+                    pass
+                setattr(self, _recov_attr, None)
 
         # v237.0/v251.0: Stop AGI OS + Neural Mesh + agents (prevents dangling tasks)
         agi_stop_timeout = max(1.0, _get_env_float("JARVIS_AGI_OS_STOP_TIMEOUT", 45.0))
@@ -61709,6 +62215,11 @@ class JarvisSystemKernel:
             except Exception:
                 pass
 
+        try:
+            await self._stop_voice_sidecar("emergency_shutdown")
+        except Exception:
+            pass
+
         # Stop backend deterministically (in-process first, then subprocess fallback)
         if self._backend_server or self._backend_server_task:
             await self._stop_backend_in_process(
@@ -61727,6 +62238,9 @@ class JarvisSystemKernel:
                     _proc_ref.kill()
                 except ProcessLookupError:
                     self.logger.debug(f"[Kernel] {_proc_name} already exited")
+
+        # Release loading server PID protection even in emergency teardown.
+        self._clear_loading_server_process()
 
         # v264.0: Screen Observation + Narration teardown (before Visual Pipeline)
         #
@@ -61818,15 +62332,12 @@ class JarvisSystemKernel:
         for task in background_tasks:
             task.cancel()
 
-        # v183.0: Cancel heartbeat task
-        if self._heartbeat_task and not self._heartbeat_task.done():
-            self._heartbeat_task.cancel()
-            try:
-                await asyncio.wait_for(self._heartbeat_task, timeout=1.0)
-            except (asyncio.CancelledError, asyncio.TimeoutError):
-                pass
-            except Exception as e:
-                self.logger.debug(f"[Kernel] Heartbeat task cleanup error: {e}")
+        # v266.0: Cancel startup + loading server heartbeat tasks explicitly.
+        try:
+            await self._stop_startup_progress_heartbeat(timeout=1.0)
+            await self._stop_loading_server_heartbeat(timeout=1.0)
+        except Exception as e:
+            self.logger.debug(f"[Kernel] Heartbeat task cleanup error: {e}")
 
         # v262.0: Give tasks time to run their finally blocks (e.g., await session.close()).
         # Timeout prevents a hung finally block from stalling the entire shutdown.
@@ -61961,6 +62472,119 @@ class JarvisSystemKernel:
         except Exception as e:
             self.logger.debug(f"[Kernel] Final task drain error: {e}")
 
+        # v266.2: Stop active services that hold background tasks / server sockets.
+        # These must stop BEFORE singleton resets (which clear module-level refs).
+        if hasattr(self, '_websocket_coordinator') and self._websocket_coordinator is not None:
+            try:
+                await asyncio.wait_for(self._websocket_coordinator.shutdown(), timeout=5.0)
+                self._websocket_coordinator = None
+                self.logger.debug("[Kernel] v266.2: WebSocketCoordinator shut down")
+            except asyncio.TimeoutError:
+                self.logger.debug("[Kernel] v266.2: WebSocketCoordinator shutdown timed out (5s)")
+            except Exception as _ws_err:
+                self.logger.debug(f"[Kernel] v266.2: WebSocketCoordinator shutdown error: {_ws_err}")
+
+        try:
+            from core.infrastructure_orchestrator import cleanup_infrastructure_on_shutdown
+            await asyncio.wait_for(cleanup_infrastructure_on_shutdown(), timeout=10.0)
+            self.logger.debug("[Kernel] v266.2: InfrastructureOrchestrator cleaned up")
+        except asyncio.TimeoutError:
+            self.logger.debug("[Kernel] v266.2: InfraOrch cleanup timed out (10s)")
+        except Exception as _io_err:
+            self.logger.debug(f"[Kernel] v266.2: InfraOrch cleanup error: {_io_err}")
+
+        # v266.1: Reset stale singletons so next in-process startup gets fresh state.
+        # Root cause: Module-level singletons (event bus, SSM, readiness gate) survive
+        # across restart cycles. Stale handlers, dead asyncio primitives, and shutdown
+        # flags from the previous run bleed into the new startup, causing silent failures:
+        # - Event bus: Dead consumer task → events silently dropped
+        # - SSM: Stale component registrations → waves skip or double-register
+        # - Readiness gate: shutting_down=True → instant SQLite fallback, never tries Cloud SQL
+        try:
+            await _reset_event_bus_singleton()
+            self.logger.debug("[Kernel] v266.1: SupervisorEventBus singleton reset")
+        except Exception as _eb_err:
+            self.logger.debug(f"[Kernel] v266.1: EventBus reset error: {_eb_err}")
+
+        try:
+            from backend.core.startup_state_machine import reset_startup_state_machine
+            reset_startup_state_machine()
+            self.logger.debug("[Kernel] v266.1: StartupStateMachine singleton reset")
+        except Exception as _ssm_err:
+            self.logger.debug(f"[Kernel] v266.1: SSM reset error: {_ssm_err}")
+
+        try:
+            from backend.intelligence.cloud_sql_connection_manager import reset_readiness_gate
+            await asyncio.wait_for(reset_readiness_gate(), timeout=5.0)
+            self.logger.debug("[Kernel] v266.1: ProxyReadinessGate singleton reset")
+        except asyncio.TimeoutError:
+            self.logger.debug("[Kernel] v266.1: ReadinessGate reset timed out (5s)")
+        except Exception as _rg_err:
+            self.logger.debug(f"[Kernel] v266.1: ReadinessGate reset error: {_rg_err}")
+
+        # v266.2: Reset infrastructure singletons that were never cleaned up.
+        # Root cause: DLM, ModelServing, PrimeRouter, GCPVMManager, and TrinityEventBus
+        # module-level singletons survive across in-process restarts. Stale connections,
+        # dead background tasks, and closed aiohttp sessions bleed into the next cycle.
+        try:
+            from backend.core.distributed_lock_manager import shutdown_lock_manager
+            await asyncio.wait_for(shutdown_lock_manager(), timeout=5.0)
+            self.logger.debug("[Kernel] v266.2: DLM singleton shut down")
+        except asyncio.TimeoutError:
+            self.logger.debug("[Kernel] v266.2: DLM shutdown timed out (5s)")
+        except Exception as _dlm_err:
+            self.logger.debug(f"[Kernel] v266.2: DLM shutdown error: {_dlm_err}")
+
+        try:
+            from backend.intelligence.unified_model_serving import shutdown_model_serving
+            await asyncio.wait_for(shutdown_model_serving(), timeout=10.0)
+            self.logger.debug("[Kernel] v266.2: ModelServing singleton shut down")
+        except asyncio.TimeoutError:
+            self.logger.debug("[Kernel] v266.2: ModelServing shutdown timed out (10s)")
+        except Exception as _ms_err:
+            self.logger.debug(f"[Kernel] v266.2: ModelServing shutdown error: {_ms_err}")
+
+        try:
+            from backend.core.prime_router import close_prime_router
+            await asyncio.wait_for(close_prime_router(), timeout=5.0)
+            self.logger.debug("[Kernel] v266.2: PrimeRouter singleton closed")
+        except asyncio.TimeoutError:
+            self.logger.debug("[Kernel] v266.2: PrimeRouter close timed out (5s)")
+        except Exception as _pr_err:
+            self.logger.debug(f"[Kernel] v266.2: PrimeRouter close error: {_pr_err}")
+
+        try:
+            from backend.core.gcp_vm_manager import shutdown_gcp_vm_manager
+            await asyncio.wait_for(shutdown_gcp_vm_manager(), timeout=10.0)
+            self.logger.debug("[Kernel] v266.2: GCPVMManager singleton shut down")
+        except asyncio.TimeoutError:
+            self.logger.debug("[Kernel] v266.2: GCPVMManager shutdown timed out (10s)")
+        except Exception as _gvm_err:
+            self.logger.debug(f"[Kernel] v266.2: GCPVMManager shutdown error: {_gvm_err}")
+
+        # TrinityEventBus: already stopped earlier (line ~61934) via shutdown_trinity_event_bus().
+        # Reset the module-level reference to prevent stale singleton on restart.
+        try:
+            from backend.core.trinity_event_bus import shutdown_trinity_event_bus
+            # Safe to call again — shutdown_trinity_event_bus() is idempotent
+            # (checks _bus is not None under lock)
+            await asyncio.wait_for(shutdown_trinity_event_bus(), timeout=3.0)
+            self.logger.debug("[Kernel] v266.2: TrinityEventBus singleton reset")
+        except asyncio.TimeoutError:
+            self.logger.debug("[Kernel] v266.2: TrinityEventBus reset timed out (3s)")
+        except Exception as _teb_err:
+            self.logger.debug(f"[Kernel] v266.2: TrinityEventBus reset error: {_teb_err}")
+
+        # v266.2: Close the startup progress reporter's aiohttp session.
+        try:
+            from loading_server import shutdown_progress_reporter
+            await asyncio.wait_for(shutdown_progress_reporter(), timeout=3.0)
+            self.logger.debug("[Kernel] v266.2: ProgressReporter session closed")
+        except asyncio.TimeoutError:
+            self.logger.debug("[Kernel] v266.2: ProgressReporter close timed out (3s)")
+        except Exception as _pr_err:
+            self.logger.debug(f"[Kernel] v266.2: ProgressReporter close error: {_pr_err}")
+
         self._state = KernelState.STOPPED
         self.logger.warning("[Kernel] ⚠️ Emergency shutdown complete")
 
@@ -61975,13 +62599,20 @@ class JarvisSystemKernel:
         Provides idempotent access to emergency shutdown for external callers
         (e.g., finally blocks, signal handlers, CLI commands).
         """
+        # v266.1: Atomic shutdown guard — prevent TOCTOU race where two
+        # concurrent callers both pass the existing-task check before either
+        # creates the task. Use _shutting_down flag as fast atomic gate.
+        if self._state in (KernelState.STOPPED, KernelState.SHUTTING_DOWN):
+            existing = self._emergency_shutdown_task
+            if existing and not existing.done():
+                self.logger.debug("[Kernel] Shutdown in progress; awaiting existing task")
+                await asyncio.shield(existing)
+            return
+
         existing = self._emergency_shutdown_task
         if existing and not existing.done():
             self.logger.debug("[Kernel] Emergency shutdown already in progress; awaiting existing task")
             await asyncio.shield(existing)
-            return
-
-        if self._state == KernelState.STOPPED:
             return
 
         self._emergency_shutdown_task = create_safe_task(
@@ -62076,6 +62707,16 @@ class JarvisSystemKernel:
                 mode_source = "default (production mode)"
 
         # Store the mode in config for reference
+        # Runtime capability guard: in-process mode requires uvicorn.
+        if self.config.in_process_backend and not UVICORN_AVAILABLE:
+            self.logger.warning(
+                "[Kernel] In-process mode requested but uvicorn is unavailable; "
+                "switching to standalone backend mode"
+            )
+            self.config.in_process_backend = False
+            selected_mode = "standalone"
+            mode_source = f"{mode_source} + runtime-capability-fallback"
+
         self.config.mode = selected_mode
 
         # Log the decision with clear explanation
@@ -62248,6 +62889,7 @@ class JarvisSystemKernel:
             model_active = False
             model_eta = 0
             model_elapsed = 0
+            model_progress_pct = 0.0  # v267.1: Expose for hard cap awareness
             try:
                 dashboard = _live_dashboard
                 if dashboard is not None:
@@ -62256,6 +62898,7 @@ class JarvisSystemKernel:
                         model_active = True
                         model_eta = ms.get("estimated_total_seconds", 0)
                         model_elapsed = ms.get("elapsed_seconds", 0)
+                        model_progress_pct = float(ms.get("progress_pct", 0) or 0)
             except Exception:
                 pass
 
@@ -62361,16 +63004,8 @@ class JarvisSystemKernel:
             except Exception:
                 pass
 
-            # Track background startup helpers that may run across phases.
-            try:
-                early_gcp_task = getattr(self, '_early_invincible_task', None)
-                if early_gcp_task is not None and not early_gcp_task.done():
-                    active_subsystem_reasons.append("gcp_prewarm_task")
-                    if activity_timestamp <= 0:
-                        activity_source = "gcp_prewarm_task"
-                        activity_timestamp = now
-            except Exception:
-                pass
+            # v266.0: early_invincible_task tracking removed (eager prewarm deleted).
+            # VM lifecycle is now pressure-driven via GCPHybridPrimeRouter.
 
             subsystem_active = False
             if in_startup_window and active_subsystem_reasons:
@@ -62387,6 +63022,12 @@ class JarvisSystemKernel:
                 "activity_timestamp": activity_timestamp,
                 "activity_source": activity_source,
                 "start_time": started,
+                # v267.1: Granular subsystem progress for hard cap awareness.
+                # When model_loading is the active subsystem, this tracks the
+                # model's own loading percentage (0-100). The ProgressController
+                # uses this to distinguish genuine stalls (model stuck at 37%
+                # for 300s) from active work (37%→50%→65%).
+                "subsystem_progress_pct": model_progress_pct if model_active else 0.0,
             }
         
         self.logger.info(
@@ -62408,6 +63049,40 @@ class JarvisSystemKernel:
                 self.logger.error("[Kernel] Trinity is enabled - check Prime/Reactor health")
             if self.config.gcp_enabled:
                 self.logger.error("[Kernel] GCP is enabled - check VM provisioning status")
+
+            # Structured timeout forensics for deterministic post-mortem triage.
+            try:
+                current_phase = getattr(self, "_current_startup_phase", "unknown")
+                current_progress = getattr(self, "_current_progress", 0) or 0
+                activity_markers = sorted(
+                    self._startup_activity_markers.items(),
+                    key=lambda kv: kv[1],
+                    reverse=True,
+                )[:5]
+                marker_summary = [
+                    f"{name}:{(time.time() - ts):.1f}s ago"
+                    for name, ts in activity_markers
+                ]
+                component_summary = {
+                    name: info.get("status", "unknown")
+                    for name, info in (self._component_status or {}).items()
+                    if info.get("status") not in ("complete", "healthy")
+                }
+                self.logger.error(
+                    f"[Kernel] Timeout context: phase={current_phase}, progress={current_progress}%"
+                )
+                if marker_summary:
+                    self.logger.error(
+                        "[Kernel] Recent startup activity markers: "
+                        + ", ".join(marker_summary)
+                    )
+                if component_summary:
+                    self.logger.error(
+                        "[Kernel] Non-ready components at timeout: "
+                        + ", ".join(f"{k}={v}" for k, v in component_summary.items())
+                    )
+            except Exception:
+                pass
 
             # Log diagnostic checkpoint for forensics
             if DIAGNOSTICS_AVAILABLE and log_shutdown_trigger:
@@ -62736,6 +63411,59 @@ class JarvisSystemKernel:
         self.logger.info("════════════════════════════════════════════════════════════════════════")
         self.logger.info("")
 
+    # ─────────────────────────────────────────────────────────────────────
+    # v266.1: Safe startup helpers — bounded await wrappers
+    # ─────────────────────────────────────────────────────────────────────
+    # Root cause: 30+ bare `await` calls in _startup_impl() can hang
+    # indefinitely on TTS engine freeze, audio device lock, network
+    # stall, or WebSocket listener unavailability. Each stalls the
+    # entire startup pipeline with no recourse.
+    #
+    # Fix: Centralized helpers that wrap every call with a configurable
+    # timeout and exception swallow. Narration and progress broadcasts
+    # are NEVER worth blocking startup.
+    # ─────────────────────────────────────────────────────────────────────
+
+    async def _safe_narrate(self, coro, label: str = "narrate") -> None:
+        """
+        Await a narrator coroutine with timeout. Never blocks startup.
+
+        Args:
+            coro: Awaitable from self._narrator.narrate_*()
+            label: Short description for logging on timeout/error
+        """
+        if not self._narrator:
+            return
+        _timeout = _get_env_float("JARVIS_NARRATOR_CALL_TIMEOUT", 10.0)
+        try:
+            await asyncio.wait_for(coro, timeout=_timeout)
+        except asyncio.TimeoutError:
+            self.logger.debug(f"[Narrator] {label} timed out ({_timeout:.0f}s)")
+        except asyncio.CancelledError:
+            raise
+        except Exception as _narr_err:
+            self.logger.debug(f"[Narrator] {label} error: {_narr_err}")
+
+    async def _safe_broadcast(
+        self, stage: str, message: str, progress: int,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """
+        Broadcast startup progress with timeout. Never blocks startup.
+        """
+        _timeout = _get_env_float("JARVIS_BROADCAST_CALL_TIMEOUT", 5.0)
+        try:
+            await asyncio.wait_for(
+                self._broadcast_startup_progress(stage, message, progress, metadata),
+                timeout=_timeout,
+            )
+        except asyncio.TimeoutError:
+            self.logger.debug(f"[Broadcast] {stage}/{progress}% timed out ({_timeout:.0f}s)")
+        except asyncio.CancelledError:
+            raise
+        except Exception as _bc_err:
+            self.logger.debug(f"[Broadcast] {stage}/{progress}% error: {_bc_err}")
+
     async def _startup_impl(self) -> int:
         """
         Internal startup implementation (wrapped by timeout in startup()).
@@ -62764,6 +63492,23 @@ class JarvisSystemKernel:
         # Initialize startup issue collector for organized error/warning display
         issue_collector = get_startup_issue_collector()
         issue_collector.clear()  # Fresh start
+
+        # v265.7: Retry any CRITICAL/HIGH imports that failed at module load
+        # Transient failures (circular imports, concurrent installs) may resolve now
+        if _FAILED_IMPORTS:
+            try:
+                _retry_recovered = await asyncio.wait_for(
+                    _retry_critical_imports(), timeout=15.0,
+                )
+                if _retry_recovered:
+                    self.logger.info(
+                        "[ImportRetry] Recovered %d imports on deferred retry",
+                        _retry_recovered,
+                    )
+            except asyncio.TimeoutError:
+                self.logger.warning("[ImportRetry] Deferred retry timed out after 15s")
+            except Exception as _retry_err:
+                self.logger.debug("[ImportRetry] Deferred retry failed: %s", _retry_err)
 
         # v263.0: Initialize Startup State Machine for DAG-driven component tracking
         _ssm = None
@@ -62796,10 +63541,19 @@ class JarvisSystemKernel:
         # v249.0: Initialize event bus and CLI renderer
         # v265.0: Add timeout — bare await could hang if event bus has I/O issues
         _event_bus = get_event_bus()
+        # v265.5: CPU-aware timeout + env var override
+        _eb_timeout = _get_env_float("JARVIS_EVENT_BUS_START_TIMEOUT", 10.0)
         try:
-            await asyncio.wait_for(_event_bus.start(), timeout=10.0)
+            import psutil as _eb_ps
+            _eb_cpu = _eb_ps.cpu_percent(interval=None)
+            if _eb_cpu > 90.0:
+                _eb_timeout *= 1.0 + (_eb_cpu - 90.0) / 10.0 * 2.0
+        except Exception:
+            pass
+        try:
+            await asyncio.wait_for(_event_bus.start(), timeout=_eb_timeout)
         except asyncio.TimeoutError:
-            self.logger.warning("[Kernel] Event bus start timed out (10s) — continuing")
+            self.logger.warning(f"[Kernel] Event bus start timed out ({_eb_timeout:.0f}s) — continuing")
         except Exception as _eb_err:
             self.logger.warning(f"[Kernel] Event bus start failed: {_eb_err}")
         _renderer = _create_cli_renderer(
@@ -62852,6 +63606,71 @@ class JarvisSystemKernel:
         # — no GCP/network calls. Determines startup_mode before any phase runs.
         # =====================================================================
         _resource_check_timeout = _get_env_float("JARVIS_RESOURCE_CHECK_TIMEOUT", 3.0)
+        _resource_check_timeout_max = _get_env_float(
+            "JARVIS_RESOURCE_CHECK_TIMEOUT_MAX",
+            max(_resource_check_timeout * 2.0, _resource_check_timeout + 2.0),
+        )
+        _resource_timeout_cpu_threshold = _get_env_float(
+            "JARVIS_RESOURCE_CHECK_TIMEOUT_CPU_THRESHOLD", 90.0
+        )
+        _resource_timeout_mem_threshold = _get_env_float(
+            "JARVIS_RESOURCE_CHECK_TIMEOUT_MEM_THRESHOLD", 85.0
+        )
+        try:
+            if PSUTIL_AVAILABLE:
+                _preflight_cpu = float(psutil.cpu_percent(interval=0.1))
+                _preflight_mem = float(psutil.virtual_memory().percent)
+                if (
+                    _preflight_cpu >= _resource_timeout_cpu_threshold
+                    or _preflight_mem >= _resource_timeout_mem_threshold
+                ):
+                    _resource_check_timeout = min(
+                        _resource_check_timeout_max,
+                        max(_resource_check_timeout * 2.0, _resource_check_timeout + 1.5),
+                    )
+                    self.logger.info(
+                        "[ResourceOrchestrator] Startup pressure detected "
+                        "(cpu=%.1f%% mem=%.1f%%) — extending preflight timeout to %.1fs",
+                        _preflight_cpu,
+                        _preflight_mem,
+                        _resource_check_timeout,
+                    )
+        except Exception:
+            pass
+
+        def _apply_resource_preflight_fallback(
+            reason: str,
+            *,
+            detail: str = "",
+        ) -> str:
+            """Apply deterministic, memory-aware fallback when preflight cannot decide."""
+            _available_gb = _read_available_memory_gb()
+            _current_mode = os.environ.get("JARVIS_STARTUP_MEMORY_MODE", "cloud_first")
+            _fallback_mode = _resolve_local_startup_mode_on_cloud_unavailable(
+                _current_mode,
+                available_gb=_available_gb,
+            )
+            os.environ["JARVIS_STARTUP_MEMORY_MODE"] = _fallback_mode
+            if not os.environ.get("JARVIS_STARTUP_DESIRED_MODE", "").strip():
+                os.environ["JARVIS_STARTUP_DESIRED_MODE"] = _fallback_mode
+            if _available_gb is not None:
+                os.environ["JARVIS_MEASURED_AVAILABLE_GB"] = f"{_available_gb:.2f}"
+
+            _msg = (
+                f"Resource preflight {reason}; startup mode set to {_fallback_mode}"
+                + (f" (avail={_available_gb:.1f}GB)" if _available_gb is not None else "")
+            )
+            if detail:
+                _msg = f"{_msg} [{detail}]"
+
+            self._update_component_status("resources", "degraded", _msg)
+            issue_collector.add_warning(
+                _msg,
+                IssueCategory.SYSTEM,
+                suggestion="Check system pressure and JARVIS resource preflight configuration",
+            )
+            return _fallback_mode
+
         try:
             _ro = IntelligentResourceOrchestrator(self.config)
             _rs = await asyncio.wait_for(
@@ -62860,6 +63679,8 @@ class JarvisSystemKernel:
             self._startup_resource_status = _rs
             _startup_mem_mode = _rs.startup_mode or "local_full"
             os.environ["JARVIS_STARTUP_MEMORY_MODE"] = _startup_mem_mode
+            if not os.environ.get("JARVIS_STARTUP_DESIRED_MODE", "").strip():
+                os.environ["JARVIS_STARTUP_DESIRED_MODE"] = _startup_mem_mode
             # v258.3 (GCP-5): Share measured memory snapshot with OOM bridge
             # so it doesn't re-measure (race condition between two psutil calls).
             os.environ["JARVIS_MEASURED_AVAILABLE_GB"] = f"{_rs.memory_available_gb:.2f}"
@@ -62871,22 +63692,23 @@ class JarvisSystemKernel:
             for _rec in _rs.recommendations:
                 _unified_logger.info("[ResourceOrchestrator] %s", _rec)
         except asyncio.TimeoutError:
-            # v258.3: INVERTED FAIL-SAFE FIX. Previously defaulted to
-            # "local_full" (most resource-hungry) under pressure — exactly
-            # when resources are LEAST available. Now defaults to
-            # "local_optimized" which skips non-critical ML and reduces
-            # parallel init. The orchestrator times out under CPU/memory
-            # pressure, so the fallback must be CONSERVATIVE.
+            _fallback_mode = _apply_resource_preflight_fallback(
+                "timed out",
+                detail=f"timeout={_resource_check_timeout:.1f}s",
+            )
             _unified_logger.warning(
-                "[ResourceOrchestrator] Timed out after %.1fs — defaulting to local_optimized",
+                "[ResourceOrchestrator] Timed out after %.1fs — fallback mode=%s",
                 _resource_check_timeout,
+                _fallback_mode,
             )
-            os.environ["JARVIS_STARTUP_MEMORY_MODE"] = "local_optimized"
         except Exception as _ro_err:
-            _unified_logger.debug(
-                "[ResourceOrchestrator] %s — defaulting to local_optimized", _ro_err
+            _fallback_mode = _apply_resource_preflight_fallback(
+                "failed",
+                detail=str(_ro_err),
             )
-            os.environ["JARVIS_STARTUP_MEMORY_MODE"] = "local_optimized"
+            _unified_logger.warning(
+                "[ResourceOrchestrator] %s — fallback mode=%s", _ro_err, _fallback_mode
+            )
 
         # =====================================================================
         # v258.3 (Gap GCP-2): STARTUP MODE RE-EVALUATION HELPER
@@ -62931,16 +63753,36 @@ class JarvisSystemKernel:
                 else:
                     _ideal = "local_full"
 
+                # If OOM bridge is unavailable, cloud execution cannot be trusted
+                # during startup. Clamp cloud candidates to deterministic sequential.
+                if (
+                    os.environ.get("JARVIS_OOMBRIDGE_AVAILABLE") == "0"
+                    and _ideal in ("cloud_first", "cloud_only")
+                ):
+                    _ideal = "sequential"
+
                 _ideal_sev = _REEVAL_SEVERITY.get(_ideal, 0)
 
                 # Only change if significantly different (at least 1 severity level)
-                if abs(_ideal_sev - _current_sev) >= 1 and _ideal != _current:
+                # v266.2: During startup, mode can only degrade (never recover upward).
+                # Upward recovery only after startup completes.
+                _startup_complete = os.environ.get("JARVIS_STARTUP_COMPLETE", "") == "true"
+                _is_degradation = _ideal_sev > _current_sev
+                _can_change = _is_degradation or _startup_complete
+                if abs(_ideal_sev - _current_sev) >= 1 and _ideal != _current and _can_change:
                     _direction = "upgraded" if _ideal_sev < _current_sev else "downgraded"
                     self.logger.info(
-                        "[ModeReeval] %s: %s %s → %s (avail=%.1fGB, predicted=%.1fGB)",
-                        phase_label, _direction, _current, _ideal, _avail_gb, _predicted,
+                        "[ModeReeval] %s: %s desired=%s effective=%s→%s (avail=%.1fGB, predicted=%.1fGB)",
+                        phase_label,
+                        _direction,
+                        os.environ.get("JARVIS_STARTUP_DESIRED_MODE", _current),
+                        _current,
+                        _ideal,
+                        _avail_gb,
+                        _predicted,
                     )
                     os.environ["JARVIS_STARTUP_MEMORY_MODE"] = _ideal
+                    os.environ["JARVIS_STARTUP_EFFECTIVE_MODE"] = _ideal
                     # Update shared measurement for downstream consumers
                     os.environ["JARVIS_MEASURED_AVAILABLE_GB"] = f"{_avail_gb:.2f}"
                     add_dashboard_log(
@@ -62952,6 +63794,7 @@ class JarvisSystemKernel:
                         "[ModeReeval] %s: mode %s still correct (avail=%.1fGB)",
                         phase_label, _current, _avail_gb,
                     )
+                    os.environ["JARVIS_STARTUP_EFFECTIVE_MODE"] = _current
             except Exception as _reeval_err:
                 self.logger.debug("[ModeReeval] %s failed: %s", phase_label, _reeval_err)
 
@@ -63029,7 +63872,6 @@ class JarvisSystemKernel:
         self._print_startup_banner()
 
         self._started_at = time.time()
-
         # =====================================================================
         # v238.0: AUDIO BUS EARLY INIT (before narrator)
         # =====================================================================
@@ -63041,32 +63883,57 @@ class JarvisSystemKernel:
         if self._audio_bus_enabled:
             _ab_timeout = _get_env_float("JARVIS_AUDIO_BUS_INIT_TIMEOUT", 10.0)
             try:
-                from backend.audio.audio_bus import AudioBus
-                self._audio_bus = AudioBus()
+                # v266.4: Import AudioBus in thread executor.
+                # The import chain triggers `import sounddevice` which
+                # calls Pa_Initialize() — a synchronous C call into
+                # CoreAudio that enumerates hardware devices. On macOS
+                # this can hang indefinitely (device busy, permission
+                # dialog, CoreAudio stall), freezing the event loop and
+                # defeating asyncio.wait_for() timeouts. Same root-cause
+                # pattern as ECAPA v265.2 and Zone 6 v265.2.
+                _loop = asyncio.get_running_loop()
+
+                def _import_audio_bus():
+                    from backend.audio.audio_bus import AudioBus as _AB
+                    return _AB
+
+                AudioBus = await asyncio.wait_for(
+                    _loop.run_in_executor(None, _import_audio_bus),
+                    timeout=_ab_timeout,
+                )
+                # v267.0: Use singleton factory so downstream consumers
+                # (UnifiedTTSEngine, TrinityVoiceCoordinator, etc.) can
+                # find the running bus via AudioBus.get_instance_safe().
+                self._audio_bus = AudioBus.get_instance()
+                # FullDuplexDevice.start() now runs PortAudio ops in
+                # run_in_executor() internally (v266.4), so wait_for
+                # can actually fire on timeout.
                 await asyncio.wait_for(self._audio_bus.start(), timeout=_ab_timeout)
                 self._component_status["audio_infrastructure"] = {
                     "status": "running",
                     "message": "AudioBus initialized",
                 }
-                self.logger.info("[Kernel] AudioBus started (v238.0)")
+                self.logger.info("[Kernel] AudioBus started (v267.0)")
             except asyncio.TimeoutError:
                 self.logger.warning(
-                    f"[Kernel] AudioBus init timed out ({_ab_timeout:.0f}s) — disabling"
+                    f"[Kernel] AudioBus init timed out ({_ab_timeout:.0f}s) — scheduling recovery"
                 )
-                self._audio_bus_enabled = False
                 self._audio_bus = None
                 self._component_status["audio_infrastructure"] = {
                     "status": "degraded",
-                    "message": "AudioBus init timeout — using legacy audio",
+                    "message": "AudioBus init timeout — recovery scheduled",
                 }
+                self._schedule_audio_bus_recovery("early_init_timeout")
             except Exception as ab_err:
-                self.logger.warning(f"[Kernel] AudioBus init failed: {ab_err} — disabling")
-                self._audio_bus_enabled = False
+                self.logger.warning(
+                    f"[Kernel] AudioBus init failed: {ab_err} — scheduling recovery"
+                )
                 self._audio_bus = None
                 self._component_status["audio_infrastructure"] = {
                     "status": "degraded",
-                    "message": f"AudioBus init failed: {ab_err}",
+                    "message": f"AudioBus init failed: {ab_err} (recovery scheduled)",
                 }
+                self._schedule_audio_bus_recovery("early_init_error")
         else:
             self._component_status["audio_infrastructure"] = {
                 "status": "disabled",
@@ -63075,17 +63942,32 @@ class JarvisSystemKernel:
 
         # v186.0: Start voice narrator queue processor for non-blocking speech
         # This MUST be started before any narrate_* calls to prevent blocking
+        # v266.1: Add timeout — narrator queue/TTS can hang indefinitely if
+        # audio device is held or TTS engine is stuck.
+        _narrator_init_timeout = _get_env_float("JARVIS_NARRATOR_INIT_TIMEOUT", 10.0)
         if self._narrator:
             try:
-                await self._narrator.start_queue_processor()
+                await asyncio.wait_for(
+                    self._narrator.start_queue_processor(),
+                    timeout=_narrator_init_timeout,
+                )
                 self.logger.debug("[Narrator] Queue processor started")
+            except asyncio.TimeoutError:
+                self.logger.warning(
+                    f"[Narrator] Queue processor start timed out ({_narrator_init_timeout:.0f}s)"
+                )
             except Exception as qp_err:
                 self.logger.debug(f"[Narrator] Queue processor failed to start: {qp_err}")
 
         # Voice narrator startup announcement
         if self._narrator:
             try:
-                await self._narrator.narrate_startup_begin()
+                await asyncio.wait_for(
+                    self._narrator.narrate_startup_begin(),
+                    timeout=_narrator_init_timeout,
+                )
+            except asyncio.TimeoutError:
+                self.logger.debug("[Narrator] Startup announcement timed out")
             except Exception as narr_err:
                 self.logger.debug(f"[Narrator] Startup announcement failed: {narr_err}")
 
@@ -63114,45 +63996,103 @@ class JarvisSystemKernel:
         # Initialize and start the startup watchdog to detect stalled phases.
         # Provides graduated recovery: warn → diagnostic → restart → rollback.
         # =====================================================================
-        self._startup_watchdog = StartupWatchdog(
-            logger=self.logger,
-            diagnostic_callback=self._dms_diagnostic_callback,
-            restart_callback=self._dms_restart_callback,
-            rollback_callback=self._dms_rollback_callback,
-        )
-        # v265.0: Add timeout — DMS is the timeout mechanism but can't protect itself.
-        # If StartupWatchdog.start() hangs, the entire supervisor bootstrap hangs.
+        _dms_start_timeout = _get_env_float("JARVIS_DMS_START_TIMEOUT", 10.0)
+        _require_watchdog = _get_env_bool("JARVIS_REQUIRE_STARTUP_WATCHDOG", True)
+        self._startup_watchdog = None
+        _dms_error_detail = ""
+
         try:
-            await asyncio.wait_for(self._startup_watchdog.start(), timeout=10.0)
+            _candidate_watchdog = StartupWatchdog(
+                logger=self.logger,
+                diagnostic_callback=self._dms_diagnostic_callback,
+                restart_callback=self._dms_restart_callback,
+                rollback_callback=self._dms_rollback_callback,
+            )
+            # v265.0: Add timeout — DMS is the timeout mechanism but can't protect itself.
+            # If StartupWatchdog.start() hangs, the entire supervisor bootstrap hangs.
+            await asyncio.wait_for(
+                _candidate_watchdog.start(),
+                timeout=_dms_start_timeout,
+            )
+
+            if _require_watchdog and not _candidate_watchdog.enabled:
+                _dms_error_detail = "disabled via JARVIS_DMS_ENABLED=false"
+            else:
+                self._startup_watchdog = _candidate_watchdog
+                self._update_component_status(
+                    "startup_watchdog",
+                    "running",
+                    "Dead Man's Switch armed",
+                )
         except asyncio.TimeoutError:
-            self.logger.error("[Kernel] v265.0: DMS startup timed out (10s) — continuing without watchdog")
-            self._startup_watchdog = None
+            _dms_error_detail = f"startup timed out after {_dms_start_timeout:.1f}s"
         except Exception as _dms_err:
-            self.logger.error(f"[Kernel] v265.0: DMS startup failed: {_dms_err} — continuing without watchdog")
-            self._startup_watchdog = None
+            _dms_error_detail = str(_dms_err)
+
+        if self._startup_watchdog is None:
+            _dms_msg = (
+                "Dead Man's Switch unavailable"
+                + (f": {_dms_error_detail}" if _dms_error_detail else "")
+            )
+            self.logger.error(f"[Kernel] {_dms_msg}")
+            self._update_component_status(
+                "startup_watchdog",
+                "degraded",
+                _dms_msg,
+            )
+            issue_collector.add_warning(
+                _dms_msg,
+                IssueCategory.SYSTEM,
+                suggestion="Verify DMS configuration and startup callback dependencies",
+            )
+            if _require_watchdog:
+                self.logger.error(
+                    "[Kernel] Startup aborted: JARVIS_REQUIRE_STARTUP_WATCHDOG=true"
+                )
+                return 1
+            # v265.5: Schedule background DMS recovery — system must not run
+            # without stall protection for an entire session.  A transient
+            # timeout during pre-phase (CPU spike, import contention) should
+            # NOT permanently disable the Dead Man's Switch.
+            self._schedule_dms_recovery(_dms_error_detail)
 
         # v3.2: Wire DMS ↔ parallel_initializer coordination
         # parallel_init heartbeats component completions to DMS, and DMS defers
         # escalation beyond 'diagnostic' while parallel_init is active.
         try:
             from core.parallel_initializer import set_dms_heartbeat_callback
+            _noop_heartbeat = lambda _component_name="": None
+            _noop_active = lambda _active=True: None
             set_dms_heartbeat_callback(
-                heartbeat_fn=self._startup_watchdog.notify_parallel_init_heartbeat,
-                active_fn=self._startup_watchdog.notify_parallel_init_active,
+                heartbeat_fn=(
+                    self._startup_watchdog.notify_parallel_init_heartbeat
+                    if self._startup_watchdog
+                    else _noop_heartbeat
+                ),
+                active_fn=(
+                    self._startup_watchdog.notify_parallel_init_active
+                    if self._startup_watchdog
+                    else _noop_active
+                ),
             )
             self.logger.debug("[Kernel] v3.2: DMS ↔ parallel_init coordination wired")
         except ImportError:
             self.logger.debug("[Kernel] v3.2: parallel_initializer not available for DMS wiring")
+        except Exception as _dms_wire_err:
+            self.logger.debug(
+                f"[Kernel] v3.2: DMS callback wiring failed: {_dms_wire_err}"
+            )
 
         # v232.2: Set initial execution mode for DMS dynamic constraints
         _golden_active = os.getenv("JARVIS_GCP_USE_GOLDEN_IMAGE", "false").lower() == "true"
         _gcp_enabled = getattr(self.config, 'invincible_node_enabled', False)
-        if _golden_active and _gcp_enabled:
-            self._startup_watchdog.notify_mode_change("gcp_golden")
-        elif _gcp_enabled:
-            self._startup_watchdog.notify_mode_change("gcp_standard")
-        else:
-            self._startup_watchdog.notify_mode_change("local_prime")
+        if self._startup_watchdog:
+            if _golden_active and _gcp_enabled:
+                self._startup_watchdog.notify_mode_change("gcp_golden")
+            elif _gcp_enabled:
+                self._startup_watchdog.notify_mode_change("gcp_standard")
+            else:
+                self._startup_watchdog.notify_mode_change("local_prime")
 
         # =====================================================================
         # v220.2: EARLY PRIME PRE-WARM - Start LLM loading IMMEDIATELY
@@ -63189,46 +64129,147 @@ class JarvisSystemKernel:
         _skip_local_prewarm = False
         _skip_reason = ""
 
-        # v255.0: OOM Prevention Bridge — proactive memory check before heavy init.
+        # v255.0 / v266.3: OOM Prevention Bridge — proactive memory check before heavy init.
         # Uses auto_offload=False to avoid GCP network calls during pre-flight.
         # Only overrides JARVIS_STARTUP_MEMORY_MODE if OOM Bridge decision is MORE
         # severe than the current mode set by the ResourceOrchestrator (Step 1).
-        _oom_preflight_timeout = _get_env_float("JARVIS_OOM_PREFLIGHT_TIMEOUT", 3.0)
+        # v266.3: Single retry on failure, then unconditional degradation to local fallback.
+        # v270.0: Increased from 3/5s to 10/15s. On constrained memory (<=4GB available),
+        # credential discovery, module imports, and memory telemetry take 10-30s under
+        # I/O pressure. The old 8s total was the primary contributor to 28s+ startup
+        # delays (OOMBridge timed out → degrade → GCP probe → retry cascade).
+        _oom_preflight_timeout = _get_env_float("JARVIS_OOM_PREFLIGHT_TIMEOUT", 10.0)
+        _oom_retry_timeout = _get_env_float("JARVIS_OOM_RETRY_TIMEOUT", 15.0)
         self._startup_memory_decision = None
-        try:
-            from core.gcp_oom_prevention_bridge import check_memory_before_heavy_init
-            _oom_result = await asyncio.wait_for(
-                check_memory_before_heavy_init(
-                    component="startup_pipeline",
-                    estimated_mb=3000,
-                    auto_offload=False,
-                ),
-                timeout=_oom_preflight_timeout,
-            )
-            self._startup_memory_decision = _oom_result
-            # Severity ordering: local_full < local_optimized < sequential < cloud_first < cloud_only < minimal
-            _SEVERITY = {
-                "local_full": 0, "local_optimized": 1, "sequential": 2,
-                "cloud_first": 3, "cloud_only": 4, "minimal": 5,
-            }
-            _current_mode = os.environ.get("JARVIS_STARTUP_MEMORY_MODE", "local_full")
-            _current_sev = _SEVERITY.get(_current_mode, 0)
+        _oom_attempts = [_oom_preflight_timeout, _oom_retry_timeout]
+        _oom_succeeded = False  # v266.3: Read by GCP probe to log bridge status
+        os.environ.setdefault("JARVIS_OOMBRIDGE_AVAILABLE", "1")
 
-            if not _oom_result.can_proceed_locally:
-                _new_mode = "cloud_first"
-                if _SEVERITY.get(_new_mode, 0) > _current_sev:
-                    os.environ["JARVIS_STARTUP_MEMORY_MODE"] = _new_mode
-                _skip_local_prewarm = True
-                _skip_reason = (
-                    f"oom_bridge: {_oom_result.decision.value} "
-                    f"(avail={_oom_result.available_ram_gb:.1f}GB)"
+        def _startup_mode_severity(mode: str) -> int:
+            # Higher number = more degraded / restrictive.
+            _severity = {
+                "local_full": 0,
+                "local_optimized": 1,
+                "sequential": 2,
+                "cloud_first": 3,
+                "cloud_only": 4,
+                "minimal": 5,
+            }
+            return _severity.get((mode or "local_full").strip().lower(), 0)
+
+        def _apply_effective_mode_degradation(new_mode: str, reason: str) -> None:
+            current_mode = os.environ.get("JARVIS_STARTUP_MEMORY_MODE", "local_full")
+            current_sev = _startup_mode_severity(current_mode)
+            new_sev = _startup_mode_severity(new_mode)
+            # Startup mode is monotonic during boot: never recover to less-severe mode here.
+            if new_sev > current_sev:
+                os.environ["JARVIS_STARTUP_MEMORY_MODE"] = new_mode
+                self.logger.warning(
+                    "[StartupMode] degrade desired=%s effective=%s→%s reason=%s",
+                    os.environ.get("JARVIS_STARTUP_DESIRED_MODE", current_mode),
+                    current_mode,
+                    new_mode,
+                    reason,
                 )
-            elif _oom_result.decision.value == "degraded":
-                _new_mode = "sequential"
-                if _SEVERITY.get(_new_mode, 0) > _current_sev:
-                    os.environ["JARVIS_STARTUP_MEMORY_MODE"] = _new_mode
-        except (asyncio.TimeoutError, ImportError, Exception) as _oom_err:
-            _unified_logger.debug("[OOMBridge] Pre-flight unavailable: %s", _oom_err)
+            else:
+                self.logger.info(
+                    "[StartupMode] keep desired=%s effective=%s candidate=%s reason=%s",
+                    os.environ.get("JARVIS_STARTUP_DESIRED_MODE", current_mode),
+                    current_mode,
+                    new_mode,
+                    reason,
+                )
+
+        for _oom_attempt_idx, _oom_timeout in enumerate(_oom_attempts):
+            try:
+                from core.gcp_oom_prevention_bridge import check_memory_before_heavy_init
+                _oom_result = await asyncio.wait_for(
+                    check_memory_before_heavy_init(
+                        component="startup_pipeline",
+                        estimated_mb=3000,
+                        auto_offload=False,
+                    ),
+                    timeout=_oom_timeout,
+                )
+                self._startup_memory_decision = _oom_result
+
+                if not _oom_result.can_proceed_locally:
+                    _apply_effective_mode_degradation(
+                        "cloud_first",
+                        reason=(
+                            f"oombridge:{_oom_result.decision.value}:"
+                            f"avail={_oom_result.available_ram_gb:.1f}GB"
+                        ),
+                    )
+                    _skip_local_prewarm = True
+                    _skip_reason = (
+                        f"oom_bridge: {_oom_result.decision.value} "
+                        f"(avail={_oom_result.available_ram_gb:.1f}GB)"
+                    )
+                elif _oom_result.decision.value == "degraded":
+                    _apply_effective_mode_degradation(
+                        "sequential",
+                        reason=(
+                            f"oombridge:degraded:avail={_oom_result.available_ram_gb:.1f}GB"
+                        ),
+                    )
+
+                _oom_succeeded = True
+                os.environ["JARVIS_OOMBRIDGE_AVAILABLE"] = "1"
+                break  # Success — exit retry loop
+            except asyncio.CancelledError:
+                raise
+            except Exception as _oom_err:
+                if _oom_attempt_idx < len(_oom_attempts) - 1:
+                    _unified_logger.info(
+                        "[OOMBridge] Attempt %d failed (%s), retrying with %ds timeout...",
+                        _oom_attempt_idx + 1,
+                        str(_oom_err) or type(_oom_err).__name__,
+                        int(_oom_retry_timeout),
+                    )
+                    continue
+                # Final attempt failed — unconditional degradation
+                _available_gb = _read_available_memory_gb()
+                _guard_mode = _resolve_local_startup_mode_on_cloud_unavailable(
+                    "cloud_only",
+                    available_gb=_available_gb,
+                )
+                if _available_gb is not None and _available_gb < 4.0:
+                    _guard_mode = "sequential"
+
+                _oom_errno = None
+                try:
+                    if isinstance(_oom_err, OSError):
+                        _oom_errno = _oom_err.errno
+                except Exception:
+                    _oom_errno = None
+
+                if _oom_errno == errno.ENOMEM:
+                    _guard_mode = "minimal" if (_available_gb is not None and _available_gb < 2.0) else "sequential"
+                    self.logger.error(
+                        "[OOMBridge] ENOMEM during preflight; forcing deterministic degrade to %s",
+                        _guard_mode,
+                    )
+                # v266.3: OOMBridge is broken — cloud modes can't execute without it.
+                # Unconditionally degrade to local fallback regardless of current mode.
+                _apply_effective_mode_degradation(_guard_mode, reason="oombridge_unavailable")
+                # v266.3: Signal to Phase 2/3 gates that cloud modes are not viable.
+                os.environ["JARVIS_OOMBRIDGE_AVAILABLE"] = "0"
+
+                _oom_err_str = str(_oom_err) or type(_oom_err).__name__
+                _oom_msg = (
+                    f"OOM pre-flight unavailable after {len(_oom_attempts)} attempts: "
+                    f"{_oom_err_str} "
+                    f"(degraded to {_guard_mode}"
+                    + (f", avail={_available_gb:.1f}GB" if _available_gb is not None else "")
+                    + ")"
+                )
+                _unified_logger.warning("[OOMBridge] %s", _oom_msg)
+                issue_collector.add_warning(
+                    _oom_msg,
+                    IssueCategory.SYSTEM,
+                    suggestion="Verify core.gcp_oom_prevention_bridge dependencies and memory telemetry",
+                )
 
         # =====================================================================
         # v258.3 (Gap 9): GCP AVAILABILITY PROBE
@@ -63237,10 +64278,49 @@ class JarvisSystemKernel:
         # reachable BEFORE committing. Without this probe, the system commits
         # to cloud mode with no inference if GCP is down.
         # =====================================================================
-        _startup_mode_now = os.environ.get("JARVIS_STARTUP_MEMORY_MODE", "local_full")
+        # v266.3: Use desired_mode (operator intent) not effective_mode (runtime safety).
+        # If OOMBridge failed, effective_mode may be degraded to sequential, but
+        # operator intended cloud — GCP probe should still run for background recovery.
+        _startup_desired_mode = os.environ.get("JARVIS_STARTUP_DESIRED_MODE", "local_full")
+        _startup_effective_mode = os.environ.get("JARVIS_STARTUP_MEMORY_MODE", "local_full")
+        os.environ["JARVIS_STARTUP_EFFECTIVE_MODE"] = _startup_effective_mode
+        _cloud_recovery_candidate = (
+            os.environ.get("JARVIS_CLOUD_RECOVERY_CANDIDATE", "false").strip().lower()
+            in {"1", "true", "yes", "on"}
+        )
+        if _startup_desired_mode in ("cloud_first", "cloud_only") and _startup_effective_mode not in (
+            "cloud_first",
+            "cloud_only",
+        ):
+            _cloud_recovery_candidate = True
+            os.environ["JARVIS_CLOUD_RECOVERY_CANDIDATE"] = "true"
+            self.logger.info(
+                "[StartupMode] cloud recovery candidate armed "
+                "(desired=%s effective=%s oombridge_available=%s)",
+                _startup_desired_mode,
+                _startup_effective_mode,
+                os.environ.get("JARVIS_OOMBRIDGE_AVAILABLE", "1"),
+            )
+        else:
+            os.environ["JARVIS_CLOUD_RECOVERY_CANDIDATE"] = "true" if _cloud_recovery_candidate else "false"
+
+        self.logger.info(
+            "[StartupMode] desired=%s effective=%s bridge_available=%s probe_candidate=%s",
+            _startup_desired_mode,
+            _startup_effective_mode,
+            os.environ.get("JARVIS_OOMBRIDGE_AVAILABLE", "1"),
+            _cloud_recovery_candidate,
+        )
         self._gcp_probe_passed = False
         self._gcp_probe_task = None
-        if _startup_mode_now in ("cloud_first", "cloud_only"):
+        if _is_cloud_probe_candidate(
+            _startup_desired_mode,
+            _startup_effective_mode,
+            _cloud_recovery_candidate,
+        ):
+            # v266.3: _startup_mode_now = effective mode (may be degraded by OOMBridge).
+            # Used for fallback logic within the probe; distinct from _startup_desired_mode.
+            _startup_mode_now = os.environ.get("JARVIS_STARTUP_MEMORY_MODE", "local_full")
             _gcp_probe_timeout_base = _get_env_float("JARVIS_GCP_PROBE_TIMEOUT", 5.0)
             _gcp_probe_pressure_timeout = _get_env_float(
                 "JARVIS_GCP_PROBE_PRESSURE_TIMEOUT",
@@ -63360,13 +64440,22 @@ class JarvisSystemKernel:
                     )
                 else:
                     # GCP unreachable — fall back to local
-                    _fallback = "local_optimized" if _startup_mode_now == "cloud_first" else "local_full"
+                    _previous_mode = _startup_mode_now
+                    _fallback = _resolve_local_startup_mode_on_cloud_unavailable(
+                        _startup_mode_now,
+                        available_gb=_read_available_memory_gb(),
+                    )
                     self.logger.warning(
                         "[GCPProbe] GCP unreachable — falling back from %s to %s",
                         _startup_mode_now, _fallback,
                     )
                     os.environ["JARVIS_STARTUP_MEMORY_MODE"] = _fallback
                     _startup_mode_now = _fallback
+                    issue_collector.add_warning(
+                        f"GCP probe unreachable during {_previous_mode}; fell back to {_fallback}",
+                        IssueCategory.GCP,
+                        suggestion="Verify network, credentials, and GCP VM endpoint reachability",
+                    )
                     add_dashboard_log(
                         f"GCP unreachable — fell back to {_fallback}", "WARNING"
                     )
@@ -63407,16 +64496,20 @@ class JarvisSystemKernel:
                                 "JARVIS_STARTUP_MEMORY_MODE", _startup_mode_now
                             )
                             if _current_mode in ("cloud_first", "cloud_only"):
-                                _fallback = (
-                                    "local_optimized"
-                                    if _current_mode == "cloud_first"
-                                    else "local_full"
+                                _fallback = _resolve_local_startup_mode_on_cloud_unavailable(
+                                    _current_mode,
+                                    available_gb=_read_available_memory_gb(),
                                 )
                                 os.environ["JARVIS_STARTUP_MEMORY_MODE"] = _fallback
                                 self.logger.warning(
                                     "[GCPProbe] Deferred probe unreachable — falling back from %s to %s",
                                     _current_mode,
                                     _fallback,
+                                )
+                                issue_collector.add_warning(
+                                    "Deferred GCP probe unreachable; falling back to local mode",
+                                    IssueCategory.GCP,
+                                    suggestion="Check GCP endpoint health and auth scope",
                                 )
                                 add_dashboard_log(
                                     f"GCP deferred probe unreachable — fell back to {_fallback}",
@@ -63439,79 +64532,30 @@ class JarvisSystemKernel:
                     )
                     self._background_tasks.append(self._gcp_probe_task)
                 else:
+                    _previous_mode = _startup_mode_now
+                    _fallback = _resolve_local_startup_mode_on_cloud_unavailable(
+                        _startup_mode_now,
+                        available_gb=_read_available_memory_gb(),
+                    )
                     self.logger.warning(
                         "[GCPProbe] Probe timed out (%.0fs) — assuming GCP unreachable, "
-                        "falling back to local_optimized", _gcp_probe_timeout
+                        "falling back to %s",
+                        _gcp_probe_timeout,
+                        _fallback,
                     )
-                    os.environ["JARVIS_STARTUP_MEMORY_MODE"] = "local_optimized"
-                    _startup_mode_now = "local_optimized"
+                    os.environ["JARVIS_STARTUP_MEMORY_MODE"] = _fallback
+                    _startup_mode_now = _fallback
+                    issue_collector.add_warning(
+                        f"GCP probe timed out during {_previous_mode}; switched to {_fallback}",
+                        IssueCategory.GCP,
+                        suggestion="Increase JARVIS_GCP_PROBE_TIMEOUT if network latency is expected",
+                    )
             except Exception as _probe_err:
                 self.logger.debug("[GCPProbe] Probe failed: %s", _probe_err)
 
-        # =====================================================================
-        # v258.3 (Gap 10): PROACTIVE SPOT VM WARM
-        # =====================================================================
-        # When cloud_first mode is confirmed reachable but no invincible node
-        # is running, start a Spot VM warm immediately so it's ready when needed.
-        # Without this, the Spot VM doesn't start until Trinity phase (~Phase 5),
-        # adding 30-60s of wait time when inference is needed.
-        # =====================================================================
-        self._early_spot_vm_task: Optional[asyncio.Task] = None
-        if (self._gcp_probe_passed
-                and _startup_mode_now in ("cloud_first", "cloud_only")
-                and not os.environ.get("JARVIS_INVINCIBLE_NODE_IP")):
-            _spot_warm_timeout = _get_env_float("JARVIS_SPOT_VM_WARM_TIMEOUT", 30.0)
-
-            async def _proactive_spot_vm_warm():
-                """Start Spot VM immediately so it's ready when Trinity reaches GCP."""
-                try:
-                    # v261.0: Use singleton accessor instead of creating duplicate instance.
-                    # Previously `GCPVMManager()` was instantiated directly, bypassing the
-                    # singleton and causing duplicate VM tracking / racing with Phase 2.
-                    from backend.core.gcp_vm_manager import get_gcp_vm_manager
-                    _vm_mgr = await get_gcp_vm_manager()
-
-                    import psutil
-                    _mem = psutil.virtual_memory()
-                    _mem_snapshot = {
-                        "available_gb": _mem.available / (1024**3),
-                        "total_gb": _mem.total / (1024**3),
-                        "percent": _mem.percent,
-                    }
-
-                    should_create, reason, confidence = await _vm_mgr.should_create_vm(
-                        _mem_snapshot, trigger_reason="proactive_startup_warm"
-                    )
-                    if should_create and confidence >= 0.5:
-                        self.logger.info(
-                            "[EarlySpot] Proactively warming Spot VM: %s (confidence: %.0f%%)",
-                            reason, confidence * 100,
-                        )
-                        add_dashboard_log("Proactive Spot VM warm started", "INFO")
-                        vm_result = await asyncio.wait_for(
-                            _vm_mgr.create_vm(trigger_reason="proactive_startup"),
-                            timeout=_spot_warm_timeout,
-                        )
-                        if vm_result:
-                            self.logger.info("[EarlySpot] Spot VM created: %s", vm_result)
-                    else:
-                        self.logger.debug(
-                            "[EarlySpot] Spot VM not needed: %s (confidence: %.0f%%)",
-                            reason, confidence * 100,
-                        )
-                except asyncio.TimeoutError:
-                    self.logger.warning("[EarlySpot] Spot VM warm timed out")
-                except ImportError:
-                    self.logger.debug("[EarlySpot] GCP VM manager not available")
-                except Exception as _spot_err:
-                    self.logger.debug("[EarlySpot] Spot VM warm failed: %s", _spot_err)
-
-            self._early_spot_vm_task = create_safe_task(
-                _proactive_spot_vm_warm(),
-                name="early_spot_vm_warm",
-            )
-            self._background_tasks.append(self._early_spot_vm_task)
-            self.logger.info("[Kernel] Proactive Spot VM warm task created")
+        # v266.0: Proactive Spot VM warm REMOVED — VM creation is now pressure-driven
+        # via GCPHybridPrimeRouter state machine. See design doc:
+        # docs/plans/2026-02-22-gcp-pressure-driven-lifecycle-design.md
 
         if self.config.trinity_enabled and os.getenv("JARVIS_EARLY_PRIME_PREWARM", "true").lower() == "true":
             # Check golden image + GCP indicators
@@ -63889,220 +64933,127 @@ class JarvisSystemKernel:
                 )
                 self._background_tasks.append(self._jprime_watcher_task)
 
-        # =============================================================
-        # v233.4: EARLY GCP PRE-WARM — Start Invincible Node Before Phase 0
-        # =============================================================
-        # The golden image VM needs ~100-150s. Previously, provisioning
-        # started at Phase 2 (~60-90s in). By starting here, we gain
-        # 60-90s of parallel boot time. Phase 2 reuses this task.
-        # =============================================================
-        _early_gcp_golden = os.getenv(
-            "JARVIS_GCP_USE_GOLDEN_IMAGE", "false"
-        ).lower() == "true"
-        _early_gcp_on = any(
-            os.getenv(k, "false").lower() == "true"
-            for k in ("GCP_ENABLED", "GCP_VM_ENABLED",
-                       "JARVIS_SPOT_VM_ENABLED", "JARVIS_GCP_ENABLED")
-        )
-
-        if (self.config.invincible_node_enabled
-                and self.config.invincible_node_static_ip_name
-                and (_early_gcp_golden or _early_gcp_on)):
-
-            self.logger.info(
-                "[Kernel] v233.4 EARLY GCP PRE-WARM: Starting invincible "
-                "node provisioning before Phase 0"
+        # v266.0: Invincible Node eager prewarm REMOVED — VM creation is now
+        # pressure-driven via GCPHybridPrimeRouter. The router provisions VMs
+        # when memory pressure exceeds 85% sustained (3/5 readings).
+        #
+        # v267.1: EXCEPTION — Golden image + low-RAM (<=16GB) configs MUST
+        # start the VM proactively because local model loading takes 500-600s
+        # and is impractical on 16GB. Without this, the pressure-driven router
+        # triggers too late (after memory pressure builds) and the hard cap
+        # kills startup before the VM is ready.
+        if _skip_local_prewarm and self._early_prime_skipped_for_cloud:
+            _should_proactive_vm = (
+                os.getenv("JARVIS_GCP_USE_GOLDEN_IMAGE", "false").lower() == "true"
+                or os.getenv("GCP_ENABLED", "false").lower() == "true"
+                or os.getenv("GCP_VM_ENABLED", "false").lower() == "true"
+                or os.getenv("JARVIS_GCP_ENABLED", "false").lower() == "true"
             )
-            add_dashboard_log(
-                "Early GCP pre-warm: starting VM provisioning", "INFO"
-            )
+            if _should_proactive_vm:
+                self.logger.info(
+                    "[Kernel] v267.1: PROACTIVE GCP VM START — golden image + "
+                    "low-RAM cloud-only mode requires early VM provisioning"
+                )
 
-            _early_gcp_timeout = float(os.environ.get(
-                "GCP_VM_STARTUP_TIMEOUT",
-                str(self.config.invincible_node_health_timeout),
-            )) + 60  # +60s buffer for manager init + network latency
-
-            async def _early_wake_invincible_node():
-                """v233.4: Early boot invincible node provisioning with hard timeout."""
-                from backend.core.coordination_flags import coordination_flag
-
-                async with coordination_flag("JARVIS_INVINCIBLE_NODE_BOOTING"):
+                async def _proactive_gcp_vm_start():
+                    """Start GCP VM early for golden-image cloud-only configs."""
                     try:
-                        return await asyncio.wait_for(
-                            _early_wake_inner(),
-                            timeout=_early_gcp_timeout,
+                        from backend.core.gcp_vm_manager import get_gcp_vm_manager
+
+                        update_dashboard_gcp_progress(
+                            phase=1,
+                            phase_name="Initiating",
+                            checkpoint="Proactive VM start (golden image + low RAM)",
+                            progress=5,
+                            status="starting",
+                            deployment_mode="golden-image",
                         )
-                    except asyncio.CancelledError:
-                        # v236.0: CancelledError is a BaseException (Python 3.9+).
-                        # coordination_flag's finally clears the env var before re-raise.
-                        self.logger.info(
-                            "[EarlyGCP] Task cancelled (non-fatal)"
-                        )
-                        raise  # Re-raise so asyncio properly marks the task as cancelled
-                    except asyncio.TimeoutError:
-                        self.logger.warning(
-                            f"[EarlyGCP] Hard timeout after {_early_gcp_timeout:.0f}s"
-                        )
-                        return False, None, "EARLY_TIMEOUT"
-                    except Exception as e:
-                        self.logger.warning(
-                            f"[EarlyGCP] Early pre-warm error (non-fatal): {e}"
-                        )
-                        return False, None, f"EARLY_ERROR: {e}"
 
-            async def _early_wake_inner():
-                """v233.4: Inner provisioning logic (wrapped with timeout)."""
-                try:
-                    from backend.core.gcp_vm_manager import get_gcp_vm_manager
-
-                    update_dashboard_gcp_progress(
-                        phase=1, phase_name="Early Init",
-                        checkpoint="Loading GCP manager (early boot)",
-                        progress=5, status="starting",
-                        deployment_mode=(
-                            "golden-image" if _early_gcp_golden
-                            else "standard"
-                        ),
-                    )
-
-                    manager = await get_gcp_vm_manager()
-
-                    update_dashboard_gcp_progress(
-                        phase=2, phase_name="Connecting",
-                        checkpoint="GCP manager loaded (early boot)",
-                        progress=15,
-                    )
-
-                    if not manager.is_static_vm_mode:
-                        self.logger.info(
-                            "[EarlyGCP] Not in static VM mode — skipping"
-                        )
-                        return False, None, "NOT_STATIC_VM_MODE"
-
-                    self.logger.info("[EarlyGCP] Waking invincible node...")
-
-                    update_dashboard_gcp_progress(
-                        phase=3, phase_name="Waking VM",
-                        checkpoint="Sending wake request (early boot)",
-                        progress=20,
-                    )
-
-                    # Progress callback — identical to Phase 2's
-                    # v235.0: Only marks as "apars" source. _poll_health_until_ready only
-                    # calls this for responses with actual APARS data (has "apars" key).
-                    # Legacy "status=starting" responses (no APARS) do NOT trigger the
-                    # callback, so source="apars" here is always truthful.
-                    def _gcp_progress_cb(pct, phase, detail):
-                        # v235.3: Detect VM recycle events — reset progress tracking
-                        # to prevent false DMS regression warnings (100% → 40%)
-                        _detail_lower = detail.lower() if detail else ""
-                        _is_recycle = (
-                            pct == 0 and
-                            ("recycl" in _detail_lower or "version_never" in _detail_lower)
-                        )
-                        if _is_recycle:
-                            update_dashboard_gcp_progress(
-                                phase=0,
-                                phase_name="recycling",
-                                checkpoint=detail[:60],
-                                progress=0,
-                                status="recycling",
-                                source="apars",
+                        manager = await get_gcp_vm_manager()
+                        if not manager.is_static_vm_mode:
+                            self.logger.info(
+                                "[ProactiveGCP] Not in static VM mode — "
+                                "deferring to pressure-driven lifecycle"
                             )
                             return
 
-                        dashboard_pct = 40 + int(pct * 0.6)
-                        _mode = ""
-                        if "golden" in _detail_lower:
-                            _mode = "golden-image"
-                        elif pct > 0:
-                            _mode = "standard"
+                        self.logger.info("[ProactiveGCP] Waking cloud node...")
                         update_dashboard_gcp_progress(
-                            phase=4,
-                            phase_name=phase.title()[:15],
-                            checkpoint=detail[:60],
-                            progress=dashboard_pct,
-                            source="apars",
-                            deployment_mode=_mode if _mode else None,
+                            phase=3,
+                            phase_name="Waking VM",
+                            checkpoint="Sending wake request",
+                            progress=20,
                         )
 
-                    port = self.config.invincible_node_port
-                    timeout = float(os.environ.get(
-                        "GCP_VM_STARTUP_TIMEOUT",
-                        str(self.config.invincible_node_health_timeout),
-                    ))
+                        def _proactive_progress_cb(pct: int, phase: str, detail: str) -> None:
+                            dashboard_pct = 40 + int(pct * 0.6)
+                            _mode = "golden-image" if "golden" in (detail or "").lower() else "standard"
+                            update_dashboard_gcp_progress(
+                                phase=4,
+                                phase_name=phase.title()[:15] if phase else "Loading",
+                                checkpoint=(detail or "")[:60],
+                                progress=dashboard_pct,
+                                source="apars",
+                                deployment_mode=_mode,
+                            )
 
-                    success, ip, status = await manager.ensure_static_vm_ready(
-                        port=port,
-                        timeout=timeout,
-                        progress_callback=_gcp_progress_cb,
-                    )
-
-                    if success and ip:
-                        self._invincible_node_ready = True
-                        self._invincible_node_ip = ip
-                        self.logger.info(
-                            f"[EarlyGCP] VM ready at {ip} (early boot)"
-                        )
-                        add_dashboard_log(
-                            f"Early GCP: VM ready at {ip}", "SUCCESS"
-                        )
-                        self._propagate_invincible_node_url(
-                            ip, source="early_boot"
-                        )
-                        update_dashboard_gcp_progress(
-                            phase=5, phase_name="Ready",
-                            checkpoint=f"VM ready at {ip} (early boot)",
-                            progress=100, status="healthy",
+                        _port = int(os.getenv(
+                            "TRINITY_JPRIME_PORT",
+                            os.getenv("JARVIS_PRIME_PORT", "8001"),
+                        ))
+                        _timeout = float(os.getenv(
+                            "JARVIS_GCP_RECOVERY_TIMEOUT", "450"
+                        ))
+                        success, ip, status_msg = await manager.ensure_static_vm_ready(
+                            port=_port,
+                            timeout=_timeout,
+                            progress_callback=_proactive_progress_cb,
                         )
 
-                        # v233.4: Kill Early Prime if running (same as Phase 2 lines 61624-61640)
-                        _early_prime_pid_str = os.environ.get("JARVIS_EARLY_PRIME_PID")
-                        if _early_prime_pid_str:
+                        if success and ip:
+                            self.logger.info(
+                                f"[ProactiveGCP] VM ready at {ip} — "
+                                f"setting Invincible Node env vars"
+                            )
+                            os.environ["INVINCIBLE_NODE_IP"] = ip
+                            os.environ["INVINCIBLE_NODE_READY"] = "true"
+                            self._invincible_node_ip = ip
+                            self._invincible_node_ready = True
+
+                            # Propagate to routing layer
                             try:
-                                import signal as _sig
-                                _early_pid = int(_early_prime_pid_str)
-                                os.kill(_early_pid, _sig.SIGTERM)
-                                self.logger.info(
-                                    f"[EarlyGCP] Terminated local Early Prime "
-                                    f"(PID: {_early_pid}) — cloud VM ready"
+                                from backend.core.prime_router import (
+                                    notify_gcp_vm_ready,
                                 )
-                                for _k in ("JARVIS_EARLY_PRIME_PID",
-                                           "JARVIS_EARLY_PRIME_PORT"):
-                                    os.environ.pop(_k, None)
-                            except (ValueError, ProcessLookupError, OSError):
+                                _notify_result = notify_gcp_vm_ready(ip, _port)
+                                if inspect.isawaitable(_notify_result):
+                                    await _notify_result
+                            except ImportError:
                                 pass
-                    else:
-                        self.logger.info(
-                            f"[EarlyGCP] VM not ready yet: {status}"
+
+                            update_dashboard_gcp_progress(
+                                phase=6,
+                                phase_name="Ready",
+                                checkpoint=f"VM ready at {ip}",
+                                progress=100,
+                                status="ready",
+                                deployment_mode="golden-image",
+                            )
+                        else:
+                            self.logger.warning(
+                                f"[ProactiveGCP] VM start failed: {status_msg} — "
+                                f"will fall back to local or pressure-driven"
+                            )
+                    except Exception as e:
+                        self.logger.warning(
+                            f"[ProactiveGCP] Early VM start failed (non-fatal): {e}"
                         )
 
-                    return success, ip, status
-
-                except ImportError as e:
-                    self.logger.warning(
-                        f"[EarlyGCP] GCP module not available: {e}"
-                    )
-                    return False, None, f"IMPORT_ERROR: {e}"
-                except Exception as e:
-                    self.logger.warning(
-                        f"[EarlyGCP] Early pre-warm error (non-fatal): {e}"
-                    )
-                    return False, None, f"EARLY_ERROR: {e}"
-
-            self._early_invincible_task = create_safe_task(
-                _early_wake_invincible_node(),
-                name="early_invincible_node_prewarm",
-            )
-            self._background_tasks.append(self._early_invincible_task)
-            # v235.1: Signal to orchestrator that invincible node boot is in progress
-            # Prevents _start_gcp_prewarm() from provisioning a duplicate Spot VM.
-            # The coordination_flag context manager inside _early_wake_invincible_node()
-            # sets JARVIS_INVINCIBLE_NODE_BOOTING on entry and clears it on ALL exit paths.
-            self.logger.info(
-                "[Kernel] v233.4 Early invincible node task created "
-                "(JARVIS_INVINCIBLE_NODE_BOOTING managed by coordination_flag)"
-            )
+                self._proactive_gcp_task = create_safe_task(
+                    _proactive_gcp_vm_start(),
+                    name="proactive-gcp-vm-start",
+                )
+                self._background_tasks.append(self._proactive_gcp_task)
 
         try:
             # =================================================================
@@ -64187,7 +65138,8 @@ class JarvisSystemKernel:
                 name="startup-progress-heartbeat"
             )
             self._background_tasks.append(heartbeat_task)
-            self._heartbeat_task = heartbeat_task  # Store reference for cancellation
+            self._startup_progress_heartbeat_task = heartbeat_task
+            self._heartbeat_task = heartbeat_task  # Legacy alias for compatibility
 
             # Phase 1: Preflight (Zone 5.1-5.4)
             self._current_startup_phase = "preflight"
@@ -64198,8 +65150,7 @@ class JarvisSystemKernel:
             # v187.0: Update DMS at phase START to fix timeout tracking
             if self._startup_watchdog:
                 self._startup_watchdog.update_phase("preflight", 5)
-            if self._narrator:
-                await self._narrator.narrate_phase_start("preflight")
+                await self._safe_narrate(self._narrator.narrate_phase_start("preflight"), "phase_start(preflight)")
 
             # v249.0: Phase event emission
             _cid_pf = f"phase-preflight-{uuid.uuid4().hex[:8]}"
@@ -64207,7 +65158,21 @@ class JarvisSystemKernel:
             self._emit_event(SupervisorEventType.PHASE_START, "Phase: Preflight", phase="preflight", correlation_id=_cid_pf)
 
             if _ssm: await _ssm.start_component("preflight")
-            if not await self._phase_preflight():
+            # v270.0: Outer timeout — bare await could hang indefinitely if any
+            # preflight sub-operation stalls (lock handover, zombie scan, IPC bind).
+            _preflight_timeout = _get_env_float("JARVIS_PREFLIGHT_TIMEOUT", 90.0)
+            try:
+                _preflight_ok = await asyncio.wait_for(
+                    self._phase_preflight(), timeout=_preflight_timeout
+                )
+            except asyncio.TimeoutError:
+                _preflight_ok = False
+                self.logger.error(
+                    "[Kernel] v270.0: Preflight timed out after %.0fs", _preflight_timeout
+                )
+            except asyncio.CancelledError:
+                raise
+            if not _preflight_ok:
                 if _ssm: await _ssm.complete_component("preflight", error="Preflight failed")
                 issue_collector.add_critical(
                     "Preflight phase failed - cannot continue startup",
@@ -64267,8 +65232,7 @@ class JarvisSystemKernel:
             resource_timeout = float(os.environ.get("JARVIS_RESOURCE_TIMEOUT", "300.0"))
             if self._startup_watchdog:
                 self._startup_watchdog.update_phase("resources", 15, operational_timeout=resource_timeout)
-            if self._narrator:
-                await self._narrator.narrate_phase_start("resources")
+                await self._safe_narrate(self._narrator.narrate_phase_start("resources"), "phase_start(resources)")
 
             # v249.0: Phase event emission
             _cid_rs = f"phase-resources-{uuid.uuid4().hex[:8]}"
@@ -64276,20 +65240,32 @@ class JarvisSystemKernel:
             self._emit_event(SupervisorEventType.PHASE_START, "Phase: Resources", phase="resources", correlation_id=_cid_rs)
 
             if _ssm: await _ssm.start_component("resources")
-            if not await self._phase_resources():
+            # v270.0: Outer timeout — resource managers (Docker, GCP, storage) can
+            # each stall on network or credential discovery. resource_timeout is
+            # already defined above (default 300s).
+            try:
+                _resources_ok = await asyncio.wait_for(
+                    self._phase_resources(), timeout=resource_timeout
+                )
+            except asyncio.TimeoutError:
+                _resources_ok = False
+                self.logger.error(
+                    "[Kernel] v270.0: Resources phase timed out after %.0fs", resource_timeout
+                )
+            except asyncio.CancelledError:
+                raise
+            if not _resources_ok:
                 if _ssm: await _ssm.complete_component("resources", error="Resource init failed")
                 issue_collector.add_critical(
                     "Resource initialization failed - cannot continue startup",
                     IssueCategory.GENERAL,
                     suggestion="Check Docker, GCP, and port availability"
                 )
-                if self._narrator:
-                    await self._narrator.narrate_error("Resource initialization failed", critical=True)
+                await self._safe_narrate(self._narrator.narrate_error("Resource initialization failed", critical=True), "error")
                 issue_collector.print_health_report()
                 return 1
             if _ssm: await _ssm.complete_component("resources")
-            if self._narrator:
-                await self._narrator.narrate_zone_complete(3, success=True)
+            await self._safe_narrate(self._narrator.narrate_zone_complete(3, success=True), "zone_complete")
 
             self._emit_event(
                 SupervisorEventType.PHASE_END, "Phase: Resources complete",
@@ -64329,8 +65305,7 @@ class JarvisSystemKernel:
             backend_timeout = float(os.environ.get("JARVIS_BACKEND_STARTUP_TIMEOUT", "300.0"))
             if self._startup_watchdog:
                 self._startup_watchdog.update_phase("backend", 30, operational_timeout=backend_timeout)
-            if self._narrator:
-                await self._narrator.narrate_phase_start("backend")
+                await self._safe_narrate(self._narrator.narrate_phase_start("backend"), "phase_start(backend)")
 
             # v249.0: Phase event emission
             _cid_be = f"phase-backend-{uuid.uuid4().hex[:8]}"
@@ -64338,15 +65313,28 @@ class JarvisSystemKernel:
             self._emit_event(SupervisorEventType.PHASE_START, "Phase: Backend", phase="backend", correlation_id=_cid_be)
 
             if _ssm: await _ssm.start_component("backend")
-            if not await self._phase_backend():
+            # v270.0: Outer timeout — backend startup includes subprocess spawning,
+            # health polling, and optional in-process uvicorn. backend_timeout is
+            # already defined above (default 300s).
+            try:
+                _backend_ok = await asyncio.wait_for(
+                    self._phase_backend(), timeout=backend_timeout
+                )
+            except asyncio.TimeoutError:
+                _backend_ok = False
+                self.logger.error(
+                    "[Kernel] v270.0: Backend phase timed out after %.0fs", backend_timeout
+                )
+            except asyncio.CancelledError:
+                raise
+            if not _backend_ok:
                 if _ssm: await _ssm.complete_component("backend", error="Backend failed to start")
                 issue_collector.add_critical(
                     "Backend server failed to start",
                     IssueCategory.NETWORK,
                     suggestion="Check if port is already in use or backend code has errors"
                 )
-                if self._narrator:
-                    await self._narrator.narrate_error("Backend server failed to start", critical=True)
+                await self._safe_narrate(self._narrator.narrate_error("Backend server failed to start", critical=True), "error")
                 issue_collector.print_health_report()
                 return 1
             if _ssm: await _ssm.complete_component("backend")
@@ -64389,8 +65377,17 @@ class JarvisSystemKernel:
                 try:
                     self._voice_orchestrator = VoiceOrchestrator()
                     # v265.0: Add timeout — IPC server start could hang
+                    # v265.5: CPU-aware scaling + env var override
+                    _vo_timeout = _get_env_float("JARVIS_VOICE_ORCH_START_TIMEOUT", 15.0)
+                    try:
+                        import psutil as _vo_ps
+                        _vo_cpu = _vo_ps.cpu_percent(interval=None)
+                        if _vo_cpu > 90.0:
+                            _vo_timeout *= 1.0 + (_vo_cpu - 90.0) / 10.0 * 2.0
+                    except Exception:
+                        pass
                     await asyncio.wait_for(
-                        self._voice_orchestrator.start(), timeout=15.0
+                        self._voice_orchestrator.start(), timeout=_vo_timeout
                     )
 
                     # Connect TTS callback if narrator exists
@@ -64442,8 +65439,7 @@ class JarvisSystemKernel:
             intelligence_timeout = _get_env_float("JARVIS_INTELLIGENCE_TIMEOUT", 120.0)
             if self._startup_watchdog:
                 self._startup_watchdog.update_phase("intelligence", 50, operational_timeout=intelligence_timeout)
-            if self._narrator:
-                await self._narrator.narrate_phase_start("intelligence")
+                await self._safe_narrate(self._narrator.narrate_phase_start("intelligence"), "phase_start(intelligence)")
 
             # v249.0: Phase event emission
             _cid_in = f"phase-intelligence-{uuid.uuid4().hex[:8]}"
@@ -64483,11 +65479,9 @@ class JarvisSystemKernel:
                     IssueCategory.INTELLIGENCE,
                     suggestion="Check ML model availability and Python dependencies"
                 )
-                if self._narrator:
-                    await self._narrator.narrate_zone_complete(4, success=False)
+                await self._safe_narrate(self._narrator.narrate_zone_complete(4, success=False), "zone_complete")
             else:
-                if self._narrator:
-                    await self._narrator.narrate_zone_complete(4, success=True)
+                await self._safe_narrate(self._narrator.narrate_zone_complete(4, success=True), "zone_complete")
 
             # v242.3: Defensive cleanup — ensure model loading state is cleared
             # before entering Two-Tier Security phase. If EarlyPrime or InvincibleNode
@@ -64616,6 +65610,15 @@ class JarvisSystemKernel:
             # =====================================================================
             # v265.0: Add timeout — previously bare await could hang indefinitely
             _agent_runtime_timeout = _get_env_float("JARVIS_AGENT_RUNTIME_TIMEOUT", 30.0)
+            # v265.4: CPU-aware timeout — extend under pressure
+            try:
+                import psutil as _art_psutil
+                _art_cpu = _art_psutil.cpu_percent(interval=None)
+                if _art_cpu > 90.0:
+                    _art_factor = 1.0 + (_art_cpu - 90.0) / 10.0 * 2.0
+                    _agent_runtime_timeout *= _art_factor
+            except Exception:
+                pass
             try:
                 await asyncio.wait_for(
                     self._start_agent_runtime(),
@@ -64638,70 +65641,40 @@ class JarvisSystemKernel:
             # (Intelligence) so the LLM client is available.
             # Uses audio_pipeline_bootstrap for clean composition.
             # =====================================================================
-            if self._audio_bus_enabled and self._audio_bus is not None:
-                try:
-                    _wire_start = time.time()
-                    from backend.audio.audio_pipeline_bootstrap import (
-                        wire_conversation_pipeline,
-                    )
-
-                    # Get speech state for mode transitions
-                    # v265.0: Add timeouts to pipeline wiring
-                    _speech_state = None
-                    try:
-                        from backend.core.unified_speech_state import (
-                            get_speech_state_manager,
-                        )
-                        _speech_state = await asyncio.wait_for(
-                            get_speech_state_manager(), timeout=10.0
-                        )
-                    except (asyncio.TimeoutError, Exception):
-                        pass
-
-                    self._audio_pipeline_handle = await asyncio.wait_for(
-                        wire_conversation_pipeline(
-                            audio_bus=self._audio_bus,
-                            llm_client=self._model_serving,
-                            speech_state=_speech_state,
-                        ),
-                        timeout=30.0,
-                    )
-
-                    # Store references for shutdown and status
-                    self._conversation_pipeline = self._audio_pipeline_handle.conversation_pipeline
-                    self._mode_dispatcher = self._audio_pipeline_handle.mode_dispatcher
-
-                    self._audio_infrastructure_initialized = True
-                    _wire_ms = (time.time() - _wire_start) * 1000
-
-                    self._component_status["audio_infrastructure"] = {
-                        "status": "running",
-                        "message": f"Pipeline wired via bootstrap in {_wire_ms:.0f}ms",
-                    }
-                    self.logger.info(
-                        f"[Kernel] Audio pipeline wired (v238.1) in {_wire_ms:.0f}ms"
-                    )
-
-                    # Launch background health monitor
-                    self._audio_health_task = create_safe_task(
-                        self._audio_health_loop(),
-                        name="audio-health",
-                    )
-                    self._background_tasks.append(self._audio_health_task)
-
-                except Exception as ap_err:
+            if self._audio_bus_enabled:
+                if self._audio_bus is None:
                     self.logger.warning(
-                        f"[Kernel] Audio pipeline wiring failed: {ap_err}"
+                        "[Kernel] AudioBus unavailable at Phase 4 — scheduling recovery"
                     )
-                    self._component_status["audio_infrastructure"] = {
-                        "status": "degraded",
-                        "message": f"Wiring failed: {ap_err}",
-                    }
+                    self._schedule_audio_bus_recovery("phase4_audio_bus_missing")
+                else:
+                    # v266.1: Timeout guard — audio device init can hang if device held
+                    _audio_wire_timeout = _get_env_float("JARVIS_AUDIO_WIRE_TIMEOUT", 15.0)
+                    try:
+                        await asyncio.wait_for(
+                            self._attempt_wire_audio_pipeline(context="startup"),
+                            timeout=_audio_wire_timeout,
+                        )
+                    except asyncio.TimeoutError:
+                        self.logger.warning(
+                            f"[Kernel] Audio pipeline wiring timed out ({_audio_wire_timeout:.0f}s)"
+                        )
+                    except asyncio.CancelledError:
+                        raise
+                    except Exception as _awp_err:
+                        self.logger.debug(f"[Kernel] Audio pipeline wiring error: {_awp_err}")
 
             # v258.3 (Gap GCP-2): Re-evaluate startup mode after Intelligence phase.
             # At this point, backend is loaded + intelligence systems initialized.
             # Memory may have changed significantly from the pre-Phase-0 measurement.
-            await _reevaluate_startup_mode("post-intelligence")
+            try:
+                await asyncio.wait_for(_reevaluate_startup_mode("post-intelligence"), timeout=5.0)
+            except asyncio.TimeoutError:
+                self.logger.debug("[Kernel] Post-intelligence mode re-evaluation timed out")
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                pass
 
             # =====================================================================
             # v200.0: TWO-TIER SECURITY INITIALIZATION
@@ -64731,6 +65704,19 @@ class JarvisSystemKernel:
             # burning 80s on components that will cascade-fail.
             if _ssm: await _ssm.start_component("two_tier_security")
             _two_tier_init_timeout = _get_env_float("JARVIS_TWO_TIER_INIT_TIMEOUT", 80.0)
+            # v265.4: CPU-aware outer timeout — extend under pressure
+            try:
+                import psutil as _tt_psutil
+                _tt_cpu = _tt_psutil.cpu_percent(interval=None)
+                if _tt_cpu > 90.0:
+                    _tt_cpu_factor = 1.0 + (_tt_cpu - 90.0) / 10.0 * 2.0
+                    _two_tier_init_timeout *= _tt_cpu_factor
+                    self.logger.info(
+                        f"[TwoTier] v265.4: Outer timeout extended "
+                        f"80s → {_two_tier_init_timeout:.0f}s (CPU: {_tt_cpu:.0f}%)"
+                    )
+            except Exception:
+                pass
             _infra_degraded = False
             try:
                 from intelligence.cloud_sql_connection_manager import (
@@ -64738,11 +65724,42 @@ class JarvisSystemKernel:
                     ReadinessState as _ttRS,
                 )
                 _tt_gate = _tt_get_gate()
-                if _tt_gate.state == _ttRS.UNAVAILABLE:
-                    _infra_degraded = True
-                    self.logger.info(
-                        "[TwoTier] Cloud SQL UNAVAILABLE — using fast-path timeout"
-                    )
+                # v265.3: Also fast-path when gate is CHECKING/UNKNOWN.
+                # When the watchdog cancels cloud_sql_proxy mid-flight,
+                # ensure_proxy_ready() is interrupted after setting state
+                # to CHECKING — it never transitions to UNAVAILABLE.
+                # Without this check, TwoTier burns the full 80s timeout
+                # waiting for a database that will never be ready.
+                if _tt_gate.state in (
+                    _ttRS.UNAVAILABLE, _ttRS.CHECKING, _ttRS.UNKNOWN
+                ):
+                    # Double-check: is the gate genuinely not ready, or is
+                    # it still actively checking? Look at cloud_sql_proxy
+                    # component status in the parallel initializer.
+                    _tt_sql_truly_dead = _tt_gate.state == _ttRS.UNAVAILABLE
+                    if not _tt_sql_truly_dead:
+                        try:
+                            _tt_pi = getattr(self, "app", None)
+                            _tt_pi = getattr(_tt_pi, "state", None) if _tt_pi else None
+                            _tt_pi = getattr(
+                                _tt_pi, "parallel_initializer", None
+                            ) if _tt_pi else None
+                            if _tt_pi:
+                                _sql_comp = _tt_pi.components.get("cloud_sql_proxy")
+                                if _sql_comp and _sql_comp.phase.value in (
+                                    "failed", "skipped"
+                                ):
+                                    _tt_sql_truly_dead = True
+                        except Exception:
+                            # If we can't check, assume degraded since gate
+                            # isn't READY either
+                            _tt_sql_truly_dead = True
+                    if _tt_sql_truly_dead:
+                        _infra_degraded = True
+                        self.logger.info(
+                            f"[TwoTier] Cloud SQL gate={_tt_gate.state.value} "
+                            "— using fast-path timeout"
+                        )
             except (ImportError, Exception):
                 pass
             if not _infra_degraded:
@@ -64797,7 +65814,7 @@ class JarvisSystemKernel:
             if self._startup_watchdog:
                 self._startup_watchdog.update_phase("two_tier", 65)
 
-            await self._broadcast_startup_progress(
+            await self._safe_broadcast(
                 stage="two_tier",
                 message="Two-Tier Security ready - connecting Trinity components...",
                 progress=65,
@@ -64879,28 +65896,18 @@ class JarvisSystemKernel:
                 self.logger.info("[Kernel] ───────────────────────────────────────────────────────")
                 self.logger.info("[Kernel] Starting frontend warmup (parallel with Trinity)...")
                 self.logger.info("[Kernel] ───────────────────────────────────────────────────────")
-                
-                async def _frontend_warmup() -> bool:
-                    """Start frontend compilation early, in parallel with Trinity."""
-                    try:
-                        # Only start if not already running
-                        if hasattr(self, '_frontend_process') and self._frontend_process:
-                            if self._frontend_process.returncode is None:
-                                self.logger.debug("[FrontendWarmup] Frontend already running")
-                                return True
-                        
-                        # Start the frontend (same logic as _start_frontend but async)
-                        return await self._start_frontend()
-                    except Exception as e:
-                        self.logger.warning(f"[FrontendWarmup] Error (non-fatal): {e}")
-                        return False
-                
-                frontend_warmup_task = create_safe_task(
-                    _frontend_warmup(),
-                    name="frontend_warmup"
-                )
-                self._frontend_warmup_task = frontend_warmup_task
-                self.logger.debug("[Kernel] Frontend warmup task started")
+
+                try:
+                    frontend_warmup_task = await self._ensure_frontend_start_task(
+                        caller="warmup",
+                    )
+                    self._frontend_warmup_task = frontend_warmup_task
+                    self.logger.debug("[Kernel] Frontend warmup task started")
+                except Exception as fw_err:
+                    self.logger.warning(
+                        f"[FrontendWarmup] Could not schedule warmup task: {fw_err}"
+                    )
+                    self._frontend_warmup_task = None
             else:
                 self.logger.debug("[Kernel] No frontend directory - skipping warmup")
                 self._frontend_warmup_task = None
@@ -64977,11 +65984,24 @@ class JarvisSystemKernel:
             # Step 5: Store for use by _phase_trinity() to ensure consistency
             self._effective_trinity_timeout = effective_trinity_timeout
 
-            # Step 6: Set DMS operational timeout
+            # Step 6: Derive a single authoritative Trinity budget model.
+            # This removes timeout drift between:
+            #   - progress-aware startup wrapper (can extend to 2x base),
+            #   - DMS operational timeout,
+            #   - phase outer guard.
+            trinity_progress_aware_cap = min(
+                TRINITY_MAX_EXTENDED_TIMEOUT, effective_trinity_timeout * 2
+            )
+            trinity_outer_buffer = _get_env_float("JARVIS_TRINITY_OUTER_BUFFER", 180.0)
+            effective_trinity_outer_timeout = trinity_progress_aware_cap + trinity_outer_buffer
+            self._effective_trinity_progress_cap = trinity_progress_aware_cap
+            self._effective_trinity_outer_timeout = effective_trinity_outer_timeout
+
+            # Step 7: Set DMS operational timeout
             # v222.0: DMS timeout must account for progress-aware deadline extensions
             # The progress-aware wrapper can extend up to TRINITY_MAX_EXTENDED_TIMEOUT,
             # so DMS must allow at least that much time plus buffer
-            max_possible_extended = min(TRINITY_MAX_EXTENDED_TIMEOUT, effective_trinity_timeout * 2)
+            max_possible_extended = trinity_progress_aware_cap
             dms_trinity_timeout = max_possible_extended + 120.0  # Extra buffer for DMS
             if self._startup_watchdog:
                 self._startup_watchdog.update_phase("trinity", 65, operational_timeout=dms_trinity_timeout)
@@ -64989,6 +66009,11 @@ class JarvisSystemKernel:
                     f"[Trinity] v222.0 DMS timeout set to {dms_trinity_timeout:.0f}s "
                     f"(max extended={max_possible_extended:.0f}s + 120s buffer)"
                 )
+            self.logger.info(
+                f"[Trinity] Unified budgets: base={effective_trinity_timeout:.0f}s, "
+                f"progress_cap={trinity_progress_aware_cap:.0f}s, "
+                f"outer={effective_trinity_outer_timeout:.0f}s"
+            )
             if self.config.trinity_enabled:
                 # v258.2: Wrap narrator calls in timeouts — previously unbounded awaits
                 # that could block indefinitely if TTS engine hangs, preventing
@@ -65037,7 +66062,11 @@ class JarvisSystemKernel:
                 # GCP mode, hollow client, etc.) plus a generous buffer since the internal
                 # Trinity budget + heartbeat handle normal operation — this outer guard
                 # is a defense-in-depth last resort.
-                _trinity_outer_timeout = effective_trinity_timeout + 60.0
+                _trinity_outer_timeout = getattr(
+                    self,
+                    "_effective_trinity_outer_timeout",
+                    effective_trinity_timeout + 60.0,
+                )
                 try:
                     await asyncio.wait_for(
                         self._phase_trinity(),
@@ -65076,7 +66105,7 @@ class JarvisSystemKernel:
                 duration_ms=(time.time() - _t0_tr) * 1000, correlation_id=_cid_tr,
             )
 
-            await self._broadcast_startup_progress(
+            await self._safe_broadcast(
                 stage="trinity",
                 message="Trinity connected - starting enterprise services...",
                 progress=80,
@@ -65103,14 +66132,23 @@ class JarvisSystemKernel:
                     initialize_reactor_core,
                     shutdown_reactor_core,
                 )
-                _rc_ok = await asyncio.wait_for(initialize_reactor_core(), timeout=30.0)
+                # v265.5: CPU-aware timeout + env var override
+                _rc_timeout = _get_env_float("JARVIS_REACTOR_CORE_INIT_TIMEOUT", 30.0)
+                try:
+                    import psutil as _rc_ps
+                    _rc_cpu = _rc_ps.cpu_percent(interval=None)
+                    if _rc_cpu > 90.0:
+                        _rc_timeout *= 1.0 + (_rc_cpu - 90.0) / 10.0 * 2.0
+                except Exception:
+                    pass
+                _rc_ok = await asyncio.wait_for(initialize_reactor_core(), timeout=_rc_timeout)
                 if _rc_ok:
                     self._reactor_core_active = True
                     add_dashboard_log("Reactor Core pipeline activated", "INFO")
                 else:
                     add_dashboard_log("Reactor Core pipeline unavailable (non-fatal)", "WARN")
             except asyncio.TimeoutError:
-                add_dashboard_log("Reactor Core init timed out (30s) — skipping", "WARN")
+                add_dashboard_log(f"Reactor Core init timed out ({_rc_timeout:.0f}s) — skipping", "WARN")
             except ImportError:
                 pass
             except Exception as e:
@@ -65120,15 +66158,24 @@ class JarvisSystemKernel:
             # v265.0: Add timeout — previously bare await could hang
             try:
                 from backend.autonomy.reactor_core_watcher import start_reactor_core_watcher
+                # v265.5: CPU-aware timeout + env var override
+                _rcw_timeout = _get_env_float("JARVIS_REACTOR_WATCHER_TIMEOUT", 15.0)
+                try:
+                    import psutil as _rcw_ps
+                    _rcw_cpu = _rcw_ps.cpu_percent(interval=None)
+                    if _rcw_cpu > 90.0:
+                        _rcw_timeout *= 1.0 + (_rcw_cpu - 90.0) / 10.0 * 2.0
+                except Exception:
+                    pass
                 _watcher = await asyncio.wait_for(
-                    start_reactor_core_watcher(), timeout=15.0
+                    start_reactor_core_watcher(), timeout=_rcw_timeout
                 )
                 self._reactor_core_watcher = _watcher
                 if hasattr(_watcher, '_watch_task') and _watcher._watch_task:
                     self._background_tasks.append(_watcher._watch_task)
                 add_dashboard_log("Reactor Core watcher active", "INFO")
             except asyncio.TimeoutError:
-                self.logger.debug("Reactor Core watcher timed out (15s)")
+                self.logger.debug(f"Reactor Core watcher timed out ({_rcw_timeout:.0f}s)")
             except Exception as e:
                 self.logger.debug(f"Reactor Core watcher error: {e}")
 
@@ -65141,8 +66188,7 @@ class JarvisSystemKernel:
             enterprise_timeout = float(os.environ.get("JARVIS_ENTERPRISE_TIMEOUT", "90.0"))
             if self._startup_watchdog:
                 self._startup_watchdog.update_phase("enterprise", 80, operational_timeout=enterprise_timeout)
-            if self._narrator:
-                await self._narrator.narrate_phase_start("enterprise")
+                await self._safe_narrate(self._narrator.narrate_phase_start("enterprise"), "phase_start(enterprise)")
 
             # v249.0: Phase event emission
             _cid_en = f"phase-enterprise-{uuid.uuid4().hex[:8]}"
@@ -65174,8 +66220,7 @@ class JarvisSystemKernel:
             except asyncio.CancelledError:
                 raise
             if _ssm: await _ssm.complete_component("enterprise_services")
-            if self._narrator:
-                await self._narrator.narrate_zone_complete(6, success=True)
+            await self._safe_narrate(self._narrator.narrate_zone_complete(6, success=True), "zone_complete")
 
             self._emit_event(
                 SupervisorEventType.PHASE_END, "Phase: Enterprise Services complete",
@@ -65183,7 +66228,7 @@ class JarvisSystemKernel:
                 duration_ms=(time.time() - _t0_en) * 1000, correlation_id=_cid_en,
             )
 
-            await self._broadcast_startup_progress(
+            await self._safe_broadcast(
                 stage="enterprise",
                 message="Enterprise services online - initializing Ghost Display...",
                 progress=85,
@@ -65198,7 +66243,9 @@ class JarvisSystemKernel:
                         "intelligence": {"status": "complete"},
                         "two_tier": {"status": "complete"},
                         "trinity": {"status": "complete"},
-                        "enterprise": {"status": "complete"},
+                        "enterprise": {"status": self._component_status.get(
+                            "enterprise", {}
+                        ).get("status", "pending")},
                         "ghost_display": {"status": "running"},
                         "agi_os": {"status": "pending"},
                         "frontend": {"status": "pending"},
@@ -65241,7 +66288,7 @@ class JarvisSystemKernel:
                 self.logger.warning(f"[Permissions] Startup permission check error: {e}")
                 if _ssm: await _ssm.complete_component("permissions", error=str(e))
 
-            await self._broadcast_startup_progress(
+            await self._safe_broadcast(
                 stage="permissions",
                 message="Permissions checked — initializing Ghost Display...",
                 progress=85,
@@ -65272,17 +66319,18 @@ class JarvisSystemKernel:
                 )
 
             if _ssm: await _ssm.start_component("ghost_display")
-            # v265.0: Add timeout wrapper — previously bare await could hang
             _ghost_display_ok = False
+            _ghost_display_deferred = False
             try:
-                _ghost_display_ok = await asyncio.wait_for(
-                    self._initialize_ghost_display(),
-                    timeout=ghost_display_timeout,
-                )
-            except asyncio.TimeoutError:
-                self.logger.warning(
-                    f"[Kernel] v265.0: Ghost Display init timed out "
-                    f"({ghost_display_timeout:.0f}s) — continuing without"
+                # _initialize_ghost_display() already applies an internal startup
+                # budget and continuation path. Wrapping again with the same
+                # timeout causes misclassification (FAILED) while background
+                # initialization is still healthy.
+                _ghost_display_ok = await self._initialize_ghost_display()
+                _ghost_display_deferred = (
+                    _ghost_display_ok
+                    and self._component_status.get("ghost_display", {}).get("status")
+                    == "running"
                 )
             except asyncio.CancelledError:
                 raise
@@ -65297,11 +66345,22 @@ class JarvisSystemKernel:
                     suggestion="Check BetterDisplay installation and permissions"
                 )
             else:
-                if _ssm: await _ssm.complete_component("ghost_display")
+                if _ssm:
+                    if _ghost_display_deferred:
+                        await _ssm.skip_component(
+                            "ghost_display",
+                            "Initialization continuing in background",
+                        )
+                    else:
+                        await _ssm.complete_component("ghost_display")
 
-            await self._broadcast_startup_progress(
+            await self._safe_broadcast(
                 stage="ghost_display",
-                message="Ghost Display ready — initializing AGI OS...",
+                message=(
+                    "Ghost Display initializing in background — initializing AGI OS..."
+                    if _ghost_display_deferred
+                    else "Ghost Display ready — initializing AGI OS..."
+                ),
                 progress=86,
                 metadata={
                     "icon": "monitor",
@@ -65314,7 +66373,9 @@ class JarvisSystemKernel:
                         "intelligence": {"status": "complete"},
                         "two_tier": {"status": "complete"},
                         "trinity": {"status": "complete"},
-                        "enterprise": {"status": "complete"},
+                        "enterprise": {"status": self._component_status.get(
+                            "enterprise", {}
+                        ).get("status", "pending")},
                         "ghost_display": {"status": self._component_status.get(
                             "ghost_display", {}
                         ).get("status", "pending")},
@@ -65361,6 +66422,14 @@ class JarvisSystemKernel:
                     max(60.0, TRINITY_PHASE_HOLD_HARD_CAP - 15.0),
                 ),
             )
+            # v265.6: CPU-aware outer timeout scaling (same formula as inner)
+            try:
+                import psutil as _agi_outer_ps
+                _agi_outer_cpu = _agi_outer_ps.cpu_percent(interval=None)
+                if _agi_outer_cpu > 90.0:
+                    _agi_os_outer_timeout *= 1.0 + (_agi_outer_cpu - 90.0) / 10.0 * 2.0
+            except Exception:
+                pass
             if self._startup_watchdog:
                 # v262.0: Register correct DMS timeout from the start (was 90s, overwritten to 270s inside method)
                 _agi_os_timeout_cap = max(60.0, TRINITY_PHASE_HOLD_HARD_CAP - 30.0)
@@ -65368,46 +66437,70 @@ class JarvisSystemKernel:
                 self._startup_watchdog.register_phase_timeout("agi_os", _agi_os_dms_timeout)
                 self._startup_watchdog.update_phase("agi_os", 86)
 
-            if _ssm: await _ssm.start_component("agi_os")
+            # v267.0: AGI OS is optional for interactive readiness.
+            # We allow a bounded startup budget, then continue with AGI OS
+            # completing in the background via a tracked task.
+            _agi_os_startup_budget = _get_env_float(
+                "JARVIS_AGI_OS_STARTUP_BUDGET",
+                min(45.0, max(15.0, _agi_os_outer_timeout * 0.2)),
+            )
+            _agi_os_startup_budget = max(
+                5.0,
+                min(_agi_os_startup_budget, _agi_os_outer_timeout),
+            )
+
+            if _ssm:
+                await _ssm.start_component("agi_os")
+
+            _agi_os_task = self._ensure_agi_os_init_task(
+                outer_timeout=_agi_os_outer_timeout,
+                startup_critical=False,
+            )
+            _agi_os_ok = False
+            _agi_os_deferred = False
             try:
-                _agi_os_ok = await asyncio.wait_for(
-                    self._initialize_agi_os(), timeout=_agi_os_outer_timeout
+                _agi_os_ok = bool(
+                    await shielded_wait_for(
+                        _agi_os_task,
+                        timeout=_agi_os_startup_budget,
+                        name="agi_os_startup_budget",
+                    )
                 )
             except asyncio.TimeoutError:
-                self.logger.error(
-                    f"[Kernel] v262.0: _initialize_agi_os() OUTER timeout after "
-                    f"{_agi_os_outer_timeout:.0f}s"
+                _agi_os_deferred = True
+                self.logger.info(
+                    "[AGI-OS] Initialization exceeded %.0fs startup budget — "
+                    "continuing in background",
+                    _agi_os_startup_budget,
                 )
-                _agi_os_ok = False
                 self._update_component_status(
-                    "agi_os", "error",
-                    f"Outer timeout ({_agi_os_outer_timeout:.0f}s)",
+                    "agi_os",
+                    "running",
+                    f"Initialization continuing in background ({_agi_os_startup_budget:.0f}s startup budget)",
                 )
-                # Attempt cleanup since the internal handler was interrupted.
-                # R3: Guard import — if _agi_os is set, the import at line 65884 succeeded
-                # and the module is fully loaded. If _agi_os is None, the import may have
-                # been interrupted (partially-loaded module in sys.modules) — skip cleanup.
-                if self._agi_os:
-                    # v262.0 R3.1: Use BaseException (not Exception) to suppress
-                    # CancelledError during cleanup. In Python 3.9+, CancelledError
-                    # is a BaseException — suppress(Exception) would let it propagate
-                    # uncaught through this except handler and crash the caller.
-                    with contextlib.suppress(BaseException):
-                        try:
-                            from agi_os import stop_agi_os
-                            await asyncio.wait_for(stop_agi_os(), timeout=15.0)
-                        except (asyncio.TimeoutError, ImportError):
-                            pass
             except asyncio.CancelledError:
-                self.logger.error("[Kernel] v262.0: _initialize_agi_os() cancelled")
+                self.logger.error("[Kernel] v267.0: AGI OS startup budget wait cancelled")
                 _agi_os_ok = False
-                raise  # Re-raise to let caller handle shutdown
+                raise
+            except Exception as _agi_wait_err:
+                self.logger.warning(f"[AGI-OS] Startup wait failed: {_agi_wait_err}")
+                _agi_os_ok = False
+
             if _ssm:
-                if _agi_os_ok:
+                if _agi_os_deferred:
+                    await _ssm.skip_component(
+                        "agi_os",
+                        "Initialization continuing in background",
+                    )
+                elif _agi_os_ok:
                     await _ssm.complete_component("agi_os")
                 else:
-                    await _ssm.complete_component("agi_os", error="Init failed or timed out")
-            if not _agi_os_ok:
+                    await _ssm.complete_component(
+                        "agi_os",
+                        error="Init failed or timed out",
+                    )
+
+            if not _agi_os_ok and not _agi_os_deferred:
                 # Non-fatal - continue without AGI OS
                 issue_collector.add_warning(
                     "AGI OS failed to initialize - continuing without autonomous features",
@@ -65415,9 +66508,23 @@ class JarvisSystemKernel:
                     suggestion="Check AGI OS modules and dependencies"
                 )
 
-            await self._broadcast_startup_progress(
+            _agi_os_status = self._component_status.get(
+                "agi_os", {}
+            ).get("status", "pending")
+            if _agi_os_deferred:
+                _agi_message = (
+                    "AGI OS initializing in background — initializing Visual Pipeline..."
+                )
+            elif _agi_os_ok:
+                _agi_message = "AGI OS active — initializing Visual Pipeline..."
+            else:
+                _agi_message = (
+                    "AGI OS unavailable — initializing Visual Pipeline..."
+                )
+
+            await self._safe_broadcast(
                 stage="agi_os",
-                message="AGI OS active — initializing Visual Pipeline...",
+                message=_agi_message,
                 progress=90,
                 metadata={
                     "icon": "brain",
@@ -65430,9 +66537,11 @@ class JarvisSystemKernel:
                         "intelligence": {"status": "complete"},
                         "two_tier": {"status": "complete"},
                         "trinity": {"status": "complete"},
-                        "enterprise": {"status": "complete"},
+                        "enterprise": {"status": self._component_status.get(
+                            "enterprise", {}
+                        ).get("status", "pending")},
                         "ghost_display": {"status": "complete"},
-                        "agi_os": {"status": "complete"},
+                        "agi_os": {"status": _agi_os_status},
                         "visual_pipeline": {"status": "running"},
                         "frontend": {"status": "pending"},
                     }
@@ -65495,7 +66604,7 @@ class JarvisSystemKernel:
                     suggestion="Check Ghost Hands Orchestrator and N-Optic Nerve availability"
                 )
 
-            await self._broadcast_startup_progress(
+            await self._safe_broadcast(
                 stage="visual_pipeline",
                 message="Visual Pipeline ready — launching frontend...",
                 progress=93,
@@ -65510,7 +66619,9 @@ class JarvisSystemKernel:
                         "intelligence": {"status": "complete"},
                         "two_tier": {"status": "complete"},
                         "trinity": {"status": "complete"},
-                        "enterprise": {"status": "complete"},
+                        "enterprise": {"status": self._component_status.get(
+                            "enterprise", {}
+                        ).get("status", "pending")},
                         "agi_os": {"status": "complete"},
                         "ghost_display": {"status": self._component_status.get(
                             "ghost_display", {}
@@ -65542,9 +66653,59 @@ class JarvisSystemKernel:
             _t0_fe = time.time()
             self._emit_event(SupervisorEventType.PHASE_START, "Phase: Frontend Transition", phase="frontend", correlation_id=_cid_fe)
 
+            # v265.3: Outer timeout for Frontend phase — this was the ONLY
+            # post-Trinity phase without asyncio.wait_for(). Inside this method:
+            # warmup check (120s), frontend start (120s), Trinity wait (30s),
+            # Chrome redirect (potentially indefinite via AppleScript),
+            # loading server stop (~44s). Practical ceiling: 180s.
+            _fe_outer_timeout = _get_env_float(
+                "JARVIS_FRONTEND_PHASE_TIMEOUT", 180.0
+            )
+            # v265.6: CPU-aware timeout scaling — frontend builds (npm install,
+            # TypeScript compile, self-heal build) are CPU-intensive.  Under
+            # heavy load these routinely exceed the 180s base.
+            try:
+                import psutil as _fe_ps
+                _fe_cpu = _fe_ps.cpu_percent(interval=None)
+                if _fe_cpu > 90.0:
+                    _fe_outer_timeout *= 1.0 + (_fe_cpu - 90.0) / 10.0 * 2.0
+            except Exception:
+                pass
+            if self._startup_watchdog:
+                self._startup_watchdog.register_phase_timeout(
+                    "frontend", _fe_outer_timeout
+                )
+
             if _ssm: await _ssm.start_component("frontend")
-            await self._phase_frontend_transition()
-            if _ssm: await _ssm.complete_component("frontend")
+            _fe_ok = True
+            try:
+                await asyncio.wait_for(
+                    self._phase_frontend_transition(),
+                    timeout=_fe_outer_timeout,
+                )
+            except asyncio.TimeoutError:
+                self.logger.error(
+                    f"[Kernel] v265.3: _phase_frontend_transition() OUTER "
+                    f"timeout after {_fe_outer_timeout:.0f}s"
+                )
+                _fe_ok = False
+                self._update_component_status(
+                    "frontend", "error",
+                    f"Outer timeout ({_fe_outer_timeout:.0f}s)",
+                )
+            except asyncio.CancelledError:
+                self.logger.error(
+                    "[Kernel] v265.3: _phase_frontend_transition() cancelled"
+                )
+                _fe_ok = False
+                raise
+            if _ssm:
+                if _fe_ok:
+                    await _ssm.complete_component("frontend")
+                else:
+                    await _ssm.complete_component(
+                        "frontend", error="Init failed or timed out"
+                    )
 
             self._emit_event(
                 SupervisorEventType.PHASE_END, "Phase: Frontend Transition complete",
@@ -65552,7 +66713,7 @@ class JarvisSystemKernel:
                 duration_ms=(time.time() - _t0_fe) * 1000, correlation_id=_cid_fe,
             )
 
-            await self._broadcast_startup_progress(
+            await self._safe_broadcast(
                 stage="complete",
                 message="JARVIS is ready!",
                 progress=100,
@@ -65566,7 +66727,9 @@ class JarvisSystemKernel:
                         "backend": {"status": "complete"},
                         "intelligence": {"status": "complete"},
                         "trinity": {"status": "complete"},
-                        "enterprise": {"status": "complete"},
+                        "enterprise": {"status": self._component_status.get(
+                            "enterprise", {}
+                        ).get("status", "pending")},
                         "ghost_display": {"status": self._component_status.get(
                             "ghost_display", {}
                         ).get("status", "complete")},
@@ -65589,9 +66752,27 @@ class JarvisSystemKernel:
             # This ensures FULLY_READY is only marked when components are healthy.
             # =====================================================================
             issue_collector.set_current_phase("Service Verification")
-            verification = await self._verify_all_services(
-                timeout=self._get_verification_timeout()
+            # v266.1: Outer timeout guard — _verify_all_services has internal
+            # per-service timeouts but the overall call can still hang if
+            # network probing stalls at a lower level.
+            _verify_outer_timeout = _get_env_float(
+                "JARVIS_VERIFY_OUTER_TIMEOUT",
+                self._get_verification_timeout() + 15.0,
             )
+            try:
+                verification = await asyncio.wait_for(
+                    self._verify_all_services(
+                        timeout=self._get_verification_timeout()
+                    ),
+                    timeout=_verify_outer_timeout,
+                )
+            except asyncio.TimeoutError:
+                self.logger.warning(
+                    f"[Kernel] Service verification outer timeout ({_verify_outer_timeout:.0f}s)"
+                )
+                verification = {"all_healthy": False, "services": {}, "timed_out": True}
+            except asyncio.CancelledError:
+                raise
 
             # Collect unhealthy services for reporting
             unhealthy_services: List[str] = []
@@ -65706,19 +66887,12 @@ class JarvisSystemKernel:
             self._current_startup_phase = "complete"
             self._current_startup_progress = 100
             try:
-                if self._heartbeat_task and not self._heartbeat_task.done():
-                    self._heartbeat_task.cancel()
-                    try:
-                        await self._heartbeat_task
-                    except asyncio.CancelledError:
-                        self.logger.debug("[Heartbeat] Task cancelled successfully")
-                    except Exception as e:
-                        self.logger.debug(f"[Heartbeat] Task cleanup exception: {e}")
+                await self._stop_startup_progress_heartbeat(timeout=2.0)
             except Exception:
                 pass
 
             # Send final 100% progress to loading page
-            await self._broadcast_startup_progress(
+            await self._safe_broadcast(
                 stage="complete",
                 message="JARVIS startup complete!",
                 progress=100,
@@ -65983,18 +67157,79 @@ class JarvisSystemKernel:
             # - Graceful handover protocol with timeout
             # - Async parallel process scanning
             # =====================================================================
+            # v265.5: CPU-aware handover timeout + env var override
+            _takeover_timeout = _get_env_float("JARVIS_KERNEL_HANDOVER_TIMEOUT", 30.0)
+            try:
+                import psutil as _tk_ps
+                _tk_cpu = _tk_ps.cpu_percent(interval=None)
+                if _tk_cpu > 90.0:
+                    _takeover_timeout *= 1.0 + (_tk_cpu - 90.0) / 10.0 * 2.0
+            except Exception:
+                pass
             takeover = IntelligentKernelTakeover(
                 startup_lock=self._startup_lock,
                 logger=self.logger,
                 locks_dir=LOCKS_DIR,
                 ipc_timeout=5.0,
-                handover_timeout=30.0,
+                handover_timeout=_takeover_timeout,
             )
 
-            takeover_result = await takeover.attempt_takeover(
-                force=self._force,
-                graceful_first=True,  # Try graceful handover before force
-            )
+            # v270.0: Takeover has internal timeouts but no outer deadline.
+            # Add an outer guard to prevent indefinite stall.
+            _takeover_outer_timeout = _takeover_timeout + 15.0  # handover + margin
+            try:
+                takeover_result = await asyncio.wait_for(
+                    takeover.attempt_takeover(
+                        force=self._force,
+                        graceful_first=True,
+                    ),
+                    timeout=_takeover_outer_timeout,
+                )
+            except asyncio.TimeoutError:
+                self.logger.error(
+                    "[Kernel] v270.0: Takeover timed out after %.0fs", _takeover_outer_timeout
+                )
+                return False
+            except asyncio.CancelledError:
+                raise
+
+            # Root hardening: absorb short lock handover races during restarts.
+            # If another supervisor is shutting down, give it a bounded window
+            # to release the lock, then retry takeover once.
+            if not takeover_result.success and not self._force:
+                lock_wait_seconds = max(
+                    0.0,
+                    _get_env_float("JARVIS_STARTUP_LOCK_WAIT_SECONDS", 20.0),
+                )
+                if lock_wait_seconds > 0:
+                    wait_deadline = time.monotonic() + lock_wait_seconds
+                    self.logger.info(
+                        "[Kernel] Startup lock busy - waiting up to "
+                        f"{lock_wait_seconds:.0f}s for graceful handover"
+                    )
+
+                    while time.monotonic() < wait_deadline:
+                        is_locked, _ = self._startup_lock.is_locked()
+                        if not is_locked:
+                            break
+                        await asyncio.sleep(0.5)
+
+                    is_locked, _ = self._startup_lock.is_locked()
+                    if not is_locked:
+                        self.logger.info("[Kernel] Startup lock released - retrying takeover")
+                        try:
+                            takeover_result = await asyncio.wait_for(
+                                takeover.attempt_takeover(
+                                    force=self._force,
+                                    graceful_first=True,
+                                ),
+                                timeout=_takeover_outer_timeout,
+                            )
+                        except asyncio.TimeoutError:
+                            self.logger.error(
+                                "[Kernel] v270.0: Takeover retry timed out after %.0fs",
+                                _takeover_outer_timeout,
+                            )
 
             if not takeover_result.success:
                 # Report detailed failure info
@@ -66062,7 +67297,15 @@ class JarvisSystemKernel:
             # Initialize managers
             self._readiness_manager = ProgressiveReadinessManager(self.config, self.logger)
             self._readiness_manager.mark_tier(ReadinessTier.STARTING)
-            await self._readiness_manager.start_heartbeat_loop()
+            # v270.0: Heartbeat loop can stall on first filesystem write under I/O pressure.
+            try:
+                await asyncio.wait_for(
+                    self._readiness_manager.start_heartbeat_loop(), timeout=10.0
+                )
+            except asyncio.TimeoutError:
+                self.logger.warning("[Kernel] v270.0: Readiness heartbeat start timed out (10s)")
+            except asyncio.CancelledError:
+                raise
 
             self._process_manager = ProcessStateManager(self.config, self.logger)
 
@@ -66075,7 +67318,10 @@ class JarvisSystemKernel:
                 try:
                     self.logger.info("[Kernel] Running service registry pre-flight cleanup...")
                     registry = get_service_registry()
-                    cleanup_stats = await registry.pre_flight_cleanup()
+                    # v270.0: Registry scan can stall iterating dead PIDs under memory pressure.
+                    cleanup_stats = await asyncio.wait_for(
+                        registry.pre_flight_cleanup(), timeout=15.0
+                    )
 
                     total = cleanup_stats.get("total_entries", 0)
                     valid = cleanup_stats.get("valid_entries", 0)
@@ -66125,7 +67371,17 @@ class JarvisSystemKernel:
                 self.logger,
                 protected_pids=self._protected_pids,
             )
-            cleanup_result = await self._zombie_cleanup.run_comprehensive_cleanup()
+            # v270.0: Zombie scan enumerates all PIDs — can hang under memory pressure
+            # when the proc table is large or /proc is slow.
+            try:
+                cleanup_result = await asyncio.wait_for(
+                    self._zombie_cleanup.run_comprehensive_cleanup(), timeout=30.0
+                )
+            except asyncio.TimeoutError:
+                self.logger.warning("[Kernel] v270.0: Zombie cleanup timed out (30s) — continuing")
+                cleanup_result = {"zombies_killed": 0}
+            except asyncio.CancelledError:
+                raise
             if cleanup_result["zombies_killed"] > 0:
                 self.logger.info(f"[Kernel] Cleaned {cleanup_result['zombies_killed']} zombie processes")
 
@@ -66140,7 +67396,13 @@ class JarvisSystemKernel:
             self._signal_handler.register_callback(self._signal_shutdown)
 
             # Start IPC server
-            await self._ipc_server.start()
+            # v270.0: Socket bind can stall if address is in TIME_WAIT or under I/O pressure.
+            try:
+                await asyncio.wait_for(self._ipc_server.start(), timeout=10.0)
+            except asyncio.TimeoutError:
+                self.logger.warning("[Kernel] v270.0: IPC server start timed out (10s) — continuing without IPC")
+            except asyncio.CancelledError:
+                raise
             self._register_ipc_handlers()
 
             # =====================================================================
@@ -66173,7 +67435,9 @@ class JarvisSystemKernel:
             # v239.0: System Service Registry — Phase 1 activation (Observability, Health)
             if self._service_registry:
                 try:
-                    _ssr_r1 = await self._service_registry.activate_phase(1)
+                    _ssr_r1 = await asyncio.wait_for(
+                        self._service_registry.activate_phase(1), timeout=15.0
+                    )
                     self.logger.info(f"[Kernel] Phase 1 services: {_ssr_r1}")
 
                     # Wire 1: ObservabilityPipeline → UnifiedLogger metrics sink
@@ -66196,7 +67460,222 @@ class JarvisSystemKernel:
                 except Exception as _ssr_e:
                     self.logger.warning(f"[Kernel] Phase 1 SSR activation error: {_ssr_e}")
 
+            # v266.0: Start MemoryQuantizer monitoring early
+            # This gives Phases 2-3 pagein baselines and tier tracking.
+            # The monitor is lightweight (one vm_stat + one psutil every 1-10s).
+            try:
+                from backend.core.memory_quantizer import get_memory_quantizer
+                _mq = await asyncio.wait_for(get_memory_quantizer(), timeout=5.0)
+                if _mq and not _mq.monitoring:
+                    await _mq.start_monitoring()
+                    self.logger.info("[v266.0] MemoryQuantizer monitoring started (Phase 1)")
+            except asyncio.TimeoutError:
+                self.logger.debug("[v266.0] MemoryQuantizer init timeout (non-fatal)")
+            except Exception as e:
+                self.logger.debug(f"[v266.0] Early monitoring start: {e}")
+
             return True
+
+    async def _start_voice_sidecar(self) -> bool:
+        """
+        Start or attach to the Go voice sidecar control-plane service.
+
+        Contract: backend/core/voice_sidecar_contract.py
+        """
+        if not self.config.voice_sidecar_enabled:
+            return True
+
+        try:
+            try:
+                from backend.core.voice_sidecar_contract import (
+                    VoiceSidecarClient,
+                    VoiceSidecarContractConfig,
+                    wait_for_sidecar_health,
+                )
+            except ImportError:
+                from core.voice_sidecar_contract import (  # type: ignore
+                    VoiceSidecarClient,
+                    VoiceSidecarContractConfig,
+                    wait_for_sidecar_health,
+                )
+        except Exception as sidecar_import_err:
+            self.logger.error(
+                f"[VoiceSidecar] Contract import failed: {sidecar_import_err}"
+            )
+            self._update_component_status(
+                "voice_sidecar",
+                "error",
+                f"Contract import failed: {sidecar_import_err}",
+            )
+            return False
+
+        sidecar_cfg = VoiceSidecarContractConfig(
+            enabled=self.config.voice_sidecar_enabled,
+            required=self.config.voice_sidecar_required,
+            transport=self.config.voice_sidecar_transport,
+            base_url=self.config.voice_sidecar_base_url,
+            unix_socket_path=self.config.voice_sidecar_socket_path,
+            control_timeout=self.config.voice_sidecar_control_timeout,
+            health_timeout=self.config.voice_sidecar_health_timeout,
+            command=list(self.config.voice_sidecar_command),
+        )
+        self._voice_sidecar_client = VoiceSidecarClient(sidecar_cfg)
+        self._update_component_status(
+            "voice_sidecar",
+            "running",
+            "Initializing voice sidecar",
+        )
+
+        if self._voice_sidecar_process is None and sidecar_cfg.command:
+            try:
+                env = os.environ.copy()
+                env.setdefault("JARVIS_VOICE_SIDECAR_TRANSPORT", sidecar_cfg.transport)
+                env.setdefault("JARVIS_VOICE_SIDECAR_BASE_URL", sidecar_cfg.base_url)
+                env.setdefault("JARVIS_VOICE_SIDECAR_SOCKET", sidecar_cfg.unix_socket_path)
+                env.setdefault(
+                    "JARVIS_VOICE_SIDECAR_CONTROL_TIMEOUT",
+                    str(sidecar_cfg.control_timeout),
+                )
+                env.setdefault(
+                    "JARVIS_VOICE_SIDECAR_HEALTH_TIMEOUT",
+                    str(sidecar_cfg.health_timeout),
+                )
+
+                self._voice_sidecar_process = await asyncio.create_subprocess_exec(
+                    *sidecar_cfg.command,
+                    cwd=str(self.config.project_root),
+                    env=env,
+                )
+                if self._voice_sidecar_process.pid:
+                    self._protected_pids.add(self._voice_sidecar_process.pid)
+                self.logger.info(
+                    "[VoiceSidecar] Spawned sidecar process "
+                    f"(pid={self._voice_sidecar_process.pid})"
+                )
+            except Exception as sidecar_spawn_err:
+                self.logger.error(
+                    f"[VoiceSidecar] Spawn failed: {sidecar_spawn_err}"
+                )
+                self._update_component_status(
+                    "voice_sidecar",
+                    "error",
+                    f"Spawn failed: {sidecar_spawn_err}",
+                )
+                return False
+
+        try:
+            await wait_for_sidecar_health(
+                self._voice_sidecar_client,
+                timeout_seconds=self.config.voice_sidecar_start_timeout,
+            )
+            self._update_component_status(
+                "voice_sidecar",
+                "complete",
+                "Voice sidecar healthy",
+            )
+            return True
+        except Exception as sidecar_health_err:
+            self.logger.warning(
+                f"[VoiceSidecar] Health check failed: {sidecar_health_err}"
+            )
+            self._update_component_status(
+                "voice_sidecar",
+                "error",
+                f"Health check failed: {sidecar_health_err}",
+            )
+            return False
+
+    async def _enforce_voice_sidecar_gate(self, phase_label: str) -> bool:
+        """
+        Fail-closed heavy-load admission gate from sidecar pressure policy.
+        """
+        if not self.config.voice_sidecar_enabled or self._voice_sidecar_client is None:
+            return True
+
+        try:
+            gate = await self._voice_sidecar_client.heavy_load_gate()
+            allowed = bool(gate.get("allowed", False))
+            reason = str(gate.get("reason", "unknown"))
+            if allowed:
+                self.logger.info(
+                    f"[VoiceSidecar] Heavy-load gate open ({phase_label})"
+                )
+                return True
+
+            os.environ["JARVIS_BACKEND_MINIMAL"] = "true"
+            os.environ["JARVIS_VOICE_SIDECAR_GATE"] = "closed"
+            self._update_component_status(
+                "voice_sidecar",
+                "degraded",
+                f"Gate closed ({phase_label}): {reason}",
+            )
+            self.logger.warning(
+                "[VoiceSidecar] Heavy-load gate closed (%s): %s",
+                phase_label,
+                reason,
+            )
+            return False
+        except Exception as gate_err:
+            if self.config.voice_sidecar_required:
+                self._update_component_status(
+                    "voice_sidecar",
+                    "error",
+                    f"Gate query failed: {gate_err}",
+                )
+                self.logger.error(f"[VoiceSidecar] Gate query failed: {gate_err}")
+                return False
+
+            self._update_component_status(
+                "voice_sidecar",
+                "degraded",
+                f"Gate query failed: {gate_err}",
+            )
+            self.logger.warning(f"[VoiceSidecar] Gate query failed: {gate_err}")
+            return True
+
+    async def _start_voice_worker_via_sidecar(self, reason: str) -> bool:
+        """Observer sidecar mode: no worker lifecycle control is delegated to Go."""
+        if not self.config.voice_sidecar_enabled:
+            return True
+        if self._voice_sidecar_client is None:
+            return not self.config.voice_sidecar_required
+
+        gate_open = await self._enforce_voice_sidecar_gate("voice_worker_start")
+        if not gate_open:
+            return False
+
+        if self.config.voice_sidecar_manage_worker:
+            self.logger.warning(
+                "[VoiceSidecar] Worker lifecycle control requested but sidecar is observer-only "
+                "(reason=%s); continuing with Python-owned worker lifecycle",
+                reason,
+            )
+        return True
+
+    async def _stop_voice_sidecar(self, reason: str) -> None:
+        """Terminate observer sidecar process if owned by supervisor."""
+
+        if self._voice_sidecar_process is not None:
+            proc = self._voice_sidecar_process
+            self._voice_sidecar_process = None
+            try:
+                if proc.pid in self._protected_pids:
+                    self._protected_pids.discard(proc.pid)
+                if proc.returncode is None:
+                    proc.terminate()
+                    try:
+                        await asyncio.wait_for(proc.wait(), timeout=5.0)
+                    except asyncio.TimeoutError:
+                        proc.kill()
+            except Exception:
+                pass
+
+        if self.config.voice_sidecar_enabled:
+            self._update_component_status(
+                "voice_sidecar",
+                "stopped",
+                f"Stopped ({reason})",
+            )
 
     async def _phase_resources(self) -> bool:
         """
@@ -66225,6 +67704,94 @@ class JarvisSystemKernel:
         # GCP/Docker init often takes 2-4 minutes, 60s was causing premature timeouts
         resource_timeout = float(os.environ.get("JARVIS_RESOURCE_TIMEOUT", "300.0"))
 
+        # v266.2: Memory gate — re-evaluate mode at phase boundary
+        try:
+            import psutil as _ps2
+            _mem2 = _ps2.virtual_memory()
+            _avail_gb2 = _mem2.available / (1024**3)
+            _current_mode2 = os.environ.get("JARVIS_STARTUP_MEMORY_MODE", "local_full")
+            # NOTE: Mirrors _REEVAL_SEVERITY / _reevaluate_startup_mode() threshold logic.
+            _sev_map = {
+                "local_full": 0, "local_optimized": 1, "sequential": 2,
+                "cloud_first": 3, "cloud_only": 4, "minimal": 5,
+            }
+            _critical2 = float(os.getenv("JARVIS_CRITICAL_THRESHOLD_GB", "2.0"))
+            _cloud2 = float(os.getenv("JARVIS_CLOUD_THRESHOLD_GB", "6.0"))
+            _optimize2 = float(os.getenv("JARVIS_OPTIMIZE_THRESHOLD_GB", "4.0"))
+            _planned_ml2 = float(os.getenv("JARVIS_PLANNED_ML_GB", "4.6"))
+            _predicted2 = max(0.0, _avail_gb2 - _planned_ml2)
+
+            if _avail_gb2 < _critical2:
+                _ideal2 = "cloud_only"
+            elif _predicted2 < _critical2 or _avail_gb2 < _cloud2:
+                _ideal2 = "cloud_first"
+            elif _predicted2 < _optimize2:
+                _ideal2 = "local_optimized"
+            else:
+                _ideal2 = "local_full"
+
+            # v266.3: If OOMBridge is broken, cloud modes can't execute.
+            # Clamp to best available local mode instead.
+            if os.environ.get("JARVIS_OOMBRIDGE_AVAILABLE") == "0":
+                if _ideal2 in ("cloud_first", "cloud_only"):
+                    _ideal2 = "sequential"
+
+            _cur_sev2 = _sev_map.get(_current_mode2, 0)
+            _ideal_sev2 = _sev_map.get(_ideal2, 0)
+            # Monotonic: only degrade during startup (never recover upward)
+            if _ideal_sev2 > _cur_sev2:
+                _desired_mode2 = os.environ.get("JARVIS_STARTUP_DESIRED_MODE", _current_mode2)
+                self.logger.info(
+                    "[v266.2] Phase 2 gate: desired=%s effective=%s→%s (avail=%.1fGB)",
+                    _desired_mode2, _current_mode2, _ideal2, _avail_gb2,
+                )
+                os.environ["JARVIS_STARTUP_MEMORY_MODE"] = _ideal2
+                os.environ["JARVIS_STARTUP_EFFECTIVE_MODE"] = _ideal2
+                os.environ["JARVIS_MEASURED_AVAILABLE_GB"] = f"{_avail_gb2:.2f}"
+                _current_mode2 = _ideal2
+            else:
+                os.environ["JARVIS_STARTUP_EFFECTIVE_MODE"] = _current_mode2
+
+            if _current_mode2 in ("cloud_only", "minimal"):
+                self.logger.warning(
+                    "[v266.2] Phase 2: mode=%s — deferring heavy local resources",
+                    _current_mode2,
+                )
+                os.environ["JARVIS_CAPABILITY_DOCKER"] = "deferred"
+                os.environ["JARVIS_CAPABILITY_LOCAL_STORAGE"] = "deferred"
+        except Exception as _gate2_err:
+            self.logger.debug("[v266.2] Phase 2 memory gate error: %s", _gate2_err)
+
+        # Voice sidecar control-plane bootstrap (optional, config-driven).
+        # v270.0: Add timeout — sidecar IPC/health handshake can stall.
+        _sidecar_timeout = _get_env_float("JARVIS_VOICE_SIDECAR_TIMEOUT", 30.0)
+        if self.config.voice_sidecar_enabled:
+            try:
+                sidecar_ready = await asyncio.wait_for(
+                    self._start_voice_sidecar(), timeout=_sidecar_timeout
+                )
+            except asyncio.TimeoutError:
+                self.logger.warning(
+                    "[VoiceSidecar] v270.0: Sidecar start timed out (%.0fs)", _sidecar_timeout
+                )
+                sidecar_ready = False
+            except asyncio.CancelledError:
+                raise
+            if not sidecar_ready and self.config.voice_sidecar_required:
+                self.logger.error(
+                    "[VoiceSidecar] Required sidecar failed during resources phase"
+                )
+                return False
+            if sidecar_ready:
+                try:
+                    _ = await asyncio.wait_for(
+                        self._enforce_voice_sidecar_gate("phase_resources"), timeout=10.0
+                    )
+                except asyncio.TimeoutError:
+                    self.logger.warning("[VoiceSidecar] v270.0: Gate enforcement timed out (10s)")
+                except asyncio.CancelledError:
+                    raise
+
         # v188.0: Progress range for resource phase
         base_progress = 15
         end_progress = 30
@@ -66245,10 +67812,16 @@ class JarvisSystemKernel:
             if STARTUP_RESILIENCE_AVAILABLE and self._startup_resilience is None:
                 try:
                     self._startup_resilience = StartupResilience(logger=self.logger)
-                    await self._startup_resilience.start()
+                    # v270.0: Resilience coordinator probes Docker/Ollama — can stall.
+                    await asyncio.wait_for(self._startup_resilience.start(), timeout=15.0)
                     self.logger.info("[Kernel] Startup resilience coordinator initialized")
                 except Exception as e:
                     self.logger.warning(f"[Kernel] Failed to initialize startup resilience: {e}")
+                    self._startup_resilience = None
+                    # v265.5: Schedule deferred recovery — losing the resilience
+                    # coordinator means NO background health monitoring for
+                    # Docker/Ollama for the entire session. Schedule a retry.
+                    self._schedule_resilience_recovery(str(e))
 
             # =====================================================================
             # v188.0: RESOURCE PROGRESS CALLBACK
@@ -66286,7 +67859,7 @@ class JarvisSystemKernel:
                 self._update_component_status("resources", "running", message, sub_progress=sub)
 
                 # Broadcast intermediate progress to loading server
-                await self._broadcast_startup_progress(
+                await self._safe_broadcast(
                     stage="resources",
                     message=message,
                     progress=progress,
@@ -66344,7 +67917,7 @@ class JarvisSystemKernel:
                     self._startup_watchdog.update_phase("resources", docker_progress)
                 
                 # Broadcast to loading server
-                await self._broadcast_startup_progress(
+                await self._safe_broadcast(
                     stage="resources",
                     message=f"Docker: {message}",
                     progress=docker_progress,
@@ -66403,7 +67976,7 @@ class JarvisSystemKernel:
                         self._startup_watchdog.update_phase("resources", heartbeat_progress[0])
                     
                     # Broadcast heartbeat to loading server
-                    await self._broadcast_startup_progress(
+                    await self._safe_broadcast(
                         stage="resources",
                         message=f"Initializing resources... ({tick_count * 15}s)",
                         progress=heartbeat_progress[0],
@@ -66427,7 +68000,7 @@ class JarvisSystemKernel:
             # This saves ~30-60s by not waiting sequentially.
             invincible_node_task: Optional[asyncio.Task] = None
             _reuse_early = False  # v233.4: Track if reusing early boot task
-            if self.config.invincible_node_enabled and self.config.invincible_node_static_ip_name:
+            if self.config.invincible_node_enabled and self.config.invincible_node_static_ip_name and not self._invincible_node_ready:
                 self.logger.info("[Kernel] Starting Invincible Node wake-up in parallel...")
                 
                 # v220.1: Update dashboard with GCP starting status
@@ -66561,30 +68134,8 @@ class JarvisSystemKernel:
                         )
                         return False, None, f"ERROR: {e}"
 
-                # v233.4: Deduplication — check if early boot already started
-                _early_task = getattr(self, '_early_invincible_task', None)
-
-                if _early_task is not None:
-                    if not _early_task.done():
-                        self.logger.info(
-                            "[Phase 2] Reusing early boot invincible "
-                            "node task (still running)"
-                        )
-                        invincible_node_task = _early_task
-                        _reuse_early = True
-                    elif self._invincible_node_ready:
-                        self.logger.info(
-                            f"[Phase 2] Invincible node already ready "
-                            f"from early boot ({self._invincible_node_ip})"
-                        )
-                        invincible_node_task = _early_task
-                        _reuse_early = True
-                    else:
-                        self.logger.info(
-                            "[Phase 2] Early boot pre-warm failed — "
-                            "retrying invincible node"
-                        )
-
+                # v266.0: Early boot deduplication removed (eager prewarm deleted).
+                # Phase 2 always creates its own invincible node task now.
                 if not _reuse_early:
                     invincible_node_task = create_safe_task(
                         _wake_invincible_node(),
@@ -66593,25 +68144,50 @@ class JarvisSystemKernel:
 
                 self.logger.debug("[Kernel] Invincible Node task ready")
 
-            # v188.0: Initialize all in parallel with timeout and progress reporting
-            try:
-                results = await asyncio.wait_for(
-                    self._resource_registry.initialize_all(
-                        parallel=True,
-                        base_progress=base_progress,
-                        end_progress=end_progress
-                    ),
-                    timeout=resource_timeout
+            # v266.0: Initialize all with per-manager timeout isolation.
+            # Root fix: prevent one hung manager from stalling the entire startup.
+            resource_manager_timeout = float(
+                os.environ.get("JARVIS_RESOURCE_MANAGER_TIMEOUT", "90.0")
+            )
+            # v270.0: Force sequential init when effective mode is sequential/minimal
+            # or when available RAM < 4GB. Parallel gather under memory pressure causes
+            # multiple heavy imports (google-cloud, docker, etc.) to run concurrently,
+            # amplifying memory usage and risking OOM.
+            _effective_mode_for_parallel = os.environ.get(
+                "JARVIS_STARTUP_MEMORY_MODE", "local_full"
+            )
+            _force_sequential = _effective_mode_for_parallel in ("sequential", "minimal")
+            if not _force_sequential:
+                try:
+                    _avail_for_parallel = _read_available_memory_gb()
+                    if _avail_for_parallel is not None and _avail_for_parallel < 4.0:
+                        _force_sequential = True
+                        self.logger.info(
+                            "[v270.0] Forcing sequential resource init (avail=%.1fGB < 4.0GB)",
+                            _avail_for_parallel,
+                        )
+                except Exception:
+                    pass
+            _use_parallel = not _force_sequential
+            if _force_sequential:
+                self.logger.info(
+                    "[v270.0] Resource init: sequential (mode=%s)", _effective_mode_for_parallel
                 )
-            except asyncio.TimeoutError:
-                self.logger.error(f"[Kernel] Resource initialization timed out after {resource_timeout}s")
-                heartbeat_stop.set()
-                heartbeat_task.cancel()
-                # v233.4: Don't cancel early boot task — it's independent
-                if invincible_node_task and not _reuse_early:
-                    invincible_node_task.cancel()
-                self._update_component_status("resources", "error", f"Timed out after {resource_timeout}s")
-                return False
+            try:
+                results = await self._resource_registry.initialize_all(
+                    parallel=_use_parallel,
+                    base_progress=base_progress,
+                    end_progress=end_progress,
+                    manager_timeout=resource_manager_timeout,
+                    overall_timeout=resource_timeout,
+                )
+            except Exception as resource_init_err:
+                self.logger.error(
+                    f"[Kernel] Resource initialization error: {resource_init_err}"
+                )
+                results = {
+                    name: False for name in self._resource_registry.get_all_status().keys()
+                }
             finally:
                 # Stop heartbeat task
                 heartbeat_stop.set()
@@ -66714,7 +68290,7 @@ class JarvisSystemKernel:
                             status="healthy"
                         )
                         
-                        await self._broadcast_startup_progress(
+                        await self._safe_broadcast(
                             stage="resources",
                             message=f"Cloud Node ready: {node_ip}",
                             progress=end_progress - 1,
@@ -66982,65 +68558,92 @@ class JarvisSystemKernel:
 
                 # Get port range from config or use defaults
                 port_start, port_end = BACKEND_PORT_RANGE
-                fallback_ports = [
-                    port_start + 10,  # Try 8010
-                    port_start + 20,  # Try 8020
-                    port_start + 50,  # Try 8050
-                ]
+                candidate_ports = list(range(port_start, port_end + 1))
 
-                # Filter to valid ports
-                valid_fallback_ports = [p for p in fallback_ports if p <= port_end]
+                async def _check_port_in_use(port: int) -> bool:
+                    if ASYNC_STARTUP_UTILS_AVAILABLE and async_check_port is not None:
+                        return await async_check_port("localhost", port, timeout=0.75)
 
-                # Check all fallback ports in parallel using async
-                if ASYNC_STARTUP_UTILS_AVAILABLE and async_check_port is not None:
-                    # Parallel async port checks
-                    port_checks = await asyncio.gather(
-                        *[async_check_port("localhost", port, timeout=1.0) for port in valid_fallback_ports],
-                        return_exceptions=True
-                    )
-                else:
-                    # Fallback to asyncio.to_thread for each port
-                    async def _check_port_fallback(port: int) -> bool:
-                        def _sync_check() -> bool:
-                            try:
-                                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                                sock.settimeout(1.0)
-                                result = sock.connect_ex(('localhost', port))
-                                sock.close()
+                    def _sync_check() -> bool:
+                        try:
+                            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+                                sock.settimeout(0.75)
+                                result = sock.connect_ex(("localhost", port))
                                 return result == 0  # True = in use
-                            except Exception:
-                                return False  # Assume available on error
+                        except Exception:
+                            return True  # Unknown => treat as busy
 
-                        return await asyncio.to_thread(_sync_check)
+                    return await asyncio.to_thread(_sync_check)
 
-                    port_checks = await asyncio.gather(
-                        *[_check_port_fallback(port) for port in valid_fallback_ports],
-                        return_exceptions=True
+                # Scan range in batches to avoid a single giant gather on busy hosts.
+                batch_size = max(
+                    8,
+                    int(os.environ.get("JARVIS_PORT_FALLBACK_BATCH_SIZE", "24")),
+                )
+                port_found = False
+                for idx in range(0, len(candidate_ports), batch_size):
+                    batch = candidate_ports[idx: idx + batch_size]
+                    checks = await asyncio.gather(
+                        *[_check_port_in_use(port) for port in batch],
+                        return_exceptions=True,
                     )
 
-                # Find first available port
-                port_found = False
-                for fallback_port, is_in_use in zip(valid_fallback_ports, port_checks):
-                    if isinstance(is_in_use, Exception):
-                        # On error, try this port (optimistic)
-                        self.config.backend_port = fallback_port
-                        port_manager.selected_port = fallback_port
-                        self.logger.success(f"[Kernel] Fallback port allocated: {fallback_port}")
-                        port_found = True
+                    for fallback_port, is_in_use in zip(batch, checks):
+                        if isinstance(is_in_use, Exception):
+                            self.logger.debug(
+                                f"[Kernel] Fallback probe failed for port {fallback_port}: {is_in_use}"
+                            )
+                            continue
+
+                        if not is_in_use:  # False = no listener = available
+                            self.config.backend_port = fallback_port
+                            port_manager.selected_port = fallback_port
+                            self.logger.success(
+                                f"[Kernel] Fallback port allocated from range: {fallback_port}"
+                            )
+                            port_found = True
+                            break
+
+                    if port_found:
                         break
-                    elif not is_in_use:  # False = nothing listening = available
-                        self.config.backend_port = fallback_port
-                        port_manager.selected_port = fallback_port
-                        self.logger.success(f"[Kernel] Fallback port allocated: {fallback_port}")
+
+                # Last resort: dynamic ephemeral range from DynamicPortManager.
+                if not port_found and getattr(port_manager, "dynamic_port_enabled", False):
+                    try:
+                        dynamic_port = await port_manager._find_dynamic_port()
+                    except Exception as dyn_err:
+                        self.logger.debug(
+                            f"[Kernel] Dynamic fallback port discovery failed: {dyn_err}"
+                        )
+                        dynamic_port = None
+
+                    if dynamic_port:
+                        self.config.backend_port = dynamic_port
+                        port_manager.selected_port = dynamic_port
+                        self.logger.success(
+                            f"[Kernel] Fallback dynamic port allocated: {dynamic_port}"
+                        )
                         port_found = True
-                        break
-                    else:
-                        self.logger.debug(f"[Kernel] Fallback port {fallback_port} in use")
+
+                # Final fallback: OS-assigned ephemeral port.
+                if not port_found:
+                    ephemeral_host = self.config.backend_host or "127.0.0.1"
+                    if ephemeral_host in ("0.0.0.0", "::"):
+                        ephemeral_host = "127.0.0.1"
+
+                    ephemeral_port = _allocate_ephemeral_port(ephemeral_host)
+                    if ephemeral_port:
+                        self.config.backend_port = ephemeral_port
+                        port_manager.selected_port = ephemeral_port
+                        self.logger.success(
+                            f"[Kernel] Fallback OS ephemeral port allocated: {ephemeral_port}"
+                        )
+                        port_found = True
 
                 if not port_found:
                     self.logger.error("[Kernel] Failed to allocate any port (all in use)")
                     self.logger.error("[Kernel] Try: lsof -i :8000-8100 | grep LISTEN")
-                return False
+                    return False
 
             # Update config with selected port
             if port_manager.selected_port is not None:
@@ -67101,7 +68704,18 @@ class JarvisSystemKernel:
             # Each probe has a hard 4s deadline enforced inside _select_ecapa_backend.
             # All probes run concurrently so gather completes in ~4s. The extra 2s
             # covers Python overhead, aiohttp session setup, and env var reads.
-            _ecapa_outer_timeout = float(os.environ.get("ECAPA_PROBE_DEADLINE", "4")) + 2.0
+            _ecapa_probe_base = float(os.environ.get("ECAPA_PROBE_DEADLINE", "4"))
+            _ecapa_outer_timeout = _ecapa_probe_base + 2.0
+            # v265.5: CPU-aware timeout — ECAPA probes (Docker HTTP, Cloud Run
+            # HTTP, local SpeechBrain import) all slow under CPU pressure.
+            try:
+                import psutil as _ecapa_phase2_psutil
+                _ecapa_phase2_cpu = _ecapa_phase2_psutil.cpu_percent(interval=None)
+                if _ecapa_phase2_cpu > 90.0:
+                    _ecapa_cpu_factor = 1.0 + (_ecapa_phase2_cpu - 90.0) / 10.0 * 2.0
+                    _ecapa_outer_timeout *= _ecapa_cpu_factor
+            except Exception:
+                pass
             try:
                 ecapa_result = await asyncio.wait_for(
                     self._select_ecapa_backend(), timeout=_ecapa_outer_timeout
@@ -67110,13 +68724,25 @@ class JarvisSystemKernel:
                     self.logger.info(
                         f"[Kernel] ECAPA backend: {ecapa_result['selected_backend']}"
                     )
+                    self._update_component_status(
+                        "ecapa_backend", "running",
+                        f"ECAPA: {ecapa_result['selected_backend']}",
+                    )
             except asyncio.TimeoutError:
                 self.logger.warning(
                     f"[Kernel] ECAPA backend selection timed out ({_ecapa_outer_timeout:.0f}s) "
                     f"— continuing without voice biometrics on startup"
                 )
+                self._update_component_status(
+                    "ecapa_backend", "degraded",
+                    f"ECAPA probe timed out ({_ecapa_outer_timeout:.0f}s)",
+                )
             except Exception as ecapa_err:
                 self.logger.debug(f"[Kernel] ECAPA backend selection skipped: {ecapa_err}")
+                self._update_component_status(
+                    "ecapa_backend", "degraded",
+                    f"ECAPA probe error: {ecapa_err}",
+                )
 
             # v180.0: Diagnostic checkpoint
             if DIAGNOSTICS_AVAILABLE and log_startup_checkpoint:
@@ -67178,15 +68804,160 @@ class JarvisSystemKernel:
         """
         self._state = KernelState.STARTING_BACKEND
 
+        # v266.2: Memory gate — re-evaluate mode at phase boundary
+        try:
+            import psutil as _ps3
+            _mem3 = _ps3.virtual_memory()
+            _avail_gb3 = _mem3.available / (1024**3)
+            _current_mode3 = os.environ.get("JARVIS_STARTUP_MEMORY_MODE", "local_full")
+            # NOTE: Mirrors _REEVAL_SEVERITY / _reevaluate_startup_mode() threshold logic.
+            _sev_map3 = {
+                "local_full": 0, "local_optimized": 1, "sequential": 2,
+                "cloud_first": 3, "cloud_only": 4, "minimal": 5,
+            }
+            _critical3 = float(os.getenv("JARVIS_CRITICAL_THRESHOLD_GB", "2.0"))
+            _cloud3 = float(os.getenv("JARVIS_CLOUD_THRESHOLD_GB", "6.0"))
+            _optimize3 = float(os.getenv("JARVIS_OPTIMIZE_THRESHOLD_GB", "4.0"))
+            _planned_ml3 = float(os.getenv("JARVIS_PLANNED_ML_GB", "4.6"))
+            _predicted3 = max(0.0, _avail_gb3 - _planned_ml3)
+
+            if _avail_gb3 < _critical3:
+                _ideal3 = "cloud_only"
+            elif _predicted3 < _critical3 or _avail_gb3 < _cloud3:
+                _ideal3 = "cloud_first"
+            elif _predicted3 < _optimize3:
+                _ideal3 = "local_optimized"
+            else:
+                _ideal3 = "local_full"
+
+            # v266.3: If OOMBridge is broken, cloud modes can't execute.
+            # Clamp to best available local mode instead.
+            if os.environ.get("JARVIS_OOMBRIDGE_AVAILABLE") == "0":
+                if _ideal3 in ("cloud_first", "cloud_only"):
+                    _ideal3 = "sequential"
+
+            _cur_sev3 = _sev_map3.get(_current_mode3, 0)
+            _ideal_sev3 = _sev_map3.get(_ideal3, 0)
+            # Monotonic: only degrade during startup (never recover upward)
+            if _ideal_sev3 > _cur_sev3:
+                _desired_mode3 = os.environ.get("JARVIS_STARTUP_DESIRED_MODE", _current_mode3)
+                self.logger.info(
+                    "[v266.2] Phase 3 gate: desired=%s effective=%s→%s (avail=%.1fGB)",
+                    _desired_mode3, _current_mode3, _ideal3, _avail_gb3,
+                )
+                os.environ["JARVIS_STARTUP_MEMORY_MODE"] = _ideal3
+                os.environ["JARVIS_STARTUP_EFFECTIVE_MODE"] = _ideal3
+                os.environ["JARVIS_MEASURED_AVAILABLE_GB"] = f"{_avail_gb3:.2f}"
+                _current_mode3 = _ideal3
+            else:
+                os.environ["JARVIS_STARTUP_EFFECTIVE_MODE"] = _current_mode3
+
+            if _current_mode3 in ("cloud_first", "cloud_only", "minimal"):
+                if _avail_gb3 < 2.0:
+                    self.logger.warning(
+                        "[v266.2] Phase 3: mode=%s, available=%.1fGB "
+                        "— setting JARVIS_BACKEND_MINIMAL=true",
+                        _current_mode3, _avail_gb3,
+                    )
+                    os.environ["JARVIS_BACKEND_MINIMAL"] = "true"
+        except Exception as _gate3_err:
+            self.logger.debug("[v266.2] Phase 3 memory gate error: %s", _gate3_err)
+
+        # Voice sidecar deterministic worker admission before backend startup.
+        # v270.0: Add timeout to sidecar gate and worker start.
+        if self.config.voice_sidecar_enabled:
+            try:
+                gate_open = await asyncio.wait_for(
+                    self._enforce_voice_sidecar_gate("phase_backend"), timeout=10.0
+                )
+            except asyncio.TimeoutError:
+                self.logger.warning("[VoiceSidecar] v270.0: Backend gate timed out (10s)")
+                gate_open = False
+            except asyncio.CancelledError:
+                raise
+            if not gate_open:
+                self.logger.warning(
+                    "[VoiceSidecar] Gate closed in backend phase — continuing in minimal backend mode"
+                )
+                os.environ["JARVIS_BACKEND_MINIMAL"] = "true"
+
+            _be_sidecar_timeout = _get_env_float("JARVIS_VOICE_SIDECAR_TIMEOUT", 30.0)
+            try:
+                worker_started = await asyncio.wait_for(
+                    self._start_voice_worker_via_sidecar(reason="phase_backend"),
+                    timeout=_be_sidecar_timeout,
+                )
+            except asyncio.TimeoutError:
+                self.logger.warning(
+                    "[VoiceSidecar] v270.0: Worker start timed out (%.0fs)", _be_sidecar_timeout
+                )
+                worker_started = False
+            except asyncio.CancelledError:
+                raise
+            if (
+                self.config.voice_sidecar_required
+                and self.config.voice_sidecar_manage_worker
+                and not worker_started
+            ):
+                self.logger.error("[VoiceSidecar] Required worker startup failed")
+                return False
+
         with self.logger.section_start(LogSection.BACKEND, "Zone 6.1 | Phase 3: Backend"):
             # v211.0: Mark backend as "running" while starting
             self._update_component_status("backend", "running", "Starting backend server")
             self._mark_startup_activity("backend_phase_start", stage="backend")
 
+            if self.config.in_process_backend and not UVICORN_AVAILABLE:
+                self.logger.warning(
+                    "[Kernel] In-process backend requested but uvicorn is unavailable; "
+                    "falling back to subprocess launch"
+                )
+                self.config.in_process_backend = False
+
+            # v270.0: Backend launch (in-process or subprocess) can hang on port
+            # binding, model loading, or health polling. Use backend_timeout from
+            # env (default 300s) as outer deadline.
+            _be_launch_timeout = float(os.environ.get("JARVIS_BACKEND_STARTUP_TIMEOUT", "300.0"))
             if self.config.in_process_backend:
-                success = await self._start_backend_in_process()
+                try:
+                    success = await asyncio.wait_for(
+                        self._start_backend_in_process(), timeout=_be_launch_timeout
+                    )
+                except asyncio.TimeoutError:
+                    self.logger.warning(
+                        "[Kernel] v270.0: In-process backend timed out (%.0fs)", _be_launch_timeout
+                    )
+                    success = False
+                except asyncio.CancelledError:
+                    raise
+                if not success:
+                    self.logger.warning(
+                        "[Kernel] In-process backend failed, attempting subprocess fallback..."
+                    )
+                    try:
+                        success = await asyncio.wait_for(
+                            self._start_backend_subprocess(), timeout=_be_launch_timeout
+                        )
+                    except asyncio.TimeoutError:
+                        self.logger.error(
+                            "[Kernel] v270.0: Backend subprocess fallback timed out (%.0fs)",
+                            _be_launch_timeout,
+                        )
+                        success = False
+                    except asyncio.CancelledError:
+                        raise
             else:
-                success = await self._start_backend_subprocess()
+                try:
+                    success = await asyncio.wait_for(
+                        self._start_backend_subprocess(), timeout=_be_launch_timeout
+                    )
+                except asyncio.TimeoutError:
+                    self.logger.error(
+                        "[Kernel] v270.0: Backend subprocess timed out (%.0fs)", _be_launch_timeout
+                    )
+                    success = False
+                except asyncio.CancelledError:
+                    raise
 
             if success:
                 # v233.0: Write allocated backend port to well-known state file
@@ -67232,7 +69003,9 @@ class JarvisSystemKernel:
             # v239.0: System Service Registry — Phase 3 activation (TaskQueue)
             if self._service_registry:
                 try:
-                    _ssr_r3 = await self._service_registry.activate_phase(3)
+                    _ssr_r3 = await asyncio.wait_for(
+                        self._service_registry.activate_phase(3), timeout=15.0
+                    )
                     self.logger.info(f"[Kernel] Phase 3 services: {_ssr_r3}")
 
                     # Wire 6: TaskQueue → PersistentConversationMemoryAgent
@@ -67288,18 +69061,67 @@ class JarvisSystemKernel:
                 name="backend-uvicorn-serve",
             )
 
-            # Wait for server to be ready
-            for _ in range(30):  # 30 second timeout
+            startup_timeout = float(
+                os.environ.get("JARVIS_BACKEND_STARTUP_TIMEOUT", "300.0")
+            )
+            uvicorn_boot_timeout = float(
+                os.environ.get("JARVIS_BACKEND_UVICORN_BOOT_TIMEOUT", "30.0")
+            )
+            uvicorn_boot_timeout = min(startup_timeout, max(5.0, uvicorn_boot_timeout))
+            start_monotonic = time.monotonic()
+
+            # Stage 1: wait for uvicorn server.started
+            while (time.monotonic() - start_monotonic) < uvicorn_boot_timeout:
                 self._mark_startup_activity("backend_in_process_wait", stage="backend")
                 if self._backend_server.started:
-                    self.logger.success(f"[Kernel] Backend running at http://{self.config.backend_host}:{self.config.backend_port}")
-                    return True
-                if self._backend_server_task.done():
-                    self.logger.error("[Kernel] Backend server task exited before startup completed")
                     break
-                await asyncio.sleep(1.0)
+                if self._backend_server_task.done():
+                    task_error = None
+                    try:
+                        task_error = self._backend_server_task.exception()
+                    except asyncio.CancelledError:
+                        task_error = asyncio.CancelledError()
+                    except Exception as inspect_err:
+                        task_error = inspect_err
 
-            self.logger.error("[Kernel] Backend failed to start in time")
+                    if task_error:
+                        self.logger.error(
+                            f"[Kernel] Backend server task exited before startup completed: "
+                            f"{type(task_error).__name__}: {task_error}"
+                        )
+                    else:
+                        self.logger.error(
+                            "[Kernel] Backend server task exited before startup completed"
+                        )
+                    await self._stop_backend_in_process(
+                        reason="startup-task-exited",
+                        timeout=3.0,
+                    )
+                    return False
+                await asyncio.sleep(0.5)
+
+            if not self._backend_server.started:
+                self.logger.error(
+                    f"[Kernel] Backend failed to boot uvicorn in {uvicorn_boot_timeout:.1f}s"
+                )
+                await self._stop_backend_in_process(reason="startup-timeout", timeout=5.0)
+                return False
+
+            # Stage 2: verify HTTP/WebSocket readiness (not just uvicorn socket bind).
+            remaining_budget = max(
+                5.0,
+                startup_timeout - (time.monotonic() - start_monotonic),
+            )
+            backend_ready = await self._wait_for_backend_health(timeout=remaining_budget)
+            if backend_ready:
+                self.logger.success(
+                    f"[Kernel] Backend running at http://{self.config.backend_host}:{self.config.backend_port}"
+                )
+                return True
+
+            self.logger.error(
+                f"[Kernel] Backend health check failed within {startup_timeout:.1f}s startup budget"
+            )
             await self._stop_backend_in_process(reason="startup-timeout", timeout=5.0)
             return False
 
@@ -67358,57 +69180,209 @@ class JarvisSystemKernel:
     async def _start_backend_subprocess(self) -> bool:
         """Start backend as subprocess."""
         self.logger.info("[Kernel] Starting backend subprocess...")
+        launch_context = _discover_backend_launch_context(self.config.project_root)
+        runtime_caps = _detect_backend_runtime_capabilities(launch_context)
 
-        # Find backend script
-        backend_script = Path(__file__).parent / "backend" / "main.py"
-        if not backend_script.exists():
-            # Try alternative locations
-            for alt_path in [
-                Path(__file__).parent.parent / "backend" / "main.py",
-                Path.cwd() / "backend" / "main.py",
-            ]:
-                if alt_path.exists():
-                    backend_script = alt_path
-                    break
-
-        if not backend_script.exists():
-            self.logger.error(f"[Kernel] Backend script not found at {backend_script}")
+        if not runtime_caps.get("backend_module_possible", False):
+            missing_hint = (
+                f"(searched from project root {launch_context.project_root})"
+            )
+            self.logger.error(
+                "[Kernel] Backend entrypoint not found: expected backend/main.py "
+                f"or importable backend.main module {missing_hint}"
+            )
             return False
 
         try:
-            # Start process
+            command, launch_mode = _select_backend_launch_command(
+                context=launch_context,
+                backend_host=self.config.backend_host,
+                backend_port=self.config.backend_port,
+                capabilities=runtime_caps,
+            )
+        except Exception as selection_error:
+            self.logger.error(f"[Kernel] Backend launch contract invalid: {selection_error}")
+            return False
+
+        try:
             env = os.environ.copy()
+            project_root = launch_context.project_root
+            backend_dir = launch_context.backend_dir or (project_root / "backend")
+
+            # Keep backend imports deterministic across launch contexts.
+            pythonpath_parts = [str(project_root)]
+            if backend_dir.exists():
+                pythonpath_parts.append(str(backend_dir))
+
+            existing_pythonpath = env.get("PYTHONPATH", "")
+            if existing_pythonpath:
+                pythonpath_parts.extend(
+                    part for part in existing_pythonpath.split(os.pathsep) if part
+                )
+
+            deduped_pythonpath: List[str] = []
+            seen_paths: Set[str] = set()
+            for part in pythonpath_parts:
+                normalized = os.path.abspath(part)
+                if normalized in seen_paths:
+                    continue
+                seen_paths.add(normalized)
+                deduped_pythonpath.append(part)
+
+            env["PYTHONPATH"] = os.pathsep.join(deduped_pythonpath)
             env["JARVIS_BACKEND_PORT"] = str(self.config.backend_port)
+            env["BACKEND_PORT"] = str(self.config.backend_port)
             env["JARVIS_KERNEL_PID"] = str(os.getpid())
+            env.setdefault("JARVIS_SUPERVISED", "1")
+            env.setdefault("JARVIS_MANAGED_BY_SUPERVISOR", "1")
+
+            self.logger.info(
+                f"[Kernel] Backend launch mode: {launch_mode} "
+                f"(cwd={project_root}, port={self.config.backend_port})"
+            )
+
+            # v266.2: Pre-spawn admission gate — check available RAM
+            try:
+                import psutil as _ps_adm
+                _adm_mem = _ps_adm.virtual_memory()
+                _adm_avail_mb = _adm_mem.available / (1024 ** 2)
+                _adm_needed_mb = 500 + 500  # 500MB estimated + 500MB safety margin
+                if _adm_avail_mb < _adm_needed_mb:
+                    _cur_mode = os.environ.get("JARVIS_STARTUP_MEMORY_MODE", "local_full")
+                    _desired_mode = os.environ.get("JARVIS_STARTUP_DESIRED_MODE", _cur_mode)
+                    _sev_map_adm = {
+                        "local_full": 0,
+                        "local_optimized": 1,
+                        "sequential": 2,
+                        "cloud_first": 3,
+                        "cloud_only": 4,
+                        "minimal": 5,
+                    }
+                    if _sev_map_adm.get(_cur_mode, 0) < _sev_map_adm["sequential"]:
+                        os.environ["JARVIS_STARTUP_MEMORY_MODE"] = "sequential"
+                        os.environ["JARVIS_STARTUP_EFFECTIVE_MODE"] = "sequential"
+                    self.logger.warning(
+                        "[v266.2] Backend admission low memory "
+                        "(desired=%s effective=%s avail=%.0fMB need=%.0fMB) "
+                        "— forcing minimal control-plane backend",
+                        _desired_mode,
+                        os.environ.get("JARVIS_STARTUP_MEMORY_MODE", _cur_mode),
+                        _adm_avail_mb,
+                        _adm_needed_mb,
+                    )
+                    os.environ["JARVIS_BACKEND_MINIMAL"] = "true"
+                    # Fail-closed for non-cloud startup if memory is critically low.
+                    if _adm_avail_mb < 256:
+                        _mode_now = os.environ.get("JARVIS_STARTUP_MEMORY_MODE", _cur_mode)
+                        if _mode_now not in ("cloud_first", "cloud_only"):
+                            self.logger.error(
+                                "[v266.2] Backend admission denied: %.0fMB available in %s mode",
+                                _adm_avail_mb,
+                                _mode_now,
+                            )
+                            return False
+                        self.logger.warning(
+                            "[v266.2] Backend admission kept for cloud mode (%s) with %.0fMB "
+                            "to preserve control-plane essentials",
+                            _mode_now,
+                            _adm_avail_mb,
+                        )
+            except Exception as _adm_err:
+                self.logger.debug(f"[v266.2] Admission gate error: {_adm_err}")
 
             self._backend_process = await asyncio.create_subprocess_exec(
-                sys.executable,
-                "-m", "uvicorn",
-                "backend.main:app",
-                "--host", self.config.backend_host,
-                "--port", str(self.config.backend_port),
+                *command,
+                cwd=str(project_root),
                 env=env,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
             self._mark_startup_activity("backend_subprocess_spawned", stage="backend")
 
-            # Register with process manager
             if self._process_manager:
                 await self._process_manager.register_process(
                     "backend",
                     self._backend_process,
-                    {"port": self.config.backend_port}
+                    {"port": self.config.backend_port},
                 )
 
-            # Wait for backend to be ready (health check)
-            if await self._wait_for_backend_health(timeout=60.0):
-                self.logger.success(f"[Kernel] Backend running at http://{self.config.backend_host}:{self.config.backend_port}")
-                return True
-            else:
-                self.logger.error("[Kernel] Backend failed health check")
-                return False
+            health_timeout = _get_env_float(
+                "JARVIS_BACKEND_SUBPROCESS_HEALTH_TIMEOUT",
+                _get_env_float("JARVIS_BACKEND_STARTUP_TIMEOUT", 300.0),
+            )
+            health_timeout = max(10.0, health_timeout)
 
+            if await self._wait_for_backend_health(timeout=health_timeout):
+                self.logger.success(
+                    f"[Kernel] Backend running at http://{self.config.backend_host}:{self.config.backend_port}"
+                )
+                return True
+
+            if self._backend_process and self._backend_process.returncode is not None:
+                try:
+                    _, stderr_bytes = await asyncio.wait_for(
+                        self._backend_process.communicate(),
+                        timeout=1.5,
+                    )
+                    if stderr_bytes:
+                        stderr_text = stderr_bytes.decode(errors="replace").strip()
+                        if stderr_text:
+                            tail_line = stderr_text.splitlines()[-1][:500]
+                            self.logger.error(
+                                f"[Kernel] Backend subprocess stderr: {tail_line}"
+                            )
+                except Exception:
+                    pass
+
+            self.logger.error(
+                f"[Kernel] Backend failed health check within {health_timeout:.1f}s"
+            )
+            return False
+
+        except OSError as e:
+            import errno
+            if e.errno == errno.ENOMEM:
+                self.logger.error(
+                    "[v266.2] Backend subprocess OOM (Cannot allocate memory). "
+                    "Escalating startup mode."
+                )
+                # Inline mode escalation (can't access nested _reevaluate_startup_mode)
+                try:
+                    _cur_mode = os.environ.get("JARVIS_STARTUP_MEMORY_MODE", "local_full")
+                    _sev_map_oom = {
+                        "local_full": 0, "local_optimized": 1, "sequential": 2,
+                        "cloud_first": 3, "cloud_only": 4, "minimal": 5,
+                    }
+                    _cur_sev_oom = _sev_map_oom.get(_cur_mode, 0)
+                    if _cur_sev_oom < 4:  # Not yet cloud_only
+                        os.environ["JARVIS_STARTUP_MEMORY_MODE"] = "cloud_only"
+                        self.logger.warning(
+                            "[v266.2] ENOMEM: mode escalated %s → cloud_only", _cur_mode
+                        )
+                except Exception:
+                    pass
+                os.environ["JARVIS_BACKEND_MINIMAL"] = "true"
+                return False
+            raise  # Non-ENOMEM OSErrors propagate to caller for loud failure
+        except MemoryError:
+            self.logger.error(
+                "[v266.2] Backend subprocess MemoryError. Escalating startup mode."
+            )
+            try:
+                _cur_mode = os.environ.get("JARVIS_STARTUP_MEMORY_MODE", "local_full")
+                _sev_map_mem = {
+                    "local_full": 0, "local_optimized": 1, "sequential": 2,
+                    "cloud_first": 3, "cloud_only": 4, "minimal": 5,
+                }
+                _cur_sev_mem = _sev_map_mem.get(_cur_mode, 0)
+                if _cur_sev_mem < 4:
+                    os.environ["JARVIS_STARTUP_MEMORY_MODE"] = "cloud_only"
+                    self.logger.warning(
+                        "[v266.2] MemoryError: mode escalated %s → cloud_only", _cur_mode
+                    )
+            except Exception:
+                pass
+            return False
         except Exception as e:
             self.logger.error(f"[Kernel] Subprocess backend failed: {e}")
             return False
@@ -67429,10 +69403,42 @@ class JarvisSystemKernel:
         The fix verifies /health/ready includes websocket_ready: true before
         signaling that the backend is ready for frontend connections.
         """
+        def _backend_boot_failed() -> bool:
+            # In-process mode: uvicorn serve() exited before readiness.
+            if self._backend_server_task is not None and self._backend_server_task.done():
+                task_error = None
+                try:
+                    task_error = self._backend_server_task.exception()
+                except asyncio.CancelledError:
+                    task_error = asyncio.CancelledError()
+                except Exception as inspect_err:
+                    task_error = inspect_err
+
+                if task_error:
+                    self.logger.error(
+                        f"[Kernel] Backend task exited during health check: "
+                        f"{type(task_error).__name__}: {task_error}"
+                    )
+                else:
+                    self.logger.error("[Kernel] Backend task exited during health check")
+                return True
+
+            # Subprocess mode: process terminated before readiness.
+            if self._backend_process is not None and self._backend_process.returncode is not None:
+                self.logger.error(
+                    f"[Kernel] Backend subprocess exited with return code "
+                    f"{self._backend_process.returncode} during health check"
+                )
+                return True
+
+            return False
+
         if not AIOHTTP_AVAILABLE:
             # Simple socket check using async_check_port
             start_time = time.time()
             while (time.time() - start_time) < timeout:
+                if _backend_boot_failed():
+                    return False
                 self._mark_startup_activity("backend_socket_health_probe", stage="backend")
                 try:
                     if ASYNC_STARTUP_UTILS_AVAILABLE and async_check_port is not None:
@@ -67463,21 +69469,27 @@ class JarvisSystemKernel:
             return False
 
         # =========================================================================
-        # v215.0: Two-Phase Health Check (HTTP + WebSocket Readiness)
+        # v215.0+: Two-phase backend readiness with capability fallback.
+        #
+        # Phase 1: /health responds (HTTP transport is up)
+        # Phase 2: /health/ready confirms interactive readiness (WebSocket, etc.)
+        #
+        # Root hardening:
+        # - Newer backends expose /health/ready with websocket_ready.
+        # - Older backends may only expose /health.
+        # - We detect missing readiness endpoint (404/405/501) and fall back to
+        #   a legacy /health contract after a bounded grace period.
         # =========================================================================
-        # Phase 1: Wait for basic HTTP health endpoint
-        # Phase 2: Verify WebSocket endpoints are ready via /health/ready
-        # This ensures frontend WebSocket connections succeed after backend is marked ready
-        # =========================================================================
-        
         health_url = f"http://localhost:{self.config.backend_port}/health"
         readiness_url = f"http://localhost:{self.config.backend_port}/health/ready"
         start_time = time.time()
         http_ready = False
-        
+
         # Phase 1: Wait for basic HTTP health
         self.logger.debug("[Kernel] Phase 1: Waiting for HTTP health endpoint...")
         while (time.time() - start_time) < timeout:
+            if _backend_boot_failed():
+                return False
             self._mark_startup_activity("backend_http_health_probe", stage="backend")
             try:
                 async with aiohttp.ClientSession() as session:  # type: ignore[union-attr]
@@ -67489,64 +69501,165 @@ class JarvisSystemKernel:
             except Exception:
                 pass
             await asyncio.sleep(1.0)
-        
+
         if not http_ready:
             self.logger.warning("[Kernel] HTTP health check failed - backend not ready")
             return False
-        
-        # Phase 2: Wait for WebSocket readiness (remaining timeout)
-        # This ensures /ws endpoint is fully initialized before frontend connects
+
+        # Phase 2: Wait for interactive readiness using remaining timeout budget.
+        # v265.5: CPU-aware timeout scaling — under 99.8% CPU, WebSocket
+        # health endpoint response is slow because uvicorn workers compete
+        # for CPU with model loading and import resolution.
         remaining_timeout = timeout - (time.time() - start_time)
-        ws_timeout = min(remaining_timeout, 30.0)  # Cap WebSocket wait at 30s
+        _ws_base = _get_env_float("JARVIS_BACKEND_WS_READINESS_TIMEOUT", 30.0)
+        try:
+            import psutil as _ws_psutil
+            _ws_cpu = _ws_psutil.cpu_percent(interval=None)
+            if _ws_cpu > 90.0:
+                _ws_factor = 1.0 + (_ws_cpu - 90.0) / 10.0 * 2.0
+                _ws_base *= _ws_factor
+        except Exception:
+            pass
+        ws_timeout_cap = max(5.0, _ws_base)
+        ws_timeout = min(max(1.0, remaining_timeout), ws_timeout_cap)
         ws_start_time = time.time()
-        
+
+        require_readiness_endpoint = _get_env_bool(
+            "JARVIS_BACKEND_REQUIRE_READINESS_ENDPOINT", False
+        )
+        legacy_grace = max(
+            1.0,
+            _get_env_float("JARVIS_BACKEND_LEGACY_READINESS_GRACE", 5.0),
+        )
+        legacy_success_target = max(
+            1,
+            _get_env_int("JARVIS_BACKEND_LEGACY_HEALTH_SUCCESS_COUNT", 2),
+        )
+        readiness_missing_since = 0.0
+        legacy_successes = 0
+
         self.logger.debug("[Kernel] Phase 2: Verifying WebSocket readiness...")
         while (time.time() - ws_start_time) < ws_timeout:
+            if _backend_boot_failed():
+                return False
             self._mark_startup_activity("backend_ws_readiness_probe", stage="backend")
             try:
                 async with aiohttp.ClientSession() as session:  # type: ignore[union-attr]
                     async with session.get(readiness_url, timeout=5.0) as response:
                         if response.status == 200:
-                            data = await response.json()
-                            
-                            # Check if WebSocket is ready
-                            websocket_ready = data.get("details", {}).get("websocket_ready", False)
+                            readiness_missing_since = 0.0
+                            legacy_successes = 0
+
+                            try:
+                                data = await response.json()
+                            except Exception as parse_err:
+                                data = {}
+                                self.logger.debug(
+                                    f"[Kernel] Readiness payload parse error: {parse_err}"
+                                )
+
+                            # Check if WebSocket is ready.
+                            websocket_ready = bool(
+                                data.get("details", {}).get("websocket_ready", False)
+                            )
                             status = data.get("status", "unknown")
-                            ready = data.get("ready", False)
-                            
-                            # Log readiness status for debugging
+                            ready = bool(data.get("ready", False))
+
+                            # Log readiness status for debugging.
                             self.logger.debug(
                                 f"[Kernel] Readiness check: status={status}, "
                                 f"ready={ready}, websocket_ready={websocket_ready}"
                             )
-                            
-                            # Accept if WebSocket is ready OR if system is fully ready
-                            # (some configurations may not have websocket_ready explicitly)
-                            if websocket_ready or (ready and status in ("ready", "operational", "interactive", "websocket_ready")):
+
+                            # Accept if WebSocket is ready OR readiness contract says operational.
+                            if websocket_ready or (
+                                ready
+                                and status in (
+                                    "ready",
+                                    "operational",
+                                    "interactive",
+                                    "websocket_ready",
+                                )
+                            ):
                                 self.logger.info(
                                     f"[Kernel] ✓ Backend fully ready "
                                     f"(status={status}, websocket={websocket_ready})"
                                 )
                                 return True
-                            
-                            # Not ready yet - WebSocket still initializing
+
+                            # Not ready yet - WebSocket still initializing.
                             if status in ("warming_up", "initializing"):
                                 self.logger.debug(
                                     f"[Kernel] WebSocket initializing... (status={status})"
                                 )
-                                
+
+                        elif response.status in (404, 405, 501):
+                            # Older backends may not implement /health/ready.
+                            if readiness_missing_since <= 0:
+                                readiness_missing_since = time.time()
+                                self.logger.info(
+                                    "[Kernel] Backend readiness endpoint unavailable "
+                                    f"(HTTP {response.status}) - evaluating legacy /health contract"
+                                )
+
+                            if not require_readiness_endpoint:
+                                try:
+                                    async with session.get(health_url, timeout=5.0) as health_response:
+                                        if health_response.status == 200:
+                                            legacy_successes += 1
+                                        else:
+                                            legacy_successes = 0
+                                except Exception:
+                                    legacy_successes = 0
+
+                                missing_elapsed = time.time() - readiness_missing_since
+                                if (
+                                    legacy_successes >= legacy_success_target
+                                    and missing_elapsed >= legacy_grace
+                                ):
+                                    self.logger.warning(
+                                        "[Kernel] Backend ready via legacy /health contract "
+                                        f"(readiness endpoint unavailable for {missing_elapsed:.1f}s)"
+                                    )
+                                    return True
+                            else:
+                                legacy_successes = 0
+                        else:
+                            legacy_successes = 0
+
             except Exception as e:
                 self.logger.debug(f"[Kernel] Readiness check error: {e}")
-            
-            await asyncio.sleep(0.5)  # Check more frequently for WebSocket
-        
-        # Timeout waiting for WebSocket - still return True if HTTP was ready
-        # This provides graceful degradation - voice may not work but other features will
-        self.logger.warning(
-            "[Kernel] ⚠ WebSocket readiness timeout - backend ready but WebSocket may be delayed. "
-            "Voice commands may fail initially."
+
+            await asyncio.sleep(0.5)  # Check frequently during readiness convergence.
+
+        # Legacy fallback when readiness endpoint is consistently absent.
+        if readiness_missing_since > 0 and not require_readiness_endpoint:
+            missing_elapsed = time.time() - readiness_missing_since
+            if (
+                legacy_successes >= legacy_success_target
+                and missing_elapsed >= legacy_grace
+            ):
+                self.logger.warning(
+                    "[Kernel] Backend readiness endpoint unavailable; "
+                    "proceeding with legacy /health readiness"
+                )
+                return True
+
+        # Timeout waiting for WebSocket readiness.
+        # Default is strict readiness (fail startup) to avoid false-positive
+        # healthy states where HTTP works but core interactive channels do not.
+        allow_degraded = _get_env_bool("JARVIS_BACKEND_ALLOW_WS_DEGRADED", False)
+        if allow_degraded:
+            self.logger.warning(
+                "[Kernel] ⚠ WebSocket readiness timeout - allowing degraded startup "
+                "because JARVIS_BACKEND_ALLOW_WS_DEGRADED=true"
+            )
+            return True
+
+        self.logger.error(
+            "[Kernel] WebSocket readiness timeout - backend not operationally ready"
         )
-        return True  # Allow startup to continue with degraded WebSocket
+        return False
 
     # =========================================================================
     # UNIFIED AGENT RUNTIME — Persistent Outer-Loop Goal Pursuit
@@ -67817,8 +69930,18 @@ class JarvisSystemKernel:
                         PRIME_MODELS_DIR,
                         ModelProvider,
                     )
+                    # v265.5: CPU-aware timeout + env var override
+                    _ms_timeout = _get_env_float("JARVIS_MODEL_SERVING_INIT_TIMEOUT", 30.0)
+                    try:
+                        import psutil as _ms_psutil
+                        _ms_cpu = _ms_psutil.cpu_percent(interval=None)
+                        if _ms_cpu > 90.0:
+                            _ms_factor = 1.0 + (_ms_cpu - 90.0) / 10.0 * 2.0
+                            _ms_timeout *= _ms_factor
+                    except Exception:
+                        pass
                     self._model_serving = await asyncio.wait_for(
-                        get_model_serving(), timeout=30.0,
+                        get_model_serving(), timeout=_ms_timeout,
                     )
                     _ms_providers = list(self._model_serving._clients.keys())
                     self.logger.info(
@@ -67849,27 +69972,52 @@ class JarvisSystemKernel:
                                 break
                         if not _any_found:
                             _auto = os.getenv(
-                                "JARVIS_PRIME_AUTO_DOWNLOAD", "false"
-                            )
+                                "JARVIS_PRIME_AUTO_DOWNLOAD", "auto"
+                            ).lower().strip()
                             # v236.0: Downgrade to INFO when GCP handles inference
                             _has_gcp = (
                                 self._invincible_node_ready
                                 or self._pending_gcp_endpoint
                                 or bool(os.environ.get("JARVIS_INVINCIBLE_NODE_IP"))
                             )
-                            _log_fn = self.logger.info if _has_gcp else self.logger.warning
-                            _suffix = (
-                                " (GCP InvincibleNode active — Tier 1 handles inference)"
-                                if _has_gcp else ""
-                            )
-                            _log_fn(
-                                "[Kernel] v234.2: Tier 2 local inference "
-                                "unavailable — no GGUF model found. "
-                                f"Auto-download: {_auto}. "
-                                "Set JARVIS_PRIME_AUTO_DOWNLOAD=true or "
-                                f"place a model in {PRIME_MODELS_DIR}"
-                                f"{_suffix}"
-                            )
+
+                            # v266.3: If policy allows, start background provisioning
+                            if _auto in ("auto", "true") and not _has_gcp:
+                                try:
+                                    from backend.intelligence.unified_model_serving import (
+                                        start_background_model_provision,
+                                    )
+                                    _provision_task = await start_background_model_provision()
+                                    if _provision_task is not None:
+                                        self.logger.info(
+                                            "[Kernel] v266.3: No GGUF model on disk — "
+                                            "background provisioning started "
+                                            f"(policy={_auto})"
+                                        )
+                                    else:
+                                        self.logger.info(
+                                            "[Kernel] v266.3: Background model "
+                                            "provisioning not needed or unavailable"
+                                        )
+                                except Exception as _prov_err:
+                                    self.logger.warning(
+                                        f"[Kernel] v266.3: Background provision "
+                                        f"setup failed: {_prov_err}"
+                                    )
+                            else:
+                                _log_fn = self.logger.info if _has_gcp else self.logger.warning
+                                _suffix = (
+                                    " (GCP InvincibleNode active — Tier 1 handles inference)"
+                                    if _has_gcp else ""
+                                )
+                                _log_fn(
+                                    "[Kernel] v234.2: Tier 2 local inference "
+                                    "unavailable — no GGUF model found. "
+                                    f"Auto-download: {_auto}. "
+                                    "Set JARVIS_PRIME_AUTO_DOWNLOAD=auto or "
+                                    f"place a model in {PRIME_MODELS_DIR}"
+                                    f"{_suffix}"
+                                )
 
                     # v236.0: Apply deferred GCP endpoint if InvincibleNode
                     # came up before Phase 4 (common with early boot)
@@ -67919,20 +70067,50 @@ class JarvisSystemKernel:
                 except asyncio.TimeoutError:
                     self.logger.warning(
                         "[Kernel] v234.0: UnifiedModelServing init timed out "
-                        "(30s) — inference routing unavailable"
+                        f"({_ms_timeout:.0f}s) — inference routing unavailable"
                     )
                     self._model_serving = None
+                    # v265.5: Schedule background recovery
+                    self._schedule_model_serving_recovery("init_timeout")
                 except Exception as e:
                     self.logger.warning(
                         f"[Kernel] v234.0: UnifiedModelServing init failed "
                         f"(non-fatal): {e}"
                     )
                     self._model_serving = None
+                    # v265.5: Schedule background recovery
+                    self._schedule_model_serving_recovery(str(e))
 
                 if ready_count > 0:
                     self._update_component_status("intelligence", "complete", f"Intelligence ready: {ready_count}/{len(results)} initialized")
                 else:
-                    self._update_component_status("intelligence", "error", "No intelligence components initialized")
+                    init_errors: Dict[str, str] = {}
+                    try:
+                        if self._intelligence_registry is not None:
+                            init_errors = self._intelligence_registry.get_last_init_errors()
+                    except Exception:
+                        init_errors = {}
+
+                    if init_errors:
+                        summary = "; ".join(
+                            f"{name}: {msg}" for name, msg in init_errors.items()
+                        )
+                        self.logger.error(
+                            "[Kernel] Intelligence initialization failed for all managers: "
+                            f"{summary}"
+                        )
+                        status_message = (
+                            "No intelligence components initialized "
+                            f"({summary[:220]})"
+                        )
+                    else:
+                        status_message = "No intelligence components initialized"
+
+                    self._update_component_status(
+                        "intelligence",
+                        "error",
+                        status_message,
+                    )
 
                 # v239.0: System Service Registry — Phase 4 activation (EventSourcing, MessageBroker)
                 if self._service_registry:
@@ -68007,6 +70185,7 @@ class JarvisSystemKernel:
 
             except Exception as e:
                 self.logger.warning(f"[Kernel] Intelligence initialization failed: {e}")
+                self.logger.debug(traceback.format_exc())
                 self._update_component_status("intelligence", "error", f"Failed: {e}")
                 return False
 
@@ -68033,6 +70212,15 @@ class JarvisSystemKernel:
         )
 
         init_timeout = float(os.getenv("JARVIS_MEMORY_AGENT_INIT_TIMEOUT", "30.0"))
+        # v265.5: CPU-aware timeout scaling — Cloud SQL connection + SQLite
+        # fallback path both involve I/O that slows dramatically under CPU pressure.
+        try:
+            import psutil as _mem_psutil
+            _mem_cpu = _mem_psutil.cpu_percent(interval=None)
+            if _mem_cpu > 90.0:
+                init_timeout *= 1.0 + (_mem_cpu - 90.0) / 10.0 * 2.0
+        except Exception:
+            pass
         agent = PersistentConversationMemoryAgent(
             kernel_id=self.config.kernel_id,
             repo_name="jarvis",
@@ -68112,6 +70300,16 @@ class JarvisSystemKernel:
         attempts = max(1, int(os.getenv("JARVIS_MEMORY_AGENT_RETRY_ATTEMPTS", "3")))
         base_delay = float(os.getenv("JARVIS_MEMORY_AGENT_RETRY_BACKOFF", "4.0"))
         init_timeout = float(os.getenv("JARVIS_MEMORY_AGENT_INIT_TIMEOUT", "30.0"))
+        # v265.5: CPU-aware timeout scaling for retry loop (same formula as
+        # initial attempt) — retries happen later in boot when CPU may still
+        # be under load from parallel services.
+        try:
+            import psutil as _mem_retry_psutil
+            _mem_retry_cpu = _mem_retry_psutil.cpu_percent(interval=None)
+            if _mem_retry_cpu > 90.0:
+                init_timeout *= 1.0 + (_mem_retry_cpu - 90.0) / 10.0 * 2.0
+        except Exception:
+            pass
 
         for attempt in range(1, attempts + 1):
             if self._persistent_memory_agent is not None:
@@ -68309,6 +70507,42 @@ class JarvisSystemKernel:
 
         with self.logger.section_start(LogSection.BOOT, "Zone 4.5 | Integration Components"):
             try:
+                # v267.1 ROOT CAUSE FIX:
+                # Importing two-tier modules synchronously inside async startup can
+                # freeze the event loop for minutes (cold imports + heavy deps),
+                # defeating wait_for() timeouts and stalling progress at 58%.
+                # Offload imports to a worker thread and bound them with a timeout.
+                _two_tier_import_timeout = max(
+                    3.0,
+                    _get_env_float("JARVIS_TWO_TIER_IMPORT_TIMEOUT", 20.0),
+                )
+
+                async def _import_two_tier_module(*module_names: str):
+                    import importlib
+
+                    if not module_names:
+                        raise ImportError("No module names provided")
+
+                    last_error: Optional[BaseException] = None
+                    for module_name in module_names:
+                        try:
+                            return await asyncio.wait_for(
+                                asyncio.to_thread(importlib.import_module, module_name),
+                                timeout=_two_tier_import_timeout,
+                            )
+                        except ImportError as imp_err:
+                            last_error = imp_err
+                            continue
+                        except asyncio.TimeoutError as timeout_err:
+                            raise asyncio.TimeoutError(
+                                f"module import timed out after {_two_tier_import_timeout:.1f}s "
+                                f"({module_name})"
+                            ) from timeout_err
+
+                    if last_error:
+                        raise last_error
+                    raise ImportError(f"Unable to import any candidate modules: {module_names}")
+
                 # =============================================================
                 # v244.0: Steps 1-2 run in parallel (watchdog + cross-repo).
                 # Step 3 (runner) runs after since it uses watchdog ref.
@@ -68321,12 +70555,12 @@ class JarvisSystemKernel:
                         return
                     await self._broadcast_progress(56, "integration_watchdog", "Starting Agentic Watchdog...")
                     try:
-                        from core.agentic_watchdog import (
-                            start_watchdog,
-                            WatchdogConfig,
-                            AgenticMode,
-                            get_watchdog,
+                        _watchdog_mod = await _import_two_tier_module(
+                            "core.agentic_watchdog",
+                            "backend.core.agentic_watchdog",
                         )
+                        start_watchdog = getattr(_watchdog_mod, "start_watchdog")
+                        WatchdogConfig = getattr(_watchdog_mod, "WatchdogConfig")
 
                         async def watchdog_tts(text: str) -> None:
                             if self._narrator and self.config.voice_enabled:
@@ -68355,6 +70589,9 @@ class JarvisSystemKernel:
                     except ImportError as e:
                         self.logger.warning(f"[Integration] Watchdog module not available: {e}")
                         self._two_tier_status["watchdog"]["status"] = "unavailable"
+                    except asyncio.TimeoutError as e:
+                        self.logger.warning(f"[Integration] Watchdog import/init timed out: {e}")
+                        self._two_tier_status["watchdog"]["status"] = "timeout"
                     except Exception as e:
                         self.logger.warning(f"[Integration] Watchdog init failed: {e}")
                         self._two_tier_status["watchdog"]["status"] = "error"
@@ -68365,14 +70602,28 @@ class JarvisSystemKernel:
                     if self._state in (KernelState.SHUTTING_DOWN, KernelState.FAILED):
                         return
                     await self._broadcast_progress(58, "cross_repo_init", "Initializing Cross-Repo State...")
+                    _cross_repo_timeout = float(os.environ.get("JARVIS_CROSS_REPO_INIT_TIMEOUT", "30.0"))
+                    _import_completed = False
                     try:
-                        from core.cross_repo_state_initializer import (
-                            initialize_cross_repo_state,
-                            CrossRepoStateConfig,
-                            get_cross_repo_initializer,
+                        _cross_repo_mod = await _import_two_tier_module(
+                            "core.cross_repo_state_initializer",
+                            "backend.core.cross_repo_state_initializer",
                         )
+                        initialize_cross_repo_state = getattr(
+                            _cross_repo_mod,
+                            "initialize_cross_repo_state",
+                        )
+                        _import_completed = True
 
-                        _cross_repo_timeout = float(os.environ.get("JARVIS_CROSS_REPO_INIT_TIMEOUT", "30.0"))
+                        # v265.4: CPU-aware timeout — extend under pressure
+                        try:
+                            import psutil as _cr_psutil
+                            _cr_cpu = _cr_psutil.cpu_percent(interval=None)
+                            if _cr_cpu > 90.0:
+                                _cr_factor = 1.0 + (_cr_cpu - 90.0) / 10.0 * 2.0
+                                _cross_repo_timeout *= _cr_factor
+                        except Exception:
+                            pass
                         self._cross_repo_initialized = await asyncio.wait_for(
                             initialize_cross_repo_state(),
                             timeout=_cross_repo_timeout,
@@ -68393,10 +70644,16 @@ class JarvisSystemKernel:
                         self._two_tier_status["cross_repo"]["status"] = "cancelled"
                         raise
                     except asyncio.TimeoutError:
-                        self.logger.warning(
-                            f"[Integration] Cross-Repo init timed out ({_cross_repo_timeout}s) — "
-                            "possible stale DLM lock or hung filesystem. Continuing without cross-repo."
-                        )
+                        if _import_completed:
+                            self.logger.warning(
+                                f"[Integration] Cross-Repo init timed out ({_cross_repo_timeout}s) — "
+                                "possible stale DLM lock or hung filesystem. Continuing without cross-repo."
+                            )
+                        else:
+                            self.logger.warning(
+                                f"[Integration] Cross-Repo module import timed out after "
+                                f"{_two_tier_import_timeout:.1f}s — continuing without cross-repo"
+                            )
                         self._two_tier_status["cross_repo"] = {
                             "status": "timeout",
                             "initialized": False,
@@ -68494,22 +70751,72 @@ class JarvisSystemKernel:
                     self._update_component_status("two_tier", "cancelled", "Shutdown during init")
                     return False
 
+                # v265.4: Infra-degraded pre-check — skip runner when infrastructure
+                # is known dead. The runner initializes 19 components SEQUENTIALLY
+                # (each with 10s timeout). Under CPU pressure with degraded infra,
+                # 6-7 failing components burn 60-70s of sequential timeouts on
+                # operations that will all fail anyway. Fast-path exit here prevents
+                # that waste and lets startup proceed faster.
+                _runner_skip = False
+                try:
+                    _runner_pi = getattr(self, "app", None)
+                    _runner_pi = getattr(_runner_pi, "state", None) if _runner_pi else None
+                    _runner_pi = getattr(
+                        _runner_pi, "parallel_initializer", None
+                    ) if _runner_pi else None
+                    if _runner_pi:
+                        _runner_failed = sum(
+                            1 for c in _runner_pi.components.values()
+                            if c.phase.value in ("failed", "skipped")
+                        )
+                        if _runner_failed >= 3:
+                            _runner_skip = True
+                            self.logger.info(
+                                f"[Integration] v265.4: Skipping AgenticTaskRunner — "
+                                f"{_runner_failed} infra components failed/skipped, "
+                                "runner's 19 sequential component inits would cascade-fail"
+                            )
+                except Exception:
+                    pass
+                if not _runner_skip:
+                    # Also check Cloud SQL gate directly
+                    try:
+                        from intelligence.cloud_sql_connection_manager import (
+                            get_readiness_gate as _runner_gate_fn,
+                            ReadinessState as _runnerRS,
+                        )
+                        _runner_gate = _runner_gate_fn()
+                        if _runner_gate.state == _runnerRS.UNAVAILABLE:
+                            _runner_skip = True
+                            self.logger.info(
+                                "[Integration] v265.4: Skipping AgenticTaskRunner — "
+                                "Cloud SQL UNAVAILABLE, runner DB-dependent components "
+                                "would timeout sequentially"
+                            )
+                    except (ImportError, Exception):
+                        pass
+
                 await self._broadcast_progress(60, "integration_runner", "Creating AgenticTaskRunner...")
 
                 try:
-                    from core.agentic_task_runner import (
-                        RunnerMode,
-                        get_agentic_runner,
-                        get_or_create_agentic_runner,
-                        set_agentic_runner,
-                        AgenticTaskRunner,
-                        AgenticRunnerConfig,
+                    _runner_mod = await _import_two_tier_module(
+                        "core.agentic_task_runner",
+                        "backend.core.agentic_task_runner",
                     )
+                    get_agentic_runner = getattr(_runner_mod, "get_agentic_runner")
+                    set_agentic_runner = getattr(_runner_mod, "set_agentic_runner")
+                    create_agentic_runner = getattr(_runner_mod, "create_agentic_runner", None)
 
                     # Get or create the agentic runner instance
                     self._agentic_runner = get_agentic_runner()
 
-                    if self._agentic_runner is None:
+                    if self._agentic_runner is None and _runner_skip:
+                        # v265.4: Infra degraded — skip expensive sequential init
+                        self.logger.info(
+                            "[Integration] AgenticTaskRunner deferred — "
+                            "will retry when infrastructure recovers"
+                        )
+                    elif self._agentic_runner is None:
                         self.logger.info("[Integration] AgenticTaskRunner not found, auto-creating...")
 
                         # Create TTS callback for runner
@@ -68522,7 +70829,23 @@ class JarvisSystemKernel:
                                     self.logger.debug(f"[Integration/Runner] TTS error: {e}")
 
                         try:
-                            from core.agentic_task_runner import create_agentic_runner
+                            if not callable(create_agentic_runner):
+                                raise AttributeError("create_agentic_runner not available")
+
+                            # v265.4: CPU-aware runner timeout — extend under pressure
+                            _runner_base_timeout = _get_env_float("JARVIS_AGENTIC_RUNNER_TIMEOUT", 60.0)
+                            try:
+                                import psutil as _runner_psutil
+                                _runner_cpu = _runner_psutil.cpu_percent(interval=None)
+                                if _runner_cpu > 90.0:
+                                    _runner_cpu_factor = 1.0 + (_runner_cpu - 90.0) / 10.0 * 2.0
+                                    _runner_base_timeout *= _runner_cpu_factor
+                                    self.logger.info(
+                                        f"[Integration] v265.4: Runner timeout extended "
+                                        f"{60.0:.0f}s → {_runner_base_timeout:.0f}s (CPU: {_runner_cpu:.0f}%)"
+                                    )
+                            except Exception:
+                                pass
 
                             self._agentic_runner = await asyncio.wait_for(
                                 create_agentic_runner(
@@ -68530,7 +70853,7 @@ class JarvisSystemKernel:
                                     tts_callback=runner_tts if self.config.voice_enabled else None,
                                     watchdog=self._agentic_watchdog,
                                 ),
-                                timeout=_get_env_float("JARVIS_AGENTIC_RUNNER_TIMEOUT", 60.0),
+                                timeout=_runner_base_timeout,
                             )
 
                             if self._agentic_runner:
@@ -68542,8 +70865,6 @@ class JarvisSystemKernel:
 
                         except asyncio.TimeoutError:
                             self.logger.warning("[Integration] AgenticTaskRunner creation timed out (60s) - check network/component health")
-                        except ImportError as ie:
-                            self.logger.warning(f"[Integration] AgenticTaskRunner import failed: {ie}")
                         except Exception as create_err:
                             import traceback
                             self.logger.warning(f"[Integration] AgenticTaskRunner creation failed: {create_err}")
@@ -68556,6 +70877,9 @@ class JarvisSystemKernel:
                     else:
                         self._two_tier_status["runner_wired"] = False
 
+                except asyncio.TimeoutError as e:
+                    self.logger.warning(f"[Integration] AgenticTaskRunner import timed out: {e}")
+                    self._two_tier_status["runner_wired"] = False
                 except ImportError as e:
                     self.logger.warning(f"[Integration] AgenticTaskRunner not available: {e}")
                     self._two_tier_status["runner_wired"] = False
@@ -68608,7 +70932,85 @@ class JarvisSystemKernel:
     # - Proactive event stream
     # =========================================================================
 
-    async def _initialize_agi_os(self) -> bool:
+    def _ensure_agi_os_init_task(
+        self,
+        *,
+        outer_timeout: float,
+        startup_critical: bool,
+    ) -> asyncio.Task:
+        """Create or reuse the AGI OS initialization task."""
+        task = self._agi_os_init_task
+        if task is None or task.done():
+            task = create_safe_task(
+                self._run_agi_os_initialization_with_timeout(
+                    outer_timeout=outer_timeout,
+                    startup_critical=startup_critical,
+                ),
+                name="agi-os-init",
+            )
+            self._agi_os_init_task = task
+            self._background_tasks.append(task)
+            task.add_done_callback(self._on_agi_os_init_done)
+        return task
+
+    async def _run_agi_os_initialization_with_timeout(
+        self,
+        *,
+        outer_timeout: float,
+        startup_critical: bool,
+    ) -> bool:
+        """Run AGI OS initialization with an outer timeout guard."""
+        mode = "startup" if startup_critical else "background"
+        try:
+            return await asyncio.wait_for(
+                self._initialize_agi_os(startup_critical=startup_critical),
+                timeout=outer_timeout,
+            )
+        except asyncio.TimeoutError:
+            self.logger.error(
+                f"[Kernel] v267.0: _initialize_agi_os() OUTER timeout after "
+                f"{outer_timeout:.0f}s ({mode})"
+            )
+            self._update_component_status(
+                "agi_os",
+                "error",
+                f"Outer timeout ({outer_timeout:.0f}s)",
+            )
+            # Guard import cleanup — only valid if AGI module fully loaded.
+            if self._agi_os:
+                with contextlib.suppress(BaseException):
+                    try:
+                        from agi_os import stop_agi_os
+                        await asyncio.wait_for(stop_agi_os(), timeout=15.0)
+                    except (asyncio.TimeoutError, ImportError):
+                        pass
+            return False
+        except asyncio.CancelledError:
+            self.logger.error(
+                f"[Kernel] v267.0: _initialize_agi_os() cancelled ({mode})"
+            )
+            raise
+
+    def _on_agi_os_init_done(self, task: asyncio.Task) -> None:
+        """Finalize AGI OS init task lifecycle and emit completion diagnostics."""
+        if task is self._agi_os_init_task:
+            self._agi_os_init_task = None
+
+        if task.cancelled():
+            return
+
+        try:
+            success = bool(task.result())
+        except Exception as e:
+            self.logger.debug(f"[AGI-OS] Deferred init task failed: {e}")
+            return
+
+        if success:
+            self.logger.info("[AGI-OS] Deferred initialization completed")
+        else:
+            self.logger.warning("[AGI-OS] Deferred initialization completed without activation")
+
+    async def _initialize_agi_os(self, startup_critical: bool = True) -> bool:
         """
         v200.0: Initialize AGI OS (Autonomous General Intelligence Operating System).
 
@@ -68628,8 +71030,15 @@ class JarvisSystemKernel:
             self._update_component_status("agi_os", "skipped", "Disabled via config")
             return True
 
+        startup_watchdog = self._startup_watchdog if startup_critical else None
+
+        async def _broadcast_agi_progress(progress: int, message: str) -> None:
+            if not startup_critical:
+                return
+            await self._broadcast_progress(progress, "agi_os", message)
+
         self._update_component_status("agi_os", "running", "Initializing AGI OS...")
-        await self._broadcast_progress(86, "agi_os", "Initializing AGI Operating System...")  # v258.3: 85→86
+        await _broadcast_agi_progress(86, "Initializing AGI Operating System...")  # v258.3: 85→86
 
         with self.logger.section_start(LogSection.BOOT, "Zone 6.7 | AGI OS"):  # v258.3: renumbered from 6.5
             try:
@@ -68666,14 +71075,25 @@ class JarvisSystemKernel:
                     )
                     agi_os_init_timeout = agi_os_init_timeout_cap
 
+                # v265.6: CPU-aware timeout scaling — under heavy CPU load,
+                # AGI OS init (6 phases, ~220s total) stalls due to starved event
+                # loop.  Scale: 90%→1.0x, 95%→1.5x, 99%→2.8x, 100%→3.0x.
+                try:
+                    import psutil as _agi_ps
+                    _agi_cpu = _agi_ps.cpu_percent(interval=None)
+                    if _agi_cpu > 90.0:
+                        agi_os_init_timeout *= 1.0 + (_agi_cpu - 90.0) / 10.0 * 2.0
+                except Exception:
+                    pass
+
                 # v258.3: Synchronize DMS timeout with actual init timeout.
                 # Previously, DMS was registered with JARVIS_AGI_OS_TIMEOUT (90s)
                 # at Phase 6.5 entry (line 62139), giving a DMS limit of 90+30=120s.
                 # But the actual init runs up to JARVIS_AGI_OS_INIT_TIMEOUT (270s).
                 # This disconnect caused DMS TIMEOUT at 120-180s while init still
                 # had 90+ seconds remaining.
-                if self._startup_watchdog:
-                    self._startup_watchdog.register_phase_timeout(
+                if startup_watchdog:
+                    startup_watchdog.register_phase_timeout(
                         "agi_os", agi_os_init_timeout
                     )
 
@@ -68712,7 +71132,7 @@ class JarvisSystemKernel:
                     # Without this, the 60-75s gap between progress 86→87
                     # triggers the DMS 60s stall detector.
                     # =====================================================================
-                    await self._broadcast_progress(86, "agi_os", "Starting AGI OS Coordinator...")
+                    await _broadcast_agi_progress(86, "Starting AGI OS Coordinator...")
                     self._mark_startup_activity("agi_os:coordinator_start", stage="agi_os")
 
                     # Sub-progress counter + start time for time-based progress
@@ -68742,12 +71162,13 @@ class JarvisSystemKernel:
                         # v258.3: DMS heartbeat — without this, DMS _last_progress_time
                         # was NEVER updated during AGI OS init.  Only update_phase()
                         # sets it; _mark_startup_activity and _broadcast_progress do not.
-                        if self._startup_watchdog:
-                            self._startup_watchdog.update_phase("agi_os", _sub_progress)
+                        if startup_watchdog:
+                            startup_watchdog.update_phase("agi_os", _sub_progress)
                         try:
                             await asyncio.wait_for(
-                                self._broadcast_progress(
-                                    _sub_progress, "agi_os", f"AGI OS [{step}]: {detail}"
+                                _broadcast_agi_progress(
+                                    _sub_progress,
+                                    f"AGI OS [{step}]: {detail}",
                                 ),
                                 timeout=_agi_progress_broadcast_timeout,
                             )
@@ -68809,8 +71230,8 @@ class JarvisSystemKernel:
                             if startup_task in done:
                                 self._agi_os = startup_task.result()
                                 # v258.3: Advance progress after coordinator started
-                                if self._startup_watchdog:
-                                    self._startup_watchdog.update_phase("agi_os", 87)
+                                if startup_watchdog:
+                                    startup_watchdog.update_phase("agi_os", 87)
                                 break
 
                             elapsed = time.monotonic() - startup_started
@@ -68823,13 +71244,12 @@ class JarvisSystemKernel:
                             _frac = min(1.0, elapsed / max(1.0, agi_os_init_timeout))
                             _progress = min(88, 86 + int(_frac * 3))
                             # v258.3: DMS heartbeat — prevents TIMEOUT during long init.
-                            if self._startup_watchdog:
-                                self._startup_watchdog.update_phase("agi_os", _progress)
+                            if startup_watchdog:
+                                startup_watchdog.update_phase("agi_os", _progress)
                             try:
                                 await asyncio.wait_for(
-                                    self._broadcast_progress(
+                                    _broadcast_agi_progress(
                                         _progress,
-                                        "agi_os",
                                         f"Starting AGI OS Coordinator... ({elapsed:.0f}s elapsed)",
                                     ),
                                     timeout=_agi_progress_broadcast_timeout,
@@ -68861,8 +71281,8 @@ class JarvisSystemKernel:
                         # v262.0: DMS heartbeat + activity marker after startup_task completes.
                         # Must use progress > 88 (heartbeat loop's max) to avoid regression warning
                         # and to refresh _last_progress_value_change_time (Path B).
-                        if self._startup_watchdog:
-                            self._startup_watchdog.update_phase("agi_os", 89)
+                        if startup_watchdog:
+                            startup_watchdog.update_phase("agi_os", 89)
                         self._mark_startup_activity("agi_os:coordinator_started", stage="agi_os")
 
                         self._agi_os_status["coordinator"] = True
@@ -68914,8 +71334,8 @@ class JarvisSystemKernel:
                     # v262.0: DMS heartbeat for Step 3 — value 89 (same as above) refreshes
                     # _last_progress_time but NOT _last_progress_value_change_time (Path B).
                     # Path A (_mark_startup_activity) is the primary liveness signal here.
-                    if self._startup_watchdog:
-                        self._startup_watchdog.update_phase("agi_os", 89)
+                    if startup_watchdog:
+                        startup_watchdog.update_phase("agi_os", 89)
                     self._mark_startup_activity("agi_os:verify_voice_pre", stage="agi_os")
                     try:
                         _verify_timeout = _get_env_float("JARVIS_AGI_OS_VERIFY_TIMEOUT", 5.0)
@@ -68936,8 +71356,8 @@ class JarvisSystemKernel:
                     # v252.2: Fixed unawaited coroutine — get_approval_manager() is async
                     # =====================================================================
                     # v262.0: DMS heartbeat for Step 4 — same value (89), same rationale.
-                    if self._startup_watchdog:
-                        self._startup_watchdog.update_phase("agi_os", 89)
+                    if startup_watchdog:
+                        startup_watchdog.update_phase("agi_os", 89)
                     self._mark_startup_activity("agi_os:verify_approval_pre", stage="agi_os")
                     try:
                         approval_mgr = await asyncio.wait_for(
@@ -68955,11 +71375,11 @@ class JarvisSystemKernel:
                     # =====================================================================
                     # STEP 5: Complete
                     # =====================================================================
-                    await self._broadcast_progress(87, "agi_os", "AGI OS active")
+                    await _broadcast_agi_progress(87, "AGI OS active")
 
                     # v262.0: Final DMS heartbeat — value changes (89→90), resetting Path B.
-                    if self._startup_watchdog:
-                        self._startup_watchdog.update_phase("agi_os", 90)
+                    if startup_watchdog:
+                        startup_watchdog.update_phase("agi_os", 90)
                     self._mark_startup_activity("agi_os:complete", stage="agi_os")
 
                     if self._agi_os_status["coordinator"]:
@@ -69080,8 +71500,15 @@ class JarvisSystemKernel:
 
     async def _run_ghost_display_initialization(self, phantom_mgr) -> bool:
         """Run the full Ghost Display bring-up sequence."""
+        registration_wait = _get_env_float(
+            "JARVIS_GHOST_REGISTRATION_WAIT_SECONDS",
+            _get_env_float("JARVIS_GHOST_DISPLAY_TIMEOUT", 30.0) * 0.6,
+        )
         try:
-            success, error = await phantom_mgr.ensure_ghost_display_exists_async()
+            success, error = await phantom_mgr.ensure_ghost_display_exists_async(
+                wait_for_registration=True,
+                max_wait_seconds=registration_wait,
+            )
         except Exception as e:
             self.logger.warning(f"[GhostDisplay] Failed while ensuring virtual display: {e}")
             self._update_component_status("ghost_display", "error", f"Error: {e}")
@@ -69110,15 +71537,17 @@ class JarvisSystemKernel:
 
         self.logger.info("[GhostDisplay] Virtual display ready")
 
-        # Crash recovery — audit & repatriate stranded windows
-        if _get_env_bool("JARVIS_GHOST_CRASH_RECOVERY", True):
-            await self._ghost_display_crash_recovery()
-
         # Publish state file for cross-repo exchange
         await self._publish_ghost_display_state(phantom_mgr)
 
         # Ensure exactly one health monitor is running.
         self._start_ghost_display_health_monitor(phantom_mgr)
+
+        # Crash recovery is non-blocking follow-up work. Running it inline can
+        # consume the startup budget and misclassify a healthy ghost display
+        # bring-up as failed.
+        if _get_env_bool("JARVIS_GHOST_CRASH_RECOVERY", True):
+            self._start_ghost_display_crash_recovery()
 
         self._update_component_status("ghost_display", "complete", "Ghost Display ready")
         return True
@@ -69133,10 +71562,57 @@ class JarvisSystemKernel:
         )
         self._background_tasks.append(self._ghost_display_health_task)
 
+    def _start_ghost_display_crash_recovery(self) -> None:
+        """Start ghost-display crash recovery if no recovery task is active."""
+        if self._ghost_display_recovery_task and not self._ghost_display_recovery_task.done():
+            return
+        self._ghost_display_recovery_task = create_safe_task(
+            self._ghost_display_crash_recovery(),
+            name="ghost-display-crash-recovery",
+        )
+        self._background_tasks.append(self._ghost_display_recovery_task)
+
     def _on_ghost_display_init_done(self, task: asyncio.Task) -> None:
         """Finalize background Ghost Display initialization task lifecycle."""
         if task is self._ghost_display_init_task:
             self._ghost_display_init_task = None
+
+        if task.cancelled():
+            return
+
+        try:
+            success = bool(task.result())
+        except Exception as e:
+            self.logger.debug(f"[GhostDisplay] Deferred init task failed: {e}")
+            return
+
+        if not success:
+            return
+
+        # If visual pipeline was skipped only because Ghost Display wasn't ready,
+        # retry once Ghost Display reaches COMPLETE in the background.
+        visual_state = self._component_status.get("visual_pipeline", {})
+        if (
+            not self._visual_pipeline_initialized
+            and visual_state.get("status") == "skipped"
+            and "Ghost Display not ready" in str(visual_state.get("message", ""))
+            and not self._shutdown_event.is_set()
+        ):
+            self.logger.info(
+                "[VisualPipeline] Ghost Display became ready; retrying deferred "
+                "visual pipeline initialization"
+            )
+            self._start_deferred_visual_pipeline_initialization()
+
+    def _start_deferred_visual_pipeline_initialization(self) -> None:
+        """Start deferred Visual Pipeline initialization if no retry is active."""
+        if self._visual_pipeline_deferred_task and not self._visual_pipeline_deferred_task.done():
+            return
+        self._visual_pipeline_deferred_task = create_safe_task(
+            self._initialize_visual_pipeline(),
+            name="visual-pipeline-deferred-init",
+        )
+        self._background_tasks.append(self._visual_pipeline_deferred_task)
 
     async def _ghost_display_crash_recovery(self) -> None:
         """
@@ -69160,7 +71636,19 @@ class JarvisSystemKernel:
                 return
 
             pm = get_persistence_manager()
-            stranded = await asyncio.wait_for(pm.startup(), timeout=10.0)
+            # v265.5: CPU-aware timeouts for ghost display recovery
+            _gd_startup_to = _get_env_float("JARVIS_GHOST_PERSIST_STARTUP_TIMEOUT", 10.0)
+            _gd_repat_to = _get_env_float("JARVIS_GHOST_REPATRIATION_TIMEOUT", 15.0)
+            try:
+                import psutil as _gd_ps
+                _gd_cpu = _gd_ps.cpu_percent(interval=None)
+                if _gd_cpu > 90.0:
+                    _gd_f = 1.0 + (_gd_cpu - 90.0) / 10.0 * 2.0
+                    _gd_startup_to *= _gd_f
+                    _gd_repat_to *= _gd_f
+            except Exception:
+                pass
+            stranded = await asyncio.wait_for(pm.startup(), timeout=_gd_startup_to)
 
             if stranded:
                 self.logger.info(
@@ -69168,7 +71656,7 @@ class JarvisSystemKernel:
                 )
                 result = await asyncio.wait_for(
                     pm.repatriate_stranded_windows(stranded, narrate_callback=None),
-                    timeout=15.0,
+                    timeout=_gd_repat_to,
                 )
                 self.logger.info(
                     f"[GhostDisplay] Repatriation: success={result.get('success', 0)}, "
@@ -69252,13 +71740,25 @@ class JarvisSystemKernel:
         max_failures = int(os.environ.get("JARVIS_GHOST_MAX_HEALTH_FAILURES", "3"))
         consecutive_failures = 0
 
+        # v265.5: CPU-aware timeout for health check polling
+        _ghost_health_timeout = _get_env_float("JARVIS_GHOST_HEALTH_CHECK_TIMEOUT", 10.0)
+
         while not self._shutdown_event.is_set():
             try:
                 await asyncio.sleep(interval)
 
+                # Re-check CPU each iteration (long-running loop)
+                _gh_eff_to = _ghost_health_timeout
+                try:
+                    import psutil as _gh_ps
+                    _gh_cpu = _gh_ps.cpu_percent(interval=None)
+                    if _gh_cpu > 90.0:
+                        _gh_eff_to *= 1.0 + (_gh_cpu - 90.0) / 10.0 * 2.0
+                except Exception:
+                    pass
                 hw_status = await asyncio.wait_for(
                     phantom_mgr.get_display_status_async(),
-                    timeout=10.0,
+                    timeout=_gh_eff_to,
                 )
 
                 if hw_status and hw_status.ghost_display_active:
@@ -69541,18 +72041,15 @@ class JarvisSystemKernel:
             # Get VisionCommandHandler — prefer the pre-configured module-level singleton
             # (instantiated at import time with jarvis_api + intelligence already wired)
             # over constructing a new unconfigured instance.
+            # v265.6: Use lazy getter — defers construction to first use
             vision_handler = None
             try:
-                from backend.api.vision_command_handler import vision_command_handler as _vh_singleton
-                if _vh_singleton is not None:
-                    vision_handler = _vh_singleton
-                    self.logger.debug("[ScreenObservation] Reusing backend VisionCommandHandler singleton")
+                from backend.api.vision_command_handler import get_vision_command_handler
+                vision_handler = get_vision_command_handler()
             except ImportError:
                 try:
-                    from api.vision_command_handler import vision_command_handler as _vh_singleton
-                    if _vh_singleton is not None:
-                        vision_handler = _vh_singleton
-                        self.logger.debug("[ScreenObservation] Reusing backend VisionCommandHandler singleton")
+                    from api.vision_command_handler import get_vision_command_handler
+                    vision_handler = get_vision_command_handler()
                 except ImportError:
                     pass
 
@@ -70064,9 +72561,22 @@ class JarvisSystemKernel:
         except asyncio.CancelledError:
             return
 
+        # v265.5: CPU-aware recovery timeout for visual pipeline components
+        _vp_recovery_timeout = _get_env_float("JARVIS_VISUAL_PIPELINE_RECOVERY_TIMEOUT", 10.0)
+
         while not self._shutdown_event.is_set():
             try:
                 await asyncio.sleep(interval)
+
+                # Re-check CPU each iteration (long-running loop)
+                _vp_eff_to = _vp_recovery_timeout
+                try:
+                    import psutil as _vp_ps
+                    _vp_cpu = _vp_ps.cpu_percent(interval=None)
+                    if _vp_cpu > 90.0:
+                        _vp_eff_to *= 1.0 + (_vp_cpu - 90.0) / 10.0 * 2.0
+                except Exception:
+                    pass
 
                 # Check Ghost Hands Orchestrator
                 if self._ghost_hands_orchestrator:
@@ -70084,7 +72594,7 @@ class JarvisSystemKernel:
                                 start_fn = getattr(self._ghost_hands_orchestrator, 'start', None)
                                 if start_fn:
                                     if asyncio.iscoroutinefunction(start_fn):
-                                        await asyncio.wait_for(start_fn(), timeout=10.0)
+                                        await asyncio.wait_for(start_fn(), timeout=_vp_eff_to)
                                     else:
                                         start_fn()
                                     ghost_hands_failures = 0
@@ -70108,7 +72618,7 @@ class JarvisSystemKernel:
                                 start_fn = getattr(self._n_optic_nerve, 'start', None)
                                 if start_fn:
                                     if asyncio.iscoroutinefunction(start_fn):
-                                        await asyncio.wait_for(start_fn(), timeout=10.0)
+                                        await asyncio.wait_for(start_fn(), timeout=_vp_eff_to)
                                     else:
                                         start_fn()
                                     n_optic_failures = 0
@@ -70128,12 +72638,736 @@ class JarvisSystemKernel:
     # v238.0: AUDIO INFRASTRUCTURE HEALTH MONITOR
     # =========================================================================
 
+    def _ensure_audio_health_monitor(self) -> None:
+        """Start AudioBus health monitor if not already running."""
+        if self._audio_health_task is not None and not self._audio_health_task.done():
+            return
+        self._audio_health_task = create_safe_task(
+            self._audio_health_loop(),
+            name="audio-health",
+        )
+        self._background_tasks.append(self._audio_health_task)
+
+    def _schedule_audio_bus_recovery(self, reason: str) -> None:
+        """Schedule bounded background recovery for AudioBus initialization failures."""
+        if not self._audio_bus_enabled:
+            return
+        if self._audio_recovery_task is not None and not self._audio_recovery_task.done():
+            return
+
+        self._audio_recovery_task = create_safe_task(
+            self._audio_recovery_loop(reason),
+            name="audio-recovery",
+        )
+        self._background_tasks.append(self._audio_recovery_task)
+
+    async def _audio_recovery_loop(self, initial_reason: str) -> None:
+        """
+        Recover AudioBus after early-init failures without requiring restart.
+
+        This avoids session-long voice degradation from transient startup
+        contention (audio device busy, delayed dependency import, etc.).
+        """
+        initial_delay = _get_env_float("JARVIS_AUDIO_RECOVERY_INITIAL_DELAY", 5.0)
+        retry_interval = _get_env_float("JARVIS_AUDIO_RECOVERY_RETRY_INTERVAL", 15.0)
+        max_attempts = _get_env_int("JARVIS_AUDIO_RECOVERY_MAX_ATTEMPTS", 12)
+        start_timeout = _get_env_float("JARVIS_AUDIO_BUS_RECOVERY_TIMEOUT", 12.0)
+
+        try:
+            await asyncio.sleep(initial_delay)
+        except asyncio.CancelledError:
+            return
+
+        attempts = 0
+        while not self._shutdown_event.is_set():
+            if max_attempts > 0 and attempts >= max_attempts:
+                break
+            attempts += 1
+
+            # v265.5: CPU-aware timeout + interval scaling — audio device
+            # init and stream open are blocking I/O that slows under load.
+            _effective_timeout = start_timeout
+            _effective_interval = retry_interval
+            try:
+                import psutil as _ab_psutil
+                _ab_cpu = _ab_psutil.cpu_percent(interval=None)
+                if _ab_cpu > 90.0:
+                    _ab_factor = 1.0 + (_ab_cpu - 90.0) / 10.0 * 2.0
+                    _effective_timeout *= _ab_factor
+                    _effective_interval *= _ab_factor
+            except Exception:
+                pass
+
+            try:
+                if self._audio_bus is not None and getattr(self._audio_bus, "is_running", False):
+                    self._ensure_audio_health_monitor()
+                    if self._model_serving is not None:
+                        await self._attempt_wire_audio_pipeline(context="recovery")
+                    return
+
+                if self._audio_bus is None:
+                    from backend.audio.audio_bus import AudioBus
+                    # v267.0: Use singleton factory (same fix as early init)
+                    self._audio_bus = AudioBus.get_instance()
+
+                await asyncio.wait_for(self._audio_bus.start(), timeout=_effective_timeout)
+                self._component_status["audio_infrastructure"] = {
+                    "status": "running",
+                    "message": f"AudioBus recovered (attempt {attempts})",
+                }
+                self.logger.info(
+                    "[AudioRecovery] AudioBus recovered after '%s' (attempt %d)",
+                    initial_reason,
+                    attempts,
+                )
+                self._ensure_audio_health_monitor()
+                if self._model_serving is not None:
+                    await self._attempt_wire_audio_pipeline(context="recovery")
+                return
+            except asyncio.CancelledError:
+                raise
+            except Exception as recovery_err:
+                self._component_status["audio_infrastructure"] = {
+                    "status": "degraded",
+                    "message": f"AudioBus recovery attempt {attempts} failed: {recovery_err}",
+                }
+                self.logger.warning(
+                    "[AudioRecovery] Attempt %d/%s failed: %s",
+                    attempts,
+                    "∞" if max_attempts <= 0 else str(max_attempts),
+                    recovery_err,
+                )
+                try:
+                    await asyncio.sleep(_effective_interval)
+                except asyncio.CancelledError:
+                    return
+
+        self._component_status["audio_infrastructure"] = {
+            "status": "degraded",
+            "message": (
+                f"AudioBus recovery exhausted after {attempts} attempts "
+                f"(reason={initial_reason})"
+            ),
+        }
+
+    async def _attempt_wire_audio_pipeline(self, context: str = "startup") -> bool:
+        """
+        Wire the conversation pipeline when AudioBus and model serving are available.
+
+        Safe to call multiple times; only performs work once.
+        """
+        if not self._audio_bus_enabled or self._audio_bus is None:
+            return False
+        if self._audio_infrastructure_initialized and self._audio_pipeline_handle is not None:
+            return True
+        if self._model_serving is None:
+            self.logger.debug(
+                "[Kernel] Audio pipeline wiring deferred (%s): model serving unavailable",
+                context,
+            )
+            return False
+
+        try:
+            _wire_start = time.time()
+            from backend.audio.audio_pipeline_bootstrap import wire_conversation_pipeline
+
+            # v265.5: CPU-aware timeouts for speech state + pipeline wiring
+            _speech_state_timeout = _get_env_float("JARVIS_SPEECH_STATE_TIMEOUT", 10.0)
+            _pipeline_wire_timeout = _get_env_float("JARVIS_PIPELINE_WIRE_TIMEOUT", 30.0)
+            try:
+                import psutil as _ap_psutil
+                _ap_cpu = _ap_psutil.cpu_percent(interval=None)
+                if _ap_cpu > 90.0:
+                    _ap_factor = 1.0 + (_ap_cpu - 90.0) / 10.0 * 2.0
+                    _speech_state_timeout *= _ap_factor
+                    _pipeline_wire_timeout *= _ap_factor
+            except Exception:
+                pass
+
+            _speech_state = None
+            try:
+                from backend.core.unified_speech_state import get_speech_state_manager
+                _speech_state = await asyncio.wait_for(
+                    get_speech_state_manager(),
+                    timeout=_speech_state_timeout,
+                )
+            except (asyncio.TimeoutError, Exception):
+                pass
+
+            self._audio_pipeline_handle = await asyncio.wait_for(
+                wire_conversation_pipeline(
+                    audio_bus=self._audio_bus,
+                    llm_client=self._model_serving,
+                    speech_state=_speech_state,
+                ),
+                timeout=_pipeline_wire_timeout,
+            )
+
+            self._conversation_pipeline = self._audio_pipeline_handle.conversation_pipeline
+            self._mode_dispatcher = self._audio_pipeline_handle.mode_dispatcher
+            self._audio_infrastructure_initialized = True
+            _wire_ms = (time.time() - _wire_start) * 1000
+
+            self._component_status["audio_infrastructure"] = {
+                "status": "running",
+                "message": f"Pipeline wired via bootstrap in {_wire_ms:.0f}ms ({context})",
+            }
+            self.logger.info(
+                "[Kernel] Audio pipeline wired (%s) in %.0fms",
+                context,
+                _wire_ms,
+            )
+            self._ensure_audio_health_monitor()
+            return True
+        except Exception as ap_err:
+            self.logger.warning(
+                f"[Kernel] Audio pipeline wiring failed ({context}): {ap_err}"
+            )
+            self._component_status["audio_infrastructure"] = {
+                "status": "degraded",
+                "message": f"Wiring failed ({context}): {ap_err}",
+            }
+            return False
+
+    # ------------------------------------------------------------------
+    # v265.5: BACKGROUND RECOVERY LOOPS — DMS, Resilience, ModelServing
+    # ------------------------------------------------------------------
+
+    def _schedule_dms_recovery(self, reason: str) -> None:
+        """Schedule background DMS recovery after init failure."""
+        if self._dms_recovery_task is not None:
+            return
+        self._dms_recovery_task = create_safe_task(
+            self._dms_recovery_loop(reason),
+            name="dms-recovery",
+        )
+        self._background_tasks.append(self._dms_recovery_task)
+
+    async def _dms_recovery_loop(self, initial_reason: str) -> None:
+        """Retry DMS init with CPU-aware backoff."""
+        _delay = _get_env_float("JARVIS_DMS_RECOVERY_INITIAL_DELAY", 15.0)
+        _max = _get_env_int("JARVIS_DMS_RECOVERY_MAX_ATTEMPTS", 6)
+        _interval = _get_env_float("JARVIS_DMS_RECOVERY_INTERVAL", 15.0)
+        _timeout = _get_env_float("JARVIS_DMS_RECOVERY_TIMEOUT", 15.0)
+
+        try:
+            await asyncio.sleep(_delay)
+        except asyncio.CancelledError:
+            return
+
+        for attempt in range(1, _max + 1):
+            if self._startup_watchdog is not None:
+                return  # Recovered elsewhere
+            # CPU-aware scaling
+            _eff_timeout = _timeout
+            _eff_interval = _interval
+            try:
+                import psutil as _dms_r_ps
+                _dms_r_cpu = _dms_r_ps.cpu_percent(interval=None)
+                if _dms_r_cpu > 90.0:
+                    _f = 1.0 + (_dms_r_cpu - 90.0) / 10.0 * 2.0
+                    _eff_timeout *= _f
+                    _eff_interval *= _f
+            except Exception:
+                pass
+
+            try:
+                _cand = StartupWatchdog(
+                    logger=self.logger,
+                    diagnostic_callback=self._dms_diagnostic_callback,
+                    restart_callback=self._dms_restart_callback,
+                    rollback_callback=self._dms_rollback_callback,
+                )
+                await asyncio.wait_for(_cand.start(), timeout=_eff_timeout)
+                if _cand.enabled:
+                    self._startup_watchdog = _cand
+                    self._update_component_status(
+                        "startup_watchdog", "running",
+                        f"Dead Man's Switch recovered (attempt {attempt})",
+                    )
+                    self.logger.info(
+                        "[DMS-Recovery] Watchdog recovered after '%s' (attempt %d)",
+                        initial_reason, attempt,
+                    )
+                    # Re-wire parallel_initializer coordination
+                    try:
+                        from core.parallel_initializer import set_dms_heartbeat_callback
+                        _noop_hb = lambda _c="": None
+                        _noop_act = lambda _a=True: None
+                        set_dms_heartbeat_callback(
+                            heartbeat_fn=(
+                                self._startup_watchdog.heartbeat
+                                if hasattr(self._startup_watchdog, "heartbeat")
+                                else _noop_hb
+                            ),
+                            set_parallel_active_fn=(
+                                self._startup_watchdog.set_parallel_init_active
+                                if hasattr(self._startup_watchdog, "set_parallel_init_active")
+                                else _noop_act
+                            ),
+                        )
+                    except Exception:
+                        pass
+                    # Notify current phase
+                    if hasattr(self._startup_watchdog, "set_execution_mode"):
+                        try:
+                            self._startup_watchdog.set_execution_mode("parallel")
+                        except Exception:
+                            pass
+                    return
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                self.logger.warning(
+                    "[DMS-Recovery] Attempt %d/%d failed: %s", attempt, _max, e
+                )
+            try:
+                await asyncio.sleep(_eff_interval)
+            except asyncio.CancelledError:
+                return
+
+        self.logger.warning(
+            "[DMS-Recovery] Exhausted %d attempts — running without stall protection", _max
+        )
+
+    def _schedule_resilience_recovery(self, reason: str) -> None:
+        """Schedule background Startup Resilience recovery."""
+        if self._resilience_recovery_task is not None:
+            return
+        self._resilience_recovery_task = create_safe_task(
+            self._resilience_recovery_loop(reason),
+            name="resilience-recovery",
+        )
+        self._background_tasks.append(self._resilience_recovery_task)
+
+    async def _resilience_recovery_loop(self, initial_reason: str) -> None:
+        """Retry StartupResilience init with exponential backoff."""
+        _delay = _get_env_float("JARVIS_RESILIENCE_RECOVERY_DELAY", 10.0)
+        _max = _get_env_int("JARVIS_RESILIENCE_RECOVERY_MAX_ATTEMPTS", 5)
+        _interval = _get_env_float("JARVIS_RESILIENCE_RECOVERY_INTERVAL", 30.0)
+
+        try:
+            await asyncio.sleep(_delay)
+        except asyncio.CancelledError:
+            return
+
+        _backoff = _interval
+        for attempt in range(1, _max + 1):
+            if self._startup_resilience is not None:
+                return
+            try:
+                cand = StartupResilience(logger=self.logger)
+                await cand.start()
+                self._startup_resilience = cand
+                self._update_component_status(
+                    "startup_resilience", "running",
+                    f"Resilience coordinator recovered (attempt {attempt})",
+                )
+                self.logger.info(
+                    "[Resilience-Recovery] Recovered after '%s' (attempt %d)",
+                    initial_reason, attempt,
+                )
+                return
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                self.logger.warning(
+                    "[Resilience-Recovery] Attempt %d/%d failed: %s", attempt, _max, e
+                )
+            try:
+                await asyncio.sleep(_backoff)
+            except asyncio.CancelledError:
+                return
+            _backoff = min(_backoff * 1.5, 120.0)
+
+        self.logger.warning(
+            "[Resilience-Recovery] Exhausted %d attempts — no Docker/Ollama monitoring", _max
+        )
+
+    def _schedule_model_serving_recovery(self, reason: str) -> None:
+        """Schedule background UnifiedModelServing recovery."""
+        if self._model_serving_recovery_task is not None:
+            return
+        self._model_serving_recovery_task = create_safe_task(
+            self._model_serving_recovery_loop(reason),
+            name="model-serving-recovery",
+        )
+        self._background_tasks.append(self._model_serving_recovery_task)
+
+    async def _model_serving_recovery_loop(self, initial_reason: str) -> None:
+        """Retry UnifiedModelServing init with CPU-aware timeout."""
+        _delay = _get_env_float("JARVIS_MODEL_SERVING_RECOVERY_DELAY", 20.0)
+        _max = _get_env_int("JARVIS_MODEL_SERVING_RECOVERY_MAX_ATTEMPTS", 4)
+        _interval = _get_env_float("JARVIS_MODEL_SERVING_RECOVERY_INTERVAL", 30.0)
+        _base_timeout = _get_env_float("JARVIS_MODEL_SERVING_INIT_TIMEOUT", 30.0)
+
+        try:
+            await asyncio.sleep(_delay)
+        except asyncio.CancelledError:
+            return
+
+        for attempt in range(1, _max + 1):
+            if self._model_serving is not None:
+                return
+            _eff_timeout = _base_timeout
+            try:
+                import psutil as _msr_ps
+                _msr_cpu = _msr_ps.cpu_percent(interval=None)
+                if _msr_cpu > 90.0:
+                    _eff_timeout *= 1.0 + (_msr_cpu - 90.0) / 10.0 * 2.0
+            except Exception:
+                pass
+
+            try:
+                from backend.intelligence.unified_model_serving import get_model_serving
+                ms = await asyncio.wait_for(get_model_serving(), timeout=_eff_timeout)
+                self._model_serving = ms
+                self.logger.info(
+                    "[ModelServing-Recovery] Recovered after '%s' (attempt %d)",
+                    initial_reason, attempt,
+                )
+                # Apply deferred endpoints
+                if self._pending_gcp_endpoint:
+                    try:
+                        from backend.intelligence.unified_model_serving import (
+                            notify_gcp_endpoint_ready as _ngcp,
+                        )
+                        await _ngcp(self._pending_gcp_endpoint)
+                        self._pending_gcp_endpoint = None
+                    except Exception:
+                        pass
+                if self._pending_jprime_api_url:
+                    try:
+                        from backend.intelligence.unified_model_serving import (
+                            notify_jprime_api_ready as _njp,
+                        )
+                        await _njp(self._pending_jprime_api_url)
+                        self._pending_jprime_api_url = None
+                    except Exception:
+                        pass
+                # Wire audio pipeline if AudioBus is ready
+                if self._audio_bus is not None and getattr(self._audio_bus, "is_running", False):
+                    try:
+                        await self._attempt_wire_audio_pipeline(context="model-serving-recovery")
+                    except Exception:
+                        pass
+                return
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                self.logger.warning(
+                    "[ModelServing-Recovery] Attempt %d/%d failed: %s", attempt, _max, e
+                )
+            try:
+                await asyncio.sleep(_interval)
+            except asyncio.CancelledError:
+                return
+
+        self.logger.warning(
+            "[ModelServing-Recovery] Exhausted %d attempts — inference routing unavailable", _max
+        )
+
+    # ─── v265.6: Phase 5 Trinity component background recovery ───────────
+
+    def _schedule_trinity_component_recovery(self, failed_components: list) -> None:
+        """Schedule background recovery for Trinity components that failed at startup."""
+        if self._trinity_component_recovery_task is not None:
+            return  # Already running
+        self._trinity_component_recovery_task = create_safe_task(
+            self._trinity_component_recovery_loop(failed_components),
+            name="trinity-component-recovery",
+        )
+
+    async def _trinity_component_recovery_loop(self, failed_components: list) -> None:
+        """
+        v265.6: Background recovery for failed Trinity components (J-Prime, Reactor-Core).
+
+        Re-discovers repos, re-probes health endpoints, and starts components that
+        become available after initial boot. Uses exponential backoff with CPU-aware
+        scaling per iteration.
+
+        Env vars:
+            JARVIS_TRINITY_RECOVERY_INTERVAL: Base retry interval (default: 30.0s)
+            JARVIS_TRINITY_RECOVERY_MAX_ATTEMPTS: Max retries (default: 6)
+        """
+        _base_interval = _get_env_float("JARVIS_TRINITY_RECOVERY_INTERVAL", 30.0)
+        _max = int(os.environ.get("JARVIS_TRINITY_RECOVERY_MAX_ATTEMPTS", "6"))
+
+        # Initial grace period — let other startup phases finish first
+        try:
+            await asyncio.sleep(15.0)
+        except asyncio.CancelledError:
+            return
+
+        self.logger.info(
+            "[Trinity-Recovery] Starting background recovery for %s (max %d attempts)",
+            ", ".join(failed_components), _max,
+        )
+
+        for attempt in range(1, _max + 1):
+            if self._shutdown_event.is_set():
+                return
+
+            # CPU-aware backoff interval
+            _interval = _base_interval * min(attempt, 4)  # Cap multiplier at 4x
+            try:
+                import psutil as _tr_ps
+                _tr_cpu = _tr_ps.cpu_percent(interval=None)
+                if _tr_cpu > 90.0:
+                    _interval *= 1.0 + (_tr_cpu - 90.0) / 10.0 * 2.0
+            except Exception:
+                pass
+
+            try:
+                recovered = []
+                for comp_key in list(failed_components):
+                    comp_status_key = comp_key.replace("-", "_")
+                    current = self._component_status.get(comp_status_key, {}).get("status")
+                    if current == "complete":
+                        # Already recovered (e.g., via late-arrival GCP detection)
+                        recovered.append(comp_key)
+                        continue
+
+                    # Step 1: Probe if component is now running (may have been started externally)
+                    actual_port = self._get_component_port(comp_status_key)
+                    if await self._quick_health_probe(actual_port):
+                        self._update_component_status(
+                            comp_status_key, "complete",
+                            f"{comp_key} recovered (background probe port {actual_port})"
+                        )
+                        self.logger.info(
+                            "[Trinity-Recovery] %s recovered on port %d (attempt %d/%d)",
+                            comp_key, actual_port, attempt, _max,
+                        )
+                        recovered.append(comp_key)
+                        continue
+
+                    # Step 2: If we have a TrinityIntegrator, try re-discovery
+                    if self._trinity and hasattr(self._trinity, '_discover_repo'):
+                        # Clear discovery cache so we re-scan filesystem
+                        self._trinity._discovery_cache.pop(comp_key, None)
+                        config_path = (
+                            self.config.prime_repo_path if comp_key == "jarvis-prime"
+                            else self.config.reactor_repo_path
+                        )
+                        new_path = await self._trinity._discover_repo(comp_key, config_path)
+                        if new_path:
+                            self.logger.info(
+                                "[Trinity-Recovery] %s re-discovered at %s (attempt %d/%d)",
+                                comp_key, new_path, attempt, _max,
+                            )
+                            # Try starting just this component
+                            try:
+                                _start_timeout = _get_env_float("JARVIS_TRINITY_RECOVERY_START_TIMEOUT", 60.0)
+                                invincible_ready = getattr(self, '_invincible_node_ready', False)
+                                skip_prime = (comp_key != "jarvis-prime")
+                                _result = await asyncio.wait_for(
+                                    self._trinity.start_components(
+                                        skip_prime=skip_prime,
+                                        invincible_node_ready=invincible_ready,
+                                    ),
+                                    timeout=_start_timeout,
+                                )
+                                if _result.get(comp_key):
+                                    self._update_component_status(
+                                        comp_status_key, "complete",
+                                        f"{comp_key} recovered via background start"
+                                    )
+                                    recovered.append(comp_key)
+                                    self.logger.info(
+                                        "[Trinity-Recovery] %s started successfully (attempt %d/%d)",
+                                        comp_key, attempt, _max,
+                                    )
+                            except (asyncio.TimeoutError, Exception) as start_err:
+                                self.logger.debug(
+                                    "[Trinity-Recovery] %s start attempt %d failed: %s",
+                                    comp_key, attempt, start_err,
+                                )
+
+                # Remove recovered components from the failed list
+                for comp in recovered:
+                    failed_components.remove(comp)
+
+                if not failed_components:
+                    self.logger.info("[Trinity-Recovery] All failed components recovered")
+                    self._trinity_component_recovery_task = None
+                    return
+
+            except asyncio.CancelledError:
+                return
+            except Exception as e:
+                self.logger.warning(
+                    "[Trinity-Recovery] Attempt %d/%d error: %s", attempt, _max, e
+                )
+
+            try:
+                await asyncio.sleep(_interval)
+            except asyncio.CancelledError:
+                return
+
+        self.logger.warning(
+            "[Trinity-Recovery] Exhausted %d attempts — %s remain unavailable",
+            _max, ", ".join(failed_components),
+        )
+        self._trinity_component_recovery_task = None
+
+    # ─── v265.6: Phase 6 Enterprise service background recovery ──────────
+
+    def _schedule_enterprise_service_recovery(self, failed_services: list) -> None:
+        """Schedule background recovery for enterprise services that failed at startup."""
+        if self._enterprise_service_recovery_task is not None:
+            return  # Already running
+        self._enterprise_service_recovery_task = create_safe_task(
+            self._enterprise_service_recovery_loop(failed_services),
+            name="enterprise-service-recovery",
+        )
+
+    async def _enterprise_service_recovery_loop(self, failed_services: list) -> None:
+        """
+        v265.6: Background recovery for failed enterprise services.
+
+        Re-attempts initialization for services that failed or timed out terminally
+        during Phase 6. Uses bounded retries with CPU-aware backoff.
+
+        Env vars:
+            JARVIS_ENTERPRISE_RECOVERY_INTERVAL: Base retry interval (default: 30.0s)
+            JARVIS_ENTERPRISE_RECOVERY_MAX_ATTEMPTS: Max retries (default: 4)
+        """
+        _base_interval = _get_env_float("JARVIS_ENTERPRISE_RECOVERY_INTERVAL", 30.0)
+        _max = int(os.environ.get("JARVIS_ENTERPRISE_RECOVERY_MAX_ATTEMPTS", "4"))
+
+        # Map internal names to initializer coroutine factories
+        _service_initializers = {
+            "cloud_sql": ("CloudSQL", self._initialize_cloud_sql_proxy),
+            "voice_biometrics": ("VoiceBio", self._initialize_voice_biometrics),
+            "semantic_cache": ("SemanticCache", self._initialize_semantic_voice_cache),
+            "infra_orchestrator": ("InfraOrch", self._initialize_infrastructure_orchestrator),
+            "websocket_hub": ("WebSocket", self._initialize_websocket_hub),
+        }
+
+        # Initial grace period
+        try:
+            await asyncio.sleep(20.0)
+        except asyncio.CancelledError:
+            return
+
+        self.logger.info(
+            "[Enterprise-Recovery] Starting background recovery for %s (max %d attempts)",
+            ", ".join(failed_services), _max,
+        )
+
+        for attempt in range(1, _max + 1):
+            if self._shutdown_event.is_set():
+                return
+
+            # CPU-aware interval
+            _interval = _base_interval * min(attempt, 3)
+            try:
+                import psutil as _er_ps
+                _er_cpu = _er_ps.cpu_percent(interval=None)
+                if _er_cpu > 90.0:
+                    _interval *= 1.0 + (_er_cpu - 90.0) / 10.0 * 2.0
+            except Exception:
+                pass
+
+            try:
+                recovered = []
+                for svc_key in list(failed_services):
+                    # Check if already recovered (background continuation may have completed)
+                    current_status = (self._enterprise_status or {}).get(svc_key, {})
+                    if isinstance(current_status, dict) and (
+                        current_status.get("initialized")
+                        or current_status.get("enabled")
+                        or current_status.get("running")
+                    ):
+                        recovered.append(svc_key)
+                        continue
+
+                    if svc_key not in _service_initializers:
+                        continue
+
+                    display_name, init_fn = _service_initializers[svc_key]
+
+                    _svc_timeout = _get_env_float(
+                        f"JARVIS_SERVICE_TIMEOUT_{svc_key.upper()}",
+                        _get_env_float("JARVIS_SERVICE_TIMEOUT", 30.0),
+                    )
+                    # CPU-aware timeout for the retry
+                    try:
+                        import psutil as _sr_ps
+                        _sr_cpu = _sr_ps.cpu_percent(interval=None)
+                        if _sr_cpu > 90.0:
+                            _svc_timeout *= 1.0 + (_sr_cpu - 90.0) / 10.0 * 2.0
+                    except Exception:
+                        pass
+
+                    try:
+                        result = await asyncio.wait_for(init_fn(), timeout=_svc_timeout)
+                        if isinstance(result, dict) and (
+                            result.get("initialized")
+                            or result.get("enabled")
+                            or result.get("running")
+                        ):
+                            self._enterprise_status[svc_key] = result
+                            self.logger.info(
+                                "[Enterprise-Recovery] %s recovered (attempt %d/%d)",
+                                display_name, attempt, _max,
+                            )
+                            recovered.append(svc_key)
+                        else:
+                            self.logger.debug(
+                                "[Enterprise-Recovery] %s returned non-ready status (attempt %d/%d)",
+                                display_name, attempt, _max,
+                            )
+                    except asyncio.TimeoutError:
+                        self.logger.debug(
+                            "[Enterprise-Recovery] %s timed out (attempt %d/%d)",
+                            display_name, attempt, _max,
+                        )
+                    except Exception as svc_err:
+                        self.logger.debug(
+                            "[Enterprise-Recovery] %s error (attempt %d/%d): %s",
+                            display_name, attempt, _max, svc_err,
+                        )
+
+                for svc in recovered:
+                    if svc in failed_services:
+                        failed_services.remove(svc)
+
+                # Reconcile overall enterprise status after any recovery
+                if recovered:
+                    self._reconcile_enterprise_component_status()
+
+                if not failed_services:
+                    self.logger.info("[Enterprise-Recovery] All failed services recovered")
+                    self._enterprise_service_recovery_task = None
+                    return
+
+            except asyncio.CancelledError:
+                return
+            except Exception as e:
+                self.logger.warning(
+                    "[Enterprise-Recovery] Attempt %d/%d error: %s", attempt, _max, e
+                )
+
+            try:
+                await asyncio.sleep(_interval)
+            except asyncio.CancelledError:
+                return
+
+        self.logger.warning(
+            "[Enterprise-Recovery] Exhausted %d attempts — %s remain unavailable",
+            _max, ", ".join(failed_services),
+        )
+        self._enterprise_service_recovery_task = None
+
     async def _audio_health_loop(self) -> None:
         """
         v238.0: Background health monitoring for Audio Bus infrastructure.
 
         Periodically checks AudioBus.is_running and updates component status.
-        On failure, attempts a single restart before marking degraded.
+        On failure, retries restart a bounded number of times and then
+        schedules background recovery.
 
         Env vars:
             JARVIS_AUDIO_HEALTH_INTERVAL: Check frequency (default: 30.0s)
@@ -70141,23 +73375,29 @@ class JarvisSystemKernel:
         """
         grace = _get_env_float("JARVIS_AUDIO_HEALTH_GRACE", 15.0)
         interval = _get_env_float("JARVIS_AUDIO_HEALTH_INTERVAL", 30.0)
+        max_restart_attempts = _get_env_int("JARVIS_AUDIO_HEALTH_MAX_RESTART_ATTEMPTS", 3)
 
         try:
             await asyncio.sleep(grace)
         except asyncio.CancelledError:
             return
 
-        restart_attempted = False
+        restart_attempts = 0
 
         while not self._shutdown_event.is_set():
             try:
                 await asyncio.sleep(interval)
 
                 if self._audio_bus is None:
+                    self._component_status["audio_infrastructure"] = {
+                        "status": "degraded",
+                        "message": "AudioBus unavailable during health check; recovery scheduled",
+                    }
+                    self._schedule_audio_bus_recovery("health_loop_missing_bus")
                     continue
 
                 if self._audio_bus.is_running:
-                    restart_attempted = False
+                    restart_attempts = 0
                     stats = {}
                     if hasattr(self._audio_bus, 'get_stats'):
                         try:
@@ -70168,17 +73408,22 @@ class JarvisSystemKernel:
                         "status": "running",
                         "message": f"Healthy (sinks={stats.get('sink_count', '?')})",
                     }
+                    if self._model_serving is not None and not self._audio_infrastructure_initialized:
+                        await self._attempt_wire_audio_pipeline(context="health-loop")
                 else:
-                    if not restart_attempted:
+                    if restart_attempts < max_restart_attempts:
+                        restart_attempts += 1
                         self.logger.warning(
-                            "[AudioHealth] AudioBus not running — attempting restart"
+                            "[AudioHealth] AudioBus not running — attempting restart (%d/%d)",
+                            restart_attempts,
+                            max_restart_attempts,
                         )
-                        restart_attempted = True
                         try:
                             await asyncio.wait_for(
                                 self._audio_bus.start(), timeout=10.0
                             )
                             self.logger.info("[AudioHealth] AudioBus restarted")
+                            restart_attempts = 0
                         except Exception as restart_err:
                             self.logger.warning(
                                 f"[AudioHealth] AudioBus restart failed: {restart_err}"
@@ -70190,8 +73435,12 @@ class JarvisSystemKernel:
                     else:
                         self._component_status["audio_infrastructure"] = {
                             "status": "degraded",
-                            "message": "AudioBus not running (restart already attempted)",
+                            "message": (
+                                "AudioBus not running after health-loop restart attempts; "
+                                "background recovery scheduled"
+                            ),
                         }
+                        self._schedule_audio_bus_recovery("health_loop_restart_exhausted")
 
             except asyncio.CancelledError:
                 break
@@ -70302,6 +73551,7 @@ class JarvisSystemKernel:
         start_coro,
         base_timeout: float,
         integrator_name: str = "Trinity",
+        hard_cap_timeout: Optional[float] = None,
     ) -> Tuple[Dict[str, bool], bool, Optional[str]]:
         """
         v222.0: Progress-aware wrapper for Trinity component startup.
@@ -70338,6 +73588,10 @@ class JarvisSystemKernel:
         poll_interval = TRINITY_PROGRESS_POLL_INTERVAL
         extension_buffer = TRINITY_PROGRESS_EXTENSION_BUFFER
         max_timeout = min(TRINITY_MAX_EXTENDED_TIMEOUT, base_timeout * 2)  # At most 2x base
+        if hard_cap_timeout is not None:
+            hard_cap_timeout = max(10.0, float(hard_cap_timeout))
+            max_timeout = min(max_timeout, hard_cap_timeout)
+        base_timeout = min(base_timeout, max_timeout)
         stall_threshold = TRINITY_PROGRESS_STALL_THRESHOLD
         
         # State tracking
@@ -70389,6 +73643,10 @@ class JarvisSystemKernel:
             f"[{integrator_name}] v222.0 Progress-aware startup: "
             f"base={base_timeout:.0f}s, max={max_timeout:.0f}s, poll={poll_interval:.0f}s"
         )
+        if hard_cap_timeout is not None:
+            self.logger.info(
+                f"[{integrator_name}] Phase hard-cap applied: {hard_cap_timeout:.0f}s"
+            )
         self.logger.info(
             f"[{integrator_name}] v232.0: Stall budget: {_budget_init_reason}"
         )
@@ -71063,6 +74321,51 @@ class JarvisSystemKernel:
         """
         self._state = KernelState.STARTING_TRINITY
 
+        # v266.0: Single authoritative Trinity phase deadline.
+        # All sub-waits in this phase are capped by remaining budget so we do not
+        # hit an unrelated outer timeout while inner operations still expect time.
+        _phase_loop = asyncio.get_running_loop()
+        _phase_start = _phase_loop.time()
+        _phase_timeout_budget = float(
+            getattr(
+                self,
+                "_effective_trinity_outer_timeout",
+                getattr(self, "_effective_trinity_timeout", DEFAULT_TRINITY_TIMEOUT) + 60.0,
+            )
+        )
+        _phase_deadline = _phase_start + max(30.0, _phase_timeout_budget)
+        _startup_reserve_budget = _get_env_float("JARVIS_TRINITY_STARTUP_RESERVE", 120.0)
+
+        def _remaining_phase_budget(*, reserve: float = 0.0) -> float:
+            return max(0.0, _phase_deadline - _phase_loop.time() - max(0.0, reserve))
+
+        def _cap_phase_timeout(
+            requested: float,
+            *,
+            minimum: float = 5.0,
+            reserve: float = 0.0,
+            context: str = "trinity",
+        ) -> float:
+            remaining = _remaining_phase_budget(reserve=reserve)
+            if remaining <= 0:
+                raise TimeoutError(
+                    f"Trinity phase budget exhausted before {context} "
+                    f"(phase_budget={_phase_timeout_budget:.0f}s)"
+                )
+            capped = min(float(requested), remaining)
+            if capped < minimum:
+                raise TimeoutError(
+                    f"Insufficient Trinity phase budget for {context}: "
+                    f"{remaining:.1f}s remaining (<{minimum:.1f}s minimum)"
+                )
+            if capped < requested:
+                self.logger.info(
+                    f"[Trinity] Budget cap: {context} timeout "
+                    f"{requested:.0f}s -> {capped:.0f}s "
+                    f"(remaining={remaining:.0f}s, reserve={reserve:.0f}s)"
+                )
+            return capped
+
         # v188.0: Background heartbeat task to prevent DMS stall detection
         # Long operations like cross-repo orchestration can take 60+ seconds
         # This task sends heartbeats every 5 seconds to keep DMS alive
@@ -71093,10 +74396,13 @@ class JarvisSystemKernel:
                 try:
                     await asyncio.sleep(5.0)
                     if self._startup_watchdog and not heartbeat_stop.is_set():
-                        # Time-proportional: 66→79% over ~40% of the budget
+                        # v269.0: Square-root curve for perceived responsiveness.
+                        # Old linear approach: 13% over 900s = ~1% per 69s (feels stuck).
+                        # New sqrt curve: first 7% in ~120s, remaining 6% over rest of budget.
+                        # This gives immediate visual feedback while still reaching 79% by budget end.
                         elapsed_in_phase = time.time() - heartbeat_start
                         ratio = min(1.0, elapsed_in_phase / max(1.0, _heartbeat_budget))
-                        heartbeat_increment = 66 + int(ratio * 13)  # 13% range (66→79)
+                        heartbeat_increment = 66 + int((ratio ** 0.5) * 13)  # sqrt curve: 66→79
                         heartbeat_increment = min(heartbeat_increment, 79)
 
                         # Use maximum of current progress and our increment
@@ -71107,10 +74413,16 @@ class JarvisSystemKernel:
 
                         self._startup_watchdog.update_phase("trinity", new_progress)
 
+                        # v265.3: Advance _current_startup_progress with the heartbeat.
+                        # Previously this stayed at 68 (Trinity start) for the entire phase.
+                        # The ceiling guard (below) caps _current_progress at milestone + 5,
+                        # so _current_progress maxed at 73% and never advanced — causing the
+                        # ProgressController to see 300s of zero progress → hard cap kill.
+                        # Fix: track real heartbeat progress as the phase milestone.
+                        self._current_startup_progress = new_progress
+
                         # v227.0: Sync heartbeat progress to _current_progress so the
                         # ProgressController sees accurate values via get_progress_state().
-                        # Previously only the watchdog was updated, leaving the controller
-                        # with stale phase progress (e.g., 65% while actual is 73-79%).
                         # v227.1: Phase ceiling guard — don't exceed the current phase
                         # milestone + buffer. Prevents poisoning if _current_progress was
                         # set high by a rogue broadcast before this fix.
@@ -71209,11 +74521,21 @@ class JarvisSystemKernel:
                 # This ensures Trinity gets at least its configured time, but also
                 # benefits from the additive timeout when GCP consumed less time.
                 trinity_budget = max(_configured_trinity_budget, _remaining_budget)
+                trinity_budget = _cap_phase_timeout(
+                    trinity_budget,
+                    minimum=30.0,
+                    reserve=_startup_reserve_budget,
+                    context="TrinityIntegrator initialization",
+                )
                 self.logger.info(
                     f"[Trinity] Budget: {trinity_budget:.0f}s "
                     f"(configured={_configured_trinity_budget:.0f}s, "
                     f"remaining_from_cap={_remaining_budget:.0f}s, "
                     f"elapsed_so_far={_elapsed_so_far:.0f}s)"
+                )
+                self.logger.info(
+                    f"[Trinity] Phase deadline: {(_phase_deadline - _phase_start):.0f}s total "
+                    f"(reserve={_startup_reserve_budget:.0f}s)"
                 )
 
                 # Initialize results and trinity_integrator outside context for cleanup
@@ -71221,6 +74543,8 @@ class JarvisSystemKernel:
                 trinity_integrator = None
                 # v222.0: Track timeout for proper status (error vs skipped)
                 _trinity_startup_timed_out = False
+                _trinity_lock_conflict = False
+                _trinity_lock_conflict_reason: Optional[str] = None
 
                 if CROSS_REPO_ORCHESTRATOR_AVAILABLE and ProcessOrchestrator is not None:
                     try:
@@ -71389,6 +74713,14 @@ class JarvisSystemKernel:
                                         "JARVIS_GOLDEN_WAIT_MAX",
                                         "300" if _local_is_hedge else "600"
                                     ))
+                                    # Keep golden wait inside the remaining Trinity phase budget.
+                                    _gw_phase_cap = _remaining_phase_budget(reserve=_startup_reserve_budget)
+                                    if _gw_phase_cap <= 0:
+                                        raise TimeoutError(
+                                            "Trinity phase budget exhausted before golden image wait"
+                                        )
+                                    _gw_base_wait = min(_gw_base_wait, _gw_phase_cap)
+                                    _gw_max_wait = min(_gw_max_wait, _gw_phase_cap)
                                     _gw_poll_interval = 5.0
                                     _gw_stall_threshold = float(os.environ.get(
                                         "JARVIS_GOLDEN_STALL_THRESHOLD", "60"
@@ -71428,7 +74760,10 @@ class JarvisSystemKernel:
                                     _golden_wait_start = time.time()
                                     _last_gcp_status = ""
 
-                                    while time.time() - _golden_wait_start < _gw_effective_wait:
+                                    while (
+                                        time.time() - _golden_wait_start < _gw_effective_wait
+                                        and _remaining_phase_budget(reserve=_startup_reserve_budget) > 0
+                                    ):
                                         await asyncio.sleep(_gw_poll_interval)
                                         invincible_ready = getattr(self, '_invincible_node_ready', False)
                                         invincible_ip = getattr(self, '_invincible_node_ip', None)
@@ -71608,8 +74943,13 @@ class JarvisSystemKernel:
                                                     _gw_effective_wait,
                                                     _wait_elapsed + _gw_stall_threshold + 180,
                                                 )
+                                                _phase_wait_remaining = _remaining_phase_budget(
+                                                    reserve=_startup_reserve_budget
+                                                )
                                                 _gw_effective_wait = min(
-                                                    _gw_effective_wait, _gw_max_wait + 600
+                                                    _gw_effective_wait,
+                                                    _gw_max_wait + 600,
+                                                    _wait_elapsed + _phase_wait_remaining,
                                                 )
                                                 continue  # Re-enter wait loop for next stall-triggered retry
 
@@ -71646,9 +74986,17 @@ class JarvisSystemKernel:
                                                         f"skipping standard GCP (local will finish first)"
                                                     )
                                                 else:
-                                                    _standard_timeout = float(os.environ.get(
-                                                        "JARVIS_GCP_STANDARD_FALLBACK_TIMEOUT", "900"
-                                                    ))
+                                                    _standard_timeout = _cap_phase_timeout(
+                                                        float(
+                                                            os.environ.get(
+                                                                "JARVIS_GCP_STANDARD_FALLBACK_TIMEOUT",
+                                                                "900",
+                                                            )
+                                                        ),
+                                                        minimum=30.0,
+                                                        reserve=_startup_reserve_budget,
+                                                        context="standard GCP fallback (stall path)",
+                                                    )
                                                     self.logger.info(
                                                         f"[Trinity] ☁️ Attempting standard GCP image as fallback "
                                                         f"(timeout={_standard_timeout:.0f}s)..."
@@ -71834,7 +75182,13 @@ class JarvisSystemKernel:
                                                 _gw_max_wait - _wait_elapsed
                                             )
                                             if _gw_extension > 10:
-                                                _gw_effective_wait += _gw_extension
+                                                _phase_wait_remaining = _remaining_phase_budget(
+                                                    reserve=_startup_reserve_budget
+                                                )
+                                                _gw_effective_wait = min(
+                                                    _gw_effective_wait + _gw_extension,
+                                                    _wait_elapsed + _phase_wait_remaining,
+                                                )
                                                 _gw_extensions += 1
                                                 self.logger.info(
                                                     f"[Trinity] 🔄 Golden wait EXTENDED by {_gw_extension:.0f}s "
@@ -71896,9 +75250,17 @@ class JarvisSystemKernel:
                                                     f"skipping standard GCP (local will finish first)"
                                                 )
                                             else:
-                                                _std_fb_timeout = float(os.environ.get(
-                                                    "JARVIS_GCP_STANDARD_FALLBACK_TIMEOUT", "900"
-                                                ))
+                                                _std_fb_timeout = _cap_phase_timeout(
+                                                    float(
+                                                        os.environ.get(
+                                                            "JARVIS_GCP_STANDARD_FALLBACK_TIMEOUT",
+                                                            "900",
+                                                        )
+                                                    ),
+                                                    minimum=30.0,
+                                                    reserve=_startup_reserve_budget,
+                                                    context="standard GCP fallback (timeout path)",
+                                                )
                                                 self.logger.info(
                                                     f"[Trinity] ☁️ Attempting standard GCP image as fallback "
                                                     f"(timeout={_std_fb_timeout:.0f}s)..."
@@ -72063,13 +75425,23 @@ class JarvisSystemKernel:
 
                                 # v222.0: Use progress-aware wrapper instead of fixed timeout
                                 # This enables dynamic deadline extension when Prime model loading shows progress
-                                results, _trinity_timed_out, _timeout_context = await self._await_trinity_with_progress_awareness(
-                                    start_coro=trinity_integrator.start_components(
-                                        invincible_node_ready=invincible_ready,
-                                    ),
-                                    base_timeout=trinity_timeout,
-                                    integrator_name="Trinity/ProcessOrchestrator",
-                                )
+                                _remaining_startup_budget = _remaining_phase_budget()
+                                if _remaining_startup_budget <= 0:
+                                    results = {}
+                                    _trinity_timed_out = True
+                                    _timeout_context = (
+                                        "Trinity phase budget exhausted before component startup "
+                                        "(ProcessOrchestrator path)"
+                                    )
+                                else:
+                                    results, _trinity_timed_out, _timeout_context = await self._await_trinity_with_progress_awareness(
+                                        start_coro=trinity_integrator.start_components(
+                                            invincible_node_ready=invincible_ready,
+                                        ),
+                                        base_timeout=min(trinity_timeout, _remaining_startup_budget),
+                                        integrator_name="Trinity/ProcessOrchestrator",
+                                        hard_cap_timeout=_remaining_startup_budget,
+                                    )
                                 
                                 if _trinity_timed_out:
                                     _trinity_startup_error = True
@@ -72152,12 +75524,38 @@ class JarvisSystemKernel:
                         self.logger.info("[Trinity] Cross-repo startup lock released")
 
                     except StartupLockError as e:
+                        _trinity_lock_conflict = True
+                        _trinity_lock_conflict_reason = str(e)
                         self.logger.error(f"[Trinity] Failed to acquire startup lock: {e}")
                         self.logger.warning("[Trinity] Another supervisor instance may be running")
                         # v198.2: Sync manual progress with heartbeat tracker
                         if self._startup_watchdog:
                             trinity_heartbeat_progress["current"] = 67
                             self._startup_watchdog.update_phase("trinity", 67)
+
+                        # Root hardening: attempt to attach to already-running Trinity
+                        # components owned by the lock holder, instead of silently
+                        # treating this as "no components configured".
+                        try:
+                            for comp_key, comp_status_key in [
+                                ("jarvis-prime", "jarvis_prime"),
+                                ("reactor-core", "reactor_core"),
+                            ]:
+                                actual_port = self._get_component_port(comp_status_key)
+                                if await self._quick_health_probe(actual_port):
+                                    results[comp_key] = True
+                                    self._update_component_status(
+                                        comp_status_key,
+                                        "complete",
+                                        f"{comp_key} already running on port {actual_port} (peer-owned lock)",
+                                    )
+                                    self.logger.info(
+                                        f"[Trinity] Attached to existing {comp_key} on port {actual_port}"
+                                    )
+                        except Exception as _probe_err:
+                            self.logger.debug(
+                                f"[Trinity] Existing component probe failed after lock conflict: {_probe_err}"
+                            )
                     except Exception as e:
                         self.logger.warning(f"[Trinity] Cross-repo orchestration failed (non-fatal): {e}")
                         # v198.2: Sync manual progress with heartbeat tracker
@@ -72265,13 +75663,23 @@ class JarvisSystemKernel:
                     # This enables dynamic deadline extension when Prime model loading shows progress
                     _legacy_timed_out = False
                     _legacy_timeout_context = None
-                    results, _legacy_timed_out, _legacy_timeout_context = await self._await_trinity_with_progress_awareness(
-                        start_coro=self._trinity.start_components(
-                            invincible_node_ready=invincible_ready,
-                        ),
-                        base_timeout=trinity_timeout,
-                        integrator_name="Trinity/Legacy",
-                    )
+                    _legacy_remaining_budget = _remaining_phase_budget()
+                    if _legacy_remaining_budget <= 0:
+                        results = {}
+                        _legacy_timed_out = True
+                        _legacy_timeout_context = (
+                            "Trinity phase budget exhausted before component startup "
+                            "(legacy path)"
+                        )
+                    else:
+                        results, _legacy_timed_out, _legacy_timeout_context = await self._await_trinity_with_progress_awareness(
+                            start_coro=self._trinity.start_components(
+                                invincible_node_ready=invincible_ready,
+                            ),
+                            base_timeout=min(trinity_timeout, _legacy_remaining_budget),
+                            integrator_name="Trinity/Legacy",
+                            hard_cap_timeout=_legacy_remaining_budget,
+                        )
                     
                     if _legacy_timed_out:
                         _trinity_startup_timed_out = True  # v222.0: Track for result handling
@@ -72314,6 +75722,11 @@ class JarvisSystemKernel:
                 # v222.0: _trinity_startup_timed_out is already set by either path above
                 # No need to compute it again
 
+                trinity_status = "complete"
+                trinity_status_message = (
+                    f"{started_count}/{max(total_count, 1)} Trinity components ready"
+                )
+
                 if started_count > 0:
                     self.logger.success(f"[Trinity] 🚀 {started_count}/{total_count} component(s) started")
                     for component, started in results.items():
@@ -72330,6 +75743,13 @@ class JarvisSystemKernel:
                                 self._update_component_status("jarvis_prime", "error", "J-Prime failed to start")
                             elif "reactor" in component.lower():
                                 self._update_component_status("reactor_core", "error", "Reactor-Core failed to start")
+
+                    if _trinity_lock_conflict:
+                        trinity_status = "degraded"
+                        trinity_status_message = (
+                            f"{started_count}/{max(total_count, 1)} Trinity components active "
+                            "(cross-repo lock held by peer supervisor)"
+                        )
 
                     # =====================================================================
                     # v180.0: TRINITY AUTO-RESTART WATCHDOG
@@ -72373,6 +75793,32 @@ class JarvisSystemKernel:
                             self._background_tasks.append(self._jprime_watcher_task)
                             self.logger.info("[v261.0] J-Prime readiness watcher started (Trinity path)")
 
+                elif total_count == 0 and _trinity_lock_conflict:
+                    reason_suffix = (
+                        f": {_trinity_lock_conflict_reason}"
+                        if _trinity_lock_conflict_reason
+                        else ""
+                    )
+                    self.logger.warning(
+                        "[Trinity] Startup lock conflict prevented local Trinity launch"
+                        f"{reason_suffix}"
+                    )
+                    trinity_status = "degraded"
+                    trinity_status_message = (
+                        "Trinity launch blocked by cross-repo startup lock; "
+                        "peer supervisor may own components"
+                    )
+                    for comp_status_key in ("jarvis_prime", "reactor_core"):
+                        current_state = (
+                            self._component_status.get(comp_status_key, {})
+                            .get("status", "pending")
+                        )
+                        if current_state in ("pending", "running"):
+                            self._update_component_status(
+                                comp_status_key,
+                                "degraded",
+                                "Startup lock conflict - component ownership delegated to peer supervisor",
+                            )
                 elif total_count == 0 and not _trinity_startup_timed_out:
                     # v222.0: Only mark as "skipped" if Trinity was NOT attempted
                     # If we timed out, status was already set to "error" above
@@ -72380,17 +75826,27 @@ class JarvisSystemKernel:
                     # v182.0: Mark as skipped when no components configured
                     self._update_component_status("jarvis_prime", "skipped", "Not configured")
                     self._update_component_status("reactor_core", "skipped", "Not configured")
+                    trinity_status = "skipped"
+                    trinity_status_message = "No Trinity components configured"
                 elif total_count == 0 and _trinity_startup_timed_out:
                     # v222.0: Timeout occurred, already logged and status set to error
                     self.logger.warning("[Trinity] Component startup timed out (status already set to error)")
+                    trinity_status = "error"
+                    trinity_status_message = "Trinity startup timed out before components were ready"
                 else:
                     self.logger.warning(f"[Trinity] ⚠️ 0/{total_count} components started")
+                    trinity_status = "degraded"
+                    trinity_status_message = f"0/{total_count} Trinity components started"
 
                 # v182.0: Final Trinity status broadcast
-                self._update_component_status("trinity", "complete", f"{started_count}/{max(total_count, 1)} Trinity components ready")
+                self._update_component_status(
+                    "trinity",
+                    trinity_status,
+                    trinity_status_message,
+                )
                 await self._broadcast_component_update(
                     stage="trinity",
-                    message=f"Trinity integration complete: {started_count} component(s) active"
+                    message=f"Trinity integration status: {trinity_status_message}"
                 )
 
                 # Voice narration for Trinity components
@@ -72403,6 +75859,25 @@ class JarvisSystemKernel:
                             )
                         except Exception:
                             pass
+
+                # v265.6: Schedule background recovery for Trinity components that
+                # failed or errored during startup. Recovery loop will periodically
+                # re-discover repos and re-probe health endpoints.
+                if trinity_status in ("degraded", "error"):
+                    _failed_trinity_components = []
+                    for _comp_key, _comp_status_key in [
+                        ("jarvis-prime", "jarvis_prime"),
+                        ("reactor-core", "reactor_core"),
+                    ]:
+                        _comp_state = self._component_status.get(_comp_status_key, {}).get("status")
+                        if _comp_state in ("error", "degraded", "pending"):
+                            _failed_trinity_components.append(_comp_key)
+                    if _failed_trinity_components:
+                        self._schedule_trinity_component_recovery(_failed_trinity_components)
+                        self.logger.info(
+                            "[Trinity] Background recovery scheduled for: %s",
+                            ", ".join(_failed_trinity_components),
+                        )
 
                 if self._readiness_manager:
                     self._readiness_manager.mark_component_ready("trinity", started_count > 0)
@@ -72617,52 +76092,231 @@ class JarvisSystemKernel:
             except Exception as e:
                 self.logger.debug(f"[Trinity-Watchdog] Error in watchdog loop: {e}")
 
+    def _reconcile_enterprise_component_status(self) -> None:
+        """Recompute high-level enterprise phase status from per-service results."""
+        statuses = self._enterprise_status or {}
+        if not statuses:
+            return
+
+        successful = [
+            name for name, status in statuses.items()
+            if isinstance(status, dict) and (
+                status.get("initialized")
+                or status.get("enabled")
+                or status.get("running")
+            )
+        ]
+        timed_out_pending = [
+            name for name, status in statuses.items()
+            if isinstance(status, dict)
+            and status.get("timed_out")
+            and status.get("background_continuation")
+        ]
+        timed_out_terminal = [
+            name for name, status in statuses.items()
+            if isinstance(status, dict)
+            and status.get("timed_out")
+            and not status.get("background_continuation")
+        ]
+        failed = [
+            name for name, status in statuses.items()
+            if isinstance(status, dict)
+            and (status.get("error") or status.get("exception"))
+            and not status.get("timed_out")
+        ]
+
+        total = len(statuses)
+        if timed_out_pending:
+            self._update_component_status(
+                "enterprise",
+                "running",
+                (
+                    f"Enterprise warmup: {len(successful)}/{total} ready, "
+                    f"{len(timed_out_pending)} continuing in background"
+                ),
+            )
+        elif timed_out_terminal or failed:
+            self._update_component_status(
+                "enterprise",
+                "degraded",
+                (
+                    f"Enterprise degraded: {len(successful)}/{total} ready, "
+                    f"{len(timed_out_terminal)} timed out, {len(failed)} failed"
+                ),
+            )
+        else:
+            self._update_component_status(
+                "enterprise",
+                "complete",
+                f"Enterprise: {len(successful)}/{total} active",
+            )
+
+    def _track_enterprise_service_continuation(
+        self,
+        service_key: str,
+        display_name: str,
+        task: "asyncio.Task[Any]",
+        start_time: float,
+    ) -> None:
+        """
+        Track a timed-out enterprise initializer that continues in background.
+
+        Root fix:
+        Zone 6 timeout should bound phase latency, not force-cancel services that
+        are still making progress. This keeps startup responsive while allowing
+        eventual convergence to READY.
+        """
+        self._enterprise_background_services[service_key] = task
+        if task not in self._background_tasks:
+            self._background_tasks.append(task)
+
+        self.logger.info(
+            f"[Zone6/{display_name}] ⏳ Continuing initialization in background after timeout"
+        )
+
+        def _on_done(done_task: "asyncio.Task[Any]") -> None:
+            async def _finalize() -> None:
+                self._enterprise_background_services.pop(service_key, None)
+                elapsed_ms = (time.time() - start_time) * 1000
+
+                try:
+                    raw_result = done_task.result()
+                except asyncio.CancelledError:
+                    if not self._shutdown_event.is_set():
+                        self.logger.warning(
+                            f"[Zone6/{display_name}] Background continuation cancelled"
+                        )
+                    status: Dict[str, Any] = {
+                        "cancelled": True,
+                        "elapsed_ms": elapsed_ms,
+                        "background_continuation": False,
+                    }
+                except Exception as exc:
+                    self.logger.warning(
+                        f"[Zone6/{display_name}] Background continuation failed: "
+                        f"{type(exc).__name__}: {exc}"
+                    )
+                    status = {
+                        "error": str(exc),
+                        "exception": True,
+                        "elapsed_ms": elapsed_ms,
+                        "background_continuation": False,
+                    }
+                else:
+                    status = dict(raw_result) if isinstance(raw_result, dict) else {
+                        "value": str(raw_result)
+                    }
+                    status["elapsed_ms"] = elapsed_ms
+                    status["completed_after_timeout"] = True
+                    status["background_continuation"] = False
+                    status.pop("timed_out", None)
+
+                    if status.get("initialized") or status.get("enabled") or status.get("running"):
+                        self.logger.info(
+                            f"[Zone6/{display_name}] ✓ Ready (background completion, {elapsed_ms:.0f}ms)"
+                        )
+                    elif status.get("error"):
+                        self.logger.warning(
+                            f"[Zone6/{display_name}] ⚠ Background completion error: "
+                            f"{status.get('error', 'unknown')}"
+                        )
+                    else:
+                        self.logger.info(
+                            f"[Zone6/{display_name}] ○ Background completion (no-op/disabled)"
+                        )
+
+                self._enterprise_status[service_key] = status
+                self._reconcile_enterprise_component_status()
+
+            try:
+                loop = asyncio.get_running_loop()
+                loop.create_task(_finalize())
+            except RuntimeError:
+                # Event loop already closed during shutdown.
+                pass
+
+        task.add_done_callback(_on_done)
+
     async def _init_enterprise_service_with_timeout(
         self,
         name: str,
         coro: Coroutine[Any, Any, Dict[str, Any]],
         timeout_seconds: float = 30.0,
+        service_key: Optional[str] = None,
+        continue_on_timeout: bool = True,
     ) -> Dict[str, Any]:
         """
         Initialize an enterprise service with timeout protection.
 
-        This prevents any single service from blocking the entire startup
-        indefinitely. If a service times out, we log a warning and return
-        a failure result, allowing other services to continue.
+        This bounds phase latency while optionally allowing timed-out services
+        to continue in background until they converge.
 
         Args:
             name: Human-readable service name for logging
             coro: The async initialization coroutine
-            timeout_seconds: Maximum time to wait (default: 30s)
+            timeout_seconds: Maximum foreground wait budget
+            service_key: Internal service key for status tracking
+            continue_on_timeout: If True, do not cancel timed-out work
 
         Returns:
             Dict with service initialization results or timeout error
         """
         self.logger.info(f"[Zone6/{name}] Initializing (timeout: {timeout_seconds}s)...")
         start_time = time.time()
+        task_name = f"zone6-{(service_key or name).lower().replace(' ', '-')}"
+        service_task: "asyncio.Task[Any]" = asyncio.create_task(coro, name=task_name)
 
         try:
-            result = await asyncio.wait_for(coro, timeout=timeout_seconds)
+            result = await asyncio.wait_for(
+                asyncio.shield(service_task),
+                timeout=timeout_seconds,
+            )
             elapsed = (time.time() - start_time) * 1000
             self.logger.info(f"[Zone6/{name}] Completed in {elapsed:.0f}ms")
             return result
 
         except asyncio.TimeoutError:
             elapsed = (time.time() - start_time) * 1000
-            self.logger.warning(
-                f"[Zone6/{name}] ⏱️ TIMEOUT after {timeout_seconds}s - skipping"
-            )
+            if continue_on_timeout:
+                if service_key:
+                    self._track_enterprise_service_continuation(
+                        service_key=service_key,
+                        display_name=name,
+                        task=service_task,
+                        start_time=start_time,
+                    )
+                else:
+                    if service_task not in self._background_tasks:
+                        self._background_tasks.append(service_task)
+                self.logger.warning(
+                    f"[Zone6/{name}] ⏱️ TIMEOUT after {timeout_seconds}s - "
+                    f"continuing in background"
+                )
+            else:
+                if not service_task.done():
+                    service_task.cancel()
+                    await asyncio.gather(service_task, return_exceptions=True)
+                self.logger.warning(
+                    f"[Zone6/{name}] ⏱️ TIMEOUT after {timeout_seconds}s - cancelled"
+                )
             return {
                 "error": f"Timeout after {timeout_seconds}s",
                 "timed_out": True,
                 "elapsed_ms": elapsed,
+                "background_continuation": bool(continue_on_timeout),
             }
 
         except asyncio.CancelledError:
+            if not service_task.done():
+                service_task.cancel()
+                await asyncio.gather(service_task, return_exceptions=True)
             self.logger.warning(f"[Zone6/{name}] Cancelled")
             raise  # Re-raise cancellation
 
         except Exception as e:
+            if not service_task.done():
+                service_task.cancel()
+                await asyncio.gather(service_task, return_exceptions=True)
             elapsed = (time.time() - start_time) * 1000
             self.logger.warning(f"[Zone6/{name}] Failed: {e}")
             return {
@@ -72674,21 +76328,22 @@ class JarvisSystemKernel:
         """
         Phase 6: Initialize enterprise services (Zone 6.4).
 
-        Initializes in parallel WITH INDIVIDUAL TIMEOUTS:
-        - Cloud SQL proxy for database connections (30s timeout)
-        - Voice biometric authentication system (30s timeout)
-        - Semantic voice cache (ChromaDB) (30s timeout)
-        - Infrastructure orchestrator for GCP resources (30s timeout)
+        Initializes enterprise services in parallel with bounded foreground
+        waits and optional background continuation for slow components.
 
-        CRITICAL FIX: Each service now has its own timeout to prevent any
-        single service from blocking the entire startup indefinitely.
-
-        All services are optional - failures don't stop startup.
+        Root fix:
+        Timeout now limits startup latency, not service correctness. Timed-out
+        services can continue in background and reconcile status when ready.
         """
         with self.logger.section_start(LogSection.BOOT, "Zone 6.4 | Phase 6: Enterprise Services"):
-            # Configurable timeout via JARVIS_SERVICE_TIMEOUT env var (default: 30s)
-            SERVICE_TIMEOUT = float(os.getenv("JARVIS_SERVICE_TIMEOUT", "30.0"))
-            self.logger.info(f"[Zone6] Initializing 5 enterprise services (parallel, {SERVICE_TIMEOUT}s timeout each)...")
+            service_timeout = max(5.0, _get_env_float("JARVIS_SERVICE_TIMEOUT", 30.0))
+            continue_on_timeout = os.getenv(
+                "JARVIS_ZONE6_CONTINUE_ON_TIMEOUT", "true"
+            ).lower() in ("1", "true", "yes", "on")
+            self.logger.info(
+                f"[Zone6] Initializing 5 enterprise services "
+                f"(parallel, base timeout={service_timeout:.1f}s)"
+            )
             self._update_component_status("enterprise", "running", "Initializing enterprise services")
 
             # Service definitions with display names
@@ -72703,15 +76358,34 @@ class JarvisSystemKernel:
             # Log service list
             self.logger.info("[Zone6] Services: " + ", ".join(s[0] for s in services))
 
+            # Compute per-service adaptive timeouts with env overrides.
+            service_timeouts: Dict[str, float] = {}
+            for display_name, internal_name, _ in services:
+                env_key = f"JARVIS_SERVICE_TIMEOUT_{internal_name.upper()}"
+                requested = max(5.0, _get_env_float(env_key, service_timeout))
+                adaptive = await self._get_adaptive_timeout(requested)
+                service_timeouts[internal_name] = max(5.0, adaptive)
+
+            self.logger.info(
+                "[Zone6] Timeout budget: " + ", ".join(
+                    f"{display_name}={service_timeouts[internal_name]:.1f}s"
+                    for display_name, internal_name, _ in services
+                )
+            )
+
             # v236.3: Track per-service completion for DMS progress updates.
             # Without this, 5 parallel services with 30s timeouts cause a 60s
             # gap with no progress → DMS stall warning fires.
             _completed_count = 0
 
-            async def _tracked_service(display_name, coro, timeout):
+            async def _tracked_service(display_name, internal_name, coro, timeout):
                 nonlocal _completed_count
                 result = await self._init_enterprise_service_with_timeout(
-                    display_name, coro, timeout
+                    display_name,
+                    coro,
+                    timeout,
+                    service_key=internal_name,
+                    continue_on_timeout=continue_on_timeout,
                 )
                 _completed_count += 1
                 if self._startup_watchdog:
@@ -72721,8 +76395,13 @@ class JarvisSystemKernel:
                 return result
 
             coros = [
-                _tracked_service(display_name, init_func(), SERVICE_TIMEOUT)
-                for display_name, _, init_func in services
+                _tracked_service(
+                    display_name,
+                    internal_name,
+                    init_func(),
+                    service_timeouts[internal_name],
+                )
+                for display_name, internal_name, init_func in services
             ]
 
             # Run all service initializations in parallel with timeouts
@@ -72736,7 +76415,12 @@ class JarvisSystemKernel:
                     init_status[internal_name] = {"error": str(result), "exception": True}
                 elif isinstance(result, dict):
                     if result.get("timed_out"):
-                        self.logger.warning(f"[Zone6/{display_name}] ⏱️ Timed out")
+                        if result.get("background_continuation"):
+                            self.logger.warning(
+                                f"[Zone6/{display_name}] ⏱️ Await timeout — continuing in background"
+                            )
+                        else:
+                            self.logger.warning(f"[Zone6/{display_name}] ⏱️ Timed out")
                     elif result.get("initialized") or result.get("enabled") or result.get("running"):
                         self.logger.info(f"[Zone6/{display_name}] ✓ Ready")
                     elif result.get("error"):
@@ -72761,6 +76445,18 @@ class JarvisSystemKernel:
                 name for name, status in init_status.items()
                 if isinstance(status, dict) and status.get("timed_out")
             ]
+            timed_out_background = [
+                name for name, status in init_status.items()
+                if isinstance(status, dict)
+                and status.get("timed_out")
+                and status.get("background_continuation")
+            ]
+            timed_out_terminal = [
+                name for name, status in init_status.items()
+                if isinstance(status, dict)
+                and status.get("timed_out")
+                and not status.get("background_continuation")
+            ]
             failed = [
                 name for name, status in init_status.items()
                 if isinstance(status, dict) and (
@@ -72769,14 +76465,20 @@ class JarvisSystemKernel:
             ]
 
             # Log summary
-            if timed_out:
-                self.logger.warning(f"[Zone6] ⏱️ Timed out: {', '.join(timed_out)}")
+            if timed_out_background:
+                self.logger.warning(
+                    f"[Zone6] ⏱️ Await timeout (background continuation): "
+                    f"{', '.join(timed_out_background)}"
+                )
+            if timed_out_terminal:
+                self.logger.warning(f"[Zone6] ⏱️ Timed out: {', '.join(timed_out_terminal)}")
             if failed:
                 self.logger.warning(f"[Zone6] ⚠ Failed: {', '.join(failed)}")
 
             self.logger.success(
                 f"[Zone6] Enterprise services complete: {len(successful)}/{len(services)} active, "
-                f"{len(timed_out)} timed out, {len(failed)} failed"
+                f"{len(timed_out)} timed out, {len(failed)} failed, "
+                f"{len(timed_out_background)} continuing in background"
             )
 
             # Store results for later reference
@@ -72789,7 +76491,18 @@ class JarvisSystemKernel:
                              init_status.get("voice_biometrics", {}).get("initialized", False)
                 self._readiness_manager.mark_component_ready("voice_biometrics", voice_ready)
 
-            self._update_component_status("enterprise", "complete", f"Enterprise: {len(successful)}/{len(services)} active")
+            self._reconcile_enterprise_component_status()
+
+            # v265.6: Schedule background recovery for enterprise services that
+            # failed or timed out terminally. Background-continuation services
+            # already have their own done-callback; this catches hard failures.
+            _enterprise_needs_recovery = list(timed_out_terminal) + list(failed)
+            if _enterprise_needs_recovery:
+                self._schedule_enterprise_service_recovery(_enterprise_needs_recovery)
+                self.logger.info(
+                    "[Zone6] Background recovery scheduled for: %s",
+                    ", ".join(_enterprise_needs_recovery),
+                )
 
             # v238.0: Populate ComponentRegistry with canonical component definitions
             # This MUST happen before health contracts — the aggregator needs components
@@ -72851,7 +76564,21 @@ class JarvisSystemKernel:
                 try:
                     _reg = get_component_registry()
                     _aggregator = get_health_aggregator(_reg)
-                    _system_health = await _aggregator.collect_all()
+                    # v265.3: collect_all() had no timeout — if any health
+                    # check blocks (e.g., network call in a provider), the
+                    # entire enterprise phase stalls.
+                    # v265.5: CPU-aware timeout + env var override
+                    _health_agg_timeout = _get_env_float("JARVIS_HEALTH_AGG_TIMEOUT", 15.0)
+                    try:
+                        import psutil as _ha_ps
+                        _ha_cpu = _ha_ps.cpu_percent(interval=None)
+                        if _ha_cpu > 90.0:
+                            _health_agg_timeout *= 1.0 + (_ha_cpu - 90.0) / 10.0 * 2.0
+                    except Exception:
+                        pass
+                    _system_health = await asyncio.wait_for(
+                        _aggregator.collect_all(), timeout=_health_agg_timeout
+                    )
                     _overall = _system_health.overall
 
                     # v3.2: Classify component statuses for startup-aware logging
@@ -72893,6 +76620,18 @@ class JarvisSystemKernel:
                             f"[Zone6] Health contracts: system {_overall.value} — "
                             f"{', '.join(_bad[:5])}"
                         )
+                        # v265.6: Schedule recovery for genuinely unhealthy enterprise
+                        # services (not UNKNOWN/initialising — only UNHEALTHY).
+                        _unhealthy_svc_names = [
+                            name for name, r in _system_health.components.items()
+                            if r.status == EnterpriseHealthStatus.UNHEALTHY
+                        ]
+                        if _unhealthy_svc_names and self._enterprise_service_recovery_task is None:
+                            self._schedule_enterprise_service_recovery(list(_unhealthy_svc_names))
+                            self.logger.info(
+                                "[Zone6] Health-driven recovery scheduled for: %s",
+                                ", ".join(_unhealthy_svc_names),
+                            )
                 except Exception as _hc_err:
                     self.logger.debug(f"[Zone6] Health contract check skipped: {_hc_err}")
 
@@ -73989,7 +77728,21 @@ class JarvisSystemKernel:
                     # Open Chrome Incognito (clean slate - single window)
                     if sys.platform == "darwin":  # macOS
                         chrome_manager = get_chrome_manager()
-                        result = await chrome_manager.ensure_single_incognito_window(loading_url_with_params)
+                        # v265.3: AppleScript can hang if Chrome unresponsive
+                        _chrome_load_timeout = float(os.environ.get(
+                            "JARVIS_CHROME_REDIRECT_TIMEOUT", "30.0"
+                        ))
+                        try:
+                            result = await asyncio.wait_for(
+                                chrome_manager.ensure_single_incognito_window(loading_url_with_params),
+                                timeout=_chrome_load_timeout,
+                            )
+                        except asyncio.TimeoutError:
+                            self.logger.warning(
+                                f"[Kernel] v265.3: Chrome loading page open timed out "
+                                f"after {_chrome_load_timeout:.0f}s"
+                            )
+                            result = {"success": False, "error": "timeout"}
                         if result.get("success"):
                             action = result.get("action", "unknown")
                             self.logger.success(f"[Kernel] Chrome Incognito opened ({action})")
@@ -74054,6 +77807,64 @@ class JarvisSystemKernel:
     # loading page to the main JARVIS UI.
     # =========================================================================
 
+    async def _ensure_frontend_start_task(self, caller: str = "unknown") -> asyncio.Task:
+        """Create or reuse the single frontend startup task."""
+        async with self._frontend_start_lock:
+            task = self._frontend_start_task
+            if task is None or task.done():
+                task = create_safe_task(
+                    self._start_frontend(),
+                    name="frontend-startup",
+                )
+                self._frontend_start_task = task
+                self._background_tasks.append(task)
+                task.add_done_callback(self._on_frontend_start_done)
+                self.logger.debug(
+                    f"[Frontend] Created startup task (caller={caller})"
+                )
+            else:
+                self.logger.debug(
+                    f"[Frontend] Reusing startup task (caller={caller})"
+                )
+            return task
+
+    def _on_frontend_start_done(self, task: asyncio.Task) -> None:
+        """Release the frontend startup task handle when it completes."""
+        if task is self._frontend_start_task:
+            self._frontend_start_task = None
+
+    async def _wait_for_frontend_start(
+        self,
+        *,
+        timeout: float,
+        caller: str,
+    ) -> Tuple[bool, bool]:
+        """
+        Wait for frontend startup task with timeout.
+
+        Returns:
+            (started, pending)
+            started=True  -> frontend task returned success
+            pending=True  -> timeout elapsed, task still running in background
+        """
+        task = await self._ensure_frontend_start_task(caller=caller)
+        try:
+            started = bool(
+                await shielded_wait_for(
+                    task,
+                    timeout=max(1.0, timeout),
+                    name=f"frontend_start:{caller}",
+                )
+            )
+            return started, False
+        except asyncio.TimeoutError:
+            return False, True
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            self.logger.warning(f"[Frontend] Startup task error ({caller}): {e}")
+            return False, False
+
     async def _phase_frontend_transition(self) -> bool:
         """
         Phase 7: Transition from loading page to main frontend (v118.0 robust).
@@ -74088,6 +77899,7 @@ class JarvisSystemKernel:
         # v211.0: Step 1: Check if frontend warmup task already started the frontend
         # This happens when frontend started in parallel with Trinity
         warmup_task = getattr(self, '_frontend_warmup_task', None)
+        warmup_pending = False
 
         if warmup_task is not None:
             self.logger.info("[Kernel] Checking frontend warmup task (started during Trinity)...")
@@ -74101,8 +77913,17 @@ class JarvisSystemKernel:
             
             try:
                 # Wait for warmup task with timeout
-                warmup_timeout = 120.0  # Max 2 minutes to wait for warmup
-                frontend_started = await asyncio.wait_for(warmup_task, timeout=warmup_timeout)
+                warmup_timeout = _get_env_float(
+                    "JARVIS_FRONTEND_WARMUP_WAIT_TIMEOUT",
+                    90.0,
+                )
+                frontend_started = bool(
+                    await shielded_wait_for(
+                        warmup_task,
+                        timeout=warmup_timeout,
+                        name="frontend_warmup_wait",
+                    )
+                )
                 
                 if frontend_started:
                     self.logger.success(f"[Kernel] Frontend ready from warmup (port {frontend_port})")
@@ -74110,9 +77931,16 @@ class JarvisSystemKernel:
                 else:
                     self.logger.info("[Kernel] Frontend warmup didn't complete - will retry")
             except asyncio.TimeoutError:
-                self.logger.warning(f"[Kernel] Frontend warmup timed out after {warmup_timeout}s")
+                warmup_pending = True
+                self.logger.info(
+                    "[Kernel] Frontend warmup still running after %.0fs - handing off to single-flight startup",
+                    warmup_timeout,
+                )
             except Exception as e:
                 self.logger.warning(f"[Kernel] Frontend warmup error: {e}")
+            finally:
+                if warmup_task.done():
+                    self._frontend_warmup_task = None
         
         # v260.1: Advance progress after warmup check
         self._current_startup_progress = 94
@@ -74125,12 +77953,32 @@ class JarvisSystemKernel:
                 self._update_component_status("frontend", "running", "Starting React frontend...")
                 await self._broadcast_progress(95, "frontend", "Starting React frontend...")
 
-                frontend_started = await self._start_frontend()
+                wait_timeout = _get_env_float("JARVIS_FRONTEND_START_WAIT_TIMEOUT", 120.0)
+                if warmup_pending:
+                    wait_timeout = min(
+                        wait_timeout,
+                        _get_env_float("JARVIS_FRONTEND_HANDOFF_TIMEOUT", 45.0),
+                    )
+
+                frontend_started, startup_pending = await self._wait_for_frontend_start(
+                    timeout=wait_timeout,
+                    caller="phase7",
+                )
                 if frontend_started:
                     self._current_startup_progress = 96
                     self.logger.success(f"[Kernel] React frontend ready on port {frontend_port}")
                     self._update_component_status("frontend", "complete", f"React frontend ready on port {frontend_port}")
                     await self._broadcast_progress(96, "frontend", "React frontend ready")
+                elif startup_pending:
+                    self.logger.info(
+                        "[Kernel] Frontend startup continuing in background after %.0fs handoff budget",
+                        wait_timeout,
+                    )
+                    self._update_component_status(
+                        "frontend",
+                        "running",
+                        f"Startup continuing in background ({wait_timeout:.0f}s handoff budget)",
+                    )
                 else:
                     self.logger.info("[Kernel] Frontend not started (directory not found or failed)")
                     self._update_component_status("frontend", "skipped", "Frontend not started")
@@ -74145,6 +77993,15 @@ class JarvisSystemKernel:
             self._current_startup_progress = 97
             self.logger.info("[Kernel] Waiting for Trinity components to complete...")
             trinity_wait_timeout = float(os.environ.get("JARVIS_TRINITY_WAIT_TIMEOUT", "30.0"))
+            # v265.5: CPU-aware scaling — Trinity components (frontend build,
+            # model loading) all compete for CPU during late startup.
+            try:
+                import psutil as _tw_ps
+                _tw_cpu = _tw_ps.cpu_percent(interval=None)
+                if _tw_cpu > 90.0:
+                    trinity_wait_timeout *= 1.0 + (_tw_cpu - 90.0) / 10.0 * 2.0
+            except Exception:
+                pass
             trinity_wait_start = time.time()
 
             while not self._is_trinity_ready():
@@ -74194,7 +78051,22 @@ class JarvisSystemKernel:
                 else:
                     if sys.platform == "darwin":  # macOS
                         chrome_manager = get_chrome_manager()
-                        result = await chrome_manager.ensure_single_incognito_window(frontend_url)
+                        # v265.3: AppleScript calls can hang indefinitely
+                        # if Chrome is unresponsive or a system dialog blocks.
+                        _chrome_timeout = float(os.environ.get(
+                            "JARVIS_CHROME_REDIRECT_TIMEOUT", "30.0"
+                        ))
+                        try:
+                            result = await asyncio.wait_for(
+                                chrome_manager.ensure_single_incognito_window(frontend_url),
+                                timeout=_chrome_timeout,
+                            )
+                        except asyncio.TimeoutError:
+                            self.logger.warning(
+                                f"[Kernel] v265.3: Chrome redirect timed out "
+                                f"after {_chrome_timeout:.0f}s (AppleScript hang?)"
+                            )
+                            result = {"success": False, "error": "timeout"}
                         if result.get("success"):
                             action = result.get("action", "unknown")
                             self.logger.success(f"[Kernel] Chrome redirected ({action}) → {frontend_url}")
@@ -74250,6 +78122,46 @@ class JarvisSystemKernel:
     # lifecycle for the main JARVIS UI.
     # =========================================================================
 
+    def _register_loading_server_process(self, process: asyncio.subprocess.Process) -> None:
+        """Track loading server process/PID for lifecycle and zombie-cleanup safety."""
+        self._loading_server_process = process
+        pid = getattr(process, "pid", None)
+        if pid:
+            self._protected_pids.add(pid)
+
+    def _clear_loading_server_process(self) -> None:
+        """Clear loading server process reference and release protected PID."""
+        process = getattr(self, "_loading_server_process", None)
+        if process:
+            pid = getattr(process, "pid", None)
+            if pid:
+                self._protected_pids.discard(pid)
+        self._loading_server_process = None
+        self._loading_server_ready = False
+
+    async def _stop_startup_progress_heartbeat(self, timeout: float = 1.0) -> None:
+        """Cancel startup progress heartbeat deterministically."""
+        task = self._startup_progress_heartbeat_task or self._heartbeat_task
+        if task and not task.done():
+            task.cancel()
+            try:
+                await asyncio.wait_for(task, timeout=timeout)
+            except (asyncio.CancelledError, asyncio.TimeoutError):
+                pass
+        self._startup_progress_heartbeat_task = None
+        self._heartbeat_task = None
+
+    async def _stop_loading_server_heartbeat(self, timeout: float = 1.0) -> None:
+        """Cancel loading-server transport heartbeat deterministically."""
+        task = self._loading_server_heartbeat_task
+        if task and not task.done():
+            task.cancel()
+            try:
+                await asyncio.wait_for(task, timeout=timeout)
+            except (asyncio.CancelledError, asyncio.TimeoutError):
+                pass
+        self._loading_server_heartbeat_task = None
+
     async def _start_loading_server(self) -> bool:
         """
         Start the loading server for startup progress display.
@@ -74299,6 +78211,7 @@ class JarvisSystemKernel:
         env["JARVIS_FRONTEND_PORT"] = str(frontend_port)
 
         # Step 3: Retry loop with port increment on failure
+        await self._stop_loading_server_heartbeat()
         max_attempts = 3
         max_port = LOADING_SERVER_PORT_RANGE[1]
 
@@ -74339,22 +78252,19 @@ class JarvisSystemKernel:
                 )
 
                 # Launch subprocess
-                self._loading_server_process = await asyncio.create_subprocess_exec(
+                loading_process = await asyncio.create_subprocess_exec(
                     python_executable,
                     str(loading_server_path),
                     stdout=self._loading_server_log_file,
                     stderr=asyncio.subprocess.STDOUT,
                     env=env,
                 )
+                self._register_loading_server_process(loading_process)
 
                 self.logger.info(
                     f"[LoadingServer] Process started (PID: {self._loading_server_process.pid})"
                 )
                 self.logger.debug(f"[LoadingServer] Log file: {self._loading_server_log_path}")
-
-                # Protect from zombie cleanup
-                if self._loading_server_process.pid:
-                    self._protected_pids.add(self._loading_server_process.pid)
 
                 # Adaptive health check
                 server_ready = await self._wait_for_loading_server_health(loading_port)
@@ -74367,9 +78277,13 @@ class JarvisSystemKernel:
                         f"(PID: {self._loading_server_process.pid})"
                     )
                     # Start heartbeat background task
-                    if self._heartbeat_task is None or self._heartbeat_task.done():
-                        self._heartbeat_task = create_safe_task(
-                            self._supervisor_heartbeat_loop()
+                    if (
+                        self._loading_server_heartbeat_task is None
+                        or self._loading_server_heartbeat_task.done()
+                    ):
+                        self._loading_server_heartbeat_task = create_safe_task(
+                            self._supervisor_heartbeat_loop(),
+                            name="loading-server-heartbeat",
                         )
                         self.logger.debug("[LoadingServer] Heartbeat loop started")
                     return True
@@ -74382,16 +78296,20 @@ class JarvisSystemKernel:
                     )
                     await self._log_loading_server_errors()
                     # Process died — clean up and try next port
-                    self._loading_server_process = None
+                    self._clear_loading_server_process()
                 else:
                     # Process alive but slow — keep it running, start heartbeat
                     self.config.loading_server_port = loading_port
                     self.logger.warning(
                         "[LoadingServer] Slow to respond - continuing (may still be starting)"
                     )
-                    if self._heartbeat_task is None or self._heartbeat_task.done():
-                        self._heartbeat_task = create_safe_task(
-                            self._supervisor_heartbeat_loop()
+                    if (
+                        self._loading_server_heartbeat_task is None
+                        or self._loading_server_heartbeat_task.done()
+                    ):
+                        self._loading_server_heartbeat_task = create_safe_task(
+                            self._supervisor_heartbeat_loop(),
+                            name="loading-server-heartbeat",
                         )
                         self.logger.debug("[LoadingServer] Heartbeat loop started (slow path)")
                     return True
@@ -74409,7 +78327,7 @@ class JarvisSystemKernel:
                             self._loading_server_process.kill()
                         except ProcessLookupError:
                             pass
-                self._loading_server_process = None
+                self._clear_loading_server_process()
 
             # Brief backoff before retry
             if attempt < max_attempts - 1:
@@ -74586,8 +78504,12 @@ class JarvisSystemKernel:
 
         Also cleans up the log file handle.
         """
+        await self._stop_loading_server_heartbeat()
+        await self._stop_startup_progress_heartbeat()
+
         if not hasattr(self, '_loading_server_process') or not self._loading_server_process:
             self._cleanup_loading_server_log()
+            self._clear_loading_server_process()
             return
 
         loading_port = self.config.loading_server_port
@@ -74663,7 +78585,7 @@ class JarvisSystemKernel:
                             if self._loading_server_process.returncode is not None:
                                 self.logger.info("[LoadingServer] Gracefully terminated via HTTP")
                                 self._cleanup_loading_server_log()
-                                self._loading_server_process = None
+                                self._clear_loading_server_process()
                                 return
 
                             await asyncio.sleep(poll_interval)
@@ -74676,7 +78598,7 @@ class JarvisSystemKernel:
                             )
                             self.logger.info("[LoadingServer] Gracefully terminated")
                             self._cleanup_loading_server_log()
-                            self._loading_server_process = None
+                            self._clear_loading_server_process()
                             return
                         except asyncio.TimeoutError:
                             pass
@@ -74694,13 +78616,16 @@ class JarvisSystemKernel:
         Includes a delay to give Chrome time to redirect before killing
         the loading server, preventing "window terminated unexpectedly" errors.
         """
+        await self._stop_loading_server_heartbeat()
+
         if not hasattr(self, '_loading_server_process') or not self._loading_server_process:
             self._cleanup_loading_server_log()
+            self._clear_loading_server_process()
             return
 
         if self._loading_server_process.returncode is not None:
             self._cleanup_loading_server_log()
-            self._loading_server_process = None
+            self._clear_loading_server_process()
             return
 
         try:
@@ -74727,7 +78652,7 @@ class JarvisSystemKernel:
                 )
                 self.logger.info("[LoadingServer] Terminated (SIGINT)")
                 self._cleanup_loading_server_log()
-                self._loading_server_process = None
+                self._clear_loading_server_process()
                 return
             except asyncio.TimeoutError:
                 pass
@@ -74739,14 +78664,23 @@ class JarvisSystemKernel:
                 await asyncio.wait_for(self._loading_server_process.wait(), timeout=3.0)
                 self.logger.info("[LoadingServer] Terminated (SIGTERM)")
                 self._cleanup_loading_server_log()
-                self._loading_server_process = None
+                self._clear_loading_server_process()
                 return
             except asyncio.TimeoutError:
                 pass
 
             # Force kill as last resort
             self._loading_server_process.kill()
-            await self._loading_server_process.wait()
+            # v265.3: Bare .wait() after .kill() had no timeout — if process
+            # becomes a zombie, this hangs forever.
+            try:
+                await asyncio.wait_for(
+                    self._loading_server_process.wait(), timeout=5.0
+                )
+            except asyncio.TimeoutError:
+                self.logger.warning(
+                    "[LoadingServer] Process did not exit after SIGKILL + 5s"
+                )
             self.logger.warning("[LoadingServer] Force killed (timeout)")
 
         except ProcessLookupError:
@@ -74755,7 +78689,7 @@ class JarvisSystemKernel:
             self.logger.debug(f"[LoadingServer] Cleanup error: {e}")
         finally:
             self._cleanup_loading_server_log()
-            self._loading_server_process = None
+            self._clear_loading_server_process()
 
     def _cleanup_loading_server_log(self) -> None:
         """Clean up loading server log file handle."""
@@ -74986,7 +78920,7 @@ class JarvisSystemKernel:
                     
                     await asyncio.wait_for(
                         self._frontend_process.wait(),
-                        timeout=10.0
+                        timeout=_get_env_float("JARVIS_FRONTEND_GRACEFUL_TIMEOUT", 10.0),
                     )
                 except asyncio.TimeoutError:
                     # Force kill if graceful shutdown fails
@@ -74999,7 +78933,10 @@ class JarvisSystemKernel:
                         except ProcessLookupError:
                             pass  # v253.2: Already exited
                     try:
-                        await asyncio.wait_for(self._frontend_process.wait(), timeout=5.0)
+                        await asyncio.wait_for(
+                            self._frontend_process.wait(),
+                            timeout=_get_env_float("JARVIS_FRONTEND_KILL_TIMEOUT", 5.0),
+                        )
                     except asyncio.TimeoutError:
                         pass  # v253.2: Bounded wait
                 self.logger.info("[Frontend] Stopped")
@@ -76139,22 +80076,35 @@ class JarvisSystemKernel:
         
         self.logger.info("[Heartbeat] Starting heartbeat loop (5s interval)")
         
-        while not self._shutdown_event.is_set():
-            try:
-                await self._send_supervisor_heartbeat()
-            except Exception as e:
-                self.logger.debug(f"[Heartbeat] Failed: {e}")
-            
-            try:
-                await asyncio.wait_for(
-                    self._shutdown_event.wait(),
-                    timeout=heartbeat_interval
-                )
-                break  # Shutdown requested
-            except asyncio.TimeoutError:
-                pass  # Continue loop
-        
-        self.logger.info("[Heartbeat] Loop stopped")
+        try:
+            while not self._shutdown_event.is_set():
+                process = self._loading_server_process
+                if process is None:
+                    self.logger.debug("[Heartbeat] Loading server process missing, stopping loop")
+                    break
+                if process.returncode is not None:
+                    self.logger.debug(
+                        f"[Heartbeat] Loading server exited (code: {process.returncode}), stopping loop"
+                    )
+                    break
+
+                try:
+                    await self._send_supervisor_heartbeat()
+                except Exception as e:
+                    self.logger.debug(f"[Heartbeat] Failed: {e}")
+
+                try:
+                    await asyncio.wait_for(
+                        self._shutdown_event.wait(),
+                        timeout=heartbeat_interval
+                    )
+                    break  # Shutdown requested
+                except asyncio.TimeoutError:
+                    pass  # Continue loop
+        finally:
+            if self._loading_server_heartbeat_task is asyncio.current_task():
+                self._loading_server_heartbeat_task = None
+            self.logger.info("[Heartbeat] Loop stopped")
 
     async def _send_supervisor_heartbeat(self) -> None:
         """Send single heartbeat to loading server."""
@@ -76177,6 +80127,7 @@ class JarvisSystemKernel:
                 ) as session:
                     async with session.post(url, json=heartbeat_data) as resp:
                         if resp.status == 200:
+                            self._loading_server_ready = True
                             self.logger.debug("[Heartbeat] Sent successfully")
         except Exception:
             pass  # Heartbeat failures are not critical
@@ -76465,7 +80416,7 @@ class JarvisSystemKernel:
             if self._backend_server or self._backend_server_task:
                 await self._stop_backend_in_process(
                     reason="cleanup",
-                    timeout=15.0,
+                    timeout=_get_env_float("JARVIS_BACKEND_INPROC_STOP_TIMEOUT", 15.0),
                     force_cancel_on_timeout=True,
                 )
 
@@ -76535,7 +80486,10 @@ class JarvisSystemKernel:
             # Stop global hybrid orchestrator singleton if present.
             try:
                 from core.hybrid_orchestrator import stop_orchestrator
-                await asyncio.wait_for(stop_orchestrator(), timeout=10.0)
+                await asyncio.wait_for(
+                    stop_orchestrator(),
+                    timeout=_get_env_float("JARVIS_HYBRID_ORCH_STOP_TIMEOUT", 10.0),
+                )
                 self.logger.debug("[Kernel] Hybrid orchestrator stopped")
             except Exception as hy_err:
                 self.logger.debug(f"[Kernel] Hybrid orchestrator cleanup error: {hy_err}")
@@ -76547,7 +80501,10 @@ class JarvisSystemKernel:
                     from intelligence.model_lifecycle_manager import shutdown_lifecycle_manager
                 except ImportError:
                     from backend.intelligence.model_lifecycle_manager import shutdown_lifecycle_manager
-                await asyncio.wait_for(shutdown_lifecycle_manager(), timeout=10.0)
+                await asyncio.wait_for(
+                    shutdown_lifecycle_manager(),
+                    timeout=_get_env_float("JARVIS_MODEL_LIFECYCLE_STOP_TIMEOUT", 10.0),
+                )
                 self.logger.debug("[Kernel] Model lifecycle manager stopped")
             except Exception as ml_err:
                 self.logger.debug(f"[Kernel] Model lifecycle manager cleanup error: {ml_err}")
@@ -76594,41 +80551,79 @@ class JarvisSystemKernel:
             # =====================================================================
             # v238.1: AUDIO INFRASTRUCTURE SHUTDOWN (via Bootstrap)
             # =====================================================================
-            if self._audio_infrastructure_initialized:
-                # 1. Cancel health monitor
-                if self._audio_health_task is not None:
-                    self._audio_health_task.cancel()
-                    try:
-                        await asyncio.wait_for(
-                            self._audio_health_task, timeout=2.0
-                        )
-                    except (asyncio.CancelledError, asyncio.TimeoutError, Exception):
-                        pass
+            # 1. Cancel recovery and health monitors
+            if self._audio_recovery_task is not None:
+                self._audio_recovery_task.cancel()
+                try:
+                    await asyncio.wait_for(self._audio_recovery_task, timeout=2.0)
+                except (asyncio.CancelledError, asyncio.TimeoutError, Exception):
+                    pass
+                self._audio_recovery_task = None
 
-                # 2. Bootstrap shutdown (handles ModeDispatcher, Pipeline, STT, BargeIn)
+            if self._audio_health_task is not None:
+                self._audio_health_task.cancel()
+                try:
+                    await asyncio.wait_for(self._audio_health_task, timeout=2.0)
+                except (asyncio.CancelledError, asyncio.TimeoutError, Exception):
+                    pass
+                self._audio_health_task = None
+
+            # 2. Bootstrap shutdown (handles ModeDispatcher, Pipeline, STT, BargeIn)
+            if self._audio_infrastructure_initialized and self._audio_pipeline_handle is not None:
                 try:
                     from backend.audio.audio_pipeline_bootstrap import (
                         shutdown as bootstrap_shutdown,
                     )
-                    if self._audio_pipeline_handle is not None:
-                        await asyncio.wait_for(
-                            bootstrap_shutdown(self._audio_pipeline_handle),
-                            timeout=10.0,
-                        )
+                    await asyncio.wait_for(
+                        bootstrap_shutdown(self._audio_pipeline_handle),
+                        timeout=10.0,
+                    )
                 except Exception as bs_err:
                     self.logger.debug(f"[Kernel] Bootstrap shutdown error: {bs_err}")
 
-                # 3. AudioBus has its own lifecycle
-                if self._audio_bus is not None:
-                    try:
-                        await asyncio.wait_for(
-                            self._audio_bus.stop(), timeout=5.0,
-                        )
-                        self.logger.info("[Kernel] AudioBus stopped")
-                    except Exception as ab_err:
-                        self.logger.debug(f"[Kernel] AudioBus stop error: {ab_err}")
+            # 3. AudioBus has its own lifecycle and may have started even if
+            # conversation pipeline did not fully initialize.
+            if self._audio_bus is not None:
+                try:
+                    await asyncio.wait_for(
+                        self._audio_bus.stop(), timeout=5.0,
+                    )
+                    self.logger.info("[Kernel] AudioBus stopped")
+                except Exception as ab_err:
+                    self.logger.debug(f"[Kernel] AudioBus stop error: {ab_err}")
 
-                self._audio_infrastructure_initialized = False
+            self._audio_infrastructure_initialized = False
+
+            # =====================================================================
+            # v266.0: GCP VM SESSION LIFECYCLE — STOP VMs on shutdown
+            # =====================================================================
+            # Stop (not delete) all tracked running VMs so they preserve disk/IP
+            # for fast ~30s restart, while eliminating 24/7 compute charges.
+            # =====================================================================
+            try:
+                from backend.core.gcp_vm_manager import get_gcp_vm_manager_safe, VMAction
+                vm_manager = get_gcp_vm_manager_safe()
+                if vm_manager:
+                    for vm_name, vm_info in list(vm_manager.managed_vms.items()):
+                        if hasattr(vm_info, 'state') and vm_info.state.value in ("running", "staging", "provisioning"):
+                            try:
+                                await asyncio.wait_for(
+                                    vm_manager.terminate_vm(
+                                        vm_name,
+                                        reason="session_shutdown",
+                                        action=VMAction.STOP,
+                                    ),
+                                    timeout=_get_env_float("JARVIS_VM_STOP_TIMEOUT", 15.0),
+                                )
+                                self.logger.info(f"[Kernel] VM '{vm_name}' stopped for session shutdown")
+                            except asyncio.TimeoutError:
+                                self.logger.warning(f"[Kernel] Timeout stopping VM '{vm_name}'")
+                            except Exception as e:
+                                self.logger.debug(f"[Kernel] VM stop error for '{vm_name}': {e}")
+            except ImportError:
+                pass
+            except Exception as e:
+                self.logger.debug(f"[Kernel] GCP VM session stop: {e}")
 
             # =====================================================================
             # v181.0: GCP VM CLEANUP (Normal Path)
@@ -76642,7 +80637,10 @@ class JarvisSystemKernel:
                         shutdown_orchestrator,
                     )
                     try:
-                        await asyncio.wait_for(shutdown_orchestrator(), timeout=15.0)
+                        await asyncio.wait_for(
+                            shutdown_orchestrator(),
+                            timeout=_get_env_float("JARVIS_CROSS_REPO_STOP_TIMEOUT", 15.0),
+                        )
                         self.logger.info("[Kernel] Cross-repo orchestrator shutdown complete")
                     except asyncio.TimeoutError:
                         self.logger.warning("[Kernel] Orchestrator shutdown timed out (15s)")
@@ -76652,6 +80650,12 @@ class JarvisSystemKernel:
                 pass
             except Exception as e:
                 self.logger.debug(f"[Kernel] GCP cleanup error: {e}")
+
+            # Stop voice sidecar (worker + sidecar process if owned).
+            try:
+                await self._stop_voice_sidecar("cleanup")
+            except Exception as _vs_cleanup_err:
+                self.logger.debug(f"[VoiceSidecar] Cleanup stop error: {_vs_cleanup_err}")
 
             # Stop frontend and loading server
             await self._stop_frontend()
@@ -76665,7 +80669,10 @@ class JarvisSystemKernel:
                     pass  # v253.2: Already exited
                 else:
                     try:
-                        await asyncio.wait_for(self._backend_process.wait(), timeout=10.0)
+                        await asyncio.wait_for(
+                            self._backend_process.wait(),
+                            timeout=_get_env_float("JARVIS_BACKEND_PROC_STOP_TIMEOUT", 10.0),
+                        )
                     except asyncio.TimeoutError:
                         try:
                             self._backend_process.kill()
@@ -76867,6 +80874,12 @@ class JarvisSystemKernel:
             "kernel_id": self.config.kernel_id,
             "entry_point": "unified_supervisor",  # v119.0: Identify entry point
             "readiness": self._readiness_manager.get_status() if self._readiness_manager else {},
+            "startup_modes": {
+                "desired_mode": os.environ.get("JARVIS_STARTUP_DESIRED_MODE", "local_full"),
+                "effective_mode": os.environ.get("JARVIS_STARTUP_MEMORY_MODE", "local_full"),
+                "cloud_recovery_candidate": os.environ.get("JARVIS_CLOUD_RECOVERY_CANDIDATE", "false"),
+                "oombridge_available": os.environ.get("JARVIS_OOMBRIDGE_AVAILABLE", "1"),
+            },
         }
 
     async def _ipc_status(self) -> Dict[str, Any]:
@@ -76902,6 +80915,26 @@ class JarvisSystemKernel:
         if self._persistent_memory_agent:
             status["conversation_memory"] = self._persistent_memory_agent.get_stats()
 
+        status["startup_modes"] = {
+            "desired_mode": os.environ.get("JARVIS_STARTUP_DESIRED_MODE", "local_full"),
+            "effective_mode": os.environ.get("JARVIS_STARTUP_MEMORY_MODE", "local_full"),
+            "cloud_recovery_candidate": os.environ.get("JARVIS_CLOUD_RECOVERY_CANDIDATE", "false"),
+            "oombridge_available": os.environ.get("JARVIS_OOMBRIDGE_AVAILABLE", "1"),
+            "backend_minimal": os.environ.get("JARVIS_BACKEND_MINIMAL", "false"),
+        }
+
+        try:
+            _pressure_signal_file = (
+                Path.home() / ".jarvis" / "cross_repo" / "memory_pressure.json"
+            )
+            if _pressure_signal_file.exists():
+                with open(_pressure_signal_file, "r") as _pressure_f:
+                    status["memory_pressure_signal"] = json.load(_pressure_f)
+            else:
+                status["memory_pressure_signal"] = {}
+        except Exception as _pressure_read_err:
+            status["memory_pressure_signal"] = {"error": str(_pressure_read_err)}
+
         # v244.0: Integration component status (was "two_tier" pre-v244)
         status["two_tier"] = {
             "enabled": self.config.two_tier_security_enabled,
@@ -76926,6 +80959,21 @@ class JarvisSystemKernel:
             "port": self.config.invincible_node_port,
             "static_ip_name": self.config.invincible_node_static_ip_name,
             "status": self.invincible_node_status,
+        }
+
+        status["voice_sidecar"] = {
+            "enabled": self.config.voice_sidecar_enabled,
+            "required": self.config.voice_sidecar_required,
+            "manage_worker": self.config.voice_sidecar_manage_worker,
+            "transport": self.config.voice_sidecar_transport,
+            "base_url": self.config.voice_sidecar_base_url,
+            "socket": self.config.voice_sidecar_socket_path,
+            "process_pid": (
+                self._voice_sidecar_process.pid
+                if self._voice_sidecar_process is not None
+                else None
+            ),
+            "component_status": self._component_status.get("voice_sidecar", {}),
         }
 
         status["tier3_capabilities"] = self._collect_tier3_capabilities_status()
@@ -76954,6 +81002,20 @@ class JarvisSystemKernel:
                         if self._readiness_manager:
                             self._readiness_manager.mark_component_ready("backend", False)
                             self._readiness_manager.add_error("Backend process died")
+
+                if self._voice_sidecar_process:
+                    if self._voice_sidecar_process.returncode is not None:
+                        self.logger.error(
+                            f"[VoiceSidecar] Sidecar process exited with code "
+                            f"{self._voice_sidecar_process.returncode}"
+                        )
+                        self._voice_sidecar_process = None
+                        if self.config.voice_sidecar_enabled:
+                            self._update_component_status(
+                                "voice_sidecar",
+                                "error",
+                                "Sidecar process exited",
+                            )
                 
                 # v197.1: Update live dashboard with memory stats
                 try:
@@ -77560,21 +81622,30 @@ class JarvisSystemKernel:
                     if mem2.available / (1024 ** 3) >= required_gb * 0.75:
                         probe["memory_ok"] = True
 
-                # v265.2: Check speechbrain availability in thread executor.
-                # ROOT CAUSE FIX: This is the synchronous call that froze the
-                # event loop for 5-10+ seconds, defeating all timeout mechanisms.
-                # Running in a thread keeps the event loop responsive so that
-                # _timed_probe's asyncio.wait_for() can fire cancellation on time.
-                def _check_speechbrain_sync() -> bool:
+                # v268.0: Check speechbrain availability in SUBPROCESS.
+                # ROOT CAUSE FIX (v268.0): v265.2 ran the import in a thread
+                # executor, which kept the event loop responsive but loaded
+                # scipy/numpy/BLAS native C extensions in-process.  When
+                # AudioBus recovery concurrently starts PortAudio (also native),
+                # the two native init paths collide — crashing in a native
+                # thread with <no Python frame> (segfault).  Running the check
+                # in a subprocess completely isolates native code and makes the
+                # segfault impossible.
+                def _check_speechbrain_subprocess() -> bool:
                     try:
-                        import importlib
-                        importlib.import_module("speechbrain")
-                        return True
-                    except ImportError:
+                        _result = subprocess.run(
+                            [sys.executable, "-c", "import speechbrain; print('ok')"],
+                            capture_output=True,
+                            text=True,
+                            timeout=10,
+                            start_new_session=True,
+                        )
+                        return _result.returncode == 0 and "ok" in _result.stdout
+                    except Exception:
                         return False
 
                 _loop = asyncio.get_running_loop()
-                _sb_ok = await _loop.run_in_executor(None, _check_speechbrain_sync)
+                _sb_ok = await _loop.run_in_executor(None, _check_speechbrain_subprocess)
                 if _sb_ok:
                     probe["available"] = True
                 else:
@@ -77758,6 +81829,12 @@ class JarvisSystemKernel:
                             self.logger.info(
                                 f"[ECAPA] Background re-probe found {_selected} after "
                                 f"{elapsed + _reprobe_interval:.0f}s — voice biometrics now active"
+                            )
+                            # v265.5: Update component status on recovery
+                            self._update_component_status(
+                                "ecapa_backend",
+                                "running",
+                                f"ECAPA: {_selected} (recovered via re-probe)",
                             )
                             return
                 except asyncio.CancelledError:
@@ -78545,8 +82622,17 @@ class JarvisSystemKernel:
                                 ReadinessState,
                             )
 
-                        service_timeout = float(os.getenv("JARVIS_SERVICE_TIMEOUT", "30.0"))
-                        configured_timeout = float(os.getenv("CLOUDSQL_ENSURE_READY_TIMEOUT", "60.0"))
+                        service_timeout = max(
+                            5.0,
+                            _get_env_float(
+                                "JARVIS_SERVICE_TIMEOUT_CLOUD_SQL",
+                                _get_env_float("JARVIS_SERVICE_TIMEOUT", 30.0),
+                            ),
+                        )
+                        configured_timeout = max(
+                            8.0,
+                            _get_env_float("CLOUDSQL_ENSURE_READY_TIMEOUT", 60.0),
+                        )
                         gate_timeout = min(configured_timeout, max(8.0, service_timeout - 2.0))
 
                         gate = get_readiness_gate()
@@ -78955,12 +83041,13 @@ class JarvisSystemKernel:
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
                 )
-                _, stderr = await asyncio.wait_for(proc.communicate(), timeout=60.0)
+                _npm_install_to = _get_env_float("JARVIS_NPM_INSTALL_TIMEOUT", 60.0)
+                _, stderr = await asyncio.wait_for(proc.communicate(), timeout=_npm_install_to)
                 if proc.returncode != 0:
                     self.logger.warning(f"[WSRouter] npm install failed: {stderr.decode()[:200]}")
                     return None
             except asyncio.TimeoutError:
-                self.logger.warning("[WSRouter] npm install timed out (60s)")
+                self.logger.warning(f"[WSRouter] npm install timed out ({_npm_install_to:.0f}s)")
                 return None
             except FileNotFoundError:
                 self.logger.info("[WSRouter] npm not found — skipping TypeScript router")
@@ -78974,12 +83061,13 @@ class JarvisSystemKernel:
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
-            _, stderr = await asyncio.wait_for(proc.communicate(), timeout=30.0)
+            _npm_build_to = _get_env_float("JARVIS_NPM_BUILD_TIMEOUT", 30.0)
+            _, stderr = await asyncio.wait_for(proc.communicate(), timeout=_npm_build_to)
             if proc.returncode != 0:
                 self.logger.warning(f"[WSRouter] TypeScript build failed: {stderr.decode()[:200]}")
                 return None
         except asyncio.TimeoutError:
-            self.logger.warning("[WSRouter] TypeScript build timed out (30s)")
+            self.logger.warning(f"[WSRouter] TypeScript build timed out ({_npm_build_to:.0f}s)")
             return None
         except FileNotFoundError:
             return None
@@ -79336,12 +83424,22 @@ class JarvisSystemKernel:
         ]
 
         # Execute in parallel with timeout
+        # v265.5: CPU-aware timeout + env var override
+        _preflight_timeout = _get_env_float("JARVIS_PREFLIGHT_CHECK_TIMEOUT", 30.0)
+        try:
+            import psutil as _pf_ps
+            _pf_cpu = _pf_ps.cpu_percent(interval=None)
+            if _pf_cpu > 90.0:
+                _preflight_timeout *= 1.0 + (_pf_cpu - 90.0) / 10.0 * 2.0
+        except Exception:
+            pass
+
         async def run_check(name: str, coro) -> Tuple[str, Dict[str, Any]]:
             try:
-                result = await asyncio.wait_for(coro, timeout=30.0)
+                result = await asyncio.wait_for(coro, timeout=_preflight_timeout)
                 return name, result
             except asyncio.TimeoutError:
-                return name, {"passed": False, "error": "Check timed out"}
+                return name, {"passed": False, "error": f"Check timed out ({_preflight_timeout:.0f}s)"}
             except Exception as e:
                 return name, {"passed": False, "error": str(e)}
 
@@ -79960,7 +84058,8 @@ class JarvisSystemKernel:
                         stdout=asyncio.subprocess.PIPE,
                         stderr=asyncio.subprocess.PIPE,
                     )
-                    _, stderr = await asyncio.wait_for(proc.communicate(), timeout=30.0)
+                    _sh_build_to = _get_env_float("JARVIS_NPM_BUILD_TIMEOUT", 30.0)
+                    _, stderr = await asyncio.wait_for(proc.communicate(), timeout=_sh_build_to)
                     if proc.returncode == 0:
                         self.logger.info("[SelfHeal] WebSocket rebuild successful")
                         return True
@@ -79969,7 +84068,7 @@ class JarvisSystemKernel:
                             f"[SelfHeal] WebSocket rebuild failed: {stderr.decode()[:200]}"
                         )
                 except asyncio.TimeoutError:
-                    self.logger.warning("[SelfHeal] WebSocket rebuild timed out (30s)")
+                    self.logger.warning(f"[SelfHeal] WebSocket rebuild timed out ({_sh_build_to:.0f}s)")
                 except Exception as ws_err:
                     self.logger.debug(f"[SelfHeal] WebSocket rebuild error: {ws_err}")
 
@@ -80390,7 +84489,6 @@ class JarvisSystemKernel:
             self.logger.error(f"[Trinity] Failed to start {name}: {e}")
             return False
 
-
 # =============================================================================
 # ZONE 6 SELF-TEST FUNCTION
 # =============================================================================
@@ -80438,7 +84536,6 @@ async def _test_zone6():
     logger.print_startup_summary()
     TerminalUI.print_success("Zone 6 validation complete!")
 
-
 # =============================================================================
 # =============================================================================
 #
@@ -80460,13 +84557,11 @@ async def _test_zone6():
 # =============================================================================
 # =============================================================================
 
-
 # =============================================================================
 # ZONE 7.1: UNIFIED CLI ARGUMENT PARSER
 # =============================================================================
 
 import argparse
-
 
 def create_argument_parser() -> argparse.ArgumentParser:
     """
@@ -80799,7 +84894,6 @@ def create_argument_parser() -> argparse.ArgumentParser:
         help="Display J-Prime component status dashboard",
     )
 
-
     trinity.add_argument(
         "--monitor-reactor",
         action="store_true",
@@ -80928,7 +85022,6 @@ def create_argument_parser() -> argparse.ArgumentParser:
 
     return parser
 
-
 # =============================================================================
 # ZONE 7.2: CLI COMMAND HANDLERS
 # =============================================================================
@@ -80988,8 +85081,6 @@ async def _direct_health_check(host: str, port: int, timeout: float = 5.0) -> Di
         result["status"] = f"error: {type(e).__name__}"
 
     return result
-
-
 
 async def handle_status() -> int:
     """Handle --status command."""
@@ -81052,7 +85143,6 @@ async def handle_status() -> int:
         print(f"\n❌ Error: {e}")
         return 1
 
-
 async def handle_shutdown() -> int:
     """Handle --shutdown command."""
     # v201.4: Suppress shutdown diagnostics for CLI-only commands
@@ -81095,7 +85185,6 @@ async def handle_shutdown() -> int:
         print(f"\n❌ Error sending shutdown: {e}")
         return 1
 
-
 async def handle_cleanup() -> int:
     """Handle --cleanup command."""
     # v201.4: Suppress shutdown diagnostics for CLI-only commands
@@ -81121,7 +85210,6 @@ async def handle_cleanup() -> int:
     print("="*60 + "\n")
 
     return 0 if result["success"] else 1
-
 
 async def handle_check_only(args: argparse.Namespace) -> int:
     """
@@ -81447,7 +85535,6 @@ async def handle_check_only(args: argparse.Namespace) -> int:
 
     return 0 if all_passed else 1
 
-
 # =============================================================================
 # CLOUD MONITOR HANDLERS (v199.0)
 # =============================================================================
@@ -81631,7 +85718,6 @@ async def handle_cloud_monitor() -> int:
     print()
     return 0
 
-
 async def handle_cloud_monitor_logs() -> int:
     """
     Handle --monitor-logs command: Stream logs from Invincible Node.
@@ -81695,13 +85781,11 @@ async def handle_cloud_monitor_logs() -> int:
         print(f"\033[91m⚠  Error streaming logs: {e}\033[0m")
         return 1
 
-
 # =============================================================================
 # v224.0: GOLDEN IMAGE MANAGEMENT COMMANDS
 # =============================================================================
 # Enterprise-grade custom VM image management for ~30-60 second startup.
 # =============================================================================
-
 
 async def handle_create_golden_image() -> int:
     """
@@ -81780,7 +85864,6 @@ async def handle_create_golden_image() -> int:
         print(f"\033[91m⚠  Error creating golden image: {e}\033[0m")
         return 1
 
-
 async def handle_list_golden_images() -> int:
     """
     Handle --list-golden-images command: List all available golden images.
@@ -81832,7 +85915,6 @@ async def handle_list_golden_images() -> int:
     except Exception as e:
         print(f"\033[91m⚠  Error listing golden images: {e}\033[0m")
         return 1
-
 
 async def handle_check_golden_image() -> int:
     """
@@ -81909,7 +85991,6 @@ async def handle_check_golden_image() -> int:
         print(f"\033[91m⚠  Error checking golden image status: {e}\033[0m")
         return 1
 
-
 async def handle_cleanup_golden_images(keep_count: int) -> int:
     """
     Handle --cleanup-golden-images command: Clean up old golden images.
@@ -81965,7 +86046,6 @@ async def handle_cleanup_golden_images(keep_count: int) -> int:
     except Exception as e:
         print(f"\033[91m⚠  Error cleaning up golden images: {e}\033[0m")
         return 1
-
 
 # =============================================================================
 # DASHBOARD COMMAND (v201.2) - Comprehensive System Status
@@ -82045,7 +86125,6 @@ async def _fetch_lock_status_readonly() -> Dict[str, Any]:
 
     return result
 
-
 async def _fetch_kernel_status_ipc(timeout: float = 5.0) -> Dict[str, Any]:
     """
     Fetch kernel status via IPC socket.
@@ -82111,7 +86190,6 @@ async def _fetch_kernel_status_ipc(timeout: float = 5.0) -> Dict[str, Any]:
         result["error"] = str(e)
 
     return result
-
 
 async def _fetch_preflight_status() -> Dict[str, Any]:
     """
@@ -82224,7 +86302,6 @@ async def _fetch_preflight_status() -> Dict[str, Any]:
 
     return result
 
-
 async def _fetch_invincible_status_direct(timeout: float = 10.0) -> Dict[str, Any]:
     """
     Fetch Invincible Node status directly from GCP.
@@ -82290,7 +86367,6 @@ async def _fetch_invincible_status_direct(timeout: float = 10.0) -> Dict[str, An
         result["error"] = str(e)
 
     return result
-
 
 def _format_dashboard_output(
     lock_status: Dict[str, Any],
@@ -82576,7 +86652,6 @@ def _format_dashboard_output(
 
     return lines
 
-
 async def handle_dashboard() -> int:
     """
     Handle --dashboard command: Comprehensive system status dashboard.
@@ -82655,7 +86730,6 @@ async def handle_dashboard() -> int:
     if kernel_status.get("running") and preflight_status.get("passed", False):
         return 0
     return 0  # Dashboard always succeeds (informational command)
-
 
 async def _show_startup_dashboard() -> None:
     """
@@ -82788,7 +86862,6 @@ async def _show_startup_dashboard() -> None:
         print(f"\n  {YELLOW}Kernel may already be running - use --status to check{RESET}")
     else:
         print(f"\n  {YELLOW}Some checks failed - proceeding anyway{RESET}")
-
 
 async def handle_monitor_prime() -> int:
     """
@@ -82923,7 +86996,6 @@ async def handle_monitor_prime() -> int:
 
     return 0
 
-
 async def handle_monitor_reactor() -> int:
     """
     ⚛️  Handle --monitor-reactor command: Display Reactor-Core status dashboard.
@@ -83050,12 +87122,6 @@ async def handle_monitor_reactor() -> int:
     print()
 
     return 0
-
-
-
-
-
-
 
 async def handle_monitor_trinity() -> int:
     """
@@ -83193,7 +87259,6 @@ async def handle_monitor_trinity() -> int:
 
     return 0
 
-
 async def handle_single_task(
     task_goal: str,
     task_mode: str,
@@ -83311,7 +87376,6 @@ async def handle_single_task(
         print(f"\n❌ Error: Task execution failed: {e}")
         return 1
 
-
 # =============================================================================
 # ZONE 7.3: CONFIGURATION FROM CLI ARGS
 # =============================================================================
@@ -83417,7 +87481,6 @@ def apply_cli_to_config(args: argparse.Namespace, config: SystemKernelConfig) ->
     if args.verbose:
         config.verbose = True
 
-
 # =============================================================================
 # ZONE 7.4: MAIN FUNCTION
 # =============================================================================
@@ -83451,7 +87514,6 @@ async def handle_test(test_suite: str) -> int:
         import traceback
         traceback.print_exc()
         return 1
-
 
 async def async_main(args: argparse.Namespace) -> int:
     """
@@ -83670,10 +87732,13 @@ async def async_main(args: argparse.Namespace) -> int:
             # v253.4: CancelledError fires here when a task is GC'd without being
             # awaited, or when _run_phase() times out and cancels inner tasks.
             # It's not a real error — just normal shutdown/timeout cleanup.
+            # v266.5: InvalidStateError from asyncpg TLS state machine during
+            # CloudSQL reconnection — internal asyncpg tasks we don't control.
             _is_transient = isinstance(exception, (
                 ConnectionError,       # Includes ConnectionResetError, BrokenPipeError
                 asyncio.TimeoutError,  # Background health checks, keepalive extensions
                 asyncio.CancelledError,  # Task cancellation (timeout, shutdown, GC)
+                asyncio.InvalidStateError,  # asyncpg TLS race during reconnection
             ))
 
             _emit_async_exception_log(
@@ -83923,7 +87988,6 @@ async def async_main(args: argparse.Namespace) -> int:
         except Exception as final_err:
             print(f"[Kernel] Error in finally cleanup: {final_err}")
 
-
 def _generate_launchd_plist() -> str:
     """v239.0: Generate launchd plist with dynamically resolved paths."""
     project_root = Path(__file__).parent.resolve()
@@ -83963,7 +88027,6 @@ def _generate_launchd_plist() -> str:
     </dict>
 </dict>
 </plist>"""
-
 
 def main() -> int:
     """
@@ -84044,7 +88107,6 @@ def main() -> int:
         pass  # If we can't enumerate threads, just return normally
 
     return exit_code
-
 
 # =============================================================================
 # ZONE 7.5: ENTRY POINT

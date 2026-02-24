@@ -1,0 +1,29 @@
+listen:
+  network: tcp
+  address: 127.0.0.1:9860
+
+poll:
+  interval_ms: 1000
+  request_timeout_ms: 900
+
+python:
+  transport: unix
+  unix_socket_path: ~/.jarvis/locks/kernel.sock
+  status_url: http://127.0.0.1:8000/supervisor/status
+  health_url: http://127.0.0.1:8000/supervisor/health
+
+pressure:
+  fail_closed: true
+  min_available_memory_mb: 2048
+  max_memory_percent: 90
+  max_cpu_percent: 95
+
+advisory:
+  recovery_stuck_seconds: 180
+  mode_oscillation_window_sec: 120
+  mode_oscillation_limit: 6
+
+backoff:
+  initial_ms: 500
+  max_ms: 10000
+  multiplier: 2.0

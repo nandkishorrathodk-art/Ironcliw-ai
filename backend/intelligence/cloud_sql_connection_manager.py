@@ -2187,6 +2187,12 @@ class ProxyReadinessGate:
         # Single check-in-progress future (Edge Case #1)
         self._check_future: Optional[asyncio.Future] = None
 
+        # v266.0: Single-flight ensure_proxy_ready() coordination.
+        # Prevents concurrent startup callers from racing proxy starts and
+        # duplicating DB-readiness loops.
+        self._ensure_proxy_ready_lock: Optional[asyncio.Lock] = None
+        self._ensure_proxy_ready_future: Optional[asyncio.Task] = None
+
         # Lazy events per loop (Edge Case #9, #29)
         self._ready_events: Dict[int, asyncio.Event] = {}
         self._degraded_events: Dict[int, asyncio.Event] = {}
@@ -2218,6 +2224,24 @@ class ProxyReadinessGate:
         self._startup_grace_period = float(os.getenv("CLOUDSQL_STARTUP_GRACE_PERIOD", "60.0"))
         self._last_registry_state: Optional[bool] = None  # Track last signaled state to avoid spam
 
+        # v267.0: Runtime readiness hysteresis for periodic/operational checks.
+        # Startup readiness remains strict, but runtime checks require
+        # consecutive failures before transitioning READY -> UNAVAILABLE.
+        self._runtime_failure_streak = 0
+        self._runtime_failure_threshold = max(
+            1,
+            int(_get_env_float_safe("JARVIS_RUNTIME_FAILURE_THRESHOLD", float(self._consecutive_failure_threshold))),
+        )
+        self._runtime_network_failure_threshold = max(
+            self._runtime_failure_threshold,
+            int(
+                _get_env_float_safe(
+                    "JARVIS_RUNTIME_NETWORK_FAILURE_THRESHOLD",
+                    float(self._runtime_failure_threshold + 2),
+                )
+            ),
+        )
+
         self._initialized = True
         logger.info("🔐 ProxyReadinessGate v1.0 initialized")
 
@@ -2233,6 +2257,8 @@ class ProxyReadinessGate:
             self._state_lock = asyncio.Lock()
         if self._check_lock is None:
             self._check_lock = asyncio.Lock()
+        if self._ensure_proxy_ready_lock is None:
+            self._ensure_proxy_ready_lock = asyncio.Lock()
 
     def _get_ready_event(self, loop: asyncio.AbstractEventLoop) -> asyncio.Event:
         """
@@ -2655,6 +2681,7 @@ class ProxyReadinessGate:
 
         # Manage events based on new state
         if new_state == ReadinessState.READY:
+            self._record_runtime_success()
             # Set all ready events
             for event in self._ready_events.values():
                 event.set()
@@ -2687,6 +2714,69 @@ class ProxyReadinessGate:
 
         # Notify subscribers (Edge Case #8, #23)
         await self._notify_subscribers(new_state)
+
+    def _record_runtime_success(self) -> None:
+        """Reset runtime failure hysteresis after a successful DB-level check."""
+        if self._runtime_failure_streak > 0:
+            logger.info(
+                "[ReadinessGate v267.0] Runtime health recovered, resetting failure streak "
+                f"from {self._runtime_failure_streak} to 0"
+            )
+        self._runtime_failure_streak = 0
+
+    def _runtime_failure_budget_for_reason(self, reason: Optional[str]) -> int:
+        """
+        Return consecutive-failure threshold before runtime UNAVAILABLE transition.
+
+        Runtime checks are more tolerant for transport/network noise, while
+        deterministic hard failures remain immediate.
+        """
+        if reason in {"credentials", "config", "asyncpg_unavailable", "shutdown"}:
+            return 1
+        if reason == "network":
+            return self._runtime_network_failure_threshold
+        return self._runtime_failure_threshold
+
+    async def _handle_runtime_failure_transition(
+        self,
+        reason: Optional[str],
+        message: str,
+        source: str,
+    ) -> None:
+        """
+        Apply runtime hysteresis before transitioning to UNAVAILABLE.
+
+        This prevents transient periodic probe failures from immediately
+        collapsing readiness while preserving strict handling for hard failures.
+        """
+        threshold = self._runtime_failure_budget_for_reason(reason)
+
+        # Threshold 1 means fail-fast by policy.
+        if threshold <= 1:
+            self._runtime_failure_streak = 1
+            await self._set_state(ReadinessState.UNAVAILABLE, reason, message)
+            return
+
+        self._runtime_failure_streak += 1
+        if self._runtime_failure_streak < threshold:
+            # Preserve READY to avoid state flapping during transient outages.
+            self._state = ReadinessState.READY
+            self._failure_reason = reason
+            self._failure_message = (
+                f"Transient runtime failure ({self._runtime_failure_streak}/{threshold}) "
+                f"from {source}: {message}"
+            )
+            logger.warning(
+                "[ReadinessGate v267.0] Runtime check failed (%s) from %s; "
+                "preserving READY (%d/%d before UNAVAILABLE)",
+                reason,
+                source,
+                self._runtime_failure_streak,
+                threshold,
+            )
+            return
+
+        await self._set_state(ReadinessState.UNAVAILABLE, reason, message)
 
     # -------------------------------------------------------------------------
     # Invalidation & Re-check (Edge Cases #3, #18, #19, #20)
@@ -2749,6 +2839,9 @@ class ProxyReadinessGate:
             success, reason = await self._check_db_level()
 
             if success:
+                self._failure_reason = None
+                self._failure_message = "DB-level verification successful"
+                self._record_runtime_success()
                 self._state = ReadinessState.READY
                 return
 
@@ -2763,14 +2856,17 @@ class ProxyReadinessGate:
                 await asyncio.sleep(_retry_delay * (_retry + 1))
                 success, reason = await self._check_db_level()
                 if success:
+                    self._failure_reason = None
+                    self._failure_message = "DB-level verification successful"
+                    self._record_runtime_success()
                     self._state = ReadinessState.READY
                     return
 
             # All retries exhausted
-            await self._set_state(
-                ReadinessState.UNAVAILABLE,
-                reason,
-                "Connection failed during operation"
+            await self._handle_runtime_failure_transition(
+                reason=reason,
+                message="Connection failed during operation",
+                source="trigger_recheck",
             )
 
     async def notify_proxy_recovery(self) -> bool:
@@ -2914,11 +3010,13 @@ class ProxyReadinessGate:
                                     if success:
                                         break
                                 if not success:
-                                    await self._set_state(
-                                        ReadinessState.UNAVAILABLE,
-                                        reason,
-                                        "Periodic health check failed"
+                                    await self._handle_runtime_failure_transition(
+                                        reason=reason,
+                                        message="Periodic health check failed",
+                                        source="periodic_recheck",
                                     )
+                            else:
+                                self._record_runtime_success()
 
             except asyncio.CancelledError:
                 logger.debug("[ReadinessGate v260.4] Periodic recheck loop cancelled")
@@ -3206,6 +3304,92 @@ class ProxyReadinessGate:
     # -------------------------------------------------------------------------
 
     async def ensure_proxy_ready(
+        self,
+        timeout: Optional[float] = None,
+        auto_start: bool = True,
+        max_start_attempts: int = 3,
+        notify_cross_repo: bool = True,
+    ) -> ReadinessResult:
+        """
+        Proactively ensure Cloud SQL readiness with single-flight coordination.
+
+        v266.0: concurrent callers now share one in-flight ensure operation
+        instead of racing proxy lifecycle + readiness checks.
+        """
+        await self._ensure_locks()
+        assert self._ensure_proxy_ready_lock is not None  # from _ensure_locks()
+
+        wait_timeout = (
+            float(timeout)
+            if timeout is not None
+            else float(os.environ.get("CLOUDSQL_ENSURE_READY_TIMEOUT", "60.0"))
+        )
+
+        async with self._ensure_proxy_ready_lock:
+            in_flight = self._ensure_proxy_ready_future
+            if in_flight is None or in_flight.done():
+                in_flight = asyncio.create_task(
+                    self._ensure_proxy_ready_internal(
+                        timeout=timeout,
+                        auto_start=auto_start,
+                        max_start_attempts=max_start_attempts,
+                        notify_cross_repo=notify_cross_repo,
+                    ),
+                    name="cloudsql-ensure-proxy-ready",
+                )
+                self._ensure_proxy_ready_future = in_flight
+                is_leader = True
+            else:
+                is_leader = False
+
+        if not is_leader:
+            logger.debug(
+                "[ReadinessGate v266.0] Joining in-flight ensure_proxy_ready "
+                "(timeout=%.1fs)",
+                wait_timeout,
+            )
+            try:
+                return await asyncio.wait_for(asyncio.shield(in_flight), timeout=wait_timeout)
+            except asyncio.TimeoutError:
+                return ReadinessResult(
+                    state=self._state,
+                    timed_out=True,
+                    failure_reason=self._failure_reason or "timeout",
+                    message=(
+                        "Timed out waiting for in-flight ensure_proxy_ready() "
+                        f"after {wait_timeout:.1f}s"
+                    ),
+                )
+            except asyncio.CancelledError:
+                return ReadinessResult(
+                    state=ReadinessState.UNAVAILABLE,
+                    timed_out=False,
+                    failure_reason="cancelled",
+                    message="ensure_proxy_ready wait cancelled",
+                )
+
+        try:
+            return await in_flight
+        except asyncio.CancelledError:
+            if self._shutting_down:
+                return ReadinessResult(
+                    state=ReadinessState.UNAVAILABLE,
+                    timed_out=False,
+                    failure_reason="shutdown",
+                    message="Gate shutdown during ensure_proxy_ready",
+                )
+            return ReadinessResult(
+                state=ReadinessState.UNAVAILABLE,
+                timed_out=False,
+                failure_reason="cancelled",
+                message="ensure_proxy_ready cancelled",
+            )
+        finally:
+            async with self._ensure_proxy_ready_lock:
+                if self._ensure_proxy_ready_future is in_flight:
+                    self._ensure_proxy_ready_future = None
+
+    async def _ensure_proxy_ready_internal(
         self,
         timeout: Optional[float] = None,
         auto_start: bool = True,
@@ -3666,6 +3850,19 @@ class ProxyReadinessGate:
         """
         self._shutting_down = True
 
+        # v266.0: Cancel single-flight ensure operation so callers unblock
+        # immediately during shutdown.
+        in_flight_ensure = self._ensure_proxy_ready_future
+        if in_flight_ensure and not in_flight_ensure.done():
+            in_flight_ensure.cancel()
+            try:
+                await in_flight_ensure
+            except asyncio.CancelledError:
+                pass
+            except Exception:
+                pass
+        self._ensure_proxy_ready_future = None
+
         # Edge Case #28: Cancel recheck task first
         if self._recheck_task and not self._recheck_task.done():
             self._recheck_task.cancel()
@@ -3742,6 +3939,36 @@ def get_readiness_gate() -> ProxyReadinessGate:
 async def get_readiness_gate_async() -> ProxyReadinessGate:
     """Get singleton ProxyReadinessGate instance (async version)."""
     return get_readiness_gate()
+
+
+async def reset_readiness_gate() -> None:
+    """
+    v266.1: Shutdown and reset the ProxyReadinessGate singleton for clean restart.
+
+    Root cause: ProxyReadinessGate uses double-layer singleton (class._instance
+    + module._readiness_gate). On in-process restart, the gate retains stale
+    state (UNAVAILABLE from previous shutdown, dead asyncio primitives bound to
+    the old event loop, shutting_down=True flag). New startup code sees
+    UNAVAILABLE and immediately falls back to SQLite instead of attempting
+    Cloud SQL connection.
+
+    Both layers must be reset: class-level _instance AND module-level reference.
+    The shutdown() method is called first to unblock any waiters and cancel tasks.
+    """
+    global _readiness_gate
+    gate = _readiness_gate
+    if gate is not None:
+        try:
+            if not getattr(gate, '_shutting_down', False):
+                await gate.shutdown()
+        except Exception:
+            pass
+        # Reset class-level singleton
+        with ProxyReadinessGate._instance_lock:
+            ProxyReadinessGate._instance = None
+        # Reset module-level reference
+        with _readiness_gate_lock:
+            _readiness_gate = None
 
 
 # =============================================================================

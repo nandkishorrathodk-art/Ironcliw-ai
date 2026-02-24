@@ -82,6 +82,11 @@ if backend_dir not in sys.path:
 
 logger = logging.getLogger(__name__)
 
+# Shared module router: used by standalone endpoints in this module.
+# JARVISVoiceAPI core routes are lazily attached via get_voice_router().
+router = APIRouter()
+_jarvis_core_routes_included = False
+
 # ============================================================================
 # WEBSOCKET CONNECTION TRACKING - For shutdown notifications
 # ============================================================================
@@ -741,6 +746,26 @@ class JARVISVoiceAPI:
 
         logger.debug(f"[INIT ORDER] Returning JARVIS instance: {self._jarvis is not None}")
         return self._jarvis
+
+    @staticmethod
+    def _coerce_text(value: Any, fallback: str = "") -> str:
+        """Normalize arbitrary payloads into safe non-empty text."""
+        if isinstance(value, str):
+            text = value.strip()
+            return text if text else fallback
+        if value is None:
+            return fallback
+        try:
+            text = str(value).strip()
+        except Exception:
+            return fallback
+        return text if text else fallback
+
+    @staticmethod
+    def _preview_text(value: Any, limit: int = 100) -> str:
+        """Create a bounded, log-safe text preview."""
+        text = JARVISVoiceAPI._coerce_text(value, fallback="<empty>")
+        return text if len(text) <= limit else text[:limit]
 
     def _get_or_create_session_id(self) -> str:
         """Get or create session ID for conversation tracking"""
@@ -1827,8 +1852,34 @@ class JARVISVoiceAPI:
     @graceful_endpoint
     async def process_command(self, command: JARVISCommand) -> Dict:
         """Process a JARVIS command"""
+        # Enforce input text contract at ingress so downstream layers never
+        # receive None/whitespace command text.
+        if command is None:
+            logger.warning("Received process_command request with null command payload")
+            return {
+                "response": "I didn't catch that. Could you please repeat?",
+                "status": "error",
+                "confidence": 0.0,
+            }
+
+        command_text = self._coerce_text(getattr(command, "text", None), fallback="")
+        if not command_text:
+            logger.warning("Received command with empty or None text")
+            return {
+                "response": "I didn't catch that. Could you please repeat?",
+                "status": "error",
+                "confidence": 0.0,
+            }
+
+        # Keep a canonical text copy for all subsequent logic.
+        if getattr(command, "text", None) != command_text:
+            try:
+                command.text = command_text
+            except Exception:
+                pass
+
         # v241.0: Extract deadline from command for timeout propagation
-        deadline = command.deadline
+        deadline = getattr(command, "deadline", None)
 
         # =====================================================================
         # 🔒 PROACTIVE CAI (Context Awareness Intelligence) - SCREEN LOCK CHECK
@@ -2126,9 +2177,9 @@ class JARVISVoiceAPI:
                 }
 
         try:
-            # Validate command text
-            if not command.text or command.text is None:
-                logger.warning("Received command with empty or None text")
+            # Validate command text (defensive second gate for mutated payloads)
+            if not self._coerce_text(getattr(command, "text", None), fallback=""):
+                logger.warning("Received command with empty or None text (late validation)")
                 return {
                     "response": "I didn't catch that. Could you please repeat?",
                     "status": "error",
@@ -2189,7 +2240,21 @@ class JARVISVoiceAPI:
                 logger.debug("[JARVIS API] No audio data in command (text-only)")
 
             # Use async pipeline for all commands - ensures consistent handling
+            pipeline_result = None
             try:
+                try:
+                    default_timeout = float(os.getenv("JARVIS_API_COMMAND_TIMEOUT", "35.0"))
+                except (TypeError, ValueError):
+                    default_timeout = 35.0
+                now_mono = time.monotonic()
+                effective_deadline = deadline
+                if effective_deadline is None:
+                    effective_deadline = now_mono + default_timeout
+
+                remaining_budget = effective_deadline - now_mono
+                if remaining_budget <= 0:
+                    raise asyncio.TimeoutError("Deadline exceeded before pipeline dispatch")
+
                 # Process through pipeline with proper metadata AND audio_data for voice biometrics
                 pipeline_result = await asyncio.wait_for(
                     self.pipeline.process_async(
@@ -2197,29 +2262,37 @@ class JARVISVoiceAPI:
                         user_name=(
                             getattr(self.jarvis, "user_name", "Sir") if self.jarvis else "Sir"
                         ),
-                        metadata={"source": "voice_api", "jarvis_instance": self.jarvis},
+                        metadata={
+                            "source": "voice_api",
+                            "jarvis_instance": self.jarvis,
+                            "deadline_monotonic": effective_deadline,
+                        },
                         audio_data=audio_bytes,  # CRITICAL: Pass audio for VIBA/PAVA voice verification
                     ),
-                    timeout=35.0,  # 35 second timeout for API calls (to accommodate weather)
+                    # Safety net only; inner layers consume deadline_monotonic.
+                    timeout=max(1.0, remaining_budget + 0.5),
                 )
 
                 # Extract response from pipeline result
+                default_response = "I processed your command, Sir."
                 if isinstance(pipeline_result, dict):
-                    response = pipeline_result.get("response", "I processed your command, Sir.")
-                    # If we got a lock/unlock response, use it directly
-                    if pipeline_result.get("type") in [
-                        "voice_unlock",
-                        "screen_lock",
-                        "screen_unlock",
-                    ]:
-                        response = pipeline_result.get("response", response)
+                    response = self._coerce_text(
+                        pipeline_result.get("response"),
+                        fallback=default_response,
+                    )
                 else:
-                    response = str(pipeline_result)
+                    response = self._coerce_text(
+                        pipeline_result,
+                        fallback=default_response,
+                    )
 
-                logger.info(f"[JARVIS API] Pipeline response: '{response[:100]}...' (truncated)")
+                logger.info(
+                    "[JARVIS API] Pipeline response: '%s...' (truncated)",
+                    self._preview_text(response, limit=100),
+                )
             except asyncio.TimeoutError:
                 logger.error(
-                    f"[JARVIS API] Command processing timed out after 35s: '{command.text}'"
+                    f"[JARVIS API] Command processing timed out (deadline budget exhausted): '{command.text}'"
                 )
                 # For weather commands, open the Weather app as fallback
                 if any(
@@ -3554,7 +3627,7 @@ class JARVISVoiceAPI:
                             response = f"I encountered an error: {str(e)}. Please try again."
                     else:
                         # Provide basic response without full personality
-                        if "weather" in data["text"].lower():
+                        if "weather" in command_text.lower():
                             # Try to use weather system even in limited mode
                             try:
                                 # First, try to get the initialized weather system
@@ -3603,7 +3676,7 @@ class JARVISVoiceAPI:
                                     )
 
                                     # Get weather with vision
-                                    result = await weather_system.get_weather(data["text"])
+                                    result = await weather_system.get_weather(command_text)
 
                                     if result.get("success") and result.get("formatted_response"):
                                         response = result["formatted_response"]
@@ -3658,15 +3731,15 @@ class JARVISVoiceAPI:
                                     response = "I encountered an error accessing the weather system. I've opened the Weather app for manual viewing."
                                 except Exception:
                                     response = "I'm having difficulty accessing weather data at the moment."
-                        elif "time" in data["text"].lower():
+                        elif "time" in command_text.lower():
                             response = f"The current time is {datetime.now().strftime('%I:%M %p')}."
                         else:
                             # Natural varied fallback for unknown commands
                             fallback_responses = [
-                                f"I understand you said '{data['text']}', but I'm still initializing my full capabilities.",
-                                f"I heard '{data['text']}'. Let me get my systems fully online to help you better.",
-                                f"Got it - '{data['text']}'. My intelligence systems are warming up.",
-                                f"I registered '{data['text']}'. Give me a moment to bring all systems online.",
+                                f"I understand you said '{command_text}', but I'm still initializing my full capabilities.",
+                                f"I heard '{command_text}'. Let me get my systems fully online to help you better.",
+                                f"Got it - '{command_text}'. My intelligence systems are warming up.",
+                                f"I registered '{command_text}'. Give me a moment to bring all systems online.",
                             ]
                             response = random.choice(
                                 fallback_responses
@@ -3977,12 +4050,60 @@ class JARVISVoiceAPI:
             )
 
 
-# Create and export the router instance
-jarvis_api = JARVISVoiceAPI()
-router = jarvis_api.router
+# v265.6: Deferred singleton — constructor calls DynamicErrorHandler() and
+# _register_routes() which can fail if dependencies aren't ready at import
+# time. Lazy getter defers construction to first actual use (typically
+# during main.py's voice API setup, well after the event loop is running).
+_jarvis_api_instance: Optional["JARVISVoiceAPI"] = None
+
+
+def get_jarvis_api() -> Optional["JARVISVoiceAPI"]:
+    """Lazy singleton getter for JARVISVoiceAPI."""
+    global _jarvis_api_instance
+    if _jarvis_api_instance is None:
+        try:
+            _jarvis_api_instance = JARVISVoiceAPI()
+        except Exception as e:
+            logger.error("[JARVIS API] JARVISVoiceAPI initialization failed: %s", e)
+    return _jarvis_api_instance
+
+
+def get_voice_router():
+    """Lazy getter for the FastAPI router (depends on JARVISVoiceAPI)."""
+    global _jarvis_core_routes_included
+    api = get_jarvis_api()
+    if api and not _jarvis_core_routes_included:
+        router.include_router(api.router)
+        _jarvis_core_routes_included = True
+    return router
+
+
+# Backward-compatible module-level names.
+# Production callers (main.py, parallel_initializer, unified_websocket)
+# already use lazy imports inside function bodies.
+# New code should use get_jarvis_api() / get_voice_router().
+jarvis_api: Optional["JARVISVoiceAPI"] = None
 
 # Initialize global CoreML engine (if available)
 coreml_engine: Optional[CoreMLVoiceEngineBridge] = None
+_coreml_worker_task: Optional[asyncio.Task] = None
+
+
+def _ensure_coreml_worker_started() -> None:
+    """Start CoreML async worker when a running event loop is available."""
+    global _coreml_worker_task
+
+    if coreml_engine is None:
+        return
+    if _coreml_worker_task is not None and not _coreml_worker_task.done():
+        return
+
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        return
+
+    _coreml_worker_task = loop.create_task(coreml_engine.process_voice_queue_worker())
 
 if COREML_AVAILABLE:
     try:
@@ -4039,10 +4160,22 @@ if COREML_AVAILABLE:
                 },
             )
 
-            # Start background queue worker
+            # Start background queue worker only when an event loop is active.
+            # Import-time execution can occur before asyncio startup.
             import asyncio
 
-            asyncio.create_task(coreml_engine.process_voice_queue_worker())
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                loop = None
+
+            if loop is not None:
+                _coreml_worker_task = loop.create_task(coreml_engine.process_voice_queue_worker())
+            else:
+                logger.info(
+                    "[CoreML] No running event loop during import; "
+                    "voice queue worker will start when loop is available"
+                )
 
             logger.info("[CoreML] CoreML Voice Engine initialized successfully")
             logger.info(f"[CoreML] VAD model: {vad_model_path}")
@@ -4093,6 +4226,7 @@ async def detect_voice_coreml(
         raise HTTPException(
             status_code=503, detail="CoreML engine not available - models not loaded"
         )
+    _ensure_coreml_worker_started()
 
     try:
         # Decode base64 audio
@@ -4132,6 +4266,7 @@ async def detect_vad_coreml(audio_data: str, priority: int = 0):
     """
     if not coreml_engine:
         raise HTTPException(status_code=503, detail="CoreML engine not available")
+    _ensure_coreml_worker_started()
 
     try:
         import base64
@@ -4164,6 +4299,7 @@ async def train_speaker_coreml(audio_data: str, is_user: bool = True):
     """
     if not coreml_engine:
         raise HTTPException(status_code=503, detail="CoreML engine not available")
+    _ensure_coreml_worker_started()
 
     try:
         import base64

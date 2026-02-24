@@ -285,10 +285,11 @@ class ActionExecutorRegistry:
                         action_type = ActionType(action_type_str)
                         module_name = executor_config['module']
                         function_name = executor_config['function']
-                        
-                        # Dynamic import
-                        module = __import__(module_name, fromlist=[function_name])
-                        executor_func = getattr(module, function_name)
+
+                        executor_func = self._load_executor_function(
+                            module_name,
+                            function_name,
+                        )
                         
                         self.register(action_type, executor_func)
                     except Exception as e:
@@ -298,11 +299,34 @@ class ActionExecutorRegistry:
             
         # Register default executors if not loaded from config
         self._register_default_executors()
+
+    def _load_executor_function(self, module_name: str, function_name: str) -> Callable:
+        """Load executor function with namespace fallback for cross-runtime compatibility."""
+        module_candidates = [module_name]
+
+        # Support historical config paths (`api.*`) and package paths (`backend.api.*`)
+        if module_name.startswith("api."):
+            module_candidates.append(f"backend.{module_name}")
+        elif module_name.startswith("backend.api."):
+            module_candidates.append(module_name.replace("backend.", "", 1))
+
+        last_error: Optional[Exception] = None
+        for candidate in dict.fromkeys(module_candidates):
+            try:
+                module = __import__(candidate, fromlist=[function_name])
+                return getattr(module, function_name)
+            except Exception as e:
+                last_error = e
+
+        raise ImportError(
+            f"Unable to import '{function_name}' from '{module_name}' "
+            f"(candidates: {module_candidates})"
+        ) from last_error
         
     def _register_default_executors(self):
         """Register default executors for core actions"""
         from .action_executors import (
-            unlock_system, open_application, perform_search,
+            unlock_system, open_application, navigate_to_target, perform_search,
             check_resource, create_item, mute_notifications,
             handle_generic_action,
         )
@@ -310,6 +334,7 @@ class ActionExecutorRegistry:
         default_executors = {
             ActionType.UNLOCK: unlock_system,
             ActionType.OPEN_APP: open_application,
+            ActionType.NAVIGATE: navigate_to_target,
             ActionType.SEARCH: perform_search,
             ActionType.CHECK: check_resource,
             ActionType.CREATE: create_item,

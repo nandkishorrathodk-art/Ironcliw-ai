@@ -56,6 +56,12 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+# v266.0: Mmap thrash detection via vm_stat pageins
+THRASH_PAGEIN_HEALTHY = int(os.getenv("THRASH_PAGEIN_HEALTHY", "100"))
+THRASH_PAGEIN_WARNING = int(os.getenv("THRASH_PAGEIN_WARNING", "500"))
+THRASH_PAGEIN_EMERGENCY = int(os.getenv("THRASH_PAGEIN_EMERGENCY", "2000"))
+THRASH_SUSTAINED_SECONDS = int(os.getenv("THRASH_SUSTAINED_SECONDS", "10"))
+
 
 # ============================================================================
 # Data Models
@@ -194,9 +200,11 @@ class PredictiveMemoryPlanner:
             OptimizationStrategy.CACHE_PRUNING: 50,
             OptimizationStrategy.LAZY_LOADING: 100,
             OptimizationStrategy.AGGRESSIVE_GC: 200,
-            OptimizationStrategy.COMPONENT_UNLOAD: 300,
+            # v266.0: COMPONENT_UNLOAD now actually unloads the LLM model (4-8GB)
+            OptimizationStrategy.COMPONENT_UNLOAD: 6000,
             OptimizationStrategy.BUFFER_REDUCTION: 150,
-            OptimizationStrategy.EMERGENCY_CLEANUP: 500,
+            # v266.0: EMERGENCY_CLEANUP is gc.collect + flush — realistic estimate
+            OptimizationStrategy.EMERGENCY_CLEANUP: 50,
             OptimizationStrategy.PREDICTIVE_PREEMPT: 75
         }
         return impact_estimates.get(strategy, 50)
@@ -412,6 +420,21 @@ class MemoryQuantizer:
         # Component tracking
         self.tracked_components: Set[str] = set()
 
+        # v266.0: Memory reservation system
+        # Allows components to "reserve" RAM in accounting before actually allocating.
+        # Reservations are factored into tier calculations so other components see
+        # accurate available headroom.
+        self._memory_reservations: Dict[str, Tuple[float, str]] = {}
+
+        # v266.0: Thrash detection state
+        self._last_pageins: Optional[int] = None
+        self._last_pagein_time: float = 0.0
+        self._pagein_rate: float = 0.0  # pageins/sec
+        self._thrash_state: str = "healthy"  # healthy, thrashing, emergency
+        self._thrash_warning_since: float = 0.0
+        self._thrash_callbacks: List[Callable] = []
+        self._unload_callbacks: List[Callable] = []
+
         logger.info("Advanced Memory Quantizer initialized")
         logger.info(f"  Config: {self.config}")
         logger.info(f"  UAE: {'✅' if uae_engine else '❌'}")
@@ -455,6 +478,21 @@ class MemoryQuantizer:
         # inactive and purgeable can be freed instantly
         macos_pressure_percent = self._calculate_macos_memory_pressure(mem)
 
+        # v266.0: Factor in memory reservations from other components
+        reserved_gb = self.get_total_reserved_gb()
+        if reserved_gb > 0:
+            reserved_bytes = reserved_gb * 1024 * 1024 * 1024
+            # Recalculate pressure including reservations as "used"
+            wired = getattr(mem, 'wired', 0)
+            active = getattr(mem, 'active', 0)
+            compressed = getattr(mem, 'compressed', 0) if hasattr(mem, 'compressed') else 0
+            effective_used = (wired + active + compressed) + reserved_bytes
+            macos_pressure_percent = min(100.0, (effective_used / mem.total) * 100)
+            logger.debug(
+                f"[MemReserve] Adjusted pressure: {macos_pressure_percent:.1f}% "
+                f"(+{reserved_gb:.2f}GB reserved)"
+            )
+
         # Calculate tier based on macOS kernel pressure, not psutil percent
         tier = self._calculate_tier_macos(pressure, macos_pressure_percent, swap)
 
@@ -476,7 +514,78 @@ class MemoryQuantizer:
                 'wired_gb': getattr(mem, 'wired', 0) / (1024 ** 3),
                 'active_gb': getattr(mem, 'active', 0) / (1024 ** 3),
                 'inactive_gb': getattr(mem, 'inactive', 0) / (1024 ** 3),
-                'compressed_gb': getattr(mem, 'compressed', 0) / (1024 ** 3) if hasattr(mem, 'compressed') else 0
+                'compressed_gb': getattr(mem, 'compressed', 0) / (1024 ** 3) if hasattr(mem, 'compressed') else 0,
+                'reserved_gb': reserved_gb
+            }
+        )
+
+        self.current_metrics = metrics
+        return metrics
+
+    async def get_current_metrics_async(self) -> MemoryMetrics:
+        """
+        Async version of get_current_metrics() - non-blocking memory_pressure call.
+
+        v266.0: Use this from async contexts (monitor loops, callbacks) to avoid
+        blocking the event loop with the memory_pressure subprocess. The psutil
+        calls are fast (<1ms) and safe to call synchronously; only the
+        memory_pressure subprocess (up to 2s) is made async.
+
+        The sync get_current_metrics() is preserved for backward compatibility
+        (called synchronously from backend/main.py and other non-async callers).
+        """
+        mem = psutil.virtual_memory()
+        swap = psutil.swap_memory()
+        process = psutil.Process()
+        process_mem = process.memory_info()
+
+        # Get system memory pressure (macOS specific - PRIMARY signal)
+        # v266.0: async subprocess instead of blocking subprocess.run()
+        pressure = await self._get_memory_pressure_async()
+
+        # Calculate macOS-aware memory pressure percentage
+        # macOS uses: wired + active + compressed as "truly used"
+        # inactive and purgeable can be freed instantly
+        macos_pressure_percent = self._calculate_macos_memory_pressure(mem)
+
+        # v266.0: Factor in memory reservations from other components
+        reserved_gb = self.get_total_reserved_gb()
+        if reserved_gb > 0:
+            reserved_bytes = reserved_gb * 1024 * 1024 * 1024
+            # Recalculate pressure including reservations as "used"
+            wired = getattr(mem, 'wired', 0)
+            active = getattr(mem, 'active', 0)
+            compressed = getattr(mem, 'compressed', 0) if hasattr(mem, 'compressed') else 0
+            effective_used = (wired + active + compressed) + reserved_bytes
+            macos_pressure_percent = min(100.0, (effective_used / mem.total) * 100)
+            logger.debug(
+                f"[MemReserve] Adjusted pressure: {macos_pressure_percent:.1f}% "
+                f"(+{reserved_gb:.2f}GB reserved)"
+            )
+
+        # Calculate tier based on macOS kernel pressure, not psutil percent
+        tier = self._calculate_tier_macos(pressure, macos_pressure_percent, swap)
+
+        metrics = MemoryMetrics(
+            timestamp=time.time(),
+            process_memory_gb=process_mem.rss / (1024 ** 3),
+            system_memory_gb=mem.total / (1024 ** 3),
+            system_memory_percent=macos_pressure_percent,  # Use macOS-aware calculation
+            system_memory_available_gb=mem.available / (1024 ** 3),
+            tier=tier,
+            pressure=pressure,
+            swap_used_gb=swap.used / (1024 ** 3),
+            page_faults=getattr(process_mem, 'pfaults', 0),
+            metadata={
+                'process_pid': os.getpid(),
+                'python_version': sys.version.split()[0],
+                'psutil_percent': mem.percent,  # Keep original for comparison
+                'macos_pressure_percent': macos_pressure_percent,
+                'wired_gb': getattr(mem, 'wired', 0) / (1024 ** 3),
+                'active_gb': getattr(mem, 'active', 0) / (1024 ** 3),
+                'inactive_gb': getattr(mem, 'inactive', 0) / (1024 ** 3),
+                'compressed_gb': getattr(mem, 'compressed', 0) / (1024 ** 3) if hasattr(mem, 'compressed') else 0,
+                'reserved_gb': reserved_gb
             }
         )
 
@@ -591,7 +700,7 @@ class MemoryQuantizer:
 
     def _get_memory_pressure(self) -> MemoryPressure:
         """
-        Get system memory pressure from macOS kernel (PRIMARY truth source)
+        Get system memory pressure from macOS kernel (PRIMARY truth source) - SYNC version.
 
         macOS kernel's memory_pressure is the MOST accurate indicator.
         It considers:
@@ -602,6 +711,10 @@ class MemoryQuantizer:
         - Memory allocation requests
 
         This is MORE reliable than simple percentage calculations!
+
+        NOTE: This calls subprocess.run() synchronously and blocks for up to 2s.
+        Use _get_memory_pressure_async() from async contexts to avoid blocking
+        the event loop. See v266.0 fix (same pattern as ECAPA v265.2).
         """
         try:
             import subprocess
@@ -613,33 +726,143 @@ class MemoryQuantizer:
             )
             output = result.stdout.lower()
 
-            # Parse the kernel's assessment
-            if 'critical' in output:
-                return MemoryPressure.CRITICAL
-            elif 'warn' in output:
-                return MemoryPressure.WARN
-            elif 'normal' in output:
-                return MemoryPressure.NORMAL
-
-            # Parse "system-wide memory free percentage" if available
-            if 'percentage' in output:
-                import re
-                match = re.search(r'percentage:\s*(\d+)%', output)
-                if match:
-                    free_percent = int(match.group(1))
-                    # macOS reports FREE percentage (opposite of used)
-                    if free_percent < 10:
-                        return MemoryPressure.CRITICAL
-                    elif free_percent < 25:
-                        return MemoryPressure.WARN
-                    else:
-                        return MemoryPressure.NORMAL
+            parsed = self._parse_memory_pressure_output(output)
+            if parsed is not None:
+                return parsed
 
         except Exception as e:
             logger.debug(f"memory_pressure command failed: {e}")
 
         # Fallback: Use conservative thresholds based on TRUE pressure
-        # NOT psutil's percentage which includes inactive pages
+        return self._fallback_pressure_from_cached_metrics()
+
+    async def _get_memory_pressure_async(self) -> MemoryPressure:
+        """
+        Get system memory pressure from macOS kernel - ASYNC non-blocking version.
+
+        v266.0: Replaces subprocess.run() with asyncio.create_subprocess_exec()
+        to avoid blocking the event loop for up to 2s per call. Same pattern as
+        ECAPA v265.2 (importlib) and ChromaDB v265.2 (import) fixes.
+
+        Used by get_current_metrics_async() and _monitor_loop().
+        """
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                'memory_pressure',
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout_bytes, _ = await asyncio.wait_for(proc.communicate(), timeout=2.0)
+            output = stdout_bytes.decode('utf-8', errors='replace').lower()
+
+            parsed = self._parse_memory_pressure_output(output)
+            if parsed is not None:
+                return parsed
+
+        except asyncio.TimeoutError:
+            logger.debug("memory_pressure command timed out (2s)")
+        except FileNotFoundError:
+            logger.debug("memory_pressure command not found")
+        except Exception as e:
+            logger.debug(f"memory_pressure failed: {e}")
+
+        # Fallback: Use conservative thresholds based on TRUE pressure
+        return self._fallback_pressure_from_cached_metrics()
+
+    async def _get_pagein_rate_async(self) -> float:
+        """Get pageins/sec from vm_stat delta between two samples.
+
+        Uses the 'Pageins' line from vm_stat. Returns pageins/sec since
+        last call, or 0.0 on first call or error.
+        """
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                'vm_stat',
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=2.0)
+            output = stdout.decode('utf-8', errors='replace')
+
+            # Parse "Pageins:" line
+            current_pageins = None
+            for line in output.splitlines():
+                if 'Pageins' in line or 'pageins' in line:
+                    # Format: "Pageins:                          12345."
+                    parts = line.split(':')
+                    if len(parts) >= 2:
+                        num_str = parts[1].strip().rstrip('.')
+                        try:
+                            current_pageins = int(num_str)
+                        except ValueError:
+                            pass
+                    break
+
+            if current_pageins is None:
+                return 0.0
+
+            now = time.time()
+
+            if self._last_pageins is not None and self._last_pagein_time > 0:
+                elapsed = now - self._last_pagein_time
+                if elapsed > 0:
+                    delta = current_pageins - self._last_pageins
+                    rate = delta / elapsed
+                    self._last_pageins = current_pageins
+                    self._last_pagein_time = now
+                    return max(0.0, rate)
+
+            # First call — just store baseline
+            self._last_pageins = current_pageins
+            self._last_pagein_time = now
+            return 0.0
+
+        except asyncio.TimeoutError:
+            return 0.0
+        except FileNotFoundError:
+            return 0.0
+        except Exception:
+            return 0.0
+
+    def _parse_memory_pressure_output(self, output: str) -> Optional[MemoryPressure]:
+        """
+        Parse the output of the memory_pressure command.
+
+        Returns the parsed MemoryPressure, or None if parsing fails.
+        Shared by both sync and async paths.
+        """
+        # Parse the kernel's assessment
+        if 'critical' in output:
+            return MemoryPressure.CRITICAL
+        elif 'warn' in output:
+            return MemoryPressure.WARN
+        elif 'normal' in output:
+            return MemoryPressure.NORMAL
+
+        # Parse "system-wide memory free percentage" if available
+        if 'percentage' in output:
+            import re
+            match = re.search(r'percentage:\s*(\d+)%', output)
+            if match:
+                free_percent = int(match.group(1))
+                # macOS reports FREE percentage (opposite of used)
+                if free_percent < 10:
+                    return MemoryPressure.CRITICAL
+                elif free_percent < 25:
+                    return MemoryPressure.WARN
+                else:
+                    return MemoryPressure.NORMAL
+
+        return None
+
+    def _fallback_pressure_from_cached_metrics(self) -> MemoryPressure:
+        """
+        Fallback pressure determination when memory_pressure command is unavailable.
+
+        Uses conservative thresholds based on TRUE macOS pressure percentage
+        (wired + active + compressed), NOT psutil's percentage which includes
+        inactive pages.
+        """
         if self.current_metrics:
             pressure = self.current_metrics.metadata.get('macos_pressure_percent', 0)
             if pressure > 90:
@@ -762,8 +985,22 @@ class MemoryQuantizer:
             gc.collect(2)
 
         elif strategy == OptimizationStrategy.COMPONENT_UNLOAD:
-            # Unload non-critical components
-            logger.debug("Component unload requested")
+            # v266.0: Fire registered unload callbacks
+            if self._unload_callbacks:
+                logger.warning(
+                    f"[ComponentUnload] Firing {len(self._unload_callbacks)} unload callback(s) "
+                    f"(tier={self.current_tier.value})"
+                )
+                for callback in self._unload_callbacks:
+                    try:
+                        if asyncio.iscoroutinefunction(callback):
+                            await callback(self.current_tier)
+                        else:
+                            callback(self.current_tier)
+                    except Exception as e:
+                        logger.error(f"[ComponentUnload] Callback error: {e}")
+            else:
+                logger.debug("Component unload requested but no callbacks registered")
 
         elif strategy == OptimizationStrategy.BUFFER_REDUCTION:
             # Reduce buffer sizes
@@ -808,7 +1045,9 @@ class MemoryQuantizer:
         while self.monitoring:
             try:
                 # Get current metrics
-                metrics = self.get_current_metrics()
+                # v266.0: use async variant to avoid blocking event loop
+                # with subprocess.run(['memory_pressure']) for up to 2s
+                metrics = await self.get_current_metrics_async()
                 self.metrics_history.append(metrics)
                 self.planner.add_metrics(metrics)
 
@@ -816,6 +1055,10 @@ class MemoryQuantizer:
                 if metrics.tier != self.current_tier:
                     await self._handle_tier_change(self.current_tier, metrics.tier)
                     self.current_tier = metrics.tier
+
+                # v266.0: Mmap thrash detection via vm_stat pageins
+                self._pagein_rate = await self._get_pagein_rate_async()
+                await self._check_thrash_state()
 
                 # Learn patterns for tracked components
                 for component in self.tracked_components:
@@ -871,9 +1114,118 @@ class MemoryQuantizer:
         """Register callback for tier changes"""
         self.tier_change_callbacks.append(callback)
 
+    def register_thrash_callback(self, callback: Callable) -> None:
+        """Register callback for thrash state changes.
+
+        Callback receives one argument: 'healthy', 'thrashing', or 'emergency'.
+        Called when state transitions (not on every check).
+        """
+        self._thrash_callbacks.append(callback)
+
+    def register_unload_callback(self, callback: Callable) -> None:
+        """Register callback for COMPONENT_UNLOAD strategy.
+
+        Callback receives one argument: the current MemoryTier.
+        Called when the system enters CRITICAL or EMERGENCY tier and
+        the COMPONENT_UNLOAD optimization strategy fires. Use this to
+        unload heavy components (e.g., the local LLM model) to free RAM.
+        """
+        self._unload_callbacks.append(callback)
+
+    async def _check_thrash_state(self) -> None:
+        """Check pagein rate and transition thrash state if needed."""
+        rate = self._pagein_rate
+        now = time.time()
+        old_state = self._thrash_state
+
+        if rate >= THRASH_PAGEIN_EMERGENCY:
+            new_state = "emergency"
+        elif rate >= THRASH_PAGEIN_WARNING:
+            if self._thrash_warning_since == 0:
+                self._thrash_warning_since = now
+            if now - self._thrash_warning_since >= THRASH_SUSTAINED_SECONDS:
+                new_state = "thrashing"
+            else:
+                return  # Still accumulating sustained readings
+        else:
+            self._thrash_warning_since = 0.0
+            new_state = "healthy"
+
+        if new_state != old_state:
+            self._thrash_state = new_state
+            logger.warning(
+                f"[ThrashDetect] State change: {old_state} -> {new_state} "
+                f"(pageins/sec: {rate:.0f})"
+            )
+            for callback in self._thrash_callbacks:
+                try:
+                    if asyncio.iscoroutinefunction(callback):
+                        await callback(new_state)
+                    else:
+                        callback(new_state)
+                except Exception as e:
+                    logger.debug(f"Thrash callback error: {e}")
+
     def track_component(self, component_name: str):
         """Track memory usage for a component"""
         self.tracked_components.add(component_name)
+
+    # ========================================================================
+    # v266.0: Memory Reservation System
+    # ========================================================================
+
+    def reserve_memory(self, gb: float, component: str) -> str:
+        """
+        Reserve memory in accounting. Returns reservation ID.
+
+        Components call this BEFORE allocating large blocks (e.g., model loading).
+        The reservation is factored into pressure calculations so other components
+        see accurate available headroom. Call release_reservation() after the
+        actual allocation completes (success or failure).
+
+        Args:
+            gb: Amount of memory to reserve in gigabytes.
+            component: Name of the reserving component (for logging/debugging).
+
+        Returns:
+            Reservation ID string to pass to release_reservation().
+        """
+        import uuid
+        reservation_id = f"res_{component}_{uuid.uuid4().hex[:8]}"
+        self._memory_reservations[reservation_id] = (gb, component)
+        logger.info(
+            f"[MemReserve] Reserved {gb:.2f}GB for {component} (id={reservation_id})"
+        )
+        return reservation_id
+
+    def release_reservation(self, reservation_id: str) -> None:
+        """
+        Release a memory reservation.
+
+        Call this after the reserved memory has been physically allocated
+        (the OS now tracks it in wired/active) or if the allocation failed.
+
+        Args:
+            reservation_id: The ID returned by reserve_memory().
+        """
+        if reservation_id in self._memory_reservations:
+            gb, component = self._memory_reservations.pop(reservation_id)
+            logger.info(
+                f"[MemReserve] Released {gb:.2f}GB from {component} (id={reservation_id})"
+            )
+
+    def get_total_reserved_gb(self) -> float:
+        """Get total reserved memory in GB across all active reservations."""
+        return sum(gb for gb, _ in self._memory_reservations.values())
+
+    def get_reservations(self) -> Dict[str, Tuple[float, str]]:
+        """
+        Get all active reservations.
+
+        Returns:
+            Dict mapping reservation_id -> (gb, component).
+        """
+        return dict(self._memory_reservations)
 
     # ========================================================================
     # UAE/SAI Integration

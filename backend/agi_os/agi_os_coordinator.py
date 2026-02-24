@@ -200,6 +200,9 @@ class AGIOSCoordinator:
 
         # Component status
         self._component_status: Dict[str, ComponentStatus] = {}
+        # Phase status is tracked separately from runtime components.
+        # Phase failures are startup diagnostics, not live component health.
+        self._phase_status: Dict[str, ComponentStatus] = {}
 
         # Configuration
         self._config = {
@@ -217,6 +220,12 @@ class AGIOSCoordinator:
         # v264.0: Keep recent init durations for dynamic per-component timeouts.
         # This adapts startup deadlines to observed behavior across restarts.
         self._component_init_history: Dict[str, List[float]] = {}
+        # v265.6: Background recovery tracking — bounded retries per component.
+        # Maps component name → number of recovery attempts made so far.
+        self._recovery_attempts: Dict[str, int] = {}
+        self._recovery_max_attempts: int = int(
+            _env_float("JARVIS_AGI_OS_RECOVERY_MAX_ATTEMPTS", 3.0)
+        )
 
         # v253.4: Track registered callbacks for cleanup on stop()
         self._agent_status_callback: Optional[Any] = None
@@ -274,6 +283,8 @@ class AGIOSCoordinator:
 
         self._state = AGIOSState.INITIALIZING
         self._started_at = datetime.now()
+        self._component_status.clear()
+        self._phase_status.clear()
         # v255.0: Store memory mode for use by component and neural mesh guards
         self._memory_mode = memory_mode or os.getenv("JARVIS_STARTUP_MEMORY_MODE", "local_full")
         logger.info("Starting AGI OS... (memory_mode=%s)", self._memory_mode)
@@ -327,8 +338,9 @@ class AGIOSCoordinator:
         #   neural_mesh: bridge needs ~47s, agents ~22s → needs 80-90s. Set 100s.
         #   hybrid: 5 (just object construction, <1s typical)
         #   screen_analyzer: 25 (fixed Py3.9 threading, faster now)
-        #   components_connected: 10 (lightweight wiring, <5s typical)
-        # New total: 35+45+100+5+25+10 = 220s (fits 290s budget with 70s spare)
+        #   components_connected: 15 (lightweight wiring + callback setup; bulk
+        #     tool registration moved to background task in v265.6)
+        # New total: 35+45+100+5+25+15 = 225s (fits 290s budget with 65s spare)
         phase_timeouts = {
             "agi_os_components": _env_float(
                 "JARVIS_AGI_OS_PHASE_COMPONENTS_TIMEOUT", 35.0
@@ -346,7 +358,7 @@ class AGIOSCoordinator:
                 "JARVIS_AGI_OS_PHASE_SCREEN_TIMEOUT", 25.0
             ),
             "components_connected": _env_float(
-                "JARVIS_AGI_OS_PHASE_CONNECT_TIMEOUT", 10.0
+                "JARVIS_AGI_OS_PHASE_CONNECT_TIMEOUT", 15.0
             ),
         }
 
@@ -422,6 +434,11 @@ class AGIOSCoordinator:
                     timeout_seconds=timeout_seconds,
                 )
                 elapsed = time.monotonic() - started
+                self._phase_status[f"phase_{step_key}"] = ComponentStatus(
+                    name=f"phase_{step_key}",
+                    available=True,
+                    healthy=True,
+                )
                 await _report(step_key, f"{success_detail} ({elapsed:.1f}s)")
                 return True
             except asyncio.TimeoutError as e:
@@ -430,7 +447,7 @@ class AGIOSCoordinator:
                     step_key,
                     timeout_seconds,
                 )
-                self._component_status[f"phase_{step_key}"] = ComponentStatus(
+                self._phase_status[f"phase_{step_key}"] = ComponentStatus(
                     name=f"phase_{step_key}",
                     available=False,
                     healthy=False,
@@ -445,7 +462,7 @@ class AGIOSCoordinator:
                 return False
             except Exception as e:
                 logger.warning("AGI OS phase '%s' failed: %s", step_key, e)
-                self._component_status[f"phase_{step_key}"] = ComponentStatus(
+                self._phase_status[f"phase_{step_key}"] = ComponentStatus(
                     name=f"phase_{step_key}",
                     available=False,
                     healthy=False,
@@ -1307,82 +1324,115 @@ class AGIOSCoordinator:
         # Speaker Verification Service (50% of budget — heaviest, loads ECAPA-TDNN)
         # v236.1: Use singleton to avoid duplicate instances (double memory,
         # competing encoder loads, enrollment updates not shared).
-        try:
-            from voice.speaker_verification_service import get_speaker_verification_service
-            speaker_timeout = min(
-                _env_float("JARVIS_AGI_OS_SPEAKER_TIMEOUT", intel_budget * 0.5),
-                _intel_remaining(),
+        # v265.6: Explicit None guard — if learning_db failed, speaker_verification
+        # would receive None and call methods on it → AttributeError. Now we mark
+        # speaker_verification as unavailable with a clear dependency-failure error
+        # rather than allowing a silent crash.
+        if not self._learning_db:
+            logger.warning(
+                "Speaker verification skipped: learning_db dependency unavailable"
             )
-
-            async def _load_speaker_verification() -> Any:
-                return await get_speaker_verification_service(
-                    learning_db=self._learning_db
-                )
-
-            self._speaker_verification = await self._run_timed_init_step(
-                "speaker_verification",
-                _load_speaker_verification,
-                timeout_seconds=speaker_timeout,
-            )
-            self._component_status['speaker_verification'] = ComponentStatus(
-                name='speaker_verification',
-                available=True
-            )
-            logger.info("Speaker verification service loaded")
-        except Exception as e:
-            logger.warning("Speaker verification not available: %s", e)
             self._component_status['speaker_verification'] = ComponentStatus(
                 name='speaker_verification',
                 available=False,
-                error=str(e)
+                error="dependency: learning_db unavailable",
             )
+        else:
+            try:
+                from voice.speaker_verification_service import get_speaker_verification_service
+                speaker_timeout = min(
+                    _env_float("JARVIS_AGI_OS_SPEAKER_TIMEOUT", intel_budget * 0.5),
+                    _intel_remaining(),
+                )
+
+                async def _load_speaker_verification() -> Any:
+                    return await get_speaker_verification_service(
+                        learning_db=self._learning_db
+                    )
+
+                self._speaker_verification = await self._run_timed_init_step(
+                    "speaker_verification",
+                    _load_speaker_verification,
+                    timeout_seconds=speaker_timeout,
+                )
+                self._component_status['speaker_verification'] = ComponentStatus(
+                    name='speaker_verification',
+                    available=True
+                )
+                logger.info("Speaker verification service loaded")
+            except Exception as e:
+                logger.warning("Speaker verification not available: %s", e)
+                self._component_status['speaker_verification'] = ComponentStatus(
+                    name='speaker_verification',
+                    available=False,
+                    error=str(e)
+                )
         await self._report_init_progress(
             "speaker_verification",
             "Speaker verification initialization complete",
         )
 
         # Owner Identity Service (30% of budget)
-        try:
-            owner_identity_timeout = min(
-                _env_float("JARVIS_AGI_OS_OWNER_ID_TIMEOUT", intel_budget * 0.3),
-                _intel_remaining(),
+        # v265.6: Explicit None guard — if speaker_verification failed, owner_identity
+        # would pass None to get_owner_identity → downstream crash. Also guard against
+        # _run_timed_init_step returning None (which would break tuple unpacking).
+        if not self._speaker_verification:
+            logger.warning(
+                "Owner identity skipped: speaker_verification dependency unavailable"
             )
-
-            async def _load_owner_identity() -> tuple[Any, Any]:
-                service = await get_owner_identity(
-                    speaker_verification=self._speaker_verification,
-                    learning_db=self._learning_db
-                )
-                profile = await service.get_current_owner()
-                return service, profile
-
-            self._owner_identity, owner_profile = await self._run_timed_init_step(
-                "owner_identity",
-                _load_owner_identity,
-                timeout_seconds=owner_identity_timeout,
-            )
-            self._component_status['owner_identity'] = ComponentStatus(
-                name='owner_identity',
-                available=True
-            )
-            owner_name = getattr(owner_profile, "name", "unknown")
-            owner_confidence = getattr(
-                getattr(owner_profile, "identity_confidence", None),
-                "value",
-                "unknown",
-            )
-            logger.info(
-                "Owner identity service loaded - Owner: %s (confidence: %s)",
-                owner_name,
-                owner_confidence,
-            )
-        except Exception as e:
-            logger.warning("Owner identity service not available: %s", e)
             self._component_status['owner_identity'] = ComponentStatus(
                 name='owner_identity',
                 available=False,
-                error=str(e)
+                error="dependency: speaker_verification unavailable",
             )
+        else:
+            try:
+                owner_identity_timeout = min(
+                    _env_float("JARVIS_AGI_OS_OWNER_ID_TIMEOUT", intel_budget * 0.3),
+                    _intel_remaining(),
+                )
+
+                async def _load_owner_identity() -> tuple[Any, Any]:
+                    service = await get_owner_identity(
+                        speaker_verification=self._speaker_verification,
+                        learning_db=self._learning_db
+                    )
+                    profile = await service.get_current_owner()
+                    return service, profile
+
+                _oi_result = await self._run_timed_init_step(
+                    "owner_identity",
+                    _load_owner_identity,
+                    timeout_seconds=owner_identity_timeout,
+                )
+                # v265.6: Safe unpack — _run_timed_init_step may return None on error
+                if _oi_result is not None and isinstance(_oi_result, tuple) and len(_oi_result) == 2:
+                    self._owner_identity, owner_profile = _oi_result
+                else:
+                    raise ValueError(f"Unexpected result from owner_identity init: {type(_oi_result)}")
+
+                self._component_status['owner_identity'] = ComponentStatus(
+                    name='owner_identity',
+                    available=True
+                )
+                owner_name = getattr(owner_profile, "name", "unknown")
+                owner_confidence = getattr(
+                    getattr(owner_profile, "identity_confidence", None),
+                    "value",
+                    "unknown",
+                )
+                logger.info(
+                    "Owner identity service loaded - Owner: %s (confidence: %s)",
+                    owner_name,
+                    owner_confidence,
+                )
+            except Exception as e:
+                logger.warning("Owner identity service not available: %s", e)
+                self._component_status['owner_identity'] = ComponentStatus(
+                    name='owner_identity',
+                    available=False,
+                    error=str(e)
+                )
         await self._report_init_progress("owner_identity", "Owner identity initialization complete")
 
         elapsed = time.monotonic() - intel_start
@@ -1809,9 +1859,13 @@ class AGIOSCoordinator:
             self._action_orchestrator._uae_engine = self._uae_engine
             logger.info("UAE → Action Orchestrator connected")
 
-        # v239.0: Register Neural Mesh agent capabilities as tools in ToolRegistry
-        # This bridges the mesh (60+ agents) into the autonomy system so the agent
-        # runtime's THINK step can discover capabilities and ACT step can invoke them.
+        # v239.0 / v265.6: Register Neural Mesh agent capabilities as tools in
+        # ToolRegistry.  ROOT CAUSE FIX: The registration loop iterates 60+ agents ×
+        # 5-10 capabilities each = 300-600 tool constructions.  Under CPU pressure
+        # this takes 10-30s, which ALWAYS exceeded the 10s components_connected phase
+        # budget and triggered DEGRADED state.  Fix: move the heavyweight bulk
+        # registration to a background task so _connect_components() finishes in <2s.
+        # The health-aware lifecycle callback handles late registration naturally.
         if self._jarvis_bridge:
             try:
                 from autonomy.langchain_tools import (
@@ -1821,38 +1875,10 @@ class AGIOSCoordinator:
 
                 registry = ToolRegistry.get_instance()
                 default_timeout = float(os.getenv("MESH_TOOL_TIMEOUT", "30"))
-                registered = 0
-
-                for agent_name in self._jarvis_bridge.registered_agents:
-                    agent = self._jarvis_bridge.get_agent(agent_name)
-                    if agent is None:
-                        continue
-                    for capability in agent.capabilities:
-                        try:
-                            tool = NeuralMeshAgentTool(
-                                agent=agent,
-                                capability=capability,
-                                timeout_seconds=default_timeout,
-                            )
-                            registry.register(tool, replace=True)
-                            registered += 1
-                        except Exception:
-                            pass
-
-                logger.info(
-                    "Neural Mesh → ToolRegistry: %d capabilities registered from %d agents",
-                    registered,
-                    len(self._jarvis_bridge.registered_agents),
-                )
-
-                if registered == 0:
-                    logger.warning(
-                        "Neural Mesh → ToolRegistry: 0 capabilities registered — "
-                        "agents may have empty capability sets"
-                    )
 
                 # v239.0: Health-aware tool lifecycle — deregister on agent death,
                 # re-register on agent recovery. Uses AgentRegistry status callbacks.
+                # This is lightweight and runs inline (instant callback registration).
                 coordinator = getattr(self._jarvis_bridge, '_coordinator', None)
                 agent_registry = getattr(coordinator, '_registry', None) if coordinator else None
                 if agent_registry and hasattr(agent_registry, 'on_status_change'):
@@ -1906,6 +1932,56 @@ class AGIOSCoordinator:
                     self._agent_status_callback = _on_agent_status_change
                     self._agent_status_registry = agent_registry
                     logger.info("[MeshToolLifecycle] Health-aware tool lifecycle active")
+
+                # v265.6: Bulk registration runs as background task — doesn't block
+                # the components_connected phase budget. Tools become available
+                # progressively as agents are registered.
+                async def _register_mesh_tools_background():
+                    """Background bulk registration of Neural Mesh agent tools."""
+                    registered = 0
+                    total_agents = len(self._jarvis_bridge.registered_agents)
+                    for agent_name in self._jarvis_bridge.registered_agents:
+                        agent = self._jarvis_bridge.get_agent(agent_name)
+                        if agent is None:
+                            continue
+                        for capability in agent.capabilities:
+                            try:
+                                tool = NeuralMeshAgentTool(
+                                    agent=agent,
+                                    capability=capability,
+                                    timeout_seconds=default_timeout,
+                                )
+                                registry.register(tool, replace=True)
+                                registered += 1
+                            except Exception:
+                                pass
+                        # Yield control every 10 agents to avoid starving the event loop
+                        if registered % 50 == 0:
+                            await asyncio.sleep(0)
+
+                    logger.info(
+                        "Neural Mesh → ToolRegistry: %d capabilities registered "
+                        "from %d agents (background)",
+                        registered,
+                        total_agents,
+                    )
+                    if registered == 0:
+                        logger.warning(
+                            "Neural Mesh → ToolRegistry: 0 capabilities registered — "
+                            "agents may have empty capability sets"
+                        )
+
+                _task = asyncio.create_task(
+                    _register_mesh_tools_background(),
+                    name="mesh-tool-bulk-registration",
+                )
+                self._background_tasks.add(_task)
+                _task.add_done_callback(self._background_tasks.discard)
+                logger.info(
+                    "Neural Mesh tool registration deferred to background "
+                    "(%d agents queued)",
+                    len(self._jarvis_bridge.registered_agents),
+                )
 
             except Exception as e:
                 logger.warning("Mesh tool registration failed (non-fatal): %s", e)
@@ -1988,12 +2064,19 @@ class AGIOSCoordinator:
         (2) Added diagnostic logging of WHICH components are unavailable.
         (3) Added 'approval' to core check (always-required, was missing).
         """
+        # Runtime health must only consider actual components.
+        # Exclude historical phase markers if any exist in component status.
+        runtime_components = [
+            s for s in self._component_status.values()
+            if not str(s.name).startswith("phase_")
+        ]
+
         # v258.2: Partition components into active vs intentionally skipped.
         # Skipped components (error starts with "Skipped:") are excluded from
         # the health calculation — they were never expected to be available.
         _skipped = []
         _active = []
-        for s in self._component_status.values():
+        for s in runtime_components:
             if not s.available and s.error and str(s.error).startswith("Skipped:"):
                 _skipped.append(s)
             else:
@@ -2033,7 +2116,20 @@ class AGIOSCoordinator:
         return state
 
     async def _health_monitor_loop(self) -> None:
-        """Background task for health monitoring."""
+        """Background task for health monitoring.
+
+        v265.6: Extended with corrective recovery actions. Previously read-only
+        (detected failures but never attempted repair). Now: when state is
+        DEGRADED or OFFLINE, attempts bounded re-initialization of failed
+        components. Memory-pressure-skipped components are re-checked when
+        memory improves. Intelligence dependency chain recovered in order.
+        """
+        # v265.6: Stagger recovery — don't attempt on first health tick
+        _ticks_since_recovery = 0
+        _recovery_interval_ticks = max(
+            2, int(_env_float("JARVIS_AGI_OS_RECOVERY_INTERVAL_TICKS", 4.0))
+        )
+
         while self._state in [AGIOSState.ONLINE, AGIOSState.DEGRADED, AGIOSState.PAUSED]:
             try:
                 await asyncio.sleep(self._config['health_check_interval'])
@@ -2053,10 +2149,293 @@ class AGIOSCoordinator:
                     logger.info("State changed: %s -> %s", self._state.value, new_state.value)
                     self._state = new_state
 
+                # v265.6: Attempt recovery of failed components periodically
+                _ticks_since_recovery += 1
+                if (
+                    self._state in (AGIOSState.DEGRADED, AGIOSState.OFFLINE)
+                    and _ticks_since_recovery >= _recovery_interval_ticks
+                ):
+                    _ticks_since_recovery = 0
+                    await self._attempt_component_recovery()
+
+                    # Re-evaluate state after recovery
+                    post_state = self._determine_health_state()
+                    if post_state != self._state:
+                        logger.info(
+                            "State changed after recovery: %s -> %s",
+                            self._state.value, post_state.value,
+                        )
+                        self._state = post_state
+
             except asyncio.CancelledError:
                 break
             except Exception as e:
                 logger.exception("Health monitor error: %s", e)
+
+    async def _attempt_component_recovery(self) -> None:
+        """v265.6: Attempt re-initialization of failed/skipped components.
+
+        Recovery strategy:
+        1. Memory-skipped components — re-check memory, re-init if improved.
+        2. Core components (voice, events, approval, orchestrator) — retry init.
+        3. Intelligence chain (learning_db → speaker → owner) — sequential, respects deps.
+        4. Optional components (ghost_hands, ghost_display, neural_mesh bridge).
+
+        Bounded: each component gets at most _recovery_max_attempts tries.
+        """
+        _recovery_timeout = _env_float("JARVIS_AGI_OS_RECOVERY_TIMEOUT", 15.0)
+
+        # Collect components that are unavailable and haven't exhausted retries
+        failed = {}
+        skipped_memory = {}
+        for name, status in self._component_status.items():
+            if name.startswith("phase_"):
+                continue
+            if status.available:
+                continue
+            attempts = self._recovery_attempts.get(name, 0)
+            if attempts >= self._recovery_max_attempts:
+                continue
+            if status.error and str(status.error).startswith("Skipped:"):
+                skipped_memory[name] = status
+            else:
+                failed[name] = status
+
+        if not failed and not skipped_memory:
+            return
+
+        logger.info(
+            "[AGI-OS Recovery] Attempting recovery: %d failed, %d memory-skipped",
+            len(failed), len(skipped_memory),
+        )
+
+        # ── 1. Memory-skipped components: re-check memory pressure ──
+        if skipped_memory:
+            try:
+                import psutil as _ps_recov
+                _vm = _ps_recov.virtual_memory()
+                _avail_mb = _vm.available / (1024 * 1024)
+                _guard_min = _env_float("JARVIS_AGI_OS_COMPONENTS_GUARD_MIN_MB", 2000.0)
+
+                if _avail_mb > _guard_min * 1.2:
+                    # Memory has improved — attempt re-init of skipped components
+                    logger.info(
+                        "[AGI-OS Recovery] Memory improved (%.0fMB > %.0fMB threshold), "
+                        "re-initializing skipped components",
+                        _avail_mb, _guard_min * 1.2,
+                    )
+                    for name in list(skipped_memory):
+                        self._recovery_attempts[name] = self._recovery_attempts.get(name, 0) + 1
+                        try:
+                            result = await asyncio.wait_for(
+                                self._recover_single_component(name),
+                                timeout=_recovery_timeout,
+                            )
+                            if result is not None:
+                                self._component_status[name] = ComponentStatus(
+                                    name=name, available=True,
+                                )
+                                logger.info("[AGI-OS Recovery] %s recovered", name)
+                        except (asyncio.TimeoutError, Exception) as e:
+                            logger.warning("[AGI-OS Recovery] %s recovery failed: %s", name, e)
+                else:
+                    logger.debug(
+                        "[AGI-OS Recovery] Memory still low (%.0fMB), skipping memory-gated components",
+                        _avail_mb,
+                    )
+            except Exception:
+                pass
+
+        # ── 2. Core components ──
+        _core_recoverable = ["voice", "events", "approval", "orchestrator"]
+        for name in _core_recoverable:
+            if name not in failed:
+                continue
+            self._recovery_attempts[name] = self._recovery_attempts.get(name, 0) + 1
+            try:
+                result = await asyncio.wait_for(
+                    self._recover_single_component(name),
+                    timeout=_recovery_timeout,
+                )
+                if result is not None:
+                    self._component_status[name] = ComponentStatus(
+                        name=name, available=True,
+                    )
+                    logger.info("[AGI-OS Recovery] %s recovered", name)
+            except (asyncio.TimeoutError, Exception) as e:
+                logger.warning("[AGI-OS Recovery] %s recovery failed: %s", name, e)
+
+        # ── 3. Intelligence chain (sequential, respects dependencies) ──
+        _intel_chain = ["learning_db", "speaker_verification", "owner_identity"]
+        for name in _intel_chain:
+            if name not in failed:
+                continue
+            self._recovery_attempts[name] = self._recovery_attempts.get(name, 0) + 1
+            try:
+                result = await asyncio.wait_for(
+                    self._recover_single_component(name),
+                    timeout=_recovery_timeout,
+                )
+                if result is not None:
+                    self._component_status[name] = ComponentStatus(
+                        name=name, available=True,
+                    )
+                    logger.info("[AGI-OS Recovery] %s recovered", name)
+                else:
+                    # Dependency failed — skip downstream components
+                    logger.warning(
+                        "[AGI-OS Recovery] %s returned None, skipping downstream", name,
+                    )
+                    break
+            except (asyncio.TimeoutError, Exception) as e:
+                logger.warning(
+                    "[AGI-OS Recovery] %s recovery failed: %s — skipping downstream", name, e,
+                )
+                break
+
+        # ── 4. Optional components ──
+        _optional_recoverable = [
+            "neural_mesh", "ghost_hands", "ghost_display",
+            "notification_monitor", "system_event_monitor",
+            "hybrid_orchestrator", "screen_analyzer",
+        ]
+        for name in _optional_recoverable:
+            if name not in failed:
+                continue
+            self._recovery_attempts[name] = self._recovery_attempts.get(name, 0) + 1
+            try:
+                result = await asyncio.wait_for(
+                    self._recover_single_component(name),
+                    timeout=_recovery_timeout,
+                )
+                if result is not None:
+                    self._component_status[name] = ComponentStatus(
+                        name=name, available=True,
+                    )
+                    logger.info("[AGI-OS Recovery] %s recovered", name)
+            except (asyncio.TimeoutError, Exception) as e:
+                logger.warning("[AGI-OS Recovery] %s recovery failed: %s", name, e)
+
+    async def _recover_single_component(self, name: str) -> Any:
+        """v265.6: Attempt to re-initialize a single component by name.
+
+        Returns the initialized object on success, None on failure.
+        Maps component names to their factory/getter functions.
+        Intelligence chain components respect upstream dependencies.
+
+        Import paths match those used in the init methods:
+        - Core 4 (voice, events, approval, orchestrator): module-level imports
+        - Optional components: lazy imports matching _init_agi_os_components()
+        - Intelligence chain: lazy imports matching _init_intelligence_systems()
+        """
+        try:
+            # ── Core components (already imported at module level) ──
+            if name == "voice":
+                self._voice = await get_voice_communicator()
+                return self._voice
+
+            elif name == "events":
+                self._event_stream = await get_event_stream()
+                return self._event_stream
+
+            elif name == "approval":
+                self._approval_manager = await get_approval_manager()
+                return self._approval_manager
+
+            elif name == "orchestrator":
+                self._action_orchestrator = await start_action_orchestrator()
+                return self._action_orchestrator
+
+            # ── Optional components (lazy imports, same paths as init) ──
+            elif name == "ghost_hands":
+                from ghost_hands.orchestrator import get_ghost_hands
+                self._ghost_hands = await get_ghost_hands()
+                return self._ghost_hands
+
+            elif name == "ghost_display":
+                from vision.yabai_space_detector import get_ghost_manager
+                self._ghost_display = get_ghost_manager()
+                return self._ghost_display
+
+            elif name == "notification_monitor":
+                from backend.macos_helper.notification_monitor import (
+                    get_notification_monitor,
+                )
+                self._notification_monitor = await get_notification_monitor(
+                    auto_start=True,
+                )
+                return self._notification_monitor
+
+            elif name == "system_event_monitor":
+                from backend.macos_helper.system_event_monitor import (
+                    get_system_event_monitor,
+                )
+                self._system_event_monitor = await get_system_event_monitor(
+                    auto_start=True,
+                )
+                return self._system_event_monitor
+
+            # ── Intelligence chain (sequential, lazy imports) ──
+            elif name == "learning_db":
+                from core.hybrid_orchestrator import _get_learning_db
+                self._learning_db = await _get_learning_db()
+                return self._learning_db
+
+            elif name == "speaker_verification":
+                # Depends on learning_db — skip if upstream unavailable
+                if not self._learning_db:
+                    logger.debug(
+                        "[AGI-OS Recovery] speaker_verification skipped: learning_db unavailable"
+                    )
+                    return None
+                from voice.speaker_verification_service import (
+                    get_speaker_verification_service,
+                )
+                self._speaker_verification = await get_speaker_verification_service(
+                    learning_db=self._learning_db,
+                )
+                return self._speaker_verification
+
+            elif name == "owner_identity":
+                # Depends on speaker_verification + learning_db
+                if not self._speaker_verification:
+                    logger.debug(
+                        "[AGI-OS Recovery] owner_identity skipped: speaker_verification unavailable"
+                    )
+                    return None
+                service = await get_owner_identity(
+                    speaker_verification=self._speaker_verification,
+                    learning_db=self._learning_db,
+                )
+                self._owner_identity = service
+                return service
+
+            # ── Heavy components (limited recovery) ──
+            elif name == "neural_mesh":
+                if self._neural_mesh:
+                    health = await self._neural_mesh.health_check()
+                    if health.get("status") == "healthy":
+                        return self._neural_mesh
+                # Full re-init too heavy for background recovery
+                return None
+
+            elif name == "hybrid_orchestrator":
+                from core.hybrid_orchestrator import HybridOrchestrator
+                self._hybrid_orchestrator = HybridOrchestrator()
+                return self._hybrid_orchestrator
+
+            elif name == "screen_analyzer":
+                # Screen analyzer requires permission check + heavyweight init
+                # — defer to next restart
+                return None
+
+            else:
+                logger.debug("[AGI-OS Recovery] No recovery handler for: %s", name)
+                return None
+
+        except Exception as e:
+            logger.warning("[AGI-OS Recovery] %s factory error: %s", name, e)
+            return None
 
     async def _check_component_health(self) -> None:
         """Check health of all components.
@@ -2356,6 +2735,14 @@ class AGIOSCoordinator:
                     'error': status.error,
                 }
                 for name, status in self._component_status.items()
+            },
+            'phases': {
+                name: {
+                    'available': status.available,
+                    'healthy': status.healthy,
+                    'error': status.error,
+                }
+                for name, status in self._phase_status.items()
             },
             'stats': self._stats.copy(),
             'config': self._config.copy(),

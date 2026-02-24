@@ -32,6 +32,8 @@ class MacOSVoice:
         self.speech_queue = queue.Queue()
         self.speaking = False
         self.speech_thread = None
+        # v267.0: Track active say process for targeted kill (not killall)
+        self._current_say_process: Optional[subprocess.Popen] = None
 
         # Capture the event loop from the constructing thread so the
         # background speech thread can schedule async coroutines safely.
@@ -178,7 +180,18 @@ class MacOSVoice:
                 pass  # Fall through to legacy
 
         # Legacy: direct macOS say
-        subprocess.run(cmd + [processed_text])
+        # v267.0: Use Popen to track PID for targeted kill + start_new_session
+        # to isolate from parent signal group
+        proc = subprocess.Popen(
+            cmd + [processed_text],
+            start_new_session=True,
+        )
+        self._current_say_process = proc
+        try:
+            proc.wait()
+        finally:
+            if self._current_say_process is proc:
+                self._current_say_process = None
     
     def _process_text_for_speech(self, text: str) -> str:
         """Process text for better speech synthesis"""
@@ -233,7 +246,15 @@ class MacOSVoice:
                     return
             except ImportError:
                 pass
-        subprocess.run(['killall', 'say'], capture_output=True)
+        # v267.0: Kill only OUR say process, not all system-wide say processes
+        proc = self._current_say_process
+        if proc is not None:
+            try:
+                proc.kill()
+                proc.wait(timeout=2)
+            except (ProcessLookupError, subprocess.TimeoutExpired):
+                pass
+            self._current_say_process = None
         self.speaking = False
     
     def set_voice_mode(self, mode: str):

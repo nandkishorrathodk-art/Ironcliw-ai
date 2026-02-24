@@ -1676,14 +1676,21 @@ class UnifiedCommandProcessor:
 
     @staticmethod
     def _summarize_workspace_result(result: dict, intent: str) -> str:
-        """Generate a human-readable response from structured workspace data."""
+        """Generate a human-readable response from structured workspace data.
+
+        v266.0: Keys off the workspace_action field (from the agent's result dict
+        or the UCP's resolved action), NOT J-Prime's high-level intent.
+        Added formatting for send_email, draft_email_reply, create_calendar_event,
+        get_contacts, create_document, search_email, and handle_workspace_query.
+        """
+        # Email check
         if intent in ("check_email", "fetch_unread_emails"):
             count = result.get("count", 0)
             total = result.get("total_unread", count)
             if count == 0:
                 return "No unread emails found."
             emails = result.get("emails", [])
-            lines = [f"You have {total} unread emails. Here are the latest {count}:"]
+            lines = [f"You have {total} unread email{'s' if total != 1 else ''}. Here are the latest {count}:"]
             for em in emails[:5]:
                 subj = em.get("subject", "(no subject)")
                 sender = em.get("from", "unknown")
@@ -1691,21 +1698,96 @@ class UnifiedCommandProcessor:
             if count > 5:
                 lines.append(f"  ...and {count - 5} more")
             return "\n".join(lines)
+
+        # Calendar check
         elif intent in ("check_calendar", "check_calendar_events"):
             events = result.get("events", [])
             if not events:
                 return "No events on your calendar for this time period."
-            lines = [f"You have {len(events)} event(s):"]
+            lines = [f"You have {len(events)} event{'s' if len(events) != 1 else ''}:"]
             for ev in events[:5]:
                 summary = ev.get("summary", ev.get("title", "(untitled)"))
                 start = ev.get("start", "")
                 lines.append(f"  - {summary} ({start})")
             return "\n".join(lines)
-        elif intent == "workspace_summary":
-            # Prefer the agent's "brief" field, then "summary", then fallback
+
+        # Workspace summary / daily briefing
+        elif intent in ("workspace_summary", "daily_briefing"):
             return result.get("brief") or result.get("summary", "Workspace summary completed.")
+
+        # Send email
+        elif intent == "send_email":
+            if result.get("error"):
+                return f"Failed to send email: {result['error']}"
+            return result.get("message", "Email sent successfully.")
+
+        # Draft email
+        elif intent == "draft_email_reply":
+            if result.get("error"):
+                return f"Failed to create draft: {result['error']}"
+            return result.get("message", "Email draft created.")
+
+        # Create calendar event
+        elif intent == "create_calendar_event":
+            if result.get("error"):
+                return f"Failed to create event: {result['error']}"
+            return result.get("message", "Calendar event created.")
+
+        # Get contacts
+        elif intent == "get_contacts":
+            if result.get("error"):
+                return f"Failed to fetch contacts: {result['error']}"
+            contacts = result.get("contacts", [])
+            if not contacts:
+                return "No contacts found."
+            lines = [f"Found {len(contacts)} contact{'s' if len(contacts) != 1 else ''}:"]
+            for c in contacts[:5]:
+                name = c.get("name", "Unknown")
+                email = c.get("email", "")
+                lines.append(f"  - {name} ({email})" if email else f"  - {name}")
+            if len(contacts) > 5:
+                lines.append(f"  ...and {len(contacts) - 5} more")
+            return "\n".join(lines)
+
+        # Create document
+        elif intent == "create_document":
+            if result.get("error"):
+                return f"Failed to create document: {result['error']}"
+            return result.get("message", "Document created successfully.")
+
+        # Search email
+        elif intent == "search_email":
+            emails = result.get("emails", [])
+            if not emails:
+                return "No emails found matching your search."
+            lines = [f"Found {len(emails)} email{'s' if len(emails) != 1 else ''}:"]
+            for em in emails[:5]:
+                subj = em.get("subject", "(no subject)")
+                sender = em.get("from", "unknown")
+                lines.append(f"  - {subj} (from {sender})")
+            return "\n".join(lines)
+
+        # handle_workspace_query (keyword detector fallback) — pass through
+        elif intent == "handle_workspace_query":
+            # The keyword detector routes to a handler which returns its own result.
+            # Try to extract a meaningful response from common result fields.
+            if result.get("brief"):
+                return result["brief"]
+            if result.get("message"):
+                return result["message"]
+            if result.get("response"):
+                return str(result["response"])
+            if result.get("emails"):
+                return UnifiedCommandProcessor._summarize_workspace_result(result, "fetch_unread_emails")
+            if result.get("events"):
+                return UnifiedCommandProcessor._summarize_workspace_result(result, "check_calendar_events")
+            return "Workspace command completed."
+
+        # Unknown intent — generic success with smart extraction
         else:
-            return "Workspace command completed successfully."
+            if result.get("error"):
+                return f"Workspace action failed: {result['error']}"
+            return result.get("message") or result.get("response") or "Workspace command completed successfully."
 
     # =========================================================================
     # v242 SPINAL REFLEX ARC — New methods for reflex + J-Prime routing
@@ -2208,13 +2290,21 @@ class UnifiedCommandProcessor:
         self, command_text: str, response: Any,
         deadline: Optional[float] = None,
     ) -> Dict[str, Any]:
-        """Route workspace commands to the registered GoogleWorkspaceAgent singleton.
+        """Route workspace commands to GoogleWorkspaceAgent with direct action dispatch.
 
-        v242.1: Uses Neural Mesh agent registry singleton if available,
-        falls back to lazy singleton to avoid expensive re-initialization.
+        v266.0: Cures 3 root diseases:
+        - Disease 1: Reads response.suggested_actions[0] for direct routing
+          instead of forcing agent to re-classify via keyword waterfall.
+        - Disease 3: Lazy singleton calls on_initialize() for proper lifecycle.
+        - Disease 5: Wraps execute_task() in asyncio.wait_for() for deadline
+          enforcement, preventing zombie API calls.
+
+        Falls back to 'handle_workspace_query' (keyword detector) when
+        suggested_actions is empty (brain vacuum, old J-Prime, etc).
         """
+        import time as _time
+
         if deadline:
-            import time as _time
             _remaining = deadline - _time.monotonic()
             if _remaining <= 0:
                 return {"success": False, "response": "Request timed out",
@@ -2228,13 +2318,18 @@ class UnifiedCommandProcessor:
                 agent = coordinator.get_agent("google_workspace_agent")
 
             if agent is None:
-                # Lazy singleton fallback (avoids re-constructing expensive OAuth clients)
+                # Lazy singleton fallback — Disease 3 cure: call on_initialize().
+                # The lazy singleton intentionally lacks a message bus.
+                # on_initialize() checks `if self.message_bus:` before subscribing,
+                # so this is safe. The agent operates in standalone mode (no mesh).
                 if not hasattr(self, '_workspace_agent_singleton'):
                     try:
                         from neural_mesh.agents.google_workspace_agent import GoogleWorkspaceAgent
-                        self._workspace_agent_singleton = GoogleWorkspaceAgent()
-                    except ImportError:
-                        logger.warning("[v242] GoogleWorkspaceAgent not available")
+                        _agent = GoogleWorkspaceAgent()
+                        await _agent.on_initialize()
+                        self._workspace_agent_singleton = _agent
+                    except Exception:
+                        logger.warning("[v266] GoogleWorkspaceAgent initialization failed", exc_info=True)
                         self._workspace_agent_singleton = None
                 agent = self._workspace_agent_singleton
 
@@ -2242,33 +2337,73 @@ class UnifiedCommandProcessor:
                 # No workspace agent available — return J-Prime's text response
                 return {
                     "success": True,
-                    "response": response.content or "Workspace features are not currently available.",
+                    "response": getattr(response, 'content', None) or "Workspace features are not currently available.",
                     "command_type": "WORKSPACE",
-                    "source": response.source,
+                    "source": getattr(response, 'source', 'unknown'),
                 }
 
-            result = await agent.execute_task({
-                "action": "handle_workspace_query",
+            # Disease 1 cure: read suggested_actions from J-Prime classification.
+            # Validate against agent's capabilities (single source of truth — Gap 4).
+            workspace_action = "handle_workspace_query"  # fallback to keyword detector
+            if hasattr(response, 'suggested_actions') and response.suggested_actions:
+                candidate = response.suggested_actions[0]
+                agent_capabilities = getattr(agent, 'capabilities', set())
+                if candidate in agent_capabilities:
+                    workspace_action = candidate
+                else:
+                    logger.debug(
+                        f"[v266] suggested_action '{candidate}' not in agent capabilities, "
+                        f"falling back to handle_workspace_query"
+                    )
+
+            # Enforce caller budget at UCP level and propagate absolute deadline
+            # into workspace agent so inner operations can cooperatively budget.
+            if deadline:
+                remaining = deadline - _time.monotonic()
+            else:
+                try:
+                    remaining = float(os.getenv("JARVIS_WORKSPACE_ACTION_TIMEOUT", "30.0"))
+                except (TypeError, ValueError):
+                    remaining = 30.0
+
+            timeout = max(remaining, 1.0)
+            task_payload = {
+                "action": workspace_action,
                 "query": command_text,
-            })
-            summary = self._summarize_workspace_result(
-                result if isinstance(result, dict) else {"response": str(result)},
-                getattr(response, 'intent', 'workspace'),
+                "deadline_monotonic": deadline,
+            }
+
+            result = await asyncio.wait_for(
+                agent.execute_task(task_payload),
+                timeout=timeout,
             )
+
+            # Disease 2 cure: key summarizer off the executed action, not J-Prime's intent.
+            result_dict = result if isinstance(result, dict) else {"response": str(result)}
+            workspace_intent = result_dict.get("workspace_action") or workspace_action
+            summary = self._summarize_workspace_result(result_dict, workspace_intent)
             return {
                 "success": True,
                 "response": summary,
                 "command_type": "WORKSPACE",
-                "source": response.source,
+                "source": getattr(response, 'source', 'unknown'),
+            }
+        except asyncio.TimeoutError:
+            logger.warning("[v266] Workspace action timed out after deadline")
+            return {
+                "success": False,
+                "response": "Workspace request timed out. Please try again.",
+                "command_type": "WORKSPACE",
+                "error": "deadline_exceeded",
             }
         except Exception as e:
-            logger.error(f"[v242] Workspace action failed: {e}", exc_info=True)
+            logger.error(f"[v266] Workspace action failed: {e}", exc_info=True)
             # Fallback: return J-Prime's text response
             return {
                 "success": True,
-                "response": response.content or "I couldn't complete that workspace action.",
+                "response": getattr(response, 'content', None) or "I couldn't complete that workspace action.",
                 "command_type": "WORKSPACE",
-                "source": response.source,
+                "source": getattr(response, 'source', 'unknown'),
             }
 
     async def _handle_vision_action(
@@ -4618,9 +4753,10 @@ class UnifiedCommandProcessor:
 
         try:
             if command_type == CommandType.VISION:
-                from api.vision_command_handler import vision_command_handler
+                # v265.6: Use lazy getter — defers construction to first use
+                from api.vision_command_handler import get_vision_command_handler
 
-                return vision_command_handler
+                return get_vision_command_handler()
             elif command_type == CommandType.WEATHER:
                 from system_control.weather_system_config import get_weather_system
 
