@@ -63700,6 +63700,7 @@ class JarvisSystemKernel:
                 available_gb=_available_gb,
             )
             os.environ["JARVIS_STARTUP_MEMORY_MODE"] = _fallback_mode
+            os.environ["JARVIS_STARTUP_DESIRED_MODE"] = _fallback_mode
             if _available_gb is not None:
                 os.environ["JARVIS_MEASURED_AVAILABLE_GB"] = f"{_available_gb:.2f}"
 
@@ -63726,6 +63727,7 @@ class JarvisSystemKernel:
             self._startup_resource_status = _rs
             _startup_mem_mode = _rs.startup_mode or "local_full"
             os.environ["JARVIS_STARTUP_MEMORY_MODE"] = _startup_mem_mode
+            os.environ["JARVIS_STARTUP_DESIRED_MODE"] = _startup_mem_mode
             # v258.3 (GCP-5): Share measured memory snapshot with OOM bridge
             # so it doesn't re-measure (race condition between two psutil calls).
             os.environ["JARVIS_MEASURED_AVAILABLE_GB"] = f"{_rs.memory_available_gb:.2f}"
