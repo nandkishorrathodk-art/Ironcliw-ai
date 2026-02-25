@@ -8,6 +8,7 @@ Powered by Anthropic's Claude API for intelligent decision making
 import asyncio
 import logging
 import subprocess
+import sys
 import json
 from typing import Dict, List, Optional, Any, Tuple
 from dataclasses import dataclass, field
@@ -164,6 +165,12 @@ class AdvancedMacOSIntegration:
     
     async def _get_active_applications(self) -> List[str]:
         """Get list of active applications"""
+        if sys.platform == "win32":
+            try:
+                apps = [p.name() for p in psutil.process_iter(['name']) if p.name()]
+                return list(set(apps))
+            except Exception:
+                return []
         try:
             # Use AppleScript to get running applications
             script = '''
@@ -497,6 +504,15 @@ Respond with: SAFE or UNSAFE and brief reason."""
                 else:
                     return False
                 
+                if sys.platform == "win32":
+                    if action == 'quit':
+                        try:
+                            for p in psutil.process_iter(['name']):
+                                if app_name.lower() in (p.name() or '').lower():
+                                    p.terminate()
+                        except Exception:
+                            pass
+                    return True
                 result = subprocess.run(
                     ['osascript', '-e', script],
                     capture_output=True
@@ -603,16 +619,18 @@ Be specific and safe."""
                     
         elif 'power' in desc and 'save' in desc:
             # Enable power saving
-            subprocess.run(['pmset', '-a', 'lowpowermode', '1'], capture_output=True)
+            if sys.platform != "win32":
+                subprocess.run(['pmset', '-a', 'lowpowermode', '1'], capture_output=True)
             
         elif 'notification' in desc and 'disable' in desc:
             # Disable notifications (Do Not Disturb)
-            script = '''
+            if sys.platform != "win32":
+                script = '''
             tell application "System Events"
                 keystroke "d" using {command down, option down}
             end tell
             '''
-            subprocess.run(['osascript', '-e', script], capture_output=True)
+                subprocess.run(['osascript', '-e', script], capture_output=True)
     
     def get_system_status(self) -> Dict[str, Any]:
         """Get current system status"""

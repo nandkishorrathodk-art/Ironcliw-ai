@@ -35,6 +35,7 @@ import logging
 import subprocess
 import json
 import os
+import sys
 from typing import Dict, List, Optional, Any, Tuple
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -754,9 +755,9 @@ class WindowCaptureManager:
                     f"jarvis_window_{window_id}_{int(datetime.now().timestamp())}.png"
                 )
 
-            # Use screencapture with window ID
-            # Note: macOS screencapture requires window list ID, not yabai window ID
-            # We'll use a different approach via yabai
+            # On Windows, use win32 capture path
+            if sys.platform == "win32":
+                return await self._capture_window_win32(window_id, output_path)
 
             # Get window bounds first
             is_valid, window_info, _ = await self.window_validator.validate_window(window_id)
@@ -840,6 +841,101 @@ class WindowCaptureManager:
                 window_id=window_id,
                 error=f"Capture exception: {str(e)}"
             )
+
+
+    async def _capture_window_win32(
+        self,
+        window_id: int,
+        output_path: str,
+    ) -> "CaptureResult":
+        """Capture a window on Windows using win32gui/win32ui PrintWindow API."""
+        loop = asyncio.get_event_loop()
+
+        def _do_capture() -> "CaptureResult":
+            try:
+                import win32gui
+                import win32ui
+                import win32con
+                from ctypes import windll
+                from PIL import Image as PILImage
+
+                hwnd = window_id
+                if not win32gui.IsWindow(hwnd):
+                    hwnd = win32gui.FindWindow(None, str(window_id))
+                if not hwnd:
+                    return CaptureResult(
+                        status=CaptureStatus.WINDOW_NOT_FOUND,
+                        success=False,
+                        window_id=window_id,
+                        error="Window handle not found on Windows",
+                    )
+
+                left, top, right, bottom = win32gui.GetWindowRect(hwnd)
+                width = right - left
+                height = bottom - top
+
+                if width <= 0 or height <= 0:
+                    return CaptureResult(
+                        status=CaptureStatus.CAPTURE_FAILED,
+                        success=False,
+                        window_id=window_id,
+                        error="Window has zero size",
+                    )
+
+                hwnd_dc = win32gui.GetWindowDC(hwnd)
+                mfc_dc = win32ui.CreateDCFromHandle(hwnd_dc)
+                save_dc = mfc_dc.CreateCompatibleDC()
+                save_bitmap = win32ui.CreateBitmap()
+                save_bitmap.CreateCompatibleBitmap(mfc_dc, width, height)
+                save_dc.SelectObject(save_bitmap)
+                windll.user32.PrintWindow(hwnd, save_dc.GetSafeHdc(), 2)
+
+                bmp_info = save_bitmap.GetInfo()
+                bmp_str = save_bitmap.GetBitmapBits(True)
+                img = PILImage.frombuffer(
+                    "RGB",
+                    (bmp_info["bmWidth"], bmp_info["bmHeight"]),
+                    bmp_str,
+                    "raw",
+                    "BGRX",
+                    0,
+                    1,
+                )
+
+                win32gui.DeleteObject(save_bitmap.GetHandle())
+                save_dc.DeleteDC()
+                mfc_dc.DeleteDC()
+                win32gui.ReleaseDC(hwnd, hwnd_dc)
+
+                img.save(output_path, "PNG")
+                original_size = (img.width, img.height)
+
+                return CaptureResult(
+                    status=CaptureStatus.SUCCESS,
+                    success=True,
+                    image_path=output_path,
+                    window_id=window_id,
+                    original_size=original_size,
+                    resized_size=original_size,
+                    message=f"Captured window {window_id} via PrintWindow",
+                )
+            except ImportError:
+                return CaptureResult(
+                    status=CaptureStatus.CAPTURE_FAILED,
+                    success=False,
+                    window_id=window_id,
+                    error="pywin32 not installed — run: pip install pywin32",
+                )
+            except Exception as exc:
+                logger.error(f"[WINDOW-CAPTURE-MANAGER] Win32 capture error: {exc}")
+                return CaptureResult(
+                    status=CaptureStatus.CAPTURE_FAILED,
+                    success=False,
+                    window_id=window_id,
+                    error=str(exc),
+                )
+
+        return await loop.run_in_executor(None, _do_capture)
 
 
 # ============================================================================

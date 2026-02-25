@@ -39,6 +39,7 @@ Usage:
 import asyncio
 import logging
 import os
+import sys
 import time
 import hashlib
 import threading
@@ -845,6 +846,16 @@ class ECAPATDNNWrapper(MLEngineWrapper):
         v78.1: Fixed to run in executor to avoid blocking event loop.
         Also added intelligent cache checking to speed up cached loads.
         """
+        if sys.platform == "win32":
+            try:
+                import speechbrain  # noqa: F401
+            except ImportError:
+                logger.info(
+                    "[ecapa_tdnn] speechbrain not installed on Windows — "
+                    "skipping (use cloud ECAPA)"
+                )
+                return None
+
         from concurrent.futures import ThreadPoolExecutor
         import torch
 

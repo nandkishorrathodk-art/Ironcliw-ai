@@ -38,6 +38,7 @@ import asyncio
 import logging
 import os
 import subprocess
+import sys
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -252,6 +253,22 @@ class FocusGuard:
 
     async def save_focus(self) -> Dict[str, Any]:
         """Save current focus state."""
+        if sys.platform == "win32":
+            try:
+                import win32gui
+                hwnd = win32gui.GetForegroundWindow()
+                if hwnd:
+                    self._saved_focus = {
+                        "window_id": hwnd,
+                        "app_name": win32gui.GetWindowText(hwnd),
+                        "pid": None,
+                    }
+                    logger.debug(f"[FOCUS] Saved focus: {self._saved_focus['app_name']}")
+                    return self._saved_focus
+            except Exception as e:
+                logger.debug(f"[FOCUS] win32 save_focus failed: {e}")
+            return {}
+
         try:
             from Quartz import (
                 CGWindowListCopyWindowInfo,
@@ -286,6 +303,19 @@ class FocusGuard:
             return False
 
         try:
+            if sys.platform == "win32":
+                hwnd = self._saved_focus.get("window_id")
+                if hwnd:
+                    try:
+                        import win32gui
+                        win32gui.SetForegroundWindow(hwnd)
+                        await asyncio.sleep(self.config.focus_restore_delay_ms / 1000.0)
+                        logger.debug(f"[FOCUS] Restored focus to: {self._saved_focus.get('app_name')}")
+                        return True
+                    except Exception as e:
+                        logger.debug(f"[FOCUS] win32 restore_focus failed: {e}")
+                return False
+
             app_name = self._saved_focus.get("app_name")
             if not app_name:
                 return False
@@ -397,6 +427,10 @@ class AppleScriptBackend(ActuatorBackend):
     async def initialize(self) -> bool:
         if self._initialized:
             return True
+
+        if sys.platform == "win32":
+            logger.debug("[GHOST-HANDS] AppleScript backend not available on Windows")
+            return False
 
         # Test osascript availability
         try:
@@ -1454,6 +1488,10 @@ class CGEventBackend(ActuatorBackend):
     async def initialize(self) -> bool:
         if self._initialized:
             return True
+
+        if sys.platform == "win32":
+            logger.debug("[GHOST-HANDS] CGEvent backend not available on Windows")
+            return False
 
         try:
             import Quartz

@@ -6,6 +6,7 @@ Implements individual action executors for workflow steps
 import asyncio
 import subprocess
 import os
+import sys
 import json
 import aiohttp
 from typing import Dict, Any, List, Optional, Tuple
@@ -14,6 +15,82 @@ import logging
 import pyautogui
 from abc import ABC, abstractmethod
 from pathlib import Path
+
+
+def _run_osascript(script: str, timeout: int = 10) -> bool:
+    """Run AppleScript — macOS only, no-op on Windows."""
+    if sys.platform == "win32":
+        logger.debug("[ActionExecutor] osascript not available on Windows — action skipped")
+        return False
+    try:
+        result = subprocess.run(
+            ['osascript', '-e', script],
+            capture_output=True, text=True, timeout=timeout
+        )
+        return result.returncode == 0
+    except Exception:
+        return False
+
+
+async def _run_osascript_async(script: str, timeout: float = 10.0) -> bool:
+    """Async osascript — macOS only, no-op on Windows."""
+    if sys.platform == "win32":
+        return False
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "osascript", "-e", script,
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+        await asyncio.wait_for(proc.wait(), timeout=timeout)
+        return proc.returncode == 0
+    except Exception:
+        return False
+
+
+def _open_app_cross_platform(app_name: str) -> bool:
+    """Open/launch an application — cross-platform."""
+    if sys.platform == "win32":
+        try:
+            import psutil
+            for proc in psutil.process_iter(['name']):
+                if app_name.lower() in (proc.info['name'] or '').lower():
+                    return True
+        except Exception:
+            pass
+        try:
+            subprocess.Popen([app_name])
+            return True
+        except Exception:
+            try:
+                os.startfile(app_name)
+                return True
+            except Exception:
+                return False
+    else:
+        try:
+            subprocess.Popen(['open', '-a', app_name])
+            return True
+        except Exception:
+            return False
+
+
+def _is_process_running_cross_platform(name: str) -> bool:
+    """Check if a process is running — cross-platform."""
+    try:
+        import psutil
+        for proc in psutil.process_iter(['name']):
+            if name.lower() in (proc.info['name'] or '').lower():
+                return True
+    except Exception:
+        pass
+    if sys.platform != "win32":
+        try:
+            result = subprocess.run(['pgrep', '-f', name], capture_output=True)
+            return result.returncode == 0
+        except Exception:
+            pass
+    return False
 
 from .workflow_parser import WorkflowAction, ActionType
 from .workflow_engine import ExecutionContext
@@ -54,7 +131,7 @@ class SystemUnlockExecutor(BaseActionExecutor):
                 return {"status": "already_unlocked", "message": "Screen is already unlocked"}
                 
             # Platform-specific unlock
-            if os.uname().sysname == "Darwin":  # macOS
+            if sys.platform == "darwin":  # macOS
                 # Use TouchID or password
                 result = await self._unlock_macos(context)
             else:
@@ -68,6 +145,15 @@ class SystemUnlockExecutor(BaseActionExecutor):
             
     async def _check_screen_locked(self) -> bool:
         """Check if screen is locked"""
+        if sys.platform == "win32":
+            try:
+                import psutil
+                for proc in psutil.process_iter(['name']):
+                    if (proc.info['name'] or '').lower() == 'logonui.exe':
+                        return True
+            except Exception:
+                pass
+            return False
         try:
             # macOS specific check
             cmd = ['ioreg', '-n', 'Root', '-d1']
@@ -80,7 +166,8 @@ class SystemUnlockExecutor(BaseActionExecutor):
         """Unlock macOS screen"""
         try:
             # Wake display
-            subprocess.run(['caffeinate', '-u', '-t', '1'])
+            if sys.platform != "win32":
+                subprocess.run(['caffeinate', '-u', '-t', '1'])
             
             # Simulate mouse movement to wake
             pyautogui.moveRel(1, 0)
@@ -167,7 +254,7 @@ class ApplicationLauncherExecutor(BaseActionExecutor):
             normalized_name = self.app_mappings.get(app_name.lower(), app_name)
             
             # Platform-specific launch
-            if os.uname().sysname == "Darwin":  # macOS
+            if sys.platform == "darwin":  # macOS
                 result = await self._launch_macos_app(normalized_name, context)
             else:
                 result = await self._launch_generic_app(normalized_name, context)
@@ -182,21 +269,21 @@ class ApplicationLauncherExecutor(BaseActionExecutor):
         """Launch macOS application"""
         try:
             # Check if app is already running
-            check_cmd = ['pgrep', '-f', app_name]
-            check_result = subprocess.run(check_cmd, capture_output=True)
-            
-            if check_result.returncode == 0:
+            if _is_process_running_cross_platform(app_name):
                 # App is running, bring to front
                 script = f'''
                 tell application "{app_name}"
                     activate
                 end tell
                 '''
-                subprocess.run(['osascript', '-e', script])
+                _run_osascript(script)
                 return {"status": "activated", "message": f"{app_name} brought to front"}
             else:
                 # Launch app
-                subprocess.run(['open', '-a', app_name], check=True)
+                if sys.platform != "win32":
+                    subprocess.run(['open', '-a', app_name], check=True)
+                else:
+                    _open_app_cross_platform(app_name)
                 
                 # Wait for app to start
                 await self._wait_for_app_start(app_name, timeout=5)
@@ -207,8 +294,12 @@ class ApplicationLauncherExecutor(BaseActionExecutor):
         except subprocess.CalledProcessError:
             # Try alternative launch methods
             try:
-                subprocess.run(['open', f'/Applications/{app_name}.app'], check=True)
-                return {"status": "launched", "message": f"{app_name} launched via direct path"}
+                if sys.platform != "win32":
+                    subprocess.run(['open', f'/Applications/{app_name}.app'], check=True)
+                    return {"status": "launched", "message": f"{app_name} launched via direct path"}
+                else:
+                    _open_app_cross_platform(app_name)
+                    return {"status": "launched", "message": f"{app_name} launched"}
             except Exception:
                 raise Exception(f"Could not launch {app_name}")
                 
@@ -238,9 +329,7 @@ class ApplicationLauncherExecutor(BaseActionExecutor):
         """Wait for application to start"""
         start_time = datetime.now()
         while (datetime.now() - start_time).total_seconds() < timeout:
-            check_cmd = ['pgrep', '-f', app_name]
-            result = subprocess.run(check_cmd, capture_output=True)
-            if result.returncode == 0:
+            if _is_process_running_cross_platform(app_name):
                 return
             await asyncio.sleep(0.5)
 
@@ -544,16 +633,19 @@ class SearchExecutor(BaseActionExecutor):
                 )
                 await asyncio.sleep(1)  # Wait for browser
                 
-            # Perform search using AppleScript
+            # Perform search
             search_url = f"https://www.google.com/search?q={query.replace(' ', '+')}"
-            script = f'''
+            if sys.platform == "darwin":
+                script = f'''
             tell application "{browser}"
                 open location "{search_url}"
                 activate
             end tell
             '''
-            
-            subprocess.run(['osascript', '-e', script])
+                _run_osascript(script)
+            else:
+                import webbrowser
+                webbrowser.open(search_url)
             
             context.set_variable('last_search_query', query)
             context.set_variable('last_search_url', search_url)
@@ -570,25 +662,34 @@ class SearchExecutor(BaseActionExecutor):
     async def _search_files(self, query: str, context: ExecutionContext) -> Dict[str, Any]:
         """Search for files"""
         try:
-            # Use mdfind on macOS for Spotlight search
-            cmd = ['mdfind', query]
-            result = subprocess.run(cmd, capture_output=True, text=True)
-            
-            files = result.stdout.strip().split('\n') if result.stdout else []
-            files = [f for f in files if f]  # Filter empty
+            files = []
+            if sys.platform == "darwin":
+                # Use mdfind on macOS for Spotlight search
+                cmd = ['mdfind', query]
+                result = subprocess.run(cmd, capture_output=True, text=True)
+                files = result.stdout.strip().split('\n') if result.stdout else []
+                files = [f for f in files if f]
+            else:
+                # Windows: simple file glob search from home dir
+                import glob
+                home = os.path.expanduser('~')
+                files = glob.glob(os.path.join(home, '**', f'*{query}*'), recursive=True)[:50]
             
             context.set_variable('search_results', files)
             
-            # Open Finder with search if requested
+            # Open Finder/Explorer with search if requested
             if context.get_variable('open_finder_search', True):
-                script = f'''
+                if sys.platform == "darwin":
+                    script = f'''
                 tell application "Finder"
                     activate
                     set search_window to make new Finder window
                     set toolbar visible of search_window to true
                 end tell
                 '''
-                subprocess.run(['osascript', '-e', script])
+                    _run_osascript(script)
+                elif sys.platform == "win32":
+                    subprocess.Popen(['explorer', os.path.expanduser('~')])
                 
             return {
                 "status": "success",
@@ -602,6 +703,8 @@ class SearchExecutor(BaseActionExecutor):
             
     async def _search_mail(self, query: str, context: ExecutionContext) -> Dict[str, Any]:
         """Search in Mail app"""
+        if sys.platform == "win32":
+            return {"status": "skipped", "message": "Mail search not available on Windows", "count": 0}
         try:
             script = f'''
             tell application "Mail"
@@ -682,6 +785,8 @@ class ResourceCheckerExecutor(BaseActionExecutor):
             
     async def _check_email(self, context: ExecutionContext) -> Dict[str, Any]:
         """Check email"""
+        if sys.platform == "win32":
+            return {"status": "skipped", "message": "Mail check not available on Windows", "count": 0}
         try:
             script = '''
             tell application "Mail"
@@ -715,6 +820,8 @@ class ResourceCheckerExecutor(BaseActionExecutor):
             
     async def _check_calendar(self, context: ExecutionContext) -> Dict[str, Any]:
         """Check calendar for events"""
+        if sys.platform == "win32":
+            return {"status": "skipped", "message": "Calendar check not available on Windows", "count": 0}
         try:
             # Get today's events
             script = '''
@@ -756,7 +863,10 @@ class ResourceCheckerExecutor(BaseActionExecutor):
         """Check weather"""
         try:
             # Open Weather app
-            subprocess.run(['open', '-a', 'Weather'])
+            if sys.platform == "darwin":
+                subprocess.run(['open', '-a', 'Weather'])
+            elif sys.platform == "win32":
+                subprocess.Popen(['start', 'ms-weather:'], shell=True)
             
             # In production, would integrate with weather API
             return {
@@ -938,8 +1048,10 @@ class NotificationMuterExecutor(BaseActionExecutor):
         try:
             target = action.target.lower() if action.target else 'all'
             
-            if os.uname().sysname == "Darwin":  # macOS
+            if sys.platform == "darwin":  # macOS
                 result = await self._mute_macos_notifications(target, context)
+            elif sys.platform == "win32":
+                result = {"status": "skipped", "message": "Use Windows Focus Assist manually"}
             else:
                 result = {"status": "unsupported", "message": "Platform not supported"}
                 
@@ -963,7 +1075,7 @@ class NotificationMuterExecutor(BaseActionExecutor):
                     end tell
                 end tell
                 '''
-                subprocess.run(['osascript', '-e', script])
+                _run_osascript(script)
                 
                 context.set_variable('dnd_enabled', True)
                 

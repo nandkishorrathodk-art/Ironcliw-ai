@@ -2139,6 +2139,16 @@ return "ok"
         raise RuntimeError(f"Unsupported media operation: {operation}")
 
     async def _run_applescript(self, script: str, timeout_seconds: float) -> Dict[str, Any]:
+        import sys
+        if sys.platform == "win32":
+            return {
+                "success": False,
+                "stdout": "",
+                "stderr": "AppleScript not available on Windows",
+                "error": "AppleScript not available on Windows",
+                "returncode": -1,
+                "timed_out": False,
+            }
         process = await asyncio.create_subprocess_exec(
             "osascript",
             "-e",

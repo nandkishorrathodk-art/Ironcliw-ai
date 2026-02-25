@@ -34,7 +34,10 @@ from pathlib import Path
 import sys
 sys.path.append(str(Path(__file__).parent.parent))
 
-from system_control.macos_controller import MacOSController
+if sys.platform != "win32":
+    from system_control.macos_controller import MacOSController
+else:
+    MacOSController = None
 from .autonomous_decision_engine import AutonomousAction, ActionCategory, ActionPriority
 
 logger = logging.getLogger(__name__)
@@ -131,7 +134,7 @@ class ActionExecutor:
     
     def __init__(self):
         """Initialize the ActionExecutor with default configuration."""
-        self.macos_controller = MacOSController()
+        self.macos_controller = MacOSController() if MacOSController is not None else None
         self.execution_history: List[ExecutionResult] = []
         self.rollback_stack: List[Dict[str, Any]] = []
         

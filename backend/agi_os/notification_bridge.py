@@ -24,6 +24,7 @@ import asyncio
 import hashlib
 import logging
 import os
+import sys
 import time
 from collections import deque
 from dataclasses import dataclass, field
@@ -163,14 +164,14 @@ async def notify_user(
     # ── Deliver across ALL channels in parallel (best-effort) ──
     voice_coro = _deliver_voice(message, urgency)
     ws_coro = _deliver_websocket(message, urgency, title, ctx)
-    macos_coro = _deliver_macos(message, urgency, title)
+    native_coro = _deliver_native(message, urgency, title)
 
     results = await asyncio.gather(
-        voice_coro, ws_coro, macos_coro,
+        voice_coro, ws_coro, native_coro,
         return_exceptions=True,
     )
 
-    channel_names = ("voice", "websocket", "macos")
+    channel_names = ("voice", "websocket", "native")
     delivered_any = False
     for name, result in zip(channel_names, results):
         if isinstance(result, BaseException):
@@ -281,14 +282,70 @@ async def _deliver_websocket(
 
 
 # ─────────────────────────────────────────────────────────
-# Channel: macOS Native
+# Channel: Native Notifications (cross-platform)
 # ─────────────────────────────────────────────────────────
 
 def _sanitize_applescript(text: str) -> str:
     """Escape text for safe embedding in osascript double-quoted strings."""
-    # Escape backslash FIRST, then double quotes, then truncate
     text = text.replace("\\", "\\\\").replace('"', '\\"')
     return text[:200]
+
+
+async def _deliver_native(
+    message: str,
+    urgency: NotificationUrgency,
+    title: str,
+) -> bool:
+    """Show native OS notification — routes to Windows or macOS implementation."""
+    if urgency < _MACOS_MIN_URGENCY:
+        return False
+
+    if sys.platform == "win32":
+        return await _deliver_windows(message, urgency, title)
+    else:
+        return await _deliver_macos(message, urgency, title)
+
+
+async def _deliver_windows(
+    message: str,
+    urgency: NotificationUrgency,
+    title: str,
+) -> bool:
+    """Show Windows 10/11 toast notification via plyer → win10toast fallback."""
+    loop = asyncio.get_event_loop()
+    timeout_sec = 5 if urgency >= NotificationUrgency.HIGH else 3
+
+    def _show_toast() -> bool:
+        try:
+            from plyer import notification
+            notification.notify(
+                title=title,
+                message=message,
+                app_name="JARVIS",
+                timeout=timeout_sec,
+            )
+            return True
+        except Exception:
+            pass
+        try:
+            from win10toast import ToastNotifier
+            toaster = ToastNotifier()
+            toaster.show_toast(
+                title,
+                message,
+                duration=timeout_sec,
+                threaded=True,
+            )
+            return True
+        except Exception:
+            pass
+        return False
+
+    try:
+        return await loop.run_in_executor(None, _show_toast)
+    except Exception as e:
+        logger.debug("[NotifyBridge] Windows notification failed: %s", e)
+        return False
 
 
 async def _deliver_macos(
@@ -297,9 +354,6 @@ async def _deliver_macos(
     title: str,
 ) -> bool:
     """Show macOS native notification via osascript (for HIGH+ urgency)."""
-    if urgency < _MACOS_MIN_URGENCY:
-        return False
-
     # Focus mode check — skip DND/SLEEP unless CRITICAL
     if urgency < NotificationUrgency.CRITICAL:
         try:
@@ -311,7 +365,7 @@ async def _deliver_macos(
                 )
                 return False
         except Exception:
-            pass  # No focus guard — proceed
+            pass
 
     safe_title = _sanitize_applescript(title)
     safe_msg = _sanitize_applescript(message)
@@ -341,7 +395,6 @@ def _get_focus_mode():
     """Best-effort focus mode detection. Returns None on any failure."""
     try:
         from macos_helper.intelligence.notification_triage import NotificationTriageSystem
-        # Try the singleton if available
         triage = getattr(NotificationTriageSystem, '_instance', None)
         if triage and hasattr(triage, 'get_focus_mode'):
             return triage.get_focus_mode()

@@ -734,23 +734,39 @@ class ClaudeVisionChatbot:
         return None
 
     async def _capture_screencapture_cmd_fast(self) -> Optional[Image.Image]:
-        """Ultra-fast screenshot capture for macOS using screencapture"""
-        import asyncio
+        """Cross-platform fast screenshot capture using mss (Windows/macOS/Linux)."""
+        if sys.platform == "win32":
+            return await self._capture_mss_fast()
+        return await self._capture_screencapture_cmd_fast_macos()
+
+    async def _capture_mss_fast(self) -> Optional[Image.Image]:
+        """Capture full screen using mss (Windows-compatible)."""
+        loop = asyncio.get_event_loop()
+
+        def _grab():
+            try:
+                import mss
+                with mss.mss() as sct:
+                    monitor = sct.monitors[0]
+                    shot = sct.grab(monitor)
+                    img = Image.frombytes("RGB", shot.size, shot.bgra, "raw", "BGRX")
+                    return img
+            except Exception as e:
+                logger.debug(f"mss capture failed: {e}")
+                return None
+
+        return await loop.run_in_executor(None, _grab)
+
+    async def _capture_screencapture_cmd_fast_macos(self) -> Optional[Image.Image]:
+        """Ultra-fast screenshot capture for macOS using screencapture."""
         import os
 
         try:
-            # Use in-memory approach for speed
             tmp_path = f"/tmp/jarvis_screen_{os.getpid()}.png"
-
-            # Run screencapture with minimal options for speed
             cmd = ["screencapture", "-x", "-t", "png", tmp_path]
-
-            # Use asyncio subprocess for true async
             process = await asyncio.create_subprocess_exec(
                 *cmd, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL
             )
-
-            # Wait with timeout
             try:
                 await asyncio.wait_for(process.wait(), timeout=1.0)
             except asyncio.TimeoutError:
@@ -758,12 +774,9 @@ class ClaudeVisionChatbot:
                 return None
 
             if process.returncode == 0 and os.path.exists(tmp_path):
-                # Load image and immediately delete temp file
                 img = Image.open(tmp_path)
-                # Convert to RGB to ensure compatibility
                 if img.mode == "RGBA":
                     img = img.convert("RGB")
-                # Make a copy to ensure file can be deleted
                 img_copy = img.copy()
                 img.close()
                 try:

@@ -1,153 +1,364 @@
-actionlint
-==========
-[![CI Badge][]][CI]
-[![API Document][api-badge]][apidoc]
+<div align="center">
 
-[actionlint][repo] is a static checker for GitHub Actions workflow files. [Try it online!][playground]
+<img src="https://user-images.githubusercontent.com/73097560/115834477-dbab4500-a447-11eb-908a-139a6edaec5c.gif" width="100%">
 
-Features:
+# ⚡ IRONCLIW-AI · JARVIS
+### *Just A Rather Very Intelligent System*
 
-- **Syntax check for workflow files** to check unexpected or missing keys following [workflow syntax][syntax-doc]
-- **Strong type check for `${{ }}` expressions** to catch several semantic errors like access to not existing property,
-  type mismatches, ...
-- **Actions usage check** to check that inputs at `with:` and outputs in `steps.{id}.outputs` are correct
-- **Reusable workflow check** to check inputs/outputs/secrets of reusable workflows and workflow calls
-- **[shellcheck][] and [pyflakes][] integrations** for scripts at `run:`
-- **Security checks**; [script injection][script-injection-doc] by untrusted inputs, hard-coded credentials
-- **Other several useful checks**; [glob syntax][filter-pattern-doc] validation, dependencies check for `needs:`,
-  runner label validation, cron syntax validation, ...
+**The world's most advanced personal AI agent — now fully on Windows.**
 
-See [the full list](docs/checks.md) of checks done by actionlint.
+[![Python](https://img.shields.io/badge/Python-3.12%2B-blue?logo=python)](https://python.org)
+[![Windows](https://img.shields.io/badge/Platform-Windows%2010%2F11-0078D4?logo=windows)](https://github.com/nandkishorrathodk-art/Ironcliw-ai)
+[![FastAPI](https://img.shields.io/badge/Backend-FastAPI-009688?logo=fastapi)](https://fastapi.tiangolo.com)
+[![React](https://img.shields.io/badge/Frontend-React%2018-61DAFB?logo=react)](https://reactjs.org)
+[![Claude AI](https://img.shields.io/badge/AI-Claude%20%7C%20Fireworks-FF6B00?logo=anthropic)](https://anthropic.com)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green)](LICENSE)
+[![Phase](https://img.shields.io/badge/Port%20Phase-11%20Complete-success)](WINDOWS_PORT_BLUEPRINT.md)
 
-<img src="https://github.com/rhysd/ss/blob/master/actionlint/main.gif?raw=true" alt="actionlint reports 7 errors" width="806" height="492"/>
+<img src="https://user-images.githubusercontent.com/73097560/115834477-dbab4500-a447-11eb-908a-139a6edaec5c.gif" width="100%">
 
-**Example of broken workflow:**
+</div>
 
-```yaml
-on:
-  push:
-    branch: main
-    tags:
-      - 'v\d+'
-jobs:
-  test:
-    strategy:
-      matrix:
-        os: [macos-latest, linux-latest]
-    runs-on: ${{ matrix.os }}
-    steps:
-      - run: echo "Checking commit '${{ github.event.head_commit.message }}'"
-      - uses: actions/checkout@v3
-      - uses: actions/setup-node@v3
-        with:
-          node_version: 16.x
-      - uses: actions/cache@v3
-        with:
-          path: ~/.npm
-          key: ${{ matrix.platform }}-node-${{ hashFiles('**/package-lock.json') }}
-        if: ${{ github.repository.permissions.admin == true }}
-      - run: npm install && npm test
+---
+
+## 🤖 What Is This?
+
+**Ironcliw-AI** is a Windows port of the [drussell23/JARVIS](https://github.com/drussell23/JARVIS) personal AI agent — a self-hosted, voice-activated autonomous assistant inspired by Iron Man's J.A.R.V.I.S.
+
+It combines:
+- 🧠 **Large Language Models** (Claude 3.5, Fireworks AI) for reasoning
+- 🎤 **Voice control** (Whisper STT + Microsoft Neural TTS `en-GB-RyanNeural`)
+- 👁️ **Vision** (screen capture + Claude Vision) for seeing your desktop
+- 🤖 **Autonomous automation** (Ghost Hands browser/keyboard control)
+- ☁️ **Hybrid cloud** (GCP auto-routing when RAM is high)
+- 🔐 **Voice biometric unlock** (ECAPA-TDNN speaker verification)
+
+---
+
+## 🖥️ Platform Support
+
+| Platform | Status | Notes |
+|----------|--------|-------|
+| **Windows 10/11** | ✅ **Fully Supported** | Primary development target |
+| macOS | ⚠️ Upstream | See [drussell23/JARVIS](https://github.com/drussell23/JARVIS) |
+| Linux | 🔧 Partial | PAL layer compatible |
+
+---
+
+## ✨ Features
+
+### Core Intelligence
+- 🧠 **Multi-LLM routing** — Claude 3.5 Sonnet + Fireworks AI (`accounts/fireworks/models/llama-v3p1-70b-instruct`)
+- 💬 **Natural conversation** with long-term memory (SQLite + ChromaDB)
+- 🎯 **Goal inference** — JARVIS figures out what you want before you finish asking
+- 🔮 **Situational Awareness Intelligence (SAI)** — understands context (emergency, routine, suspicious)
+
+### Voice System
+- 🎤 **Wake word**: "Hey JARVIS" — instant activation
+- 🗣️ **Neural TTS**: Microsoft `en-GB-RyanNeural` via edge-tts (sounds human, not robotic)
+- 👂 **Hybrid STT**: Whisper (local) + Cloud fallback, 12 model circuit-breaker
+- 🔐 **Voice biometrics**: ECAPA-TDNN speaker verification (159ms unlock)
+
+### Vision & Automation
+- 👁️ **Real-time screen understanding** (30 FPS capture via mss)
+- 🤖 **Ghost Hands**: autonomous browser + keyboard + mouse control
+- 📋 **Context Intelligence**: tracks what app is open, what you're doing
+- 🔍 **Semantic cache**: remembers what it's seen (ChromaDB, 24h TTL)
+
+### System Integration
+- 📊 **RAM monitoring**: auto-offloads to GCP when memory > 80%
+- 💰 **Cost optimizer**: Spot VM auto-create ($0.029/hr), scale-to-zero after 15min idle
+- 🔒 **Security**: CWE-117/532 log injection prevention, atomic writes (0o600)
+- 🛡️ **Self-healing**: circuit breakers, ML-powered recovery, auto-reload
+
+---
+
+## 🚀 Quick Start (Windows)
+
+### Prerequisites
+```powershell
+# Python 3.12+
+python --version   # Must be 3.12+
+
+# Node.js 18+ (for frontend)
+node --version
+
+# Git
+git --version
 ```
 
-**actionlint reports 7 errors:**
-
-```
-test.yaml:3:5: unexpected key "branch" for "push" section. expected one of "branches", "branches-ignore", "paths", "paths-ignore", "tags", "tags-ignore", "types", "workflows" [syntax-check]
-  |
-3 |     branch: main
-  |     ^~~~~~~
-test.yaml:5:11: character '\' is invalid for branch and tag names. only special characters [, ?, +, *, \ ! can be escaped with \. see `man git-check-ref-format` for more details. note that regular expression is unavailable. note: filter pattern syntax is explained at https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#filter-pattern-cheat-sheet [glob]
-  |
-5 |       - 'v\d+'
-  |           ^~~~
-test.yaml:10:28: label "linux-latest" is unknown. available labels are "windows-latest", "windows-2022", "windows-2019", "windows-2016", "ubuntu-latest", "ubuntu-22.04", "ubuntu-20.04", "ubuntu-18.04", "macos-latest", "macos-12", "macos-12.0", "macos-11", "macos-11.0", "macos-10.15", "self-hosted", "x64", "arm", "arm64", "linux", "macos", "windows". if it is a custom label for self-hosted runner, set list of labels in actionlint.yaml config file [runner-label]
-   |
-10 |         os: [macos-latest, linux-latest]
-   |                            ^~~~~~~~~~~~~
-test.yaml:13:41: "github.event.head_commit.message" is potentially untrusted. avoid using it directly in inline scripts. instead, pass it through an environment variable. see https://docs.github.com/en/actions/learn-github-actions/security-hardening-for-github-actions for more details [expression]
-   |
-13 |       - run: echo "Checking commit '${{ github.event.head_commit.message }}'"
-   |                                         ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-test.yaml:17:11: input "node_version" is not defined in action "actions/setup-node@v3". available inputs are "always-auth", "architecture", "cache", "cache-dependency-path", "check-latest", "node-version", "node-version-file", "registry-url", "scope", "token" [action]
-   |
-17 |           node_version: 16.x
-   |           ^~~~~~~~~~~~~
-test.yaml:21:20: property "platform" is not defined in object type {os: string} [expression]
-   |
-21 |           key: ${{ matrix.platform }}-node-${{ hashFiles('**/package-lock.json') }}
-   |                    ^~~~~~~~~~~~~~~
-test.yaml:22:17: receiver of object dereference "permissions" must be type of object but got "string" [expression]
-   |
-22 |         if: ${{ github.repository.permissions.admin == true }}
-   |                 ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+### 1. Clone
+```powershell
+git clone https://github.com/nandkishorrathodk-art/Ironcliw-ai.git
+cd Ironcliw-ai
 ```
 
-## Why?
-
-- **Running a workflow is time consuming.** You need to push the changes and wait until the workflow runs on GitHub even if
-  it contains some trivial mistakes. [act][] is useful to debug the workflow locally. But it is not suitable for CI and still
-  time consuming when your workflow gets larger.
-- **Checks of workflow files by GitHub are very loose.** It reports no error even if unexpected keys are in mappings
-  (meant that some typos in keys). And also it reports no error when accessing to property which is actually not existing.
-  For example `matrix.foo` when no `foo` is defined in `matrix:` section, it is evaluated to `null` and causes no error.
-- **Some mistakes silently break a workflow.** Most common case I saw is specifying missing property to cache key. In the
-  case cache silently does not work properly but a workflow itself runs without error. So you might not notice the mistake
-  forever.
-
-## Quick start
-
-Install `actionlint` command by downloading [the released binary][releases] or by Homebrew or by `go install`. See
-[the installation document](docs/install.md) for more details like how to manage the command with several package managers
-or run via Docker container.
-
-```sh
-go install github.com/rhysd/actionlint/cmd/actionlint@latest
+### 2. Install Python Dependencies
+```powershell
+pip install -r requirements.txt
+pip install edge-tts mss pyautogui pywin32 pyttsx3
 ```
 
-Basically all you need to do is run the `actionlint` command in your repository. actionlint automatically detects workflows and
-checks errors. actionlint focuses on finding out mistakes. It tries to catch errors as much as possible and make false positives
-as minimal as possible.
-
-```sh
-actionlint
+### 3. Install Frontend
+```powershell
+cd frontend
+npm install
+cd ..
 ```
 
-Another option to try actionlint is [the online playground][playground]. Your browser can run actionlint through WebAssembly.
+### 4. Configure Environment
+```powershell
+# Copy the Windows config template
+copy .env.windows .env
 
-See [the usage document](docs/usage.md) for more details.
+# Edit .env and add your API keys:
+# ANTHROPIC_API_KEY=sk-ant-xxxx
+# FIREWORKS_API_KEY=fw-xxxxxxxx
+```
 
-## Documents
+### 5. Run
+```powershell
+python start_system.py
+```
 
-- [Checks](docs/checks.md): Full list of all checks done by actionlint with example inputs, outputs, and playground links.
-- [Installation](docs/install.md): Installation instructions. Prebuilt binaries, Homebrew package, a Docker image, building from
-  source, a download script (for CI) are available.
-- [Usage](docs/usage.md): How to use `actionlint` command locally or on GitHub Actions, the online playground, an official Docker
-  image, and integrations with reviewdog, Problem Matchers, super-linter, pre-commit, VS Code.
-- [Configuration](docs/config.md): How to configure actionlint behavior. Currently only labels of self-hosted runners can be
-  configured.
-- [Go API](docs/api.md): How to use actionlint as Go library.
-- [References](docs/reference.md): Links to resources.
+Open **http://localhost:3000** — JARVIS is ready.
 
-## Bug reporting
+> **First time?** It may take 2–3 minutes to initialize all models.  
+> Say **"Hey JARVIS"** to activate voice control.
 
-When you see some bugs or false positives, it is helpful to [file a new issue][issue-form] with a minimal example
-of input. Giving me some feedbacks like feature requests or ideas of additional checks is also welcome.
+---
 
-## License
+## 🔧 Configuration
 
-actionlint is distributed under [the MIT license](./LICENSE.txt).
+### Key `.env` Settings
+```env
+# LLM
+JARVIS_LLM_PROVIDER=fireworks          # or "claude"
+FIREWORKS_API_KEY=fw-xxxxxxxx
+ANTHROPIC_API_KEY=sk-ant-xxxxxxxx
 
-[CI Badge]: https://github.com/rhysd/actionlint/workflows/CI/badge.svg?branch=main&event=push
-[CI]: https://github.com/rhysd/actionlint/actions?query=workflow%3ACI+branch%3Amain
-[api-badge]: https://pkg.go.dev/badge/github.com/rhysd/actionlint.svg
-[apidoc]: https://pkg.go.dev/github.com/rhysd/actionlint
-[repo]: https://github.com/rhysd/actionlint
-[playground]: https://rhysd.github.io/actionlint/
-[shellcheck]: https://github.com/koalaman/shellcheck
-[pyflakes]: https://github.com/PyCQA/pyflakes
-[act]: https://github.com/nektos/act
-[syntax-doc]: https://docs.github.com/en/actions/reference/workflow-syntax-for-github-actions
-[filter-pattern-doc]: https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#filter-pattern-cheat-sheet
-[script-injection-doc]: https://docs.github.com/en/actions/learn-github-actions/security-hardening-for-github-actions#understanding-the-risk-of-script-injections
-[issue-form]: https://github.com/rhysd/actionlint/issues/new
-[releases]: https://github.com/rhysd/actionlint/releases
+# Voice
+WHISPER_MODEL_SIZE=base                # tiny/base/small/medium
+JARVIS_VOICE_BIOMETRIC_ENABLED=false   # true = needs speechbrain GPU
+
+# Performance
+JARVIS_ML_DEVICE=cpu                   # cpu (Windows default)
+JARVIS_DYNAMIC_PORTS=false             # keep backend on port 8010
+JARVIS_LAZY_LOAD_MODELS=true           # load models on demand
+JARVIS_SKIP_GCP=true                   # disable GCP if not needed
+JARVIS_SKIP_DOCKER=true
+
+# Windows specifics
+JARVIS_AUTO_BYPASS_WINDOWS=true        # bypass voice auth on Windows
+JARVIS_DISABLE_SWIFT_EXTENSIONS=true
+JARVIS_DISABLE_RUST_EXTENSIONS=true
+JARVIS_DISABLE_COREML=true
+```
+
+---
+
+## 📁 Project Structure
+
+```
+Ironcliw-ai/
+├── backend/                    # FastAPI Python backend
+│   ├── main.py                 # Entry point (UTF-8 + bootstrap)
+│   ├── api/                    # REST endpoints
+│   ├── agi_os/                 # AGI operating system layer
+│   │   ├── realtime_voice_communicator.py   # edge-tts Neural TTS
+│   │   └── notification_bridge.py           # Windows toast notifications
+│   ├── voice/                  # STT/TTS/speaker verification
+│   │   ├── hybrid_stt_router.py             # Whisper + cloud STT
+│   │   └── speaker_verification_service.py  # ECAPA-TDNN biometrics
+│   ├── vision/                 # Screen capture + Claude Vision
+│   ├── ghost_hands/            # Autonomous automation (pyautogui)
+│   ├── intelligence/           # Learning database + SAI
+│   ├── core/                   # Pipeline, orchestrator, RAM monitor
+│   ├── autonomy/               # Hardware + system control
+│   ├── platform_adapter/       # Cross-platform abstraction layer
+│   │   ├── windows_platform.py             # Windows-native impl
+│   │   └── macos_platform.py               # macOS impl
+│   └── windows_native/         # C# native extensions (P/Invoke)
+│       ├── AudioEngine/        # Windows WASAPI audio
+│       ├── ScreenCapture/      # GDI+ capture
+│       └── SystemControl/      # Win32 system APIs
+├── frontend/                   # React 18 UI
+│   └── src/
+│       └── components/
+│           └── JarvisVoice.js  # Voice UI + edge-tts Neural voice
+├── start_system.py             # Main launcher
+├── unified_supervisor.py       # Process lifecycle manager
+├── .env.windows                # Windows config template
+├── WINDOWS_PORT_BLUEPRINT.md   # Full macOS→Windows conversion guide
+├── SECURITY.md                 # Security policy
+└── LICENSE                     # MIT
+```
+
+---
+
+## 🗣️ Voice Commands
+
+| Say This | JARVIS Does |
+|----------|------------|
+| "Hey JARVIS" | Activate |
+| "What can you do?" | List capabilities |
+| "Can you see my screen?" | Vision test |
+| "Open Chrome and go to Google" | Browser control |
+| "Search for AI news" | Web search |
+| "What's my RAM usage?" | System status |
+| "Start monitoring my screen" | Begin 30 FPS capture |
+| "Set volume to 50%" | Volume control |
+| "Lock my screen" | Windows lock (LockWorkStation) |
+| "JARVIS, learn my voice" | Enroll voice biometrics |
+
+---
+
+## 🏗️ Architecture
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                      Frontend (React)                    │
+│              http://localhost:3000                       │
+└─────────────────────┬───────────────────────────────────┘
+                      │ WebSocket / REST
+┌─────────────────────▼───────────────────────────────────┐
+│                  FastAPI Backend                         │
+│              http://localhost:8010                       │
+│                                                          │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌────────┐  │
+│  │  Voice   │  │  Vision  │  │  Ghost   │  │  SAI   │  │
+│  │  System  │  │  System  │  │  Hands   │  │ Aware  │  │
+│  │ Whisper  │  │   mss +  │  │pyautogui │  │  +CAI  │  │
+│  │edge-tts  │  │  Claude  │  │  pywin32 │  │        │  │
+│  └────┬─────┘  └────┬─────┘  └────┬─────┘  └────┬───┘  │
+│       │             │              │              │      │
+│  ┌────▼─────────────▼──────────────▼──────────────▼───┐ │
+│  │              Intelligence Core                       │ │
+│  │  Claude API │ Fireworks AI │ SQLite │ ChromaDB       │ │
+│  └──────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────┘
+                      │ GCP Auto-routing (RAM >80%)
+┌─────────────────────▼───────────────────────────────────┐
+│              GCP Cloud (Optional)                        │
+│   e2-highmem-4 Spot VM ($0.029/hr) — 32GB RAM           │
+└─────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 🔄 What's New (Phase 11 — Windows Port)
+
+### All fixes applied and working ✅
+
+| Fix | File | Status |
+|-----|------|--------|
+| Neural TTS voice (`en-GB-RyanNeural`) | `realtime_voice_communicator.py` | ✅ |
+| Windows toast notifications | `notification_bridge.py` | ✅ |
+| Ghost Hands: `cliclick` → `pyautogui` | `ghost_hands/background_actuator.py` | ✅ |
+| Upstream sync (130 commits from drussell23) | merge commit `3ce7237a` | ✅ |
+| ECAPA 25s timeout bypass | `ml_engine_registry.py` | ✅ |
+| UNIQUE constraint spam eliminated | `learning_database.py` | ✅ |
+| `os.uname()` crash fixed | `infrastructure_orchestrator.py` | ✅ |
+| `NoneType` traceback fixed | `speaker_verification_service.py` | ✅ |
+| Keychain `WinError 2` silenced | `start_system.py` | ✅ |
+| `fcntl` Windows guard | `intelligent_gcp_optimizer.py` | ✅ |
+| UTF-8 stdout/stderr (emoji safe) | `main.py` | ✅ |
+| WebSocket npm.cmd path fix | `websocket_router.py` | ✅ |
+| Secure logging (CWE-117/532) | `secure_logging.py` | ✅ |
+| Hardware control: `caffeinate` → `SetThreadExecutionState` | `hardware_control.py` | ✅ |
+| Vision: `screencapture` → `mss` | `claude_vision_chatbot.py` | ✅ |
+
+### Remaining (Phase 12+)
+See [WINDOWS_PORT_BLUEPRINT.md](WINDOWS_PORT_BLUEPRINT.md) for the complete 700-line guide.
+
+---
+
+## 📦 Key Dependencies
+
+### Backend
+```
+fastapi, uvicorn, websockets      # Server
+anthropic, fireworks-ai           # LLM APIs
+openai-whisper                    # Local STT
+edge-tts                          # Neural TTS (Windows)
+mss, Pillow                       # Screen capture
+pyautogui, pywin32                # Automation (Windows)
+chromadb                          # Vector memory
+pyttsx3                           # Fallback TTS
+psutil                            # System monitoring
+```
+
+### Frontend
+```
+react@18                          # UI framework
+socket.io-client                  # WebSocket
+```
+
+### Optional (Cloud)
+```
+google-cloud-compute              # GCP Spot VMs
+speechbrain                       # ECAPA voice biometrics (GPU)
+torchaudio                        # Audio ML (GPU)
+```
+
+---
+
+## 🔐 Security
+
+See [SECURITY.md](SECURITY.md) for full security policy.
+
+**Quick notes:**
+- API keys go in `.env` only — **never in code**
+- JARVIS runs on `localhost` only by default
+- Auth is bypassed on Windows MVP (`JARVIS_AUTO_BYPASS_WINDOWS=true`)
+- Voice biometric auth requires `speechbrain` + GPU
+
+---
+
+## 🤝 Contributing
+
+This is an active Windows port. Contributions welcome!
+
+1. Fork the repo
+2. Create a feature branch: `git checkout -b feat/windows-audio`
+3. Commit: `git commit -m "feat: add Windows audio engine"`
+4. Push: `git push origin feat/windows-audio`
+5. Open a PR
+
+**Priority areas:**
+- Windows notification system (plyer integration)
+- ECAPA fast-fail on Windows (skip 25s timeout)
+- Volume/brightness control (pycaw integration)
+- Window management (pygetwindow / win32gui)
+
+---
+
+## 📜 Credits & Attribution
+
+| | |
+|---|---|
+| **Original Author** | [drussell23](https://github.com/drussell23) — [JARVIS](https://github.com/drussell23/JARVIS) |
+| **Windows Port** | [Nandkishor Rathod](https://github.com/nandkishorrathodk-art) |
+| **Voice** | Microsoft Azure Neural TTS — `en-GB-RyanNeural` via [edge-tts](https://github.com/rany2/edge-tts) |
+| **LLM** | [Anthropic Claude](https://anthropic.com) + [Fireworks AI](https://fireworks.ai) |
+| **STT** | [OpenAI Whisper](https://github.com/openai/whisper) |
+
+---
+
+## 📄 License
+
+MIT License — see [LICENSE](LICENSE)
+
+Original JARVIS project by drussell23. Windows port and modifications by Nandkishor Rathod (2026).
+
+---
+
+<div align="center">
+
+**⚡ Ironcliw-AI · JARVIS Windows Port**
+
+*"Sometimes you gotta run before you can walk."* — Tony Stark
+
+<img src="https://user-images.githubusercontent.com/73097560/115834477-dbab4500-a447-11eb-908a-139a6edaec5c.gif" width="100%">
+
+</div>

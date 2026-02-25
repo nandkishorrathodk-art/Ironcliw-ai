@@ -9,6 +9,7 @@ import asyncio
 import logging
 import subprocess
 import json
+import sys
 from typing import Dict, List, Optional, Any, Tuple
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -275,38 +276,55 @@ Return settings with reasoning."""
             return requested_settings
     
     async def _set_display_brightness(self, level: int) -> Dict[str, Any]:
-        """Set display brightness"""
+        """Set display brightness — cross-platform"""
         try:
-            # Clamp brightness level
             level = max(0, min(100, level))
-            
-            # Convert to 0-1 scale
-            brightness = level / 100.0
-            
-            # Use brightness command (requires installation)
-            # In practice, this would use a proper API or tool
-            result = subprocess.run(
-                ['brightness', str(brightness)],
-                capture_output=True,
-                text=True
-            )
-            
-            if result.returncode == 0:
-                return {'success': True, 'level': level}
+            if sys.platform == "win32":
+                loop = asyncio.get_event_loop()
+                success = await loop.run_in_executor(None, self._set_brightness_windows, level)
+                return {'success': success, 'level': level}
             else:
-                # Fallback method using AppleScript
-                script = f'''
+                brightness = level / 100.0
+                result = subprocess.run(
+                    ['brightness', str(brightness)],
+                    capture_output=True,
+                    text=True
+                )
+                if result.returncode == 0:
+                    return {'success': True, 'level': level}
+                script = '''
                 tell application "System Preferences"
                     reveal anchor "displaysDisplayTab" of pane "com.apple.preference.displays"
                 end tell
                 '''
                 subprocess.run(['osascript', '-e', script], capture_output=True)
-                
                 return {'success': True, 'level': level, 'method': 'manual'}
-                
         except Exception as e:
             logger.error(f"Error setting brightness: {e}")
             return {'success': False, 'error': str(e)}
+
+    def _set_brightness_windows(self, level: int) -> bool:
+        """Set display brightness 0-100 on Windows via WMI or PowerShell fallback."""
+        try:
+            import wmi
+            c = wmi.WMI(namespace='wmi')
+            methods = c.WmiMonitorBrightnessMethods()[0]
+            methods.WmiSetBrightness(level, 0)
+            return True
+        except Exception:
+            pass
+        try:
+            subprocess.run(
+                [
+                    "powershell", "-NoProfile", "-Command",
+                    f"(Get-WmiObject -Namespace root/wmi -Class WmiMonitorBrightnessMethods)"
+                    f".WmiSetBrightness(1,{level})"
+                ],
+                capture_output=True, timeout=5
+            )
+            return True
+        except Exception:
+            return False
     
     async def _set_night_shift(self, settings: Dict[str, Any]) -> Dict[str, Any]:
         """Control Night Shift settings"""
@@ -425,41 +443,109 @@ Include reasoning."""
             return requested_settings
     
     async def _set_volume(self, level: int) -> Dict[str, Any]:
-        """Set system volume"""
+        """Set system volume — cross-platform"""
         try:
-            # Use osascript to set volume
-            script = f'set volume output volume {level}'
-            result = subprocess.run(
-                ['osascript', '-e', script],
-                capture_output=True
-            )
-            
-            return {
-                'success': result.returncode == 0,
-                'level': level
-            }
-            
+            if sys.platform == "win32":
+                loop = asyncio.get_event_loop()
+                success = await loop.run_in_executor(None, self._set_volume_windows, level)
+                return {'success': success, 'level': level}
+            else:
+                script = f'set volume output volume {level}'
+                result = subprocess.run(
+                    ['osascript', '-e', script],
+                    capture_output=True
+                )
+                return {
+                    'success': result.returncode == 0,
+                    'level': level
+                }
         except Exception as e:
             logger.error(f"Error setting volume: {e}")
             return {'success': False, 'error': str(e)}
+
+    def _set_volume_windows(self, level: int) -> bool:
+        """Set system volume 0-100 on Windows via pycaw (COM-based)."""
+        try:
+            from ctypes import cast, POINTER
+            from comtypes import CLSCTX_ALL
+            from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
+            devices = AudioUtilities.GetSpeakers()
+            interface = devices.Activate(IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
+            vol_ctl = cast(interface, POINTER(IAudioEndpointVolume))
+            vol_ctl.SetMasterVolumeLevelScalar(max(0.0, min(1.0, level / 100.0)), None)
+            return True
+        except Exception:
+            pass
+        try:
+            import ctypes
+            vol = int(max(0, min(100, level)) / 100 * 0xFFFF)
+            ctypes.windll.winmm.waveOutSetVolume(None, (vol << 16) | vol)
+            return True
+        except Exception:
+            return False
+
+    def _get_volume_windows(self) -> int:
+        """Get current system volume 0-100 on Windows."""
+        try:
+            from ctypes import cast, POINTER
+            from comtypes import CLSCTX_ALL
+            from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
+            devices = AudioUtilities.GetSpeakers()
+            interface = devices.Activate(IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
+            vol_ctl = cast(interface, POINTER(IAudioEndpointVolume))
+            return int(vol_ctl.GetMasterVolumeLevelScalar() * 100)
+        except Exception:
+            return 50
+
+    async def get_volume(self) -> int:
+        """Get current system volume 0-100 — cross-platform."""
+        if sys.platform == "win32":
+            loop = asyncio.get_event_loop()
+            return await loop.run_in_executor(None, self._get_volume_windows)
+        else:
+            try:
+                result = subprocess.run(
+                    ['osascript', '-e', 'output volume of (get volume settings)'],
+                    capture_output=True, text=True
+                )
+                return int(result.stdout.strip())
+            except Exception:
+                return 50
     
     async def _set_mute(self, mute: bool) -> Dict[str, Any]:
-        """Set system mute state"""
+        """Set system mute state — cross-platform"""
         try:
-            script = f'set volume output muted {str(mute).lower()}'
-            result = subprocess.run(
-                ['osascript', '-e', script],
-                capture_output=True
-            )
-            
-            return {
-                'success': result.returncode == 0,
-                'muted': mute
-            }
-            
+            if sys.platform == "win32":
+                loop = asyncio.get_event_loop()
+                success = await loop.run_in_executor(None, self._set_mute_windows, mute)
+                return {'success': success, 'muted': mute}
+            else:
+                script = f'set volume output muted {str(mute).lower()}'
+                result = subprocess.run(
+                    ['osascript', '-e', script],
+                    capture_output=True
+                )
+                return {
+                    'success': result.returncode == 0,
+                    'muted': mute
+                }
         except Exception as e:
             logger.error(f"Error setting mute: {e}")
             return {'success': False, 'error': str(e)}
+
+    def _set_mute_windows(self, mute: bool) -> bool:
+        """Set mute state on Windows via pycaw."""
+        try:
+            from ctypes import cast, POINTER
+            from comtypes import CLSCTX_ALL
+            from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
+            devices = AudioUtilities.GetSpeakers()
+            interface = devices.Activate(IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
+            vol_ctl = cast(interface, POINTER(IAudioEndpointVolume))
+            vol_ctl.SetMute(1 if mute else 0, None)
+            return True
+        except Exception:
+            return False
     
     async def _set_audio_device(self, device_name: str, device_type: str) -> Dict[str, Any]:
         """Set audio input/output device"""
@@ -553,56 +639,106 @@ Include reasoning."""
     
     def _is_bluetooth_needed(self) -> bool:
         """Check if Bluetooth is needed for current devices"""
-        # Check for connected Bluetooth devices
+        if sys.platform == "win32":
+            return True
         try:
             result = subprocess.run(
                 ['system_profiler', 'SPBluetoothDataType'],
                 capture_output=True,
                 text=True
             )
-            
-            # Simple check for connected devices
             return 'Connected: Yes' in result.stdout
-            
         except Exception:
-            return True  # Assume needed if can't check
-    
+            return True
+
     async def _control_bluetooth(self, enable: bool) -> Dict[str, Any]:
         """Control Bluetooth state"""
+        if sys.platform == "win32":
+            logger.warning("[hardware_control] Bluetooth control via blueutil not available on Windows — skipped")
+            return {'success': False, 'bluetooth': 'unsupported on Windows'}
         try:
-            # Use blueutil or similar tool
             action = 'on' if enable else 'off'
             result = subprocess.run(
                 ['blueutil', '--power', action],
                 capture_output=True
             )
-            
             return {
                 'success': result.returncode == 0,
                 'bluetooth': 'enabled' if enable else 'disabled'
             }
-            
         except Exception as e:
             logger.error(f"Error controlling Bluetooth: {e}")
             return {'success': False, 'error': str(e)}
-    
+
     async def _enable_firewall(self) -> Dict[str, Any]:
-        """Enable macOS firewall"""
+        """Enable firewall — macOS only, no-op on Windows (managed via Windows Defender)."""
+        if sys.platform == "win32":
+            logger.info("[hardware_control] Firewall management skipped on Windows (use Windows Defender)")
+            return {'success': True, 'firewall': 'managed by Windows Defender'}
         try:
-            # Enable firewall (requires admin privileges)
             result = subprocess.run(
                 ['sudo', '/usr/libexec/ApplicationFirewall/socketfilterfw', '--setglobalstate', 'on'],
                 capture_output=True
             )
-            
             return {
                 'success': result.returncode == 0,
                 'firewall': 'enabled'
             }
-            
         except Exception as e:
             logger.error(f"Error enabling firewall: {e}")
             return {'success': False, 'error': str(e)}
+
+    def prevent_sleep(self) -> bool:
+        """Prevent system sleep — cross-platform."""
+        if sys.platform == "win32":
+            import ctypes
+            ES_CONTINUOUS = 0x80000000
+            ES_SYSTEM_REQUIRED = 0x00000001
+            ES_DISPLAY_REQUIRED = 0x00000002
+            ctypes.windll.kernel32.SetThreadExecutionState(
+                ES_CONTINUOUS | ES_SYSTEM_REQUIRED | ES_DISPLAY_REQUIRED
+            )
+            return True
+        else:
+            try:
+                self._caffeinate_process = subprocess.Popen(['caffeinate', '-d', '-i', '-m'])
+                return True
+            except Exception as e:
+                logger.warning(f"caffeinate failed: {e}")
+                return False
+
+    def allow_sleep(self) -> bool:
+        """Allow system to sleep again — cross-platform."""
+        if sys.platform == "win32":
+            import ctypes
+            ES_CONTINUOUS = 0x80000000
+            ctypes.windll.kernel32.SetThreadExecutionState(ES_CONTINUOUS)
+            return True
+        else:
+            process = getattr(self, '_caffeinate_process', None)
+            if process:
+                try:
+                    process.terminate()
+                    self._caffeinate_process = None
+                except Exception:
+                    pass
+            return True
+
+    def sleep_system(self) -> bool:
+        """Put system to sleep — cross-platform."""
+        try:
+            if sys.platform == "win32":
+                import ctypes
+                ctypes.windll.PowrProf.SetSuspendState(0, 1, 0)
+            else:
+                subprocess.run(
+                    ['osascript', '-e', 'tell application "System Events" to sleep'],
+                    capture_output=True
+                )
+            return True
+        except Exception as e:
+            logger.error(f"Error sleeping system: {e}")
+            return False
     
     async def optimize_for_presentation(self) -> Dict[str, Any]:
         """Optimize hardware for presentation mode"""
@@ -627,7 +763,7 @@ Include reasoning."""
                 optimizations.append("Audio optimized")
             
             # 4. Disable sleep and screen saver
-            caffeinate_process = subprocess.Popen(['caffeinate', '-d', '-i', '-m'])
+            self.prevent_sleep()
             optimizations.append("Sleep and screen saver disabled")
             
             # Update policy
@@ -637,7 +773,6 @@ Include reasoning."""
                 'success': True,
                 'mode': 'presentation',
                 'optimizations': optimizations,
-                'caffeinate_pid': caffeinate_process.pid
             }
             
         except Exception as e:
@@ -728,4 +863,5 @@ Respond with:
 
 
 # Export main class
-__all__ = ['HardwareControlSystem', 'HardwareComponent', 'ControlMode']
+__all__ = ['HardwareControlSystem', 'HardwareComponent', 'ControlMode',
+           'get_volume', 'sleep_system', 'prevent_sleep', 'allow_sleep']

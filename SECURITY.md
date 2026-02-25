@@ -1,342 +1,334 @@
-# Security Policy
+# Security Policy — Ironcliw-AI / JARVIS
 
 ## 🔒 Security Overview
 
-JARVIS is an AI assistant with system-level access to your computer. Security is critical. This document outlines our security policies, practices, and how to report vulnerabilities.
+JARVIS is an AI assistant with **system-level access** to your computer (screen, keyboard, microphone, file system). Security is critical. This document outlines security policies, known risks, and how to report vulnerabilities.
 
 ---
 
 ## 📋 Supported Versions
 
-| Version | Status | Security Updates |
-|---------|--------|------------------|
-| Phase 1-5 (Windows Port) | ✅ Active Development | Yes |
-| Original macOS | ⚠️ Upstream Only | See [original repo](https://github.com/drussell23/JARVIS-AI-Agent) |
+| Version | Port Status | Security Updates |
+|---------|-------------|------------------|
+| **Phase 11 (Windows Port)** | ✅ Active Development | Yes — this repo |
+| Phase 1–10 (Windows Port) | ⚠️ Superseded | Upgrade to Phase 11 |
+| Original macOS | ⚠️ Upstream Only | See [drussell23/JARVIS](https://github.com/drussell23/JARVIS) |
 
 ---
 
 ## 🚨 Reporting a Vulnerability
 
-**DO NOT** open public issues for security vulnerabilities.
+**DO NOT** open public GitHub Issues for security vulnerabilities.
 
 ### How to Report
 
-1. **Email**: Send details to your repository maintainer (nandkishorrathodk-art)
-2. **GitHub Security Advisory**: Use "Security" tab → "Report a vulnerability"
-3. **Include**:
-   - Description of vulnerability
+1. **GitHub Security Advisory**: Go to [Security tab](https://github.com/nandkishorrathodk-art/Ironcliw-ai/security) → "Report a vulnerability" (private)
+2. **Include**:
+   - Description of the vulnerability
    - Steps to reproduce
-   - Potential impact
-   - Suggested fix (if available)
+   - Potential impact / severity
+   - Suggested fix (optional)
 
 ### Response Timeline
 
-- **Initial Response**: Within 48 hours
-- **Status Update**: Within 7 days
-- **Fix Timeline**: Depends on severity (Critical: 24-72h, High: 1-2 weeks, Medium: 2-4 weeks)
+| Severity | Initial Response | Fix Target |
+|----------|-----------------|------------|
+| **Critical** (RCE, auth bypass) | < 24 hours | 24–72 hours |
+| **High** (data leak, privilege escalation) | < 48 hours | 1–2 weeks |
+| **Medium** | < 72 hours | 2–4 weeks |
+| **Low** | < 1 week | Next release |
 
 ---
 
-## ⚠️ Current Security Status (MVP Phase)
+## ⚠️ Current Security Status (Phase 11 — Windows MVP)
 
-### ⚠️ BYPASS MODE ACTIVE
+### Authentication Mode
 
-**Authentication is currently BYPASSED for Windows MVP**:
 ```env
-JARVIS_AUTH_MODE=BYPASS
-JARVIS_SKIP_VOICE_AUTH=true
+JARVIS_AUTO_BYPASS_WINDOWS=true    # Auth bypassed on Windows
+JARVIS_VOICE_BIOMETRIC_ENABLED=false
 ```
 
-**What This Means**:
-- ❌ No voice biometric verification
-- ❌ No password authentication
-- ❌ Anyone with local access can use JARVIS
-- ✅ Suitable for single-user development environments
-- ⚠️ **NOT production-ready for multi-user systems**
+**What this means:**
+- ❌ No voice biometric verification (speechbrain/GPU required)
+- ❌ No Windows Hello integration (Phase 12+)
+- ✅ Suitable for **single-user development machines only**
+- ⚠️ **NOT production-ready** for multi-user or shared systems
 
-**Mitigation**: Only run JARVIS on trusted, single-user machines.
+**Mitigation**: Run JARVIS only on your personal, trusted machine. Do not expose any ports to external networks.
 
 ---
 
 ## 🔐 Security Features
 
-### ✅ Implemented
+### ✅ Implemented (Phase 11)
 
-| Feature | Status | Platform |
-|---------|--------|----------|
-| API Key Encryption | ✅ Environment Variables | All |
-| Credential Manager | ✅ Windows Credential API | Windows |
-| UAC Elevation Detection | ✅ Platform Layer | Windows |
-| Secure Temp File Handling | ✅ `tempfile` Module | All |
-| Input Validation | ✅ FastAPI Validators | All |
-| HTTPS for External APIs | ✅ Required | All |
+| Feature | Status | Implementation |
+|---------|--------|---------------|
+| API Key Encryption | ✅ | Environment variables only — never in code |
+| Secure Logging | ✅ | CWE-117/532 log injection prevention (`secure_logging.py`) |
+| Atomic Write Permissions | ✅ | `0o600` (owner read/write only) |
+| Input Validation | ✅ | FastAPI Pydantic validators on all endpoints |
+| HTTPS for External APIs | ✅ | Required for Claude, Fireworks, GCP |
+| Temp File Cleanup | ✅ | `tempfile` + `finally: os.unlink()` pattern |
+| Windows Credential Guard | ✅ | Keychain replaced with Windows Credential Manager |
+| UNIQUE Constraint Prevention | ✅ | Pre-check hash before DB insert (no log spam) |
+| Secure TTS temp files | ✅ | edge-tts MP3 deleted immediately after playback |
+| Process isolation | ✅ | Backend/frontend run as separate processes |
 
-### ⏳ Planned (Phase 6+)
+### 🔧 Fixed in Phase 11
+
+| Vulnerability | Fix Applied | Commit |
+|---------------|------------|--------|
+| API keys in `.env.windows` committed to git | Redacted + gitignored | `a77933aa` |
+| Log injection (CWE-117) via user input in logs | `secure_logging.py` sanitizer | Phase 11 Session 8 |
+| UNIQUE constraint spam (DB timing race) | Hash pre-check in `learning_database.py` | `2c22880f` |
+| `WinError 2` on Keychain access | Windows platform guard | `2c22880f` |
+
+### ⏳ Planned (Phase 12+)
 
 | Feature | Priority | Target Phase |
 |---------|----------|--------------|
-| Voice Biometric Auth | High | Phase 6 |
-| Windows Hello Integration | High | Phase 7 |
-| TPM Key Storage | Medium | Phase 8 |
-| End-to-End Encryption | Medium | Phase 9 |
-| Audit Logging | High | Phase 6 |
-| Rate Limiting | Medium | Phase 7 |
+| Windows Hello biometric auth | High | Phase 12 |
+| Voice biometric (ECAPA-TDNN) | High | Phase 13 (GPU machine) |
+| TPM key storage | Medium | Phase 14 |
+| End-to-end encryption (local data) | Medium | Phase 14 |
+| Rate limiting (API abuse prevention) | Medium | Phase 12 |
+| Audit logging (full trail) | High | Phase 12 |
+| Dependency vulnerability scanning (CI) | High | Active (CodeQL) |
 
 ---
 
 ## 🛡️ Security Best Practices
 
-### For Users
+### 1. API Key Management
 
-#### 1. **API Key Management**
-
-**DO**:
-```bash
-# Use .env file (gitignored)
+**DO:**
+```powershell
+# Store in .env (already in .gitignore)
 ANTHROPIC_API_KEY=sk-ant-xxxxxxxxxxxxx
 FIREWORKS_API_KEY=fw-xxxxxxxxxxxxx
-OPENAI_API_KEY=sk-xxxxxxxxxxxxx
 ```
 
-**DON'T**:
+**DO NOT:**
 ```python
-# ❌ NEVER hardcode keys in source code
-api_key = "sk-ant-xxxxxxxxxxxxx"  # BAD!
+# ❌ NEVER hardcode in source files
+api_key = "sk-ant-xxxxxxxxxxxxx"  # This will be scanned and flagged!
 ```
 
-#### 2. **File Permissions**
+**Verify your .env is gitignored:**
+```powershell
+git check-ignore -v .env     # Should output: .gitignore:X:.env
+```
+
+### 2. File Permissions (Windows)
 
 ```powershell
-# Windows: Restrict .env file access
+# Restrict .env to your user only
 icacls .env /inheritance:r /grant:r "%USERNAME%:R"
-
-# Verify
-icacls .env
+icacls .env   # Verify
 ```
 
-#### 3. **Network Security**
+### 3. Network Security
 
-- Run JARVIS on localhost only (default: `127.0.0.1:8010`)
-- Do NOT expose ports to public internet
-- Use firewall to block unauthorized access:
-  ```powershell
-  # Windows Firewall: Block inbound on port 8010 from external networks
-  New-NetFirewallRule -DisplayName "JARVIS Local Only" -Direction Inbound -LocalPort 8010 -Protocol TCP -Action Block -RemoteAddress Any
-  New-NetFirewallRule -DisplayName "JARVIS Localhost" -Direction Inbound -LocalPort 8010 -Protocol TCP -Action Allow -RemoteAddress 127.0.0.1
-  ```
+JARVIS defaults to **localhost only**. Keep it that way:
 
-#### 4. **GCP VM Security**
+```env
+BACKEND_HOST=127.0.0.1    # Never 0.0.0.0
+BACKEND_PORT=8010
+CORS_ORIGINS=http://localhost:3000
+```
 
-If using GCP golden image for inference:
-- ✅ Use service accounts with minimal permissions
-- ✅ Enable VPC firewall rules (allow only your IP)
-- ✅ Enable Cloud Armor for DDoS protection
-- ✅ Use Workload Identity for authentication
-- ❌ Do NOT expose VM to `0.0.0.0/0`
+**Windows Firewall — block external access:**
+```powershell
+# Block inbound on port 8010 from any external IP
+New-NetFirewallRule -DisplayName "JARVIS Block External" `
+  -Direction Inbound -LocalPort 8010 -Protocol TCP `
+  -Action Block -RemoteAddress Any
 
-#### 5. **Update Dependencies**
+# Allow only localhost
+New-NetFirewallRule -DisplayName "JARVIS Allow Localhost" `
+  -Direction Inbound -LocalPort 8010 -Protocol TCP `
+  -Action Allow -RemoteAddress 127.0.0.1
+```
 
-```bash
-# Check for security vulnerabilities
+### 4. GCP / Cloud Security
+
+If using GCP Spot VM for inference:
+- ✅ Use service accounts with **minimal IAM permissions**
+- ✅ Enable VPC firewall: allow only your IP
+- ✅ Never expose VM to `0.0.0.0/0`
+- ✅ Use Workload Identity — no service account JSON files
+- ✅ Enable Cloud Armor (DDoS protection)
+- ❌ Do NOT use root/admin service accounts
+
+### 5. Dependency Updates
+
+```powershell
+# Check for known vulnerabilities
+pip install pip-audit
 pip-audit
 
-# Update packages
+# Update all packages
 pip install --upgrade -r requirements.txt
+
+# JavaScript (frontend)
+cd frontend
+npm audit
+npm audit fix
 ```
 
 ---
 
 ## 🔍 Known Security Considerations
 
-### 1. **System-Level Access**
+### 1. System-Level Access
 
-JARVIS requires extensive system permissions:
+JARVIS has broad system access by design:
 
-| Permission | Purpose | Risk Level |
-|------------|---------|------------|
-| Screen Capture | Vision/automation | Medium |
-| Keyboard/Mouse Control | Ghost Hands automation | High |
-| File System Access | Project management | High |
-| Process Management | Task orchestration | High |
-| Microphone Access | Voice commands | Medium |
+| Permission | Purpose | Risk | Mitigation |
+|------------|---------|------|-----------|
+| Screen capture (mss) | Vision / context awareness | Medium | Only captures when JARVIS is active |
+| Keyboard/mouse (pyautogui) | Ghost Hands automation | High | User must explicitly trigger |
+| File system (pathlib) | Project management | Medium | Scoped to working directories |
+| Process management (psutil) | Orchestration | High | Only JARVIS-owned processes |
+| Microphone | Voice commands | Medium | No recording stored by default |
+| Network | API calls, GCP | Medium | HTTPS only, keys in env |
 
-**Mitigation**: Only grant permissions you need. Disable unused features in `windows_config.yaml`.
-
-### 2. **Third-Party APIs**
-
-JARVIS sends data to external services:
-
-| Service | Data Sent | Privacy Policy |
-|---------|-----------|----------------|
-| Claude API | User prompts, context | [Anthropic](https://www.anthropic.com/privacy) |
-| Fireworks AI | User prompts | [Fireworks](https://fireworks.ai/privacy) |
-| OpenAI API | User prompts (optional) | [OpenAI](https://openai.com/privacy) |
-| GCP VMs | Inference requests | [Google Cloud](https://cloud.google.com/privacy) |
-
-**Mitigation**: 
-- Review each provider's privacy policy
-- Use local inference when possible (PRIME_LOCAL)
-- Avoid sending sensitive data in prompts
-
-### 3. **Log Files**
-
-Logs may contain sensitive information:
-
-```yaml
-# .gitignore includes:
-*.log
-logs/
-.jarvis/
+**Recommendation**: Disable features you don't use via `.env`:
+```env
+JARVIS_DISABLE_GHOST_HANDS=true      # Disable keyboard/mouse control
+JARVIS_DISABLE_SCREEN_CAPTURE=true   # Disable vision
+JARVIS_SKIP_GCP=true                 # Disable cloud routing
 ```
 
-**Action**: Regularly clean logs and NEVER commit them to version control.
+### 2. Third-Party APIs — Data Sent
 
-### 4. **C# Native DLLs**
+| Service | What Is Sent | Privacy Policy |
+|---------|-------------|----------------|
+| Claude API (Anthropic) | User prompts, screen context | [anthropic.com/privacy](https://www.anthropic.com/privacy) |
+| Fireworks AI | User prompts | [fireworks.ai/privacy](https://fireworks.ai/privacy) |
+| edge-tts (Microsoft) | Text to speak | [microsoft.com/privacy](https://privacy.microsoft.com) |
+| GCP (optional) | Inference requests | [cloud.google.com/privacy](https://cloud.google.com/privacy) |
 
-Windows native layer uses P/Invoke for system APIs:
+**Recommendation**: Avoid sending PII (names, passwords, financial data) in voice commands or prompts.
 
-**Risks**:
-- Buffer overflows (mitigated by .NET runtime)
-- Privilege escalation (requires UAC)
-- DLL injection attacks
+### 3. Log Files
 
-**Mitigation**:
-- Source code auditable (`backend/windows_native/`)
-- Compiled DLLs should be reproducible
-- Verify DLL signatures before running
+Logs may contain sensitive context. They are gitignored but check locally:
+
+```powershell
+# Verify logs are not tracked
+git check-ignore -v backend\logs\
+git check-ignore -v .jarvis\
+
+# Clear old logs
+Remove-Item -Recurse -Force backend\logs\
+```
+
+### 4. Windows Native Layer (C# DLLs)
+
+`backend/windows_native/` uses P/Invoke for Win32 APIs:
+
+- **Risk**: Buffer overflow via .NET interop, DLL injection
+- **Mitigation**: Source is auditable in this repo; compiled from source
+- **Mitigation**: .NET runtime provides bounds checking
+- **Note**: DLLs require UAC elevation for privileged operations
 
 ---
 
-## 🔧 Security Configuration
-
-### Recommended `.env` Settings
+## 🔧 Recommended `.env` Security Settings
 
 ```env
-# Authentication (CHANGE THIS FOR PRODUCTION!)
-JARVIS_AUTH_MODE=BYPASS                    # ⚠️ Change to VOICE or PASSWORD
-JARVIS_SKIP_VOICE_AUTH=true                # ⚠️ Set to false for production
+# ─── Authentication ─────────────────────────────────────────
+JARVIS_AUTO_BYPASS_WINDOWS=true        # ⚠️ MVP only — disable in production
+JARVIS_VOICE_BIOMETRIC_ENABLED=false   # ⚠️ Enable when GPU + speechbrain available
 
-# Network
-BACKEND_HOST=127.0.0.1                     # ✅ Localhost only
-BACKEND_PORT=8010                          # ✅ Non-standard port
-CORS_ORIGINS=http://localhost:3000         # ✅ Restrict CORS
+# ─── Network (NEVER change these unless you know what you're doing) ───
+BACKEND_HOST=127.0.0.1                 # ✅ Localhost ONLY
+BACKEND_PORT=8010
+FRONTEND_PORT=3000
+CORS_ORIGINS=http://localhost:3000     # ✅ Restrict CORS
 
-# API Keys (NEVER commit these!)
-ANTHROPIC_API_KEY=sk-ant-xxxxx             # ✅ Use .env, not code
-FIREWORKS_API_KEY=fw-xxxxx                 # ✅ Rotate regularly
+# ─── API Keys (NEVER commit — use .env only) ─────────────────
+ANTHROPIC_API_KEY=sk-ant-xxxxx
+FIREWORKS_API_KEY=fw-xxxxx
 
-# Logging
-LOG_LEVEL=INFO                             # ⚠️ Don't use DEBUG in production
-JARVIS_ENABLE_AUDIT_LOG=true               # ✅ Enable audit trail
+# ─── Logging ─────────────────────────────────────────────────
+LOG_LEVEL=INFO                         # ⚠️ Never DEBUG in production
+JARVIS_ENABLE_AUDIT_LOG=true           # ✅ Keep audit trail
 
-# GCP (if used)
-GCP_PROJECT_ID=your-project                # ✅ Use dedicated project
-GOOGLE_APPLICATION_CREDENTIALS=path.json   # ✅ Use service account
-
-# Rate Limiting (Phase 7+)
-JARVIS_RATE_LIMIT_ENABLED=true             # ✅ Prevent abuse
-JARVIS_MAX_REQUESTS_PER_MINUTE=60          # ✅ Adjust as needed
+# ─── GCP (optional) ──────────────────────────────────────────
+GCP_PROJECT_ID=your-project-id
+GOOGLE_APPLICATION_CREDENTIALS=path\to\service-account.json
 ```
 
 ---
 
 ## 🧪 Security Testing
 
-### Checklist Before Deployment
+### Pre-Deployment Checklist
 
-- [ ] All API keys in `.env` (not in code)
-- [ ] `.env` file has restricted permissions
-- [ ] Authentication enabled (not BYPASS)
-- [ ] Running on localhost only
-- [ ] Firewall rules configured
-- [ ] Dependencies updated (`pip-audit` clean)
+- [ ] All API keys in `.env` — not in any source file
+- [ ] `.env` has restricted file permissions (`icacls`)
+- [ ] `.env` is gitignored and not in git history
+- [ ] Backend bound to `127.0.0.1` only
+- [ ] Windows Firewall rules configured
+- [ ] `pip-audit` returns no critical vulnerabilities
+- [ ] `npm audit` returns no critical vulnerabilities
 - [ ] Logs cleared of sensitive data
-- [ ] GCP VM has firewall rules (if used)
-- [ ] CORS origins restricted
-- [ ] Audit logging enabled
+- [ ] GCP VM firewall rules configured (if used)
 
-### Testing Commands
+### Security Scan Commands
 
 ```powershell
-# 1. Check for hardcoded secrets
-python -m detect-secrets scan --baseline .secrets.baseline
-
-# 2. Check for vulnerable dependencies
+# 1. Scan Python for vulnerabilities
 pip-audit
 
-# 3. Verify .env permissions
-icacls .env
+# 2. Scan Python code for security issues (bandit)
+pip install bandit
+bandit -r backend\ -ll
 
-# 4. Test authentication bypass (should fail if disabled)
-curl http://localhost:8010/api/command -H "Content-Type: application/json" -d '{"text":"test"}'
+# 3. Scan for accidentally committed secrets
+pip install detect-secrets
+detect-secrets scan --baseline .secrets.baseline
 
-# 5. Check exposed ports
-netstat -an | findstr :8010
-```
+# 4. Check JS vulnerabilities
+cd frontend && npm audit
 
----
+# 5. Verify no secrets in git history
+git log --all --full-history -- "*.env" "*.key" "*.pem"
 
-## 📚 Resources
-
-### Security Tools
-
-- [**pip-audit**](https://pypi.org/project/pip-audit/) - Find vulnerable dependencies
-- [**detect-secrets**](https://github.com/Yelp/detect-secrets) - Prevent secret commits
-- [**bandit**](https://bandit.readthedocs.io/) - Python security linter
-- [**Safety**](https://pyup.io/safety/) - Check known vulnerabilities
-
-### Installation
-
-```bash
-pip install pip-audit detect-secrets bandit safety
-```
-
-### Usage
-
-```bash
-# Scan for secrets
-detect-secrets scan
-
-# Find vulnerabilities
-pip-audit
-bandit -r backend/
-
-# Check dependency safety
-safety check
+# 6. Check open ports
+netstat -an | findstr ":8010 "
+netstat -an | findstr ":3000 "
 ```
 
 ---
 
 ## 🔄 Security Update Policy
 
-### Update Frequency
+| Type | Frequency |
+|------|-----------|
+| Critical vulnerabilities | Immediate (24–72h) |
+| High severity | Within 1–2 weeks |
+| Medium/Low severity | Monthly releases |
+| Dependency updates | Bi-weekly |
 
-- **Critical vulnerabilities**: Immediate (within 24-72 hours)
-- **High severity**: Weekly
-- **Medium/Low severity**: Monthly
-- **Dependency updates**: Bi-weekly
-
-### Notification Channels
-
+Updates announced via:
+- GitHub Releases
 - GitHub Security Advisories
-- Release notes (CHANGELOG.md)
-- Repository README.md
+- CHANGELOG.md
 
 ---
 
-## 📜 Compliance
+## 📜 Compliance Notes
 
-### Data Privacy
-
-- **GDPR**: User data stays local (unless using cloud APIs)
-- **CCPA**: No personal data sold to third parties
-- **SOC 2**: Not applicable (development project)
-
-### Licenses
-
-- **Windows Port**: MIT License (See [LICENSE](LICENSE))
-- **Original JARVIS**: All Rights Reserved (upstream)
-- **Dependencies**: Various (see `requirements.txt`)
+| Regulation | Status |
+|------------|--------|
+| **GDPR** | User data stays local unless cloud APIs are used. No data sold. |
+| **CCPA** | No personal data sold to third parties. |
+| **SOC 2** | Not applicable (personal/development project). |
 
 ---
 
@@ -344,24 +336,23 @@ safety check
 
 We thank the following for responsible disclosure:
 
-- *No vulnerabilities reported yet*
+*No vulnerabilities reported yet. Be the first — and get credited here!*
 
 ---
 
 ## 📞 Contact
 
-**Maintainer**: Nandkishor Rathod  
-**Repository**: [nandkishorrathodk-art/Ironcliw-ai](https://github.com/nandkishorrathodk-art/Ironcliw-ai)  
-**Security Email**: [Use GitHub Security Advisory]
+**Maintainer**: Nandkishor Rathod
+**Repository**: [nandkishorrathodk-art/Ironcliw-ai](https://github.com/nandkishorrathodk-art/Ironcliw-ai)
+**Security Reports**: [GitHub Security Advisory](https://github.com/nandkishorrathodk-art/Ironcliw-ai/security/advisories/new)
 
 ---
 
 <div align="center">
 
-**🔒 Security is a shared responsibility. Report issues responsibly.**
+**🔒 Security is everyone's responsibility. Report issues responsibly.**
 
-Last Updated: February 2026  
-Version: Phase 1-5 (Windows Port)
+Last Updated: February 2026 | Phase 11 (Windows Port Active)
 
 <img src="https://user-images.githubusercontent.com/73097560/115834477-dbab4500-a447-11eb-908a-139a6edaec5c.gif" width="100%">
 
