@@ -862,6 +862,9 @@ Respond with:
         return status
 
 
+# Alias for backward compatibility
+HardwareController = HardwareControlSystem
+
 # Export main class
-__all__ = ['HardwareControlSystem', 'HardwareComponent', 'ControlMode',
+__all__ = ['HardwareControlSystem', 'HardwareController', 'HardwareComponent', 'ControlMode',
            'get_volume', 'sleep_system', 'prevent_sleep', 'allow_sleep']

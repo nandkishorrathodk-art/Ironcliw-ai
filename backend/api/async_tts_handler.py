@@ -311,3 +311,8 @@ async def generate_speech_async(text: str, voice: str = "Daniel") -> Tuple[Path,
     """Convenience function to generate speech using the global handler"""
     handler = get_tts_handler()
     return await handler.generate_speech(text, voice)
+
+async def generate_tts_file(text: str, voice: str = "Daniel") -> "Path":
+    """Generate TTS audio file and return its path."""
+    path, _ = await generate_speech_async(text, voice)
+    return path
