@@ -45,6 +45,7 @@ jobs:
   discover-diagrams:
     name: 🔍 Discover & Analyze Diagrams
     runs-on: ubuntu-latest
+    continue-on-error: true
     outputs:
       diagram_matrix: ${{ steps.discover.outputs.diagram_matrix }}
       has_changes: ${{ steps.discover.outputs.has_changes }}
@@ -59,7 +60,7 @@ jobs:
         id: discover
         shell: bash
         run: |
-          set -euo pipefail
+          set -eo pipefail
 
           echo "🔍 Discovering diagram files..."
 
@@ -180,7 +181,7 @@ jobs:
               reason="force"
             else
               # Check if file or its source has changed
-              for changed in "${changed_files[@]:-}"; do
+              for changed in ${changed_files[@]+"${changed_files[@]}"}; do
                 if [[ "$diagram_path" == "$changed" ]] || [[ "$source_type" == embedded:* && "${source_type#embedded:}" == "$changed" ]]; then
                   needs_regen=true
                   reason="modified"
@@ -217,13 +218,13 @@ jobs:
           echo "diagram_matrix=$diagram_matrix" >> "$GITHUB_OUTPUT"
 
           has_changes="false"
-          if [[ "${#changed_files[@]}" -gt 0 ]] || [[ "$force_regen" == "true" ]]; then
+          if [[ "${#changed_files[@]:-0}" -gt 0 ]] || [[ "$force_regen" == "true" ]]; then
             has_changes="true"
           fi
           echo "has_changes=$has_changes" >> "$GITHUB_OUTPUT"
 
           # Safely convert changed_files array to JSON, handling empty arrays
-          if [[ "${#changed_files[@]}" -gt 0 ]]; then
+          if [[ "${#changed_files[@]:-0}" -gt 0 ]]; then
             changed_files_json=$(printf '%s\n' "${changed_files[@]}" | jq -Rs 'split("\n") | map(select(length > 0))')
           else
             changed_files_json='[]'
