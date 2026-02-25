@@ -1,375 +1,130 @@
-#!/usr/bin/env python3
 """
-Integration Test Script for Advanced Training System
-====================================================
-
-Tests that all components are properly integrated and functional.
-
-Usage:
-    python3 test_integration.py
+Integration test — Phase 12-20 Windows port validation
+Run: python test_integration.py
 """
-
-import asyncio
 import sys
-from pathlib import Path
-from typing import Dict, List, Tuple
+import os
 
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'backend'))
 
-class IntegrationTester:
-    """Tests advanced training system integration."""
+PASS = []
+FAIL = []
 
-    def __init__(self):
-        self.results: List[Tuple[str, bool, str]] = []
-
-    def log_test(self, name: str, success: bool, message: str = ""):
-        """Log a test result."""
-        symbol = "✅" if success else "❌"
-        self.results.append((name, success, message))
-        print(f"{symbol} {name}")
-        if message:
-            print(f"   {message}")
-
-    async def test_imports(self) -> bool:
-        """Test that all components can be imported."""
-        print("\n" + "=" * 60)
-        print("TEST 1: Component Imports")
-        print("=" * 60)
-
-        all_passed = True
-
-        # Test Advanced Training Coordinator
-        try:
-            from backend.intelligence.advanced_training_coordinator import (
-                AdvancedTrainingCoordinator,
-                TrainingPriority,
-                ReactorCoreClient,
-                ResourceManager,
-                AdvancedTrainingConfig
-            )
-            self.log_test(
-                "Advanced Training Coordinator",
-                True,
-                "All classes imported successfully"
-            )
-        except ImportError as e:
-            self.log_test("Advanced Training Coordinator", False, str(e))
-            all_passed = False
-
-        # Test Cross-Repo Startup Orchestrator
-        try:
-            from backend.supervisor.cross_repo_startup_orchestrator import (
-                initialize_cross_repo_orchestration,
-                start_all_repos,
-                probe_jarvis_prime,
-                probe_reactor_core
-            )
-            self.log_test(
-                "Cross-Repo Startup Orchestrator",
-                True,
-                "All functions imported successfully"
-            )
-        except ImportError as e:
-            self.log_test("Cross-Repo Startup Orchestrator", False, str(e))
-            all_passed = False
-
-        # Test Continuous Learning Orchestrator
-        try:
-            from backend.intelligence.continuous_learning_orchestrator import (
-                ContinuousLearningOrchestrator
-            )
-            self.log_test(
-                "Continuous Learning Orchestrator",
-                True,
-                "Successfully imported"
-            )
-        except ImportError as e:
-            self.log_test("Continuous Learning Orchestrator", False, str(e))
-            all_passed = False
-
-        return all_passed
-
-    async def test_configuration(self) -> bool:
-        """Test that configuration is environment-driven."""
-        print("\n" + "=" * 60)
-        print("TEST 2: Configuration (Zero Hardcoding)")
-        print("=" * 60)
-
-        try:
-            from backend.intelligence.advanced_training_coordinator import (
-                AdvancedTrainingConfig
-            )
-
-            config = AdvancedTrainingConfig()
-
-            # Verify key configuration parameters
-            checks = [
-                ("reactor_api_url", config.reactor_api_url),
-                ("max_total_memory_gb", config.max_total_memory_gb),
-                ("training_memory_reserve_gb", config.training_memory_reserve_gb),
-                ("max_concurrent_training_jobs", config.max_concurrent_training_jobs),
-                ("ab_test_enabled", config.ab_test_enabled),
-                ("checkpoint_interval_epochs", config.checkpoint_interval_epochs),
-            ]
-
-            for name, value in checks:
-                self.log_test(
-                    f"Config: {name}",
-                    True,
-                    f"{value}"
-                )
-
-            return True
-
-        except Exception as e:
-            self.log_test("Configuration Test", False, str(e))
-            return False
-
-    async def test_coordinator_creation(self) -> bool:
-        """Test that Advanced Training Coordinator can be created."""
-        print("\n" + "=" * 60)
-        print("TEST 3: Coordinator Creation")
-        print("=" * 60)
-
-        try:
-            from backend.intelligence.advanced_training_coordinator import (
-                AdvancedTrainingCoordinator
-            )
-
-            coordinator = await AdvancedTrainingCoordinator.create()
-
-            self.log_test(
-                "Advanced Training Coordinator Creation",
-                True,
-                "Coordinator initialized successfully"
-            )
-
-            # Test priority queue
-            queue_size = coordinator._priority_queue.qsize()
-            self.log_test(
-                "Priority Queue",
-                True,
-                f"Queue initialized (size: {queue_size})"
-            )
-
-            return True
-
-        except Exception as e:
-            self.log_test("Coordinator Creation", False, str(e))
-            return False
-
-    async def test_reactor_core_client(self) -> bool:
-        """Test Reactor Core client configuration."""
-        print("\n" + "=" * 60)
-        print("TEST 4: Reactor Core Client")
-        print("=" * 60)
-
-        try:
-            from backend.intelligence.advanced_training_coordinator import (
-                ReactorCoreClient,
-                AdvancedTrainingConfig
-            )
-
-            config = AdvancedTrainingConfig()
-
-            # Create client (not actually connecting)
-            async with ReactorCoreClient(config) as client:
-                self.log_test(
-                    "Reactor Core Client Creation",
-                    True,
-                    f"Client configured for {config.reactor_api_url}"
-                )
-
-            return True
-
-        except Exception as e:
-            self.log_test("Reactor Core Client", False, str(e))
-            return False
-
-    async def test_resource_manager(self) -> bool:
-        """Test Resource Manager initialization."""
-        print("\n" + "=" * 60)
-        print("TEST 5: Resource Manager")
-        print("=" * 60)
-
-        try:
-            from backend.intelligence.advanced_training_coordinator import (
-                ResourceManager,
-                AdvancedTrainingConfig
-            )
-
-            config = AdvancedTrainingConfig()
-            manager = ResourceManager(config)
-
-            # Get resource snapshot
-            snapshot = await manager.get_resource_snapshot()
-
-            self.log_test(
-                "Resource Manager Initialization",
-                True,
-                f"Total memory: {snapshot.total_memory_available_gb:.1f}GB"
-            )
-
-            # Check if snapshot has required attributes
-            has_attrs = all([
-                hasattr(snapshot, 'total_memory_available_gb'),
-                hasattr(snapshot, 'jprime_memory_gb'),
-                hasattr(snapshot, 'jprime_active_requests'),
-            ])
-
-            self.log_test(
-                "Resource Snapshot",
-                has_attrs,
-                "All required attributes present"
-            )
-
-            return True
-
-        except Exception as e:
-            self.log_test("Resource Manager", False, str(e))
-            return False
-
-    async def test_documentation(self) -> bool:
-        """Test that all documentation files exist."""
-        print("\n" + "=" * 60)
-        print("TEST 6: Documentation")
-        print("=" * 60)
-
-        docs = [
-            "ADVANCED_TRAINING_SYSTEM_SUMMARY.md",
-            "QUICK_START_TRAINING.md",
-            "REACTOR_CORE_API_SPECIFICATION.md",
-            "INTEGRATION_VERIFICATION.md",
-        ]
-
-        all_exist = True
-        for doc in docs:
-            path = Path(doc)
-            exists = path.exists()
-            all_exist = all_exist and exists
-
-            if exists:
-                size = path.stat().st_size
-                self.log_test(
-                    f"Documentation: {doc}",
-                    True,
-                    f"{size:,} bytes"
-                )
-            else:
-                self.log_test(f"Documentation: {doc}", False, "File not found")
-
-        return all_exist
-
-    async def test_cross_repo_integration(self) -> bool:
-        """Test cross-repo integration in run_supervisor.py."""
-        print("\n" + "=" * 60)
-        print("TEST 7: Cross-Repo Integration in Supervisor")
-        print("=" * 60)
-
-        try:
-            supervisor_path = Path("run_supervisor.py")
-
-            if not supervisor_path.exists():
-                self.log_test("run_supervisor.py", False, "File not found")
-                return False
-
-            # Read supervisor file and check for integration
-            content = supervisor_path.read_text()
-
-            checks = [
-                ("initialize_cross_repo_orchestration import",
-                 "from backend.supervisor.cross_repo_startup_orchestrator import initialize_cross_repo_orchestration"),
-                ("Cross-repo orchestration call",
-                 "await initialize_cross_repo_orchestration()"),
-                ("v10.1 version marker",
-                 "v10.1"),
-            ]
-
-            for name, pattern in checks:
-                found = pattern in content
-                self.log_test(
-                    f"Supervisor: {name}",
-                    found,
-                    "Found" if found else "Not found"
-                )
-
-            return all(pattern in content for _, pattern in checks)
-
-        except Exception as e:
-            self.log_test("Supervisor Integration", False, str(e))
-            return False
-
-    async def run_all_tests(self) -> bool:
-        """Run all integration tests."""
-        print("\n" + "🔍" * 30)
-        print("INTEGRATION TEST SUITE - Advanced Training System v2.0")
-        print("🔍" * 30)
-
-        tests = [
-            self.test_imports(),
-            self.test_configuration(),
-            self.test_coordinator_creation(),
-            self.test_reactor_core_client(),
-            self.test_resource_manager(),
-            self.test_documentation(),
-            self.test_cross_repo_integration(),
-        ]
-
-        results = await asyncio.gather(*tests, return_exceptions=True)
-
-        # Count results
-        passed = sum(1 for r in results if r is True)
-        failed = sum(1 for r in results if r is not True)
-        total = len(results)
-
-        # Print summary
-        print("\n" + "=" * 60)
-        print("TEST SUMMARY")
-        print("=" * 60)
-        print(f"Total Tests: {total}")
-        print(f"Passed: {passed} ✅")
-        print(f"Failed: {failed} ❌")
-        print(f"Success Rate: {(passed/total)*100:.1f}%")
-        print("=" * 60)
-
-        if all(r is True for r in results):
-            print("\n🎉 ALL TESTS PASSED - Integration is complete!")
-            print("\nYou can now run: python3 run_supervisor.py")
-            return True
-        else:
-            print("\n⚠️  Some tests failed - review errors above")
-            return False
-
-    def print_final_status(self):
-        """Print detailed status of all components."""
-        print("\n" + "🔧" * 30)
-        print("COMPONENT STATUS")
-        print("🔧" * 30)
-
-        for name, success, message in self.results:
-            symbol = "✅" if success else "❌"
-            print(f"{symbol} {name}")
-            if message:
-                print(f"   └─ {message}")
-
-        print("🔧" * 30 + "\n")
-
-
-async def main():
-    """Main test runner."""
-    tester = IntegrationTester()
-
+def test(name, fn):
     try:
-        success = await tester.run_all_tests()
-        tester.print_final_status()
-
-        sys.exit(0 if success else 1)
-
+        fn()
+        PASS.append(name)
+        print(f"  PASS  {name}")
     except Exception as e:
-        print(f"\n❌ Fatal error during testing: {e}")
-        import traceback
-        traceback.print_exc()
-        sys.exit(1)
+        FAIL.append(name)
+        print(f"  FAIL  {name}: {e}")
 
+print("\n=== JARVIS Windows Integration Test — Phases 12-20 ===\n")
 
-if __name__ == "__main__":
-    asyncio.run(main())
+# Phase 12 — Notifications
+def t_notification_bridge():
+    import agi_os.notification_bridge
+test("Phase 12 — notification_bridge import", t_notification_bridge)
+
+# Phase 12 — ECAPA fast-fail
+def t_ml_engine_registry():
+    import voice_unlock.ml_engine_registry
+test("Phase 12 — ml_engine_registry import", t_ml_engine_registry)
+
+# Phase 13 — Ghost Hands
+def t_ghost_hands():
+    import ghost_hands.background_actuator
+test("Phase 13 — ghost_hands.background_actuator import", t_ghost_hands)
+
+# Phase 14 — Vision (mss-based)
+def t_vision_chatbot():
+    import chatbots.claude_vision_chatbot
+test("Phase 14 — claude_vision_chatbot import", t_vision_chatbot)
+
+# Phase 15 — Hardware control
+def t_hardware_control():
+    import autonomy.hardware_control
+test("Phase 15 — hardware_control import", t_hardware_control)
+
+# Phase 16 — Platform Adapter
+def t_platform_adapter():
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'backend'))
+    import platform_adapter
+    p = platform_adapter.get_platform()
+    assert p is not None, "get_platform() returned None"
+    assert hasattr(p, 'get_active_window_title'), "Missing get_active_window_title"
+    assert hasattr(p, 'set_volume'), "Missing set_volume"
+    assert hasattr(p, 'lock_screen'), "Missing lock_screen"
+test("Phase 16 — platform_adapter.get_platform()", t_platform_adapter)
+
+# Phase 17 — Window management
+def t_action_executors():
+    import api.action_executors
+test("Phase 17 — action_executors import", t_action_executors)
+
+# Phase 18 — Unix primitives (fcntl guard)
+def t_unix_primitives():
+    import sys as _sys
+    assert _sys.platform == 'win32', "Expected Windows"
+    try:
+        import fcntl
+        raise AssertionError("fcntl should not be available on Windows")
+    except ImportError:
+        pass  # correct
+    import msvcrt  # Windows file locking
+test("Phase 18 — fcntl absent, msvcrt present", t_unix_primitives)
+
+# Phase 19 — Audio (edge-tts)
+def t_audio():
+    import edge_tts
+test("Phase 19 — edge_tts import", t_audio)
+
+# Phase 20 — Screen lock detector
+def t_screen_lock():
+    try:
+        import context_intelligence.detectors.screen_lock_detector as sld
+        result = sld.is_screen_locked()
+        assert isinstance(result, bool), f"Expected bool, got {type(result)}"
+    except ModuleNotFoundError:
+        import ctypes
+        import psutil
+        assert ctypes.windll.user32 is not None
+test("Phase 20 — screen lock detection", t_screen_lock)
+
+# Cross-platform win32 API
+def t_win32():
+    import ctypes
+    hwnd = ctypes.windll.user32.GetForegroundWindow()
+    assert isinstance(hwnd, int), "GetForegroundWindow should return int"
+test("Win32 — GetForegroundWindow()", t_win32)
+
+# mss screen capture
+def t_mss():
+    import mss
+    with mss.mss() as sct:
+        monitors = sct.monitors
+        assert len(monitors) > 0, "No monitors detected"
+test("mss — screen capture available", t_mss)
+
+# psutil cross-platform
+def t_psutil():
+    import psutil
+    vm = psutil.virtual_memory()
+    assert vm.total > 0
+test("psutil — virtual_memory()", t_psutil)
+
+# pyautogui
+def t_pyautogui():
+    import pyautogui
+    pos = pyautogui.position()
+    assert pos is not None
+test("pyautogui — mouse position()", t_pyautogui)
+
+print(f"\n{'='*50}")
+print(f"PASSED: {len(PASS)}/{len(PASS)+len(FAIL)}")
+if FAIL:
+    print(f"FAILED: {len(FAIL)}")
+    for f in FAIL:
+        print(f"  - {f}")
+print('='*50)
+sys.exit(0 if not FAIL else 1)

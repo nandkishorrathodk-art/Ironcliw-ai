@@ -18,6 +18,33 @@ from datetime import datetime
 logger = logging.getLogger(__name__)
 
 
+def is_screen_locked() -> bool:
+    """Module-level sync check — cross-platform."""
+    import sys
+    if sys.platform == "win32":
+        try:
+            import psutil
+            for proc in psutil.process_iter(['name']):
+                name = proc.info.get('name') or ''
+                if name.lower() == 'logonui.exe':
+                    return True
+        except Exception:
+            pass
+        return False
+    else:
+        try:
+            from Quartz import CGSessionCopyCurrentDictionary
+            session = CGSessionCopyCurrentDictionary()
+            if session:
+                return bool(
+                    session.get("CGSSessionScreenIsLocked", False) or
+                    session.get("CGSSessionScreenSaverIsActive", False)
+                )
+        except Exception:
+            pass
+        return False
+
+
 class ScreenLockContextDetector:
     """
     Detects screen lock state and provides context for command execution.

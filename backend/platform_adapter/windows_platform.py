@@ -495,3 +495,98 @@ class WindowsPlatform(PlatformInterface):
             "has_battery": psutil.sensors_battery() is not None,
             "has_window_management": HAS_PYWIN32,
         }
+
+    def get_active_window_title(self) -> str:
+        """Get the title of the currently focused window (sync)."""
+        if not HAS_PYWIN32:
+            try:
+                import ctypes
+                buf = ctypes.create_unicode_buffer(512)
+                ctypes.windll.user32.GetWindowTextW(
+                    ctypes.windll.user32.GetForegroundWindow(), buf, 512
+                )
+                return buf.value
+            except Exception:
+                return ""
+        try:
+            hwnd = win32gui.GetForegroundWindow()
+            return win32gui.GetWindowText(hwnd)
+        except Exception:
+            return ""
+
+    def set_volume(self, level: int) -> bool:
+        """Set system master volume 0-100 (sync)."""
+        try:
+            from ctypes import cast, POINTER
+            from comtypes import CLSCTX_ALL
+            from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
+            devices = AudioUtilities.GetSpeakers()
+            interface = devices.Activate(IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
+            vol_ctl = cast(interface, POINTER(IAudioEndpointVolume))
+            vol_ctl.SetMasterVolumeLevelScalar(max(0, min(100, level)) / 100.0, None)
+            return True
+        except Exception:
+            pass
+        try:
+            import ctypes
+            vol = int(max(0, min(100, level)) / 100 * 0xFFFF)
+            ctypes.windll.winmm.waveOutSetVolume(None, (vol << 16) | vol)
+            return True
+        except Exception:
+            return False
+
+    def get_volume(self) -> int:
+        """Get current system master volume 0-100 (sync)."""
+        try:
+            from ctypes import cast, POINTER
+            from comtypes import CLSCTX_ALL
+            from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
+            devices = AudioUtilities.GetSpeakers()
+            interface = devices.Activate(IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
+            vol_ctl = cast(interface, POINTER(IAudioEndpointVolume))
+            return int(vol_ctl.GetMasterVolumeLevelScalar() * 100)
+        except Exception:
+            return 50
+
+    def lock_screen(self) -> bool:
+        """Lock the Windows workstation (sync)."""
+        try:
+            import ctypes
+            ctypes.windll.user32.LockWorkStation()
+            return True
+        except Exception:
+            return False
+
+    def is_screen_locked(self) -> bool:
+        """Detect if the Windows screen is locked (sync)."""
+        try:
+            for proc in psutil.process_iter(['name']):
+                name = proc.info.get('name') or ''
+                if name.lower() == 'logonui.exe':
+                    return True
+        except Exception:
+            pass
+        return False
+
+    def prevent_sleep(self) -> bool:
+        """Prevent system sleep via SetThreadExecutionState (sync)."""
+        try:
+            import ctypes
+            ES_CONTINUOUS = 0x80000000
+            ES_SYSTEM_REQUIRED = 0x00000001
+            ES_DISPLAY_REQUIRED = 0x00000002
+            ctypes.windll.kernel32.SetThreadExecutionState(
+                ES_CONTINUOUS | ES_SYSTEM_REQUIRED | ES_DISPLAY_REQUIRED
+            )
+            return True
+        except Exception:
+            return False
+
+    def allow_sleep(self) -> bool:
+        """Re-enable system sleep (sync)."""
+        try:
+            import ctypes
+            ctypes.windll.kernel32.SetThreadExecutionState(0x80000000)
+            return True
+        except Exception:
+            return False

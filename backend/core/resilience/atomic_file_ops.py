@@ -18,8 +18,27 @@ Author: JARVIS Cross-Repo Resilience
 from __future__ import annotations
 
 import asyncio
-import fcntl
 import hashlib
+import sys as _sys
+if _sys.platform != "win32":
+    import fcntl
+else:
+    import msvcrt as _msvcrt
+
+    class fcntl:  # type: ignore[no-redef]
+        LOCK_EX = 2
+        LOCK_UN = 8
+        LOCK_NB = 4
+
+        @staticmethod
+        def flock(fd, op):
+            try:
+                if op & fcntl.LOCK_UN:
+                    _msvcrt.locking(fd if isinstance(fd, int) else fd.fileno(), _msvcrt.LK_UNLCK, 1)
+                else:
+                    _msvcrt.locking(fd if isinstance(fd, int) else fd.fileno(), _msvcrt.LK_NBLCK, 1)
+            except OSError:
+                pass
 import json
 import logging
 import os
