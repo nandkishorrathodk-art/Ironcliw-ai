@@ -590,3 +590,38 @@ class WindowsPlatform(PlatformInterface):
             return True
         except Exception:
             return False
+
+    def copy_to_clipboard(self, text: str) -> bool:
+        """Copy text to Windows clipboard."""
+        try:
+            import pyperclip
+            pyperclip.copy(text)
+            return True
+        except ImportError:
+            pass
+        except Exception:
+            pass
+        try:
+            process = subprocess.Popen(['clip'], stdin=subprocess.PIPE)
+            process.communicate(text.encode('utf-16le'))
+            return True
+        except Exception:
+            return False
+
+    def paste_from_clipboard(self) -> str:
+        """Paste text from Windows clipboard."""
+        try:
+            import pyperclip
+            return pyperclip.paste()
+        except ImportError:
+            pass
+        except Exception:
+            pass
+        try:
+            result = subprocess.run(
+                ['powershell', 'Get-Clipboard'],
+                capture_output=True, text=True
+            )
+            return result.stdout.strip()
+        except Exception:
+            return ""

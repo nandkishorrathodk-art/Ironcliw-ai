@@ -528,3 +528,58 @@ class LinuxPlatform(PlatformInterface):
             "has_battery": psutil.sensors_battery() is not None,
             "has_window_management": self.display_server == "x11",
         }
+
+    def copy_to_clipboard(self, text: str) -> bool:
+        """Copy text to Linux clipboard."""
+        try:
+            import pyperclip
+            pyperclip.copy(text)
+            return True
+        except ImportError:
+            pass
+        except Exception:
+            pass
+        try:
+            proc = subprocess.Popen(
+                ["xclip", "-selection", "clipboard"],
+                stdin=subprocess.PIPE
+            )
+            proc.communicate(text.encode())
+            return True
+        except Exception:
+            pass
+        try:
+            proc = subprocess.Popen(
+                ["xsel", "--clipboard", "--input"],
+                stdin=subprocess.PIPE
+            )
+            proc.communicate(text.encode())
+            return True
+        except Exception:
+            return False
+
+    def paste_from_clipboard(self) -> str:
+        """Paste text from Linux clipboard."""
+        try:
+            import pyperclip
+            return pyperclip.paste()
+        except ImportError:
+            pass
+        except Exception:
+            pass
+        try:
+            result = subprocess.run(
+                ["xclip", "-selection", "clipboard", "-o"],
+                capture_output=True, text=True, timeout=3
+            )
+            return result.stdout
+        except Exception:
+            pass
+        try:
+            result = subprocess.run(
+                ["xsel", "--clipboard", "--output"],
+                capture_output=True, text=True, timeout=3
+            )
+            return result.stdout
+        except Exception:
+            return ""
