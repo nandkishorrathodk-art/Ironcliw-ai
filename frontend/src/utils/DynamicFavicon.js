@@ -65,7 +65,7 @@ export function setFaviconState(state) {
   }
   
   // Also update document title with state indicator (optional)
-  const baseTitle = 'J.A.R.V.I.S. Interface';
+  const baseTitle = 'Ironcliw-AI Interface';
   switch (state) {
     case 'processing':
       document.title = '⚙️ ' + baseTitle;

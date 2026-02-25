@@ -151,7 +151,7 @@ const ActionDisplay = ({ actions, onApprove, onReject }) => {
       {pendingActions.length === 0 && executedActions.length === 0 && (
         <div className="action-empty">
           <p>No autonomous actions at the moment</p>
-          <p className="empty-hint">JARVIS will suggest actions based on your workspace activity</p>
+          <p className="empty-hint">Ironcliw-AI will suggest actions based on your workspace activity</p>
         </div>
       )}
     </div>

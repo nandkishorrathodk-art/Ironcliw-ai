@@ -1514,7 +1514,7 @@ const JarvisVoice = () => {
         if (previousMode === 'minimal') {
           console.log('🎉 JARVIS UPGRADED TO FULL MODE! 🎉');
           console.log('  ✅ All features now available:');
-          console.log('    • Wake word detection ("Hey JARVIS")');
+          console.log('    • Wake word detection ("Hey Ironcliw")');
           console.log('    • ML-powered audio processing');
           console.log('    • Vision system active');
           console.log('    • Memory system online');
@@ -5484,8 +5484,8 @@ const JarvisVoice = () => {
 
         // Enhanced notification
         if ('Notification' in window && Notification.permission === 'granted') {
-          new Notification('JARVIS Microphone Active ♾️', {
-            body: 'Microphone will stay on indefinitely. Say "Hey JARVIS" anytime.',
+          new Notification('Ironcliw-AI Microphone Active ♾️', {
+            body: 'Microphone will stay on indefinitely. Say "Hey Ironcliw" anytime.',
             icon: '/favicon.ico',
             requireInteraction: true // Keep notification visible
           });
@@ -6333,8 +6333,8 @@ const JarvisVoice = () => {
       {/* JARVIS Header */}
       <div className="jarvis-header">
         <h1 className="jarvis-title">
-          <span className="jarvis-logo">J.A.R.V.I.S.</span>
-          <span className="jarvis-subtitle">Just A Rather Very Intelligent System</span>
+          <span className="jarvis-logo">Ironcliw-AI</span>
+          <span className="jarvis-subtitle">Inspired by Iron Man's J.A.R.V.I.S.</span>
         </h1>
       </div>
 
@@ -6607,7 +6607,7 @@ const JarvisVoice = () => {
         {continuousListening && !isWaitingForCommand && (
           <div className="status-item wake-active">
             <span className="status-dot"></span>
-            <span className="status-text">Say "Hey JARVIS"</span>
+            <span className="status-text">Say "Hey Ironcliw"</span>
           </div>
         )}
         {isWaitingForCommand && (
@@ -7075,7 +7075,7 @@ const JarvisVoice = () => {
                 : proactiveSuggestions.length > 0
                 ? "💡 Proactive suggestion available..."
                 : jarvisStatus === 'online'
-                ? "Say 'Hey JARVIS' or type a command..."
+                ? "Say 'Hey Ironcliw' or type a command..."
                 : "Initializing..."
             }
             onChange={(e) => {

@@ -112,7 +112,7 @@ _OSASCRIPT_TIMEOUT: float = _env_float("JARVIS_NOTIFY_OSASCRIPT_TIMEOUT", 5.0)
 async def notify_user(
     message: str,
     urgency: NotificationUrgency = NotificationUrgency.NORMAL,
-    title: str = "JARVIS",
+    title: str = "Ironcliw-AI",
     context: Optional[Dict[str, Any]] = None,
 ) -> bool:
     """Deliver a notification to the user across all available channels.
@@ -321,7 +321,7 @@ async def _deliver_windows(
             notification.notify(
                 title=title,
                 message=message,
-                app_name="JARVIS",
+                app_name="Ironcliw-AI",
                 timeout=timeout_sec,
             )
             return True

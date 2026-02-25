@@ -85,7 +85,7 @@ function App() {
   }, [autonomousMode]);
 
   const addVisionMessage = (message) => {
-    setChat(prev => [...prev, { sender: 'JARVIS Vision', message }]);
+    setChat(prev => [...prev, { sender: 'Ironcliw-AI Vision', message }]);
   };
 
 
