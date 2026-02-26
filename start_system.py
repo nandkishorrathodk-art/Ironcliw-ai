@@ -7800,8 +7800,10 @@ class DynamicPortManager:
     - Distributed locking for port reservation
     """
 
-    # macOS UE (Uninterruptible Sleep) state indicators
-    UE_STATE_INDICATORS = ['disk-sleep', 'uninterruptible', 'D', 'U']
+    # Uninterruptible/unkillable process state indicators (full-word match only)
+    # Removed 'D' and 'U' — single letters cause false-positives on Windows
+    # ('u' in 'running' == True, causing all running processes to be "unkillable")
+    UE_STATE_INDICATORS = ['disk-sleep', 'uninterruptible']
 
     def __init__(self):
         # v100.0: Use startup config instead of loading from file
@@ -8836,7 +8838,7 @@ class AsyncSystemManager:
         if self.hybrid_enabled and self.hybrid_coordinator:
             print(f"\n{Colors.BOLD}🌐 HYBRID CLOUD INTELLIGENCE:{Colors.ENDC}")
             ram_gb = self.hybrid_coordinator.ram_monitor.local_ram_gb
-            print(f"   • {Colors.GREEN}✓ Local RAM:{Colors.ENDC} {ram_gb:.1f}GB (macOS)")
+            print(f"   • {Colors.GREEN}✓ Local RAM:{Colors.ENDC} {ram_gb:.1f}GB (local)")
             print(f"   • {Colors.CYAN}✓ Cloud RAM:{Colors.ENDC} 32GB (GCP e2-highmem-4)")
             print(f"   • {Colors.GREEN}✓ Auto-Routing:{Colors.ENDC} Intelligent workload placement")
             print(
@@ -9009,7 +9011,7 @@ class AsyncSystemManager:
 
         print(f"\n   {Colors.BOLD}Additional Features:{Colors.ENDC}")
         print(f"   • {Colors.GREEN}✓ Claude Vision:{Colors.ENDC} Integrated with all components")
-        print(f"   • {Colors.CYAN}✓ Swift Video:{Colors.ENDC} 30 FPS capture with purple indicator")
+        print(f"   • {Colors.CYAN}✓ Screen Video:{Colors.ENDC} 30 FPS capture (mss-based)")
         print(
             f"   • {Colors.YELLOW}✓ Dynamic Quality:{Colors.ENDC} Adapts based on memory pressure"
         )
@@ -9096,8 +9098,8 @@ class AsyncSystemManager:
         if swift_video.exists():
             print(f"\n{Colors.GREEN}✓ Swift video capture available{Colors.ENDC}")
             print("  • Enhanced screen recording permissions")  # noqa: F541
-            print("  • Native macOS integration")  # noqa: F541
-            print("  • Purple recording indicator support")  # noqa: F541
+            print("  • Native platform integration")  # noqa: F541
+            print("  • Recording indicator support")  # noqa: F541
         else:
             print(f"\n{Colors.YELLOW}⚠ Swift video capture not compiled{Colors.ENDC}")
             print("  • Will be compiled automatically on first use")  # noqa: F541
@@ -11443,7 +11445,7 @@ class AsyncSystemManager:
         print(f"\n{Colors.CYAN}🎥 Screen Monitoring Commands:{Colors.ENDC}")
         print(f"  • '{Colors.GREEN}Start monitoring my screen{Colors.ENDC}' - Begin 30 FPS capture")
         print(f"  • '{Colors.GREEN}Stop monitoring{Colors.ENDC}' - End video streaming")
-        print(f"  • macOS: {Colors.PURPLE}Purple indicator{Colors.ENDC} appears when active")
+        print(f"  • Screen recording indicator appears when capture is active")
 
         if self.use_optimized:
             print(f"\n{Colors.CYAN}Performance Management:{Colors.ENDC}")
@@ -13569,21 +13571,22 @@ class AsyncSystemManager:
                                     # DO NOT import asyncio here - it would shadow the global import
                                     # and cause "local variable referenced before assignment" errors
 
-                                    # Try to get or create a new event loop for the async call
+                                    # We are already inside an async context (monitor_services),
+                                    # so await directly instead of run_until_complete (which would
+                                    # raise RuntimeError on an already-running loop and leave the
+                                    # coroutine unawaited, causing RuntimeWarning).
                                     try:
-                                        loop = asyncio.get_running_loop()
-                                    except RuntimeError:
-                                        loop = asyncio.new_event_loop()
-                                        asyncio.set_event_loop(loop)
-
-                                    # Try async initialization with timeout
-                                    async def init_vm_manager():
-                                        return await asyncio.wait_for(
+                                        vm_manager_result = await asyncio.wait_for(
                                             get_gcp_vm_manager_safe(),
                                             timeout=5.0
                                         )
-
-                                    vm_manager_result = loop.run_until_complete(init_vm_manager())
+                                    except RuntimeError:
+                                        # Not in async context — fall back to new event loop
+                                        loop = asyncio.new_event_loop()
+                                        asyncio.set_event_loop(loop)
+                                        vm_manager_result = loop.run_until_complete(
+                                            asyncio.wait_for(get_gcp_vm_manager_safe(), timeout=5.0)
+                                        )
 
                                     if vm_manager_result:
                                         print(f"  {Colors.GREEN}✓ GCP Hybrid Cloud:{Colors.ENDC} VM manager initialized (RAM: {mem_percent:.1f}%)")
@@ -15971,18 +15974,18 @@ except Exception as e:
             elif self.metrics_monitor.db_browser_pid:
                 print(f"   • {Colors.GREEN}DB Browser:{Colors.ENDC} Launched successfully (PID: {self.metrics_monitor.db_browser_pid})")
             else:
-                print(f"   • {Colors.YELLOW}DB Browser:{Colors.ENDC} Not launched (install with: brew install --cask db-browser-for-sqlite)")
+                print(f"   • {Colors.YELLOW}DB Browser:{Colors.ENDC} Not launched (install from https://sqlitebrowser.org/dl/)")
 
             # Feature summary
             print(f"   • {Colors.CYAN}Real-time monitoring:{Colors.ENDC} Database updates on every unlock")
             print(f"   • {Colors.CYAN}Storage:{Colors.ENDC} JSON + SQLite + CloudSQL (triple backup)")
             print(f"   • {Colors.CYAN}Metrics:{Colors.ENDC} Confidence trends, stage performance, biometric analysis")
             print(f"   • {Colors.CYAN}Database:{Colors.ENDC} ~/.jarvis/logs/unlock_metrics/unlock_metrics.db")
-            print(f"   • {Colors.CYAN}Notifications:{Colors.ENDC} macOS Notification Center alerts (async)")
+            print(f"   • {Colors.CYAN}Notifications:{Colors.ENDC} System notification alerts (async)")
             print(f"   • {Colors.CYAN}Protection:{Colors.ENDC} Auto-recovery from corruption, disk space validation")
             print(f"   • {Colors.CYAN}Concurrency:{Colors.ENDC} WAL mode + retry logic for locked database")
             print(f"{Colors.BLUE}   💡 Press F5 in DB Browser to refresh and see new unlock attempts{Colors.ENDC}")
-            print(f"{Colors.BLUE}   📱 You'll receive macOS notifications for every voice unlock attempt!{Colors.ENDC}")
+            print(f"{Colors.BLUE}   🔔 You'll receive system notifications for every voice unlock attempt!{Colors.ENDC}")
 
         except Exception as e:
             logger.warning(f"Advanced metrics monitor initialization failed: {e}")

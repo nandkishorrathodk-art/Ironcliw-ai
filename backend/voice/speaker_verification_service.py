@@ -505,9 +505,9 @@ class EdgeNativeConfig:
     enabled: bool = field(default_factory=lambda: os.environ.get('JARVIS_EDGE_NATIVE_MODE', 'true').lower() == 'true')
 
     # Local Database Configuration
-    local_db_path: str = field(default_factory=lambda: os.path.expanduser(
+    local_db_path: str = field(default_factory=lambda: os.path.normpath(os.path.expanduser(
         os.environ.get('JARVIS_LOCAL_DB_PATH', '~/.jarvis/learning/jarvis_learning.db')
-    ))
+    )))
     local_db_timeout: float = field(default_factory=lambda: float(os.environ.get('JARVIS_LOCAL_DB_TIMEOUT', '2.0')))
 
     # Cloud Backup Configuration (async-only, never blocks)
