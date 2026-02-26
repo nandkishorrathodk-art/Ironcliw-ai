@@ -4278,6 +4278,17 @@ async def ensure_ecapa_available(
     while (time.time() - start_time) < timeout:
         # Check local ECAPA (use get_wrapper for safe access)
         ecapa_wrapper = registry.get_wrapper("ecapa_tdnn")
+
+        # FAST-FAIL: If the engine already errored (e.g. speechbrain not
+        # installed on Windows), don't waste 25s polling — break immediately.
+        if ecapa_wrapper and ecapa_wrapper.metrics.state == EngineState.ERROR:
+            elapsed = time.time() - start_time
+            error_msg = ecapa_wrapper.metrics.last_error or "ECAPA load failed"
+            logger.warning(
+                f"⚡ [ENSURE_ECAPA] ECAPA failed fast in {elapsed:.1f}s: {error_msg}"
+            )
+            break
+
         if ecapa_wrapper and ecapa_wrapper.is_loaded:
             elapsed = time.time() - start_time
             logger.info(f"✅ [ENSURE_ECAPA] ECAPA loaded successfully in {elapsed:.1f}s")
