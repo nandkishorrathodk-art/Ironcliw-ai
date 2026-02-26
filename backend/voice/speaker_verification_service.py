@@ -5619,8 +5619,8 @@ class SpeakerVerificationService:
                     profiles = await self.learning_db.get_all_speaker_profiles()
                     logger.info(f"📊 After Cloud SQL bootstrap: {len(profiles)} profile(s) available")
                 else:
-                    # Fallback: Auto-create owner profile from macOS
-                    logger.info("🔄 Cloud SQL unavailable, creating owner profile from macOS system user...")
+                    # Fallback: Auto-create owner profile from system user
+                    logger.info("🔄 Cloud SQL unavailable, creating owner profile from system user...")
                     await self._auto_create_owner_profile_from_macos()
 
             # Summary
@@ -5734,48 +5734,65 @@ class SpeakerVerificationService:
 
     async def _auto_create_owner_profile_from_macos(self) -> None:
         """
-        Auto-create an owner profile from macOS system user when no profiles exist.
+        Auto-create an owner profile from system user when no profiles exist.
 
         This provides a fallback identity for the voice unlock system when:
         - No speaker profiles exist in the database
         - Cloud SQL is unavailable
         - First-time setup hasn't completed enrollment
 
-        The auto-created profile allows voice unlock to recognize the macOS user as owner
+        The auto-created profile allows voice unlock to recognize the system user as owner
         and enables enrollment-on-first-use functionality.
         """
         import os
+        import sys
         import subprocess
         from uuid import uuid4
 
         try:
-            # Get macOS username
-            username = os.environ.get('USER') or os.getlogin()
+            # Get system username (cross-platform)
+            username = (
+                os.environ.get('USERNAME')  # Windows
+                or os.environ.get('USER')   # macOS/Linux
+                or os.getlogin()
+            )
 
-            # Get full name from macOS directory services
-            try:
-                result = subprocess.run(
-                    ['dscl', '.', '-read', f'/Users/{username}', 'RealName'],
-                    capture_output=True,
-                    text=True,
-                    timeout=5
-                )
-                if result.returncode == 0:
-                    lines = result.stdout.strip().split('\n')
-                    if len(lines) > 1:
-                        full_name = lines[1].strip()
-                    else:
-                        full_name = username.replace('.', ' ').title()
-                else:
-                    full_name = username.replace('.', ' ').title()
-            except (subprocess.TimeoutExpired, FileNotFoundError):
-                full_name = username.replace('.', ' ').title()
+            # Get full name — platform-specific
+            full_name = username.replace('.', ' ').title()
+            if sys.platform == "darwin":
+                try:
+                    result = subprocess.run(
+                        ['dscl', '.', '-read', f'/Users/{username}', 'RealName'],
+                        capture_output=True, text=True, timeout=5
+                    )
+                    if result.returncode == 0:
+                        lines = result.stdout.strip().split('\n')
+                        if len(lines) > 1:
+                            full_name = lines[1].strip()
+                except (subprocess.TimeoutExpired, FileNotFoundError):
+                    pass
+            elif sys.platform == "win32":
+                try:
+                    result = subprocess.run(
+                        ['net', 'user', username],
+                        capture_output=True, text=True, timeout=5
+                    )
+                    for line in result.stdout.splitlines():
+                        if 'Full Name' in line or 'Volledige naam' in line:
+                            parts = line.split(None, 2)
+                            if len(parts) >= 3 and parts[2].strip():
+                                full_name = parts[2].strip()
+                            break
+                except (subprocess.TimeoutExpired, FileNotFoundError):
+                    pass
 
             # Extract first name for speaker profile
             first_name = full_name.split()[0] if full_name else username.title()
 
+            platform_label = "system"
+
             # Create a placeholder owner profile (no embedding - requires enrollment)
-            speaker_id = f"macos_auto_{uuid4().hex[:8]}"
+            speaker_id = f"auto_{uuid4().hex[:8]}"
 
             self.speaker_profiles[first_name] = {
                 "speaker_id": speaker_id,
@@ -5790,8 +5807,8 @@ class SpeakerVerificationService:
                 "threshold": self.verification_threshold,
                 "acoustic_features": {},
                 "auto_created": True,
-                "macos_username": username,
-                "macos_full_name": full_name,
+                "system_username": username,
+                "system_full_name": full_name,
                 "requires_enrollment": True,
             }
 
@@ -5802,15 +5819,15 @@ class SpeakerVerificationService:
                 "samples": 0,
             }
 
-            logger.info(f"✅ Auto-created owner profile for macOS user: {first_name}")
-            logger.info(f"   macOS username: {username}")
-            logger.info(f"   macOS full name: {full_name}")
+            logger.info(f"✅ Auto-created owner profile for {platform_label} user: {first_name}")
+            logger.info(f"   Username: {username}")
+            logger.info(f"   Full name: {full_name}")
             logger.info(f"   Profile marked as is_primary_user=True")
             logger.info("   ⚠️  Note: Voiceprint enrollment required for full voice authentication")
             logger.info("   💡 Say 'JARVIS, learn my voice' to complete enrollment")
 
         except Exception as e:
-            logger.error(f"❌ Failed to auto-create owner profile from macOS: {e}")
+            logger.error(f"❌ Failed to auto-create owner profile: {e}")
             logger.info("💡 Fallback: Voice unlock will require manual enrollment")
 
     async def _try_bootstrap_from_cloudsql(self) -> bool:
@@ -6290,7 +6307,7 @@ class SpeakerVerificationService:
                         "requires_enrollment": True,
                         "enrollment_hint": f"Hello {speaker_name}! I recognize you as the device owner, but I need to learn your voice first. Say 'JARVIS, learn my voice' to complete enrollment.",
                         "error": "enrollment_required",
-                        "error_detail": "Voiceprint enrollment required - profile created from macOS user"
+                        "error_detail": "Voiceprint enrollment required - profile created from system user"
                     }
 
                 # DEBUG: Log embedding dimensions and validate stored embedding

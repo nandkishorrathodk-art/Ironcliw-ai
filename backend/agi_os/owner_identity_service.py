@@ -186,30 +186,44 @@ class OwnerIdentityService:
         )
 
     async def _load_macos_user_info(self) -> None:
-        """Load macOS system user information as fallback."""
+        """Load system user information as fallback (cross-platform)."""
+        import sys
         try:
-            # Get current macOS username
-            username = os.environ.get('USER') or os.getlogin()
+            # Get current system username (cross-platform)
+            username = (
+                os.environ.get('USERNAME')  # Windows
+                or os.environ.get('USER')   # macOS/Linux
+                or os.getlogin()
+            )
 
-            # Get full name from macOS directory services
-            try:
-                result = subprocess.run(
-                    ['dscl', '.', '-read', f'/Users/{username}', 'RealName'],
-                    capture_output=True,
-                    text=True,
-                    timeout=5
-                )
-                if result.returncode == 0:
-                    # Parse output: "RealName:\n Full Name"
-                    lines = result.stdout.strip().split('\n')
-                    if len(lines) > 1:
-                        full_name = lines[1].strip()
-                    else:
-                        full_name = username.replace('.', ' ').title()
-                else:
-                    full_name = username.replace('.', ' ').title()
-            except (subprocess.TimeoutExpired, FileNotFoundError):
-                full_name = username.replace('.', ' ').title()
+            # Get full name — platform-specific
+            full_name = username.replace('.', ' ').title()
+            if sys.platform == "darwin":
+                try:
+                    result = subprocess.run(
+                        ['dscl', '.', '-read', f'/Users/{username}', 'RealName'],
+                        capture_output=True, text=True, timeout=5
+                    )
+                    if result.returncode == 0:
+                        lines = result.stdout.strip().split('\n')
+                        if len(lines) > 1:
+                            full_name = lines[1].strip()
+                except (subprocess.TimeoutExpired, FileNotFoundError):
+                    pass
+            elif sys.platform == "win32":
+                try:
+                    result = subprocess.run(
+                        ['net', 'user', username],
+                        capture_output=True, text=True, timeout=5
+                    )
+                    for line in result.stdout.splitlines():
+                        if 'Full Name' in line:
+                            parts = line.split(None, 2)
+                            if len(parts) >= 3 and parts[2].strip():
+                                full_name = parts[2].strip()
+                            break
+                except (subprocess.TimeoutExpired, FileNotFoundError):
+                    pass
 
             # Get home directory
             home_dir = os.path.expanduser('~')
@@ -224,11 +238,11 @@ class OwnerIdentityService:
             first_name = full_name.split()[0] if full_name else username.title()
 
             logger.info(
-                f"📱 macOS user info loaded: {full_name} ({username})"
+                f"📱 System user info loaded: {full_name} ({username})"
             )
 
         except Exception as e:
-            logger.warning(f"Failed to load macOS user info: {e}")
+            logger.warning(f"Failed to load system user info: {e}")
             self._macos_user_info = None
 
     async def _load_primary_owner_from_profiles(self) -> None:
@@ -309,7 +323,7 @@ class OwnerIdentityService:
             )
 
             self._stats['fallback_used'] += 1
-            logger.info(f"📱 Fallback owner set: {first_name} (from macOS)")
+            logger.info(f"📱 Fallback owner set: {first_name} (from system user)")
         else:
             # Ultimate fallback
             self._current_owner = OwnerProfile(
