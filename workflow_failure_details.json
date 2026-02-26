@@ -1,0 +1,77 @@
+{
+  "workflow_name": "Deploy JARVIS to GCP",
+  "workflow_url": "https://github.com/nandkishorrathodk-art/Ironcliw-ai/actions/runs/22428505966",
+  "branch": "main",
+  "commit_sha": "55ab4b3",
+  "run_number": 24,
+  "failed_count": 1,
+  "fix_branch": "fix/ci/deploy-jarvis-to-gcp-run24-20260226-050106",
+  "pr_title": "\ud83d\udea8 Fix CI/CD: Deploy JARVIS to GCP (Run #24)",
+  "analyses": [
+    {
+      "error_patterns": [
+        {
+          "pattern": "ERROR|Error|error",
+          "matches": [
+            {
+              "line_number": 58,
+              "content": "2026-02-26T04:59:03.4846653Z ##[error]google-github-actions/auth failed with: retry function failed after 4 attempts: the GitHub Action workflow must specify exactly one of \"workload_identity_provider\" or \"credentials_json\"! If you are specifying input values via GitHub secrets, ensure the secret is being injected into the environment. By default, secrets are not passed to workflows triggered from forks, including Dependabot.",
+              "severity": "high",
+              "emoji": "\u274c"
+            }
+          ],
+          "count": 1
+        },
+        {
+          "pattern": "FAIL|Failed|failed",
+          "matches": [
+            {
+              "line_number": 58,
+              "content": "2026-02-26T04:59:03.4846653Z ##[error]google-github-actions/auth failed with: retry function failed after 4 attempts: the GitHub Action workflow must specify exactly one of \"workload_identity_provider\" or \"credentials_json\"! If you are specifying input values via GitHub secrets, ensure the secret is being injected into the environment. By default, secrets are not passed to workflows triggered from forks, including Dependabot.",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            },
+            {
+              "line_number": 62,
+              "content": "2026-02-26T04:59:03.4968117Z \u001b[36;1mecho \"- **Status:** \u274c Failed\" >> $GITHUB_STEP_SUMMARY\u001b[0m",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            },
+            {
+              "line_number": 97,
+              "content": "2026-02-26T04:59:03.7541872Z ##[warning]The process '/usr/bin/git' failed with exit code 128",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            }
+          ],
+          "count": 3
+        },
+        {
+          "pattern": "WARN|Warning|warning",
+          "matches": [
+            {
+              "line_number": 5,
+              "content": "2026-02-26T04:58:59.4540194Z hint: to use in all of your new repositories, which will suppress this warning,",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            },
+            {
+              "line_number": 97,
+              "content": "2026-02-26T04:59:03.7541872Z ##[warning]The process '/usr/bin/git' failed with exit code 128",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            }
+          ],
+          "count": 2
+        }
+      ],
+      "suggested_fixes": [
+        "Review the logs above for specific error messages"
+      ],
+      "severity": "high",
+      "category": "permission_error",
+      "similar_failures": []
+    }
+  ],
+  "timestamp": "2026-02-26T05:01:06.994073"
+}
