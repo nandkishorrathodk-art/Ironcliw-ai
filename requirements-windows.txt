@@ -17,6 +17,14 @@ wmi>=1.5.1
 
 # Notifications
 win10toast>=0.9
+plyer>=2.1.0
+
+# Volume / Audio Control (COM-based)
+pycaw>=20230407
+comtypes>=1.2.0
+
+# Clipboard
+pyperclip>=1.8.2
 
 # Audio (already in main requirements.txt, but listed for completeness)
 # sounddevice>=0.5.0

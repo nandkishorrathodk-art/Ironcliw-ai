@@ -639,32 +639,61 @@ class VoiceUnlockStartup:
             return False
 
     def _check_password_stored(self) -> bool:
-        """Check if password is stored in Keychain"""
-        try:
-            result = subprocess.run(
-                [
-                    "security",
-                    "find-generic-password",
-                    "-s",
-                    "com.jarvis.voiceunlock",
-                    "-a",
-                    "unlock_token",
-                ],
-                capture_output=True,
-                text=True,
-            )
-
-            return result.returncode == 0
-        except Exception:
-            return False
+        """Check if password is stored — Keychain (macOS) or Credential Manager (Windows)."""
+        if sys.platform == "win32":
+            try:
+                # Check Windows Credential Manager for stored token
+                result = subprocess.run(
+                    ["cmdkey", "/list:LegacyGeneric:target=jarvis_voiceunlock"],
+                    capture_output=True, text=True,
+                )
+                return "jarvis_voiceunlock" in result.stdout.lower()
+            except Exception:
+                # Fallback: check env-var or config file
+                return bool(os.getenv("JARVIS_UNLOCK_TOKEN"))
+        else:
+            try:
+                result = subprocess.run(
+                    [
+                        "security",
+                        "find-generic-password",
+                        "-s",
+                        "com.jarvis.voiceunlock",
+                        "-a",
+                        "unlock_token",
+                    ],
+                    capture_output=True,
+                    text=True,
+                )
+                return result.returncode == 0
+            except Exception:
+                return False
 
     async def _start_websocket_server(self) -> bool:
         """Start the Python WebSocket server"""
         try:
-            # Kill any existing process on the port
-            subprocess.run(
-                f"lsof -ti:{self.websocket_port} | xargs kill -9", shell=True, capture_output=True
-            )
+            # Kill any existing process on the port — cross-platform
+            if sys.platform == "win32":
+                # netstat + taskkill on Windows
+                try:
+                    result = subprocess.run(
+                        f'netstat -ano | findstr :{self.websocket_port}',
+                        shell=True, capture_output=True, text=True,
+                    )
+                    for line in result.stdout.strip().splitlines():
+                        parts = line.split()
+                        if parts and parts[-1].isdigit():
+                            subprocess.run(
+                                ["taskkill", "/F", "/PID", parts[-1]],
+                                capture_output=True,
+                            )
+                except Exception:
+                    pass
+            else:
+                subprocess.run(
+                    f"lsof -ti:{self.websocket_port} | xargs kill -9",
+                    shell=True, capture_output=True,
+                )
             await asyncio.sleep(1)
 
             # Start WebSocket server
@@ -740,9 +769,15 @@ class VoiceUnlockStartup:
                 self.daemon_process.kill()
             self.daemon_process = None
 
-        # Kill any lingering processes
-        subprocess.run("pkill -f websocket_server.py", shell=True, capture_output=True)
-        subprocess.run("pkill -f JARVISVoiceUnlockDaemon", shell=True, capture_output=True)
+        # Kill any lingering processes — cross-platform
+        if sys.platform == "win32":
+            subprocess.run(
+                'taskkill /F /FI "IMAGENAME eq python*" /FI "WINDOWTITLE eq websocket_server*"',
+                shell=True, capture_output=True,
+            )
+        else:
+            subprocess.run("pkill -f websocket_server.py", shell=True, capture_output=True)
+            subprocess.run("pkill -f JARVISVoiceUnlockDaemon", shell=True, capture_output=True)
 
         logger.info("Voice Unlock system stopped")
 
