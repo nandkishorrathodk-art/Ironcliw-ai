@@ -1,0 +1,95 @@
+{
+  "workflow_name": "File Integrity Check",
+  "workflow_url": "https://github.com/nandkishorrathodk-art/Ironcliw-ai/actions/runs/22428505986",
+  "branch": "main",
+  "commit_sha": "55ab4b3",
+  "run_number": 23,
+  "failed_count": 1,
+  "fix_branch": "fix/ci/file-integrity-check-run23-20260226-050105",
+  "pr_title": "\ud83d\udea8 Fix CI/CD: File Integrity Check (Run #23)",
+  "analyses": [
+    {
+      "error_patterns": [
+        {
+          "pattern": "ERROR|Error|error",
+          "matches": [
+            {
+              "line_number": 60,
+              "content": "2026-02-26T04:57:36.7532318Z ##[group]Run ERRORS=0",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 61,
+              "content": "2026-02-26T04:57:36.7532631Z \u001b[36;1mERRORS=0\u001b[0m",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 66,
+              "content": "2026-02-26T04:57:36.7534042Z \u001b[36;1m    ERRORS=$((ERRORS + 1))\u001b[0m",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 70,
+              "content": "2026-02-26T04:57:36.7535247Z \u001b[36;1mif [ $ERRORS -gt 0 ]; then\u001b[0m",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 71,
+              "content": "2026-02-26T04:57:36.7535596Z \u001b[36;1m  echo \"::error::Found $ERRORS files with syntax errors\"\u001b[0m",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 86,
+              "content": "2026-02-26T04:58:59.3381527Z ##[error]Found 1 files with syntax errors",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 87,
+              "content": "2026-02-26T04:58:59.3391359Z ##[error]Process completed with exit code 1.",
+              "severity": "high",
+              "emoji": "\u274c"
+            }
+          ],
+          "count": 7
+        },
+        {
+          "pattern": "FAIL|Failed|failed",
+          "matches": [
+            {
+              "line_number": 97,
+              "content": "2026-02-26T04:58:59.5003751Z ##[warning]The process '/usr/bin/git' failed with exit code 128",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            }
+          ],
+          "count": 1
+        },
+        {
+          "pattern": "WARN|Warning|warning",
+          "matches": [
+            {
+              "line_number": 97,
+              "content": "2026-02-26T04:58:59.5003751Z ##[warning]The process '/usr/bin/git' failed with exit code 128",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            }
+          ],
+          "count": 1
+        }
+      ],
+      "suggested_fixes": [
+        "Review the logs above for specific error messages"
+      ],
+      "severity": "high",
+      "category": "syntax_error",
+      "similar_failures": []
+    }
+  ],
+  "timestamp": "2026-02-26T05:01:05.734066"
+}
