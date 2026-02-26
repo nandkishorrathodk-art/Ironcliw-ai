@@ -15550,14 +15550,6 @@ except Exception as e:
 
         self.processes.append(process)
 
-        # v101.0: Register websocket router with restart manager
-        self.restart_manager.register(
-            name="websocket",
-            process=process,
-            restart_func=self.start_websocket_router,
-            port=port,
-        )
-
         print(
             f"{Colors.GREEN}✓ WebSocket Router starting on port {port} (PID: {process.pid}){Colors.ENDC}"
         )
@@ -15565,7 +15557,7 @@ except Exception as e:
         # Give the Node.js process time to initialize
         await asyncio.sleep(2)
 
-        # Check if process died immediately
+        # Check if process died immediately (e.g. EADDRINUSE — port permanently occupied)
         if process.returncode is not None:
             print(f"{Colors.FAIL}✗ WebSocket router process died immediately (exit code: {process.returncode}){Colors.ENDC}")
             # Read log for error details
@@ -15577,9 +15569,19 @@ except Exception as e:
                     print(f"{Colors.YELLOW}  Log output:{Colors.ENDC}")
                     for line in content.strip().split('\n')[-10:]:
                         print(f"    {line}")
+                    if "EADDRINUSE" in content:
+                        print(f"{Colors.YELLOW}  ⚠ Port {port} permanently occupied — WebSocket restart disabled{Colors.ENDC}")
             except Exception:
                 pass
             return None
+
+        # v101.0: Only register with restart manager if process survived initial startup
+        self.restart_manager.register(
+            name="websocket",
+            process=process,
+            restart_func=self.start_websocket_router,
+            port=port,
+        )
 
         # Health check for the websocket router with retries
         router_ready = False
