@@ -120,8 +120,8 @@ pyasn1_modules==0.4.2
 PyAudio==0.2.14
 pybase64==1.4.3
 pycparser==2.23
-pydantic==2.12.5
-pydantic_core==2.41.5
+pydantic==2.11.10
+pydantic_core==2.33.2
 Pygments==2.19.2
 PyPika==0.48.9
 pyproject_hooks==1.2.0
