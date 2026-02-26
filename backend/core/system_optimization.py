@@ -7,10 +7,11 @@ automatically at startup. This eliminates the need for manual shell commands
 or workarounds for "Time Limit Exceeded" or "Too many open files" errors.
 
 Features:
-- Smart File Descriptor Maximization (Safe macOS limits)
+- Smart File Descriptor Maximization (Safe macOS/Linux limits)
 - Resource Limit logging
 - Retry logic with fallback strategies
 - No hard dependencies on external tools
+- Cross-platform: no-op on Windows (resource module unavailable)
 
 Usage:
     from backend.core.system_optimization import get_system_optimizer
@@ -18,12 +19,18 @@ Usage:
     optimizer.optimize()
 """
 
-import resource
 import platform
 import logging
 import sys
 import os
 from typing import Tuple, Dict, Any, Optional
+
+# resource module is Unix-only
+try:
+    import resource
+    _HAS_RESOURCE = True
+except ImportError:
+    _HAS_RESOURCE = False
 
 # Setup dedicated logger
 logger = logging.getLogger("jarvis.system_optimizer")
@@ -41,6 +48,7 @@ class SystemResourceOptimizer:
     
     def __init__(self):
         self._is_macos = platform.system() == "Darwin"
+        self._is_windows = platform.system() == "Windows"
         self._optimized = False
         
     def optimize(self) -> Dict[str, Any]:
@@ -50,10 +58,17 @@ class SystemResourceOptimizer:
         Returns:
             Dict containing optimization results and stats.
         """
+        if self._is_windows or not _HAS_RESOURCE:
+            logger.debug("System optimization skipped (Windows/resource module unavailable)")
+            self._optimized = True
+            return {
+                "platform": platform.system(),
+                "file_descriptors": {"status": "skipped", "reason": "not applicable on Windows"},
+            }
+
         results = {
             "platform": platform.system(),
             "file_descriptors": self._optimize_file_descriptors(),
-            # Future: add network stack optimization here
         }
         
         self._optimized = True
@@ -65,30 +80,23 @@ class SystemResourceOptimizer:
         
         Tries to raise the soft limit to the hard limit, or a safe maximum.
         """
+        if not _HAS_RESOURCE:
+            return {"status": "skipped", "reason": "resource module not available"}
+
         status = "unchanged"
         try:
             soft_limit, hard_limit = resource.getrlimit(resource.RLIMIT_NOFILE)
             original_soft = soft_limit
             
-            # Target higher limits
-            # macOS often defaults to 256/unlimited, but has practical limits around 10240 or 65536 depending on version
-            # We target a safe high number if hard limit is 'infinity' (often represented as very large int)
-            
             target_limit = hard_limit
             
-            # Cap extreme values to avoid "ValueError: not allowed to raise maximum limit" if hard is crazy high
-            # or if we are just trying to set a sane default.
-            # On macOS, typical "maxfiles" might be 10240 or similar for safe user usage without sudo
             SAFE_MAX = 65536 
             
             if hard_limit == resource.RLIM_INFINITY:
-                 # If unlimited, pick a robust high number that is safe for select() / poll()
-                 # Python usually handles large FDs well, but let's be safe.
                  target_limit = SAFE_MAX 
             elif hard_limit > SAFE_MAX:
                 target_limit = SAFE_MAX
             
-            # Don't lower it if it's already high
             if soft_limit >= target_limit:
                  logger.debug(f"File descriptors already optimized: {soft_limit}")
                  return {
@@ -97,7 +105,6 @@ class SystemResourceOptimizer:
                      "hard": hard_limit
                  }
 
-            # Try to raise soft limit
             try:
                 resource.setrlimit(resource.RLIMIT_NOFILE, (target_limit, hard_limit))
                 new_soft, _ = resource.getrlimit(resource.RLIMIT_NOFILE)
@@ -106,7 +113,6 @@ class SystemResourceOptimizer:
                 return {"status": status, "soft": new_soft, "hard": hard_limit}
             
             except ValueError as e:
-                # If target failed, try intermediate fallback (e.g. 10240)
                 fallback = 10240
                 if soft_limit < fallback and hard_limit >= fallback:
                     try:

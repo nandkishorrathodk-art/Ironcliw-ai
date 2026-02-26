@@ -8154,31 +8154,56 @@ class DynamicPortManager:
 
         # Try to kill the process
         try:
+            import sys as _sys
             proc = psutil.Process(pid)
 
-            # Graceful shutdown first
-            logger.info(f"Sending SIGTERM to process {pid} on port {port}")
-            proc.terminate()
+            if _sys.platform == "win32":
+                # On Windows, kill the entire process tree using taskkill /F /T
+                # This ensures child processes (e.g. node.exe spawned by npm.cmd) are also killed.
+                try:
+                    subprocess.run(
+                        ["taskkill", "/F", "/T", "/PID", str(pid)],
+                        capture_output=True, timeout=10
+                    )
+                    logger.info(f"Process tree {pid} killed via taskkill /F /T")
+                    return True
+                except Exception as tk_err:
+                    logger.warning(f"taskkill failed for PID {pid}: {tk_err} — falling back to psutil")
+                    try:
+                        for child in proc.children(recursive=True):
+                            try:
+                                child.kill()
+                            except psutil.NoSuchProcess:
+                                pass
+                        proc.kill()
+                        proc.wait(timeout=3.0)
+                        return True
+                    except psutil.TimeoutExpired:
+                        self.blacklisted_ports.add(port)
+                        return False
+            else:
+                # Unix: graceful SIGTERM → SIGKILL
+                logger.info(f"Sending SIGTERM to process {pid} on port {port}")
+                proc.terminate()
 
-            try:
-                proc.wait(timeout=5.0)
-                logger.info(f"Process {pid} terminated gracefully")
-                return True
-            except psutil.TimeoutExpired:
-                pass
+                try:
+                    proc.wait(timeout=5.0)
+                    logger.info(f"Process {pid} terminated gracefully")
+                    return True
+                except psutil.TimeoutExpired:
+                    pass
 
-            # Force kill
-            logger.warning(f"Process {pid} didn't terminate gracefully, sending SIGKILL")
-            proc.kill()
+                logger.warning(f"Process {pid} didn't terminate gracefully, sending SIGKILL")
+                proc.kill()
 
-            try:
-                proc.wait(timeout=3.0)
-                logger.info(f"Process {pid} killed with SIGKILL")
-                return True
-            except psutil.TimeoutExpired:
-                logger.error(f"Failed to kill process {pid} - may be in unkillable state")
-                self.blacklisted_ports.add(port)
-                return False
+                try:
+                    proc.wait(timeout=3.0)
+                    logger.info(f"Process {pid} killed with SIGKILL")
+                    return True
+                except psutil.TimeoutExpired:
+                    logger.error(f"Failed to kill process {pid} - may be in unkillable state")
+                    self.blacklisted_ports.add(port)
+                    return False
 
         except psutil.NoSuchProcess:
             return True  # Process already gone
@@ -15315,73 +15340,86 @@ ANTHROPIC_API_KEY=your_claude_api_key_here
         # Clean up any lingering Node.js and Python processes
         print(f"\n{Colors.CYAN}🧹 [5/6] Cleaning up JARVIS-related processes...{Colors.ENDC}")
         try:
-            # Kill npm processes
-            print(f"   ├─ Killing npm processes...")
-            npm_kill = await asyncio.create_subprocess_shell(
-                "pkill -f 'npm.*start' || true",
-                stdout=asyncio.subprocess.DEVNULL,
-                stderr=asyncio.subprocess.DEVNULL,
-            )
-            await npm_kill.wait()  # Properly awaited - no lingering waiters
-
-            # Kill node processes running our apps
-            print(f"   ├─ Killing Node.js processes (websocket, frontend)...")
-            node_kill = await asyncio.create_subprocess_shell(
-                "pkill -f 'node.*websocket|node.*3000' || true",
-                stdout=asyncio.subprocess.DEVNULL,
-                stderr=asyncio.subprocess.DEVNULL,
-            )
-            await node_kill.wait()  # Properly awaited - no lingering waiters
-
-            # Kill python processes running our backend (but not IDE-related processes)
-            print(f"   ├─ Killing Python backend processes (skipping IDE extensions)...")
-            # First get all matching PIDs
-            python_killed = 0
-            try:
-                result = subprocess.run(
-                    "pgrep -f 'python.*main.py|python.*jarvis'",
-                    shell=True,
-                    capture_output=True,
-                    text=True,
+            import sys as _sys
+            if _sys.platform == "win32":
+                # Windows: use taskkill /F /T to kill process trees
+                print(f"   ├─ Killing Node.js/npm processes (Windows taskkill)...")
+                node_kill = await asyncio.create_subprocess_shell(
+                    "taskkill /F /IM node.exe /T 2>nul & taskkill /F /IM npm.cmd /T 2>nul & exit /b 0",
+                    stdout=asyncio.subprocess.DEVNULL,
+                    stderr=asyncio.subprocess.DEVNULL,
                 )
-                pids = result.stdout.strip().split("\n")
+                await node_kill.wait()
 
-                for pid in pids:
-                    if not pid:
-                        continue
+                # Kill Python backend processes (but not IDE-related processes)
+                print(f"   ├─ Killing Python backend processes (skipping IDE)...")
+                python_killed = 0
+                try:
+                    import psutil
+                    my_pid = os.getpid()
+                    ide_patterns = ["cursor", "code", "vscode", "sublime", "pycharm",
+                                    "intellij", "webstorm", "atom"]
+                    for proc in psutil.process_iter(['pid', 'name', 'cmdline', 'ppid']):
+                        try:
+                            if proc.pid == my_pid:
+                                continue
+                            cmdline = " ".join(proc.cmdline()).lower()
+                            if "main.py" in cmdline or ("python" in cmdline and "jarvis" in cmdline):
+                                parent = psutil.Process(proc.ppid())
+                                parent_name = parent.name().lower()
+                                if any(p in parent_name for p in ide_patterns):
+                                    continue
+                                proc.kill()
+                                python_killed += 1
+                        except (psutil.NoSuchProcess, psutil.AccessDenied):
+                            pass
+                except Exception:
+                    pass
+            else:
+                # Unix/macOS: use pkill/pgrep
+                print(f"   ├─ Killing npm processes...")
+                npm_kill = await asyncio.create_subprocess_shell(
+                    "pkill -f 'npm.*start' || true",
+                    stdout=asyncio.subprocess.DEVNULL,
+                    stderr=asyncio.subprocess.DEVNULL,
+                )
+                await npm_kill.wait()
 
-                    # Check parent process to avoid killing IDE extensions
-                    try:
-                        parent_check = subprocess.run(
-                            f"ps -o ppid= -p {pid} | xargs ps -o comm= -p 2>/dev/null || echo ''",
-                            shell=True,
-                            capture_output=True,
-                            text=True,
-                        )
-                        parent_name = parent_check.stdout.strip().lower()
+                print(f"   ├─ Killing Node.js processes (websocket, frontend)...")
+                node_kill = await asyncio.create_subprocess_shell(
+                    "pkill -f 'node.*websocket|node.*3000' || true",
+                    stdout=asyncio.subprocess.DEVNULL,
+                    stderr=asyncio.subprocess.DEVNULL,
+                )
+                await node_kill.wait()
 
-                        # Skip if parent is an IDE
-                        ide_patterns = [
-                            "cursor",
-                            "code",
-                            "vscode",
-                            "sublime",
-                            "pycharm",
-                            "intellij",
-                            "webstorm",
-                            "atom",
-                        ]
-
-                        if any(pattern in parent_name for pattern in ide_patterns):
+                print(f"   ├─ Killing Python backend processes (skipping IDE extensions)...")
+                python_killed = 0
+                try:
+                    result = subprocess.run(
+                        "pgrep -f 'python.*main.py|python.*jarvis'",
+                        shell=True, capture_output=True, text=True,
+                    )
+                    pids = result.stdout.strip().split("\n")
+                    for pid in pids:
+                        if not pid:
                             continue
-
-                        # Kill the process
-                        subprocess.run(f"kill {pid}", shell=True, capture_output=True)
-                        python_killed += 1
-                    except:
-                        pass
-            except:
-                pass
+                        try:
+                            parent_check = subprocess.run(
+                                f"ps -o ppid= -p {pid} | xargs ps -o comm= -p 2>/dev/null || echo ''",
+                                shell=True, capture_output=True, text=True,
+                            )
+                            parent_name = parent_check.stdout.strip().lower()
+                            ide_patterns = ["cursor", "code", "vscode", "sublime",
+                                            "pycharm", "intellij", "webstorm", "atom"]
+                            if any(pattern in parent_name for pattern in ide_patterns):
+                                continue
+                            subprocess.run(f"kill {pid}", shell=True, capture_output=True)
+                            python_killed += 1
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
 
             print(f"   └─ {Colors.GREEN}✓ Cleaned up {python_killed} Python processes{Colors.ENDC}")
 
@@ -18989,18 +19027,27 @@ async def main():
                 print(f"{Colors.YELLOW}⚠️ Failed to read PID file: {e}, removing it{Colors.ENDC}")
                 pid_file.unlink()
 
-        # Secondary check: ps command (catches cases where PID file is missing)
+        # Secondary check: process listing (cross-platform)
         try:
-            # Simple instance check using process listing (macOS compatible)
-            # Note: subprocess is already imported at module level (line 163)
-            result = subprocess.run(["ps", "aux"], capture_output=True, text=True, timeout=5)
-            jarvis_processes = [
-                line
-                for line in result.stdout.split("\n")
-                if "python" in line.lower()
-                and "start_system.py" in line
-                and str(os.getpid()) not in line  # Exclude ourselves
-            ]
+            if sys.platform == "win32":
+                # Windows: use tasklist
+                result = subprocess.run(
+                    ["tasklist", "/FI", "IMAGENAME eq python.exe", "/FO", "CSV", "/NH"],
+                    capture_output=True, text=True, timeout=5
+                )
+                jarvis_processes = []
+                # On Windows, we can't easily filter by command line args via tasklist
+                # Just skip the secondary check — PID lock file check above is sufficient
+            else:
+                # macOS/Linux: use ps aux
+                result = subprocess.run(["ps", "aux"], capture_output=True, text=True, timeout=5)
+                jarvis_processes = [
+                    line
+                    for line in result.stdout.split("\n")
+                    if "python" in line.lower()
+                    and "start_system.py" in line
+                    and str(os.getpid()) not in line  # Exclude ourselves
+                ]
 
             if jarvis_processes:
                 print(f"\n{Colors.FAIL}❌ JARVIS is already running!{Colors.ENDC}")
@@ -19016,7 +19063,10 @@ async def main():
                         print(f"  • PID {pid}: {' '.join(parts[10:])}")
 
                 print(f"\n{Colors.CYAN}💡 To prevent runaway GCP costs:{Colors.ENDC}")
-                print(f"   1. Stop existing instance: kill -INT {parts[1]}")
+                if sys.platform == "win32":
+                    print(f"   1. Stop existing instance: taskkill /F /PID {parts[1]}")
+                else:
+                    print(f"   1. Stop existing instance: kill -INT {parts[1]}")
                 print(f"   2. Or use: python start_system.py --restart")
                 print(f"   3. Or force start (risky): python start_system.py --force-start")
                 print(

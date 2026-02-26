@@ -86,7 +86,10 @@ import json
 import logging
 import os
 import psutil
-import resource
+try:
+    import resource
+except ImportError:
+    resource = None  # Unix-only module, not available on Windows
 import secrets
 import signal
 import sqlite3

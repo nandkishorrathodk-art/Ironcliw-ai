@@ -72,6 +72,7 @@ This ensures clean restarts with no orphaned processes or multiple DB Browser wi
 import asyncio
 import logging
 import subprocess
+import sys
 import time
 import shutil
 import psutil
@@ -83,6 +84,8 @@ import json
 import os
 
 logger = logging.getLogger(__name__)
+
+IS_WINDOWS = sys.platform == "win32"
 
 
 class VoiceUnlockMetricsMonitor:
@@ -378,34 +381,63 @@ class VoiceUnlockMetricsMonitor:
                 return
 
             # Check if DB Browser is installed
-            result = subprocess.run(
-                ['mdfind', 'kMDItemKind == "Application" && kMDItemDisplayName == "DB Browser for SQLite"'],
-                capture_output=True,
-                text=True,
-                timeout=5
-            )
+            db_browser_path = None
+            if IS_WINDOWS:
+                # Check common Windows install paths
+                possible_paths = [
+                    Path(os.environ.get('PROGRAMFILES', 'C:/Program Files')) / 'DB Browser for SQLite' / 'DB Browser for SQLite.exe',
+                    Path(os.environ.get('LOCALAPPDATA', '')) / 'DBBrowserForSQLite' / 'DB Browser for SQLite.exe',
+                ]
+                db_browser_path = shutil.which('DB Browser for SQLite')
+                if not db_browser_path:
+                    for p in possible_paths:
+                        if p.exists():
+                            db_browser_path = str(p)
+                            break
+                if not db_browser_path:
+                    logger.info("ℹ️  DB Browser for SQLite not found - skipping auto-launch")
+                    logger.info("💡 Install from: https://sqlitebrowser.org/dl/")
+                    self.degraded_mode = True
+                    self.degradation_reason = "DB Browser not installed"
+                    return
+            else:
+                # macOS: use mdfind
+                try:
+                    result = subprocess.run(
+                        ['mdfind', 'kMDItemKind == "Application" && kMDItemDisplayName == "DB Browser for SQLite"'],
+                        capture_output=True, text=True, timeout=5
+                    )
+                    if not result.stdout.strip():
+                        logger.warning("⚠️  DB Browser for SQLite not found - skipping auto-launch")
+                        logger.info("💡 Install with: brew install --cask db-browser-for-sqlite")
+                        self.degraded_mode = True
+                        self.degradation_reason = "DB Browser not installed"
+                        return
+                except Exception:
+                    pass
 
-            if not result.stdout.strip():
-                logger.warning("⚠️  DB Browser for SQLite not found - skipping auto-launch")
-                logger.info("💡 Install with: brew install --cask db-browser-for-sqlite")
-                self.degraded_mode = True
-                self.degradation_reason = "DB Browser not installed"
-                return
-
-            # Ensure database file exists before launching (avoid confusing error dialogs)
+            # Ensure database file exists before launching
             if not self.db_path.exists():
                 logger.warning("⚠️  Database file doesn't exist yet - will launch after first unlock")
                 return
 
             # Launch DB Browser with the database
-            logger.info("🚀 Launching DB Browser for SQLite in FULL SCREEN...")
+            logger.info("🚀 Launching DB Browser for SQLite...")
 
-            # Use 'open' command to launch in background
-            self.db_browser_process = subprocess.Popen(
-                ['open', '-a', 'DB Browser for SQLite', str(self.db_path)],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL
-            )
+            if IS_WINDOWS:
+                if db_browser_path:
+                    self.db_browser_process = subprocess.Popen(
+                        [db_browser_path, str(self.db_path)],
+                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+                    )
+                else:
+                    # Try os.startfile as fallback
+                    os.startfile(str(self.db_path))
+            else:
+                self.db_browser_process = subprocess.Popen(
+                    ['open', '-a', 'DB Browser for SQLite', str(self.db_path)],
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+                )
 
             # Give it a moment to launch and get PID
             await asyncio.sleep(2)
@@ -415,16 +447,13 @@ class VoiceUnlockMetricsMonitor:
             if new_pid:
                 self.db_browser_pid = new_pid
                 logger.info(f"✅ DB Browser launched successfully (PID: {new_pid})")
-
-                # Save PID to file for restart detection
                 try:
                     with open(self.pid_file, 'w') as f:
                         f.write(str(new_pid))
                 except Exception as e:
                     logger.debug(f"Could not save PID file: {e}")
-                
-                # Make it FULL SCREEN using AppleScript
-                await self._make_db_browser_fullscreen()
+                if not IS_WINDOWS:
+                    await self._make_db_browser_fullscreen()
             else:
                 logger.info("✅ DB Browser launched successfully")
 
@@ -435,8 +464,10 @@ class VoiceUnlockMetricsMonitor:
             logger.warning("⚠️  Timeout while checking for DB Browser - continuing anyway")
         except Exception as e:
             logger.warning(f"Could not auto-launch DB Browser: {e}")
-            logger.info("💡 You can manually open it with:")
-            logger.info(f"   open -a 'DB Browser for SQLite' {self.db_path}")
+            if IS_WINDOWS:
+                logger.info("💡 You can manually open it from: https://sqlitebrowser.org/dl/")
+            else:
+                logger.info(f"   open -a 'DB Browser for SQLite' {self.db_path}")
     
     async def _make_db_browser_fullscreen(self):
         """
@@ -593,64 +624,69 @@ class VoiceUnlockMetricsMonitor:
                     except Exception:
                         pass
 
-    async def _send_macos_notification(self, title: str, message: str, subtitle: str = None, sound: bool = True, critical: bool = False):
+    async def _send_native_notification(self, title: str, message: str, subtitle: str = None, sound: bool = True, critical: bool = False):
         """
-        Send native macOS notification using osascript (fully async)
-
-        Args:
-            title: Notification title
-            message: Main notification message
-            subtitle: Optional subtitle
-            sound: Whether to play notification sound
-            critical: Whether this is a critical alert (for failures)
+        Send native notification - cross-platform (Windows/macOS)
         """
         try:
-            # Choose sound based on success/failure
-            sound_name = "Glass" if not critical else "Basso"
-
-            # Build AppleScript for notification
-            script_parts = [
-                'display notification',
-                f'"{message}"',
-                f'with title "{title}"'
-            ]
-
-            if subtitle:
-                # Escape quotes in subtitle
-                subtitle_safe = subtitle.replace('"', '\\"')
-                script_parts.append(f'subtitle "{subtitle_safe}"')
-
-            if sound:
-                script_parts.append(f'sound name "{sound_name}"')
-
-            script = ' '.join(script_parts)
-
-            # Execute AppleScript asynchronously (non-blocking)
-            process = await asyncio.create_subprocess_exec(
-                'osascript', '-e', script,
-                stdout=asyncio.subprocess.DEVNULL,
-                stderr=asyncio.subprocess.DEVNULL
-            )
-
-            # Don't wait for completion - fire and forget
-            asyncio.create_task(process.wait())
-
-            logger.debug(f"📱 Sent macOS notification: {title}")
-
+            if IS_WINDOWS:
+                # Windows notification via plyer or win10toast
+                try:
+                    from plyer import notification as plyer_notif
+                    plyer_notif.notify(
+                        title=title,
+                        message=message,
+                        app_name="JARVIS Voice Unlock",
+                        timeout=5
+                    )
+                    logger.debug(f"📱 Sent Windows notification: {title}")
+                    return
+                except ImportError:
+                    pass
+                try:
+                    from win10toast import ToastNotifier
+                    toaster = ToastNotifier()
+                    toaster.show_toast(title, message, duration=5, threaded=True)
+                    logger.debug(f"📱 Sent Windows toast: {title}")
+                    return
+                except ImportError:
+                    pass
+                logger.debug("No Windows notification library available (install plyer or win10toast)")
+            else:
+                # macOS: osascript
+                sound_name = "Glass" if not critical else "Basso"
+                script_parts = ['display notification', f'"{message}"', f'with title "{title}"']
+                if subtitle:
+                    subtitle_safe = subtitle.replace('"', '\\"')
+                    script_parts.append(f'subtitle "{subtitle_safe}"')
+                if sound:
+                    script_parts.append(f'sound name "{sound_name}"')
+                script = ' '.join(script_parts)
+                process = await asyncio.create_subprocess_exec(
+                    'osascript', '-e', script,
+                    stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL
+                )
+                asyncio.create_task(process.wait())
+                logger.debug(f"📱 Sent macOS notification: {title}")
         except Exception as e:
-            logger.debug(f"Failed to send macOS notification: {e}")
+            logger.debug(f"Failed to send notification: {e}")
 
     async def _send_advanced_notification(self, success: bool, speaker: str, confidence: float,
                                           duration_sec: float, margin: float, trend: str,
                                           session_attempts: int, session_successes: int):
         """
-        Send advanced macOS notification with rich details (fully async)
-
-        Uses terminal-notifier if available for enhanced notifications with buttons,
-        otherwise falls back to osascript
+        Send advanced notification with rich details (cross-platform)
         """
         try:
-            # Check if terminal-notifier is available (more advanced notifications)
+            if IS_WINDOWS:
+                # On Windows, send simplified notification via plyer/win10toast
+                await self._send_basic_notification(
+                    success, speaker, confidence, duration_sec, margin,
+                    trend, session_attempts, session_successes
+                )
+                return
+
+            # macOS: Check if terminal-notifier is available
             check_process = await asyncio.create_subprocess_exec(
                 'which', 'terminal-notifier',
                 stdout=asyncio.subprocess.PIPE,
@@ -660,13 +696,11 @@ class VoiceUnlockMetricsMonitor:
             has_terminal_notifier = check_process.returncode == 0
 
             if has_terminal_notifier:
-                # Advanced notification with terminal-notifier
                 await self._send_terminal_notifier_notification(
                     success, speaker, confidence, duration_sec, margin,
                     trend, session_attempts, session_successes
                 )
             else:
-                # Fallback to basic osascript notification
                 await self._send_basic_notification(
                     success, speaker, confidence, duration_sec, margin,
                     trend, session_attempts, session_successes
@@ -746,19 +780,19 @@ class VoiceUnlockMetricsMonitor:
     async def _send_basic_notification(self, success: bool, speaker: str, confidence: float,
                                        duration_sec: float, margin: float, trend: str,
                                        session_attempts: int, session_successes: int):
-        """Send basic notification using osascript (fully async)"""
+        """Send basic notification (cross-platform)"""
         trend_emoji = "📈" if trend == "improving" else "📉" if trend == "declining" else "➡️"
         success_rate = (session_successes / session_attempts * 100) if session_attempts > 0 else 0
 
-        title = f"🔐 Voice Unlock: {'SUCCESS' if success else 'FAILED'}"
-        subtitle = f"{speaker} • {confidence:.1%} confidence {trend_emoji}"
+        title = f"Voice Unlock: {'SUCCESS' if success else 'FAILED'}"
+        subtitle = f"{speaker} - {confidence:.1%} confidence {trend_emoji}"
         message = (
             f"Duration: {duration_sec:.1f}s | "
             f"Margin: {margin:+.1%} | "
             f"Session: {session_successes}/{session_attempts} ({success_rate:.0f}%)"
         )
 
-        await self._send_macos_notification(
+        await self._send_native_notification(
             title=title,
             subtitle=subtitle,
             message=message,
@@ -833,7 +867,7 @@ class VoiceUnlockMetricsMonitor:
         logger.info(f"   └─ Avg Duration: {self.session_stats['avg_duration_ms']/1000:.1f}s")
         logger.info("")
         logger.info("💡 Database Updated - Press F5 in DB Browser to see latest data")
-        logger.info("📱 macOS Notification Sent - Check Notification Center")
+        logger.info("📱 Notification Sent - Check Notification Center")
         logger.info("=" * 80)
         logger.info("")
 

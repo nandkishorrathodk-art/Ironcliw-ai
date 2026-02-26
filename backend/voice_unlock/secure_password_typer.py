@@ -80,36 +80,43 @@ class CGEventFlags(IntEnum):
     kCGEventFlagMaskCommand = 1 << 20
 
 
-# Load Core Graphics framework
-try:
-    CoreGraphics = ctypes.CDLL('/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics')
+# Load Core Graphics framework (macOS only)
+if sys.platform == "darwin":
+    try:
+        CoreGraphics = ctypes.CDLL('/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics')
 
-    # CGEventCreateKeyboardEvent
-    CoreGraphics.CGEventCreateKeyboardEvent.argtypes = [c_void_p, c_uint16, c_bool]
-    CoreGraphics.CGEventCreateKeyboardEvent.restype = c_void_p
+        # CGEventCreateKeyboardEvent
+        CoreGraphics.CGEventCreateKeyboardEvent.argtypes = [c_void_p, c_uint16, c_bool]
+        CoreGraphics.CGEventCreateKeyboardEvent.restype = c_void_p
 
-    # CGEventPost
-    CoreGraphics.CGEventPost.argtypes = [c_int32, c_void_p]
-    CoreGraphics.CGEventPost.restype = None
+        # CGEventPost
+        CoreGraphics.CGEventPost.argtypes = [c_int32, c_void_p]
+        CoreGraphics.CGEventPost.restype = None
 
-    # CFRelease
-    CoreGraphics.CFRelease.argtypes = [c_void_p]
-    CoreGraphics.CFRelease.restype = None
+        # CFRelease
+        CoreGraphics.CFRelease.argtypes = [c_void_p]
+        CoreGraphics.CFRelease.restype = None
 
-    # CGEventSetFlags
-    CoreGraphics.CGEventSetFlags.argtypes = [c_void_p, c_int32]
-    CoreGraphics.CGEventSetFlags.restype = None
+        # CGEventSetFlags
+        CoreGraphics.CGEventSetFlags.argtypes = [c_void_p, c_int32]
+        CoreGraphics.CGEventSetFlags.restype = None
 
-    # CGEventSourceCreate
-    CoreGraphics.CGEventSourceCreate.argtypes = [c_int32]
-    CoreGraphics.CGEventSourceCreate.restype = c_void_p
+        # CGEventSourceCreate
+        CoreGraphics.CGEventSourceCreate.argtypes = [c_int32]
+        CoreGraphics.CGEventSourceCreate.restype = c_void_p
 
-    CG_AVAILABLE = True
-    logger.info("✅ Core Graphics framework loaded successfully")
+        CG_AVAILABLE = True
+        logger.info("✅ Core Graphics framework loaded successfully")
 
-except Exception as e:
+    except Exception as e:
+        CG_AVAILABLE = False
+        CoreGraphics = None
+        logger.warning(f"⚠️ Core Graphics not available: {e}")
+else:
+    # Windows/Linux - CoreGraphics not available
     CG_AVAILABLE = False
-    logger.warning(f"⚠️ Core Graphics not available: {e}")
+    CoreGraphics = None
+    logger.debug("ℹ️ Core Graphics not available (non-macOS platform) — using fallback")
 
 
 # US QWERTY keyboard virtual key codes
