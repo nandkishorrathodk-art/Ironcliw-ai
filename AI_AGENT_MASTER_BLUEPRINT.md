@@ -4,7 +4,7 @@
 **Repo:** `https://github.com/nandkishorrathodk-art/Ironcliw-ai`
 **Original upstream:** `https://github.com/drussell23/JARVIS`
 **Owner:** Nandkishor Rathod (`nandkishorrathodk-art`)
-**Current Phase:** 11 Complete — Windows port working, 14/14 integration tests pass
+**Current Phase:** 12 Complete — Whisper fixed, WebSocket loop fixed, ECAPA fast-fail 0.5s, startup 86s
 
 ---
 
@@ -52,20 +52,26 @@ You are an AI coding agent continuing the Windows port of JARVIS — an advanced
 | Hardware control | ✅ Working | `backend/autonomy/hardware_control.py` |
 | Screen lock detection | ✅ Working | `backend/context_intelligence/detectors/screen_lock_detector.py` |
 | fcntl Windows shim | ✅ Working | `backend/core/resilience/atomic_file_ops.py` |
-| ECAPA fast-fail | ✅ Working | `backend/voice_unlock/ml_engine_registry.py` |
+| ECAPA fast-fail (0.5s not 25s) | ✅ Working | `backend/voice_unlock/ml_engine_registry.py` |
 | UNIQUE constraint fix | ✅ Working | `backend/intelligence/learning_database.py` |
 | os.uname() fix | ✅ Working | `backend/core/infrastructure_orchestrator.py` |
 | Keychain WinError 2 fix | ✅ Working | `start_system.py` |
 | UTF-8 stdout/stderr | ✅ Working | `backend/main.py` |
+| Whisper STT (llvmlite 0.44.0) | ✅ Working | `requirements.txt` |
+| WebSocket no-restart-loop | ✅ Working | `start_system.py` |
+| Owner profile cross-platform | ✅ Working | `backend/voice/speaker_verification_service.py` |
 | 14/14 integration tests pass | ✅ Verified | `test_integration.py` |
 
 ### Current HEAD commit
 ```
-0afb6259  ci: fix auto-diagram-generator bash errors
+32b10ccc  fix: ECAPA fast-fail on Windows avoid 25s timeout
 ```
 
+### Startup time
+- Session 12: **86 seconds** (was 171s before fixes)
+
 ### Working access points (when running)
-- Frontend: http://localhost:3000
+- Frontend: http://localhost:3001/ (falls back from 3000 if stuck)
 - Backend API: http://localhost:8010/docs
 - Health: http://localhost:8010/health/ping
 - WebSocket: ws://localhost:8010/ws
