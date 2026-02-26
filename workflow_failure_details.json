@@ -1,0 +1,407 @@
+{
+  "workflow_name": "Complete Unlock Test Suite (Master)",
+  "workflow_url": "https://github.com/nandkishorrathodk-art/Ironcliw-ai/actions/runs/22428989636",
+  "branch": "main",
+  "commit_sha": "ce513d7",
+  "run_number": 15,
+  "failed_count": 4,
+  "fix_branch": "fix/ci/complete-unlock-test-suite-master-run15-20260226-052147",
+  "pr_title": "\ud83d\udea8 Fix CI/CD: Complete Unlock Test Suite (Master) (Run #15)",
+  "analyses": [
+    {
+      "error_patterns": [
+        {
+          "pattern": "ERROR|Error|error",
+          "matches": [
+            {
+              "line_number": 39,
+              "content": "2026-02-26T05:20:20.9932760Z   Getting requirements to build wheel: finished with status 'error'",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 40,
+              "content": "2026-02-26T05:20:20.9970700Z   error: subprocess-exited-with-error",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 61,
+              "content": "2026-02-26T05:20:21.1576560Z       ModuleNotFoundError: No module named 'pkg_resources'",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 64,
+              "content": "2026-02-26T05:20:21.1883460Z   note: This error originates from a subprocess, and is likely not a problem with pip.",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 65,
+              "content": "2026-02-26T05:20:21.1988610Z ERROR: Failed to build 'openai-whisper' when getting requirements to build wheel",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 66,
+              "content": "2026-02-26T05:20:21.2060560Z ##[error]Process completed with exit code 1.",
+              "severity": "high",
+              "emoji": "\u274c"
+            }
+          ],
+          "count": 6
+        },
+        {
+          "pattern": "FAIL|Failed|failed",
+          "matches": [
+            {
+              "line_number": 65,
+              "content": "2026-02-26T05:20:21.1988610Z ERROR: Failed to build 'openai-whisper' when getting requirements to build wheel",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            },
+            {
+              "line_number": 97,
+              "content": "2026-02-26T05:20:21.9207420Z ##[warning]The process '/opt/homebrew/bin/git' failed with exit code 128",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            }
+          ],
+          "count": 2
+        },
+        {
+          "pattern": "WARN|Warning|warning",
+          "matches": [
+            {
+              "line_number": 72,
+              "content": "2026-02-26T05:20:21.2195270Z   if-no-files-found: warn",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            },
+            {
+              "line_number": 86,
+              "content": "2026-02-26T05:20:21.5069270Z ##[warning]No files were found with the provided path: test-results/biometric-voice-e2e. No artifacts will be uploaded.",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            },
+            {
+              "line_number": 97,
+              "content": "2026-02-26T05:20:21.9207420Z ##[warning]The process '/opt/homebrew/bin/git' failed with exit code 128",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            }
+          ],
+          "count": 3
+        },
+        {
+          "pattern": "AssertionError|Exception",
+          "matches": [
+            {
+              "line_number": 5,
+              "content": "2026-02-26T05:20:10.0427310Z Installing collected packages: typing-extensions, tomli, pygments, propcache, pluggy, packaging, numpy, iniconfig, idna, frozenlist, backports-asyncio-runner, attrs, async-timeout, aiohappyeyeballs, scipy, multidict, exceptiongroup, aiosignal, yarl, pytest, pytest-timeout, pytest-asyncio, aiohttp",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            },
+            {
+              "line_number": 7,
+              "content": "2026-02-26T05:20:16.8924290Z Successfully installed aiohappyeyeballs-2.6.1 aiohttp-3.13.3 aiosignal-1.4.0 async-timeout-5.0.1 attrs-25.4.0 backports-asyncio-runner-1.2.0 exceptiongroup-1.3.1 frozenlist-1.8.0 idna-3.11 iniconfig-2.3.0 multidict-6.7.1 numpy-2.2.6 packaging-26.0 pluggy-1.6.0 propcache-0.4.1 pygments-2.19.2 pytest-9.0.2 pytest-asyncio-1.3.0 pytest-timeout-2.4.0 scipy-1.15.3 tomli-2.4.0 typing-extensions-4.15.0 yarl-1.22.0",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            }
+          ],
+          "count": 2
+        },
+        {
+          "pattern": "timeout|timed out",
+          "matches": [
+            {
+              "line_number": 5,
+              "content": "2026-02-26T05:20:10.0427310Z Installing collected packages: typing-extensions, tomli, pygments, propcache, pluggy, packaging, numpy, iniconfig, idna, frozenlist, backports-asyncio-runner, attrs, async-timeout, aiohappyeyeballs, scipy, multidict, exceptiongroup, aiosignal, yarl, pytest, pytest-timeout, pytest-asyncio, aiohttp",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 7,
+              "content": "2026-02-26T05:20:16.8924290Z Successfully installed aiohappyeyeballs-2.6.1 aiohttp-3.13.3 aiosignal-1.4.0 async-timeout-5.0.1 attrs-25.4.0 backports-asyncio-runner-1.2.0 exceptiongroup-1.3.1 frozenlist-1.8.0 idna-3.11 iniconfig-2.3.0 multidict-6.7.1 numpy-2.2.6 packaging-26.0 pluggy-1.6.0 propcache-0.4.1 pygments-2.19.2 pytest-9.0.2 pytest-asyncio-1.3.0 pytest-timeout-2.4.0 scipy-1.15.3 tomli-2.4.0 typing-extensions-4.15.0 yarl-1.22.0",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            }
+          ],
+          "count": 2
+        }
+      ],
+      "suggested_fixes": [
+        "Consider increasing timeout values or optimizing slow operations"
+      ],
+      "severity": "high",
+      "category": "dependency_error",
+      "similar_failures": []
+    },
+    {
+      "error_patterns": [
+        {
+          "pattern": "ERROR|Error|error",
+          "matches": [
+            {
+              "line_number": 39,
+              "content": "2026-02-26T05:20:15.2865950Z   Getting requirements to build wheel: finished with status 'error'",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 40,
+              "content": "2026-02-26T05:20:15.2894810Z   error: subprocess-exited-with-error",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 61,
+              "content": "2026-02-26T05:20:15.2999510Z       ModuleNotFoundError: No module named 'pkg_resources'",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 64,
+              "content": "2026-02-26T05:20:15.3000310Z   note: This error originates from a subprocess, and is likely not a problem with pip.",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 65,
+              "content": "2026-02-26T05:20:15.3000760Z ERROR: Failed to build 'openai-whisper' when getting requirements to build wheel",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 66,
+              "content": "2026-02-26T05:20:15.5056520Z ##[error]Process completed with exit code 1.",
+              "severity": "high",
+              "emoji": "\u274c"
+            }
+          ],
+          "count": 6
+        },
+        {
+          "pattern": "FAIL|Failed|failed",
+          "matches": [
+            {
+              "line_number": 65,
+              "content": "2026-02-26T05:20:15.3000760Z ERROR: Failed to build 'openai-whisper' when getting requirements to build wheel",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            },
+            {
+              "line_number": 97,
+              "content": "2026-02-26T05:20:16.0975620Z ##[warning]The process '/opt/homebrew/bin/git' failed with exit code 128",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            }
+          ],
+          "count": 2
+        },
+        {
+          "pattern": "WARN|Warning|warning",
+          "matches": [
+            {
+              "line_number": 72,
+              "content": "2026-02-26T05:20:15.5218270Z   if-no-files-found: warn",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            },
+            {
+              "line_number": 86,
+              "content": "2026-02-26T05:20:15.7563990Z ##[warning]No files were found with the provided path: test-results/unlock-e2e. No artifacts will be uploaded.",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            },
+            {
+              "line_number": 97,
+              "content": "2026-02-26T05:20:16.0975620Z ##[warning]The process '/opt/homebrew/bin/git' failed with exit code 128",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            }
+          ],
+          "count": 3
+        },
+        {
+          "pattern": "AssertionError|Exception",
+          "matches": [
+            {
+              "line_number": 5,
+              "content": "2026-02-26T05:20:10.1235180Z Installing collected packages: typing-extensions, tomli, pygments, propcache, pluggy, packaging, iniconfig, idna, frozenlist, backports-asyncio-runner, attrs, async-timeout, aiohappyeyeballs, multidict, exceptiongroup, aiosignal, yarl, pytest, pytest-timeout, pytest-asyncio, aiohttp",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            },
+            {
+              "line_number": 7,
+              "content": "2026-02-26T05:20:11.7088660Z Successfully installed aiohappyeyeballs-2.6.1 aiohttp-3.13.3 aiosignal-1.4.0 async-timeout-5.0.1 attrs-25.4.0 backports-asyncio-runner-1.2.0 exceptiongroup-1.3.1 frozenlist-1.8.0 idna-3.11 iniconfig-2.3.0 multidict-6.7.1 packaging-26.0 pluggy-1.6.0 propcache-0.4.1 pygments-2.19.2 pytest-9.0.2 pytest-asyncio-1.3.0 pytest-timeout-2.4.0 tomli-2.4.0 typing-extensions-4.15.0 yarl-1.22.0",
+              "severity": "high",
+              "emoji": "\ud83d\udd34"
+            }
+          ],
+          "count": 2
+        },
+        {
+          "pattern": "timeout|timed out",
+          "matches": [
+            {
+              "line_number": 5,
+              "content": "2026-02-26T05:20:10.1235180Z Installing collected packages: typing-extensions, tomli, pygments, propcache, pluggy, packaging, iniconfig, idna, frozenlist, backports-asyncio-runner, attrs, async-timeout, aiohappyeyeballs, multidict, exceptiongroup, aiosignal, yarl, pytest, pytest-timeout, pytest-asyncio, aiohttp",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            },
+            {
+              "line_number": 7,
+              "content": "2026-02-26T05:20:11.7088660Z Successfully installed aiohappyeyeballs-2.6.1 aiohttp-3.13.3 aiosignal-1.4.0 async-timeout-5.0.1 attrs-25.4.0 backports-asyncio-runner-1.2.0 exceptiongroup-1.3.1 frozenlist-1.8.0 idna-3.11 iniconfig-2.3.0 multidict-6.7.1 packaging-26.0 pluggy-1.6.0 propcache-0.4.1 pygments-2.19.2 pytest-9.0.2 pytest-asyncio-1.3.0 pytest-timeout-2.4.0 tomli-2.4.0 typing-extensions-4.15.0 yarl-1.22.0",
+              "severity": "medium",
+              "emoji": "\u23f1\ufe0f"
+            }
+          ],
+          "count": 2
+        }
+      ],
+      "suggested_fixes": [
+        "Consider increasing timeout values or optimizing slow operations"
+      ],
+      "severity": "high",
+      "category": "dependency_error",
+      "similar_failures": []
+    },
+    {
+      "error_patterns": [
+        {
+          "pattern": "ERROR|Error|error",
+          "matches": [
+            {
+              "line_number": 20,
+              "content": "2026-02-26T05:20:29.0536852Z ##[error]Process completed with exit code 1.",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 40,
+              "content": "2026-02-26T05:20:29.3666859Z RequestError [HttpError]: Resource not accessible by integration",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 72,
+              "content": "2026-02-26T05:20:29.3714335Z ##[error]Unhandled error: HttpError: Resource not accessible by integration",
+              "severity": "high",
+              "emoji": "\u274c"
+            }
+          ],
+          "count": 3
+        },
+        {
+          "pattern": "FAIL|Failed|failed",
+          "matches": [
+            {
+              "line_number": 0,
+              "content": "2026-02-26T05:20:29.0312162Z \u001b[36;1mif [ \"failure\" = \"success\" ] && [ \"failure\" = \"success\" ]; then\u001b[0m",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            },
+            {
+              "line_number": 4,
+              "content": "2026-02-26T05:20:29.0315473Z \u001b[36;1m  FAIL=0\u001b[0m",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            },
+            {
+              "line_number": 6,
+              "content": "2026-02-26T05:20:29.0316379Z \u001b[36;1m  echo \"## \u274c Overall Status: TESTS FAILED\" >> $GITHUB_STEP_SUMMARY\u001b[0m",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            },
+            {
+              "line_number": 9,
+              "content": "2026-02-26T05:20:29.0318838Z \u001b[36;1m  FAIL=1\u001b[0m",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            },
+            {
+              "line_number": 17,
+              "content": "2026-02-26T05:20:29.0323011Z \u001b[36;1mexit $FAIL\u001b[0m",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            },
+            {
+              "line_number": 26,
+              "content": "title: '\ud83d\udea8 Critical: Unlock Test Suite Failed',",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            },
+            {
+              "line_number": 27,
+              "content": "body: `## Critical Test Failure\\n\\n**Date:** ${new Date().toISOString()}\\n**Workflow:** Complete Unlock Test Suite\\n**Mode:** integration\\n\\n### Status\\n\\n- Unlock Integration: failure\\n- Biometric Voice: failure\\n\\n### Action Required\\n\\n\u26a0\ufe0f **The \"unlock my screen\" functionality may be broken!**\\n\\nPlease review the [workflow run](https://github.com/nandkishorrathodk-art/Ironcliw-ai/actions/runs/22428989636) immediately.\\n\\n### Quick Diagnosis\\n\\n1. Check individual workflow results\\n2. Review failed test logs\\n3. Test \"unlock my screen\" manually\\n4. Fix and re-run tests\\n\\n---\\n\ud83e\udd16 Auto-generated by Complete Unlock Test Suite`,",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            },
+            {
+              "line_number": 90,
+              "content": "2026-02-26T05:20:29.3729976Z     body: '{\"title\":\"\ud83d\udea8 Critical: Unlock Test Suite Failed\",\"body\":\"## Critical Test Failure\\\\n\\\\n**Date:** 2026-02-26T05:20:29.164Z\\\\n**Workflow:** Complete Unlock Test Suite\\\\n**Mode:** integration\\\\n\\\\n### Status\\\\n\\\\n- Unlock Integration: failure\\\\n- Biometric Voice: failure\\\\n\\\\n### Action Required\\\\n\\\\n\u26a0\ufe0f **The \\\\\"unlock my screen\\\\\" functionality may be broken!**\\\\n\\\\nPlease review the [workflow run](https://github.com/nandkishorrathodk-art/Ironcliw-ai/actions/runs/22428989636) immediately.\\\\n\\\\n### Quick Diagnosis\\\\n\\\\n1. Check individual workflow results\\\\n2. Review failed test logs\\\\n3. Test \\\\\"unlock my screen\\\\\" manually\\\\n4. Fix and re-run tests\\\\n\\\\n---\\\\n\ud83e\udd16 Auto-generated by Complete Unlock Test Suite\",\"labels\":[\"critical\",\"unlock\",\"automated-test\",\"bug\"]}',",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            }
+          ],
+          "count": 8
+        }
+      ],
+      "suggested_fixes": [
+        "Review test cases and ensure code changes haven't broken existing functionality"
+      ],
+      "severity": "high",
+      "category": "test_failure",
+      "similar_failures": []
+    },
+    {
+      "error_patterns": [
+        {
+          "pattern": "ERROR|Error|error",
+          "matches": [
+            {
+              "line_number": -23,
+              "content": "2026-02-26T05:20:34.3189489Z ##[error]Process completed with exit code 1.",
+              "severity": "high",
+              "emoji": "\u274c"
+            }
+          ],
+          "count": 1
+        },
+        {
+          "pattern": "FAIL|Failed|failed",
+          "matches": [
+            {
+              "line_number": -31,
+              "content": "2026-02-26T05:20:34.2100225Z ##[group]Run echo \"\u274c Unlock tests failed - 'unlock my screen' may be broken!\"",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            },
+            {
+              "line_number": -30,
+              "content": "2026-02-26T05:20:34.2101171Z \u001b[36;1mecho \"\u274c Unlock tests failed - 'unlock my screen' may be broken!\"\u001b[0m",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            },
+            {
+              "line_number": -25,
+              "content": "2026-02-26T05:20:34.3172282Z \u274c Unlock tests failed - 'unlock my screen' may be broken!",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            }
+          ],
+          "count": 3
+        }
+      ],
+      "suggested_fixes": [
+        "Review test cases and ensure code changes haven't broken existing functionality"
+      ],
+      "severity": "high",
+      "category": "test_failure",
+      "similar_failures": []
+    }
+  ],
+  "timestamp": "2026-02-26T05:21:47.086988"
+}
