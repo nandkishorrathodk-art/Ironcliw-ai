@@ -30,6 +30,10 @@ pyperclip>=1.8.2
 # sounddevice>=0.5.0
 # PyAudio>=0.2.14
 
+# ECAPA Voice Biometrics (Speaker Verification)
+torchaudio>=2.10.0
+speechbrain>=1.0.3
+
 # Note: Some packages from main requirements.txt may need Windows-specific builds:
 # - psutil (cross-platform, works on Windows)
 # - numpy, torch (ensure Windows wheels are used)
