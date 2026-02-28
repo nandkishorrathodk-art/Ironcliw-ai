@@ -1,0 +1,77 @@
+{
+  "workflow_name": "Secret Scanning",
+  "workflow_url": "https://github.com/nandkishorrathodk-art/Ironcliw-ai/actions/runs/22525682778",
+  "branch": "main",
+  "commit_sha": "41b1fb3",
+  "run_number": 77,
+  "failed_count": 1,
+  "fix_branch": "fix/ci/secret-scanning-run77-20260228-174324",
+  "pr_title": "\ud83d\udea8 Fix CI/CD: Secret Scanning (Run #77)",
+  "analyses": [
+    {
+      "error_patterns": [
+        {
+          "pattern": "ERROR|Error|error",
+          "matches": [
+            {
+              "line_number": 61,
+              "content": "2026-02-28T17:41:32.2399910Z             throw new Error(`File ${file} does not exist`);",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 64,
+              "content": "2026-02-28T17:41:32.2400810Z Error: File results.sarif does not exist",
+              "severity": "high",
+              "emoji": "\u274c"
+            }
+          ],
+          "count": 2
+        },
+        {
+          "pattern": "FAIL|Failed|failed",
+          "matches": [
+            {
+              "line_number": 97,
+              "content": "2026-02-28T17:41:32.6880087Z ##[warning]The process '/usr/bin/git' failed with exit code 128",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            }
+          ],
+          "count": 1
+        },
+        {
+          "pattern": "WARN|Warning|warning",
+          "matches": [
+            {
+              "line_number": 82,
+              "content": "2026-02-28T17:41:32.2721883Z   if-no-files-found: warn",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            },
+            {
+              "line_number": 87,
+              "content": "2026-02-28T17:41:32.4883376Z ##[warning]No files were found with the provided path: gitleaks-report.json. No artifacts will be uploaded.",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            },
+            {
+              "line_number": 97,
+              "content": "2026-02-28T17:41:32.6880087Z ##[warning]The process '/usr/bin/git' failed with exit code 128",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            }
+          ],
+          "count": 3
+        }
+      ],
+      "suggested_fixes": [
+        "Review the logs above for specific error messages"
+      ],
+      "severity": "high",
+      "category": "permission_error",
+      "similar_failures": []
+    }
+  ],
+  "timestamp": "2026-02-28T17:43:24.235786"
+}
