@@ -1,0 +1,89 @@
+{
+  "workflow_name": "Ironcliw Postman API Tests",
+  "workflow_url": "https://github.com/nandkishorrathodk-art/Ironcliw-ai/actions/runs/22525682770",
+  "branch": "main",
+  "commit_sha": "41b1fb3",
+  "run_number": 21,
+  "failed_count": 1,
+  "fix_branch": "fix/ci/ironcliw-postman-api-tests-run21-20260228-174401",
+  "pr_title": "\ud83d\udea8 Fix CI/CD: Ironcliw Postman API Tests (Run #21)",
+  "analyses": [
+    {
+      "error_patterns": [
+        {
+          "pattern": "ERROR|Error|error",
+          "matches": [
+            {
+              "line_number": 85,
+              "content": "2026-02-28T17:41:33.6517787Z     raise JSONDecodeError(\"Unexpected UTF-8 BOM (decode using utf-8-sig)\",",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 86,
+              "content": "2026-02-28T17:41:33.6519376Z json.decoder.JSONDecodeError: Unexpected UTF-8 BOM (decode using utf-8-sig): line 1 column 1 (char 0)",
+              "severity": "high",
+              "emoji": "\u274c"
+            },
+            {
+              "line_number": 87,
+              "content": "2026-02-28T17:41:33.6681098Z ##[error]Process completed with exit code 1.",
+              "severity": "high",
+              "emoji": "\u274c"
+            }
+          ],
+          "count": 3
+        },
+        {
+          "pattern": "FAIL|Failed|failed",
+          "matches": [
+            {
+              "line_number": 97,
+              "content": "2026-02-28T17:41:33.8390077Z ##[warning]The process '/usr/bin/git' failed with exit code 128",
+              "severity": "high",
+              "emoji": "\ud83d\udca5"
+            }
+          ],
+          "count": 1
+        },
+        {
+          "pattern": "WARN|Warning|warning",
+          "matches": [
+            {
+              "line_number": 57,
+              "content": "2026-02-28T17:41:31.6852331Z npm warn deprecated har-validator@5.1.5: this library is no longer supported",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            },
+            {
+              "line_number": 58,
+              "content": "2026-02-28T17:41:32.2117784Z npm warn deprecated uuid@3.4.0: Please upgrade  to version 7 or higher.  Older versions may use Math.random() in certain circumstances, which is known to be problematic.  See https://v8.dev/blog/math-random for details.",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            },
+            {
+              "line_number": 59,
+              "content": "2026-02-28T17:41:33.4872928Z npm warn deprecated @faker-js/faker@5.5.3: Please update to a newer version.",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            },
+            {
+              "line_number": 97,
+              "content": "2026-02-28T17:41:33.8390077Z ##[warning]The process '/usr/bin/git' failed with exit code 128",
+              "severity": "medium",
+              "emoji": "\u26a0\ufe0f"
+            }
+          ],
+          "count": 4
+        }
+      ],
+      "suggested_fixes": [
+        "Review the logs above for specific error messages"
+      ],
+      "severity": "high",
+      "category": "permission_error",
+      "similar_failures": []
+    }
+  ],
+  "timestamp": "2026-02-28T17:44:01.995729"
+}
